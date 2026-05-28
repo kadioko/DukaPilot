@@ -4,6 +4,7 @@ import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
 import { Users, ChevronDown, ChevronUp, Phone, AlertTriangle } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 interface CustomerOrderItem {
   quantity: number;
@@ -50,6 +51,7 @@ const NEXT_ACTION: Record<string, { status: string; labelKey: string; color: str
 
 export default function CustomerOrdersPage() {
   const lang = useLang();
+  const { toast } = useToast();
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -86,7 +88,7 @@ export default function CustomerOrdersPage() {
       await api.patch(`/customer-orders/${orderId}/status`, { status: newStatus });
       fetchOrders();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : t("common.error", lang));
+      toast(err instanceof Error ? err.message : t("common.error", lang), "error");
     } finally {
       setUpdating(null);
     }

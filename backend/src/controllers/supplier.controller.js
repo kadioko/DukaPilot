@@ -59,22 +59,27 @@ const myOrders = asyncHandler(async (req, res) => {
   });
   if (!supplierRecord) return res.status(404).json({ error: "Supplier profile not found" });
 
-  const { status } = req.query;
+  const { status, limit = 100, offset = 0 } = req.query;
   const where = { supplierId: supplierRecord.id };
   if (status) where.status = status.toUpperCase();
 
-  const orders = await prisma.order.findMany({
-    where,
-    include: {
-      shop: { select: { id: true, name: true, location: true, district: true } },
-      items: {
-        include: { product: { select: { id: true, name: true, unit: true } } },
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      include: {
+        shop: { select: { id: true, name: true, location: true, district: true } },
+        items: {
+          include: { product: { select: { id: true, name: true, unit: true } } },
+        },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Number(limit), 200),
+      skip: Number(offset),
+    }),
+    prisma.order.count({ where }),
+  ]);
 
-  res.json({ orders });
+  res.json({ orders, total, limit: Math.min(Number(limit), 200), offset: Number(offset) });
 });
 
 const updateOrderStatus = asyncHandler(async (req, res) => {

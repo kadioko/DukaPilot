@@ -14,6 +14,7 @@ import {
   ArrowDown,
   CalendarClock,
 } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 interface Product {
   id: string;
@@ -54,6 +55,7 @@ function expiryStatus(p: Product, lang: string): { label: string; color: string 
 
 export default function InventoryPage() {
   const lang = useLang();
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [search, setSearch] = useState("");
@@ -156,7 +158,7 @@ export default function InventoryPage() {
       setAdjustProduct(null);
       fetchProducts();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : t("common.error", lang));
+      toast(e instanceof Error ? e.message : t("common.error", lang), "error");
     } finally {
       setSaving(false);
     }

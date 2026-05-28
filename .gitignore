@@ -15,3 +15,4 @@ Thumbs.db
 
 .vercel
 .env*.local
+load-tests/results.json

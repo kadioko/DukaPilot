@@ -4,6 +4,7 @@ import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { Plus, X, ShoppingCart, Check, Minus, Search, Clock } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
+import { useToast } from "@/components/ui/Toast";
 
 interface Product {
   id: string;
@@ -43,6 +44,7 @@ const PAYMENT_METHODS = [
 
 export default function SalesPage() {
   const lang = useLang();
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
@@ -50,7 +52,6 @@ export default function SalesPage() {
   const [paymentRef, setPaymentRef] = useState("");
   const [search, setSearch] = useState("");
   const [completing, setCompleting] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [view, setView] = useState<"pos" | "history">("pos");
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -135,15 +136,14 @@ export default function SalesPage() {
         paymentMethod,
         paymentRef: paymentRef || undefined,
       });
-      setSuccess(true);
+      toast(t("sales.completed", lang), "success");
       setCart([]);
       setPaymentRef("");
-      setTimeout(() => setSuccess(false), 2500);
       // Refresh products stock
       api.get<{ products: Product[] }>("/products")
         .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : t("common.error", lang));
+      toast(e instanceof Error ? e.message : t("common.error", lang), "error");
     } finally {
       setCompleting(false);
     }
@@ -153,11 +153,6 @@ export default function SalesPage() {
     <AppShell>
       <div className="max-w-5xl mx-auto pb-24 lg:pb-6">
         {/* Success toast */}
-        {success && (
-          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-medium">
-            <Check className="w-4 h-4" /> {t("sales.completed", lang)}
-          </div>
-        )}
 
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-bold text-gray-900">{t("nav.sales", lang)}</h1>

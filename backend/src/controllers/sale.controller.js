@@ -10,15 +10,26 @@ async function getShopId(userId) {
   return shop.id;
 }
 
+const VALID_PAYMENT_METHODS = ['CASH', 'MPESA', 'TIGOPESA', 'AIRTEL_MONEY', 'HALOPESA', 'BANK', 'CREDIT'];
+const VALID_CHANNELS = ['POS', 'ONLINE'];
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
-  const { from, to, limit = 50, offset = 0 } = req.query;
+  const { from, to, limit = 50, offset = 0, paymentMethod, channel } = req.query;
 
   const where = { shopId };
   if (from || to) {
     where.createdAt = {};
     if (from) where.createdAt.gte = new Date(from);
     if (to) where.createdAt.lte = new Date(to);
+  }
+  if (paymentMethod) {
+    const pm = paymentMethod.toUpperCase();
+    if (VALID_PAYMENT_METHODS.includes(pm)) where.paymentMethod = pm;
+  }
+  if (channel) {
+    const ch = channel.toUpperCase();
+    if (VALID_CHANNELS.includes(ch)) where.channel = ch;
   }
 
   const [sales, total] = await Promise.all([

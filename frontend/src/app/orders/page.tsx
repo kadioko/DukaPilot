@@ -4,6 +4,7 @@ import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
 import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 interface Supplier {
   id: string;
@@ -48,6 +49,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function OrdersPage() {
   const lang = useLang();
+  const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -127,7 +129,7 @@ export default function OrdersPage() {
       setNote("");
       fetchOrders();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : t("common.error", lang));
+      toast(e instanceof Error ? e.message : t("common.error", lang), "error");
     } finally {
       setSaving(false);
     }

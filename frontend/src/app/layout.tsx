@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/Toast";
+import ServiceWorkerRegistrar from "@/components/ui/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
   title: "DukaOS - Merchant OS Tanzania",
@@ -17,7 +19,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="sw">
-      <body>{children}</body>
+      <body>
+        <ToastProvider>
+        <ServiceWorkerRegistrar />
+        {children}
+      </ToastProvider>
+      </body>
     </html>
   );
 }

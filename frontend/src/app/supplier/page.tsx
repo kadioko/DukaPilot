@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, clearToken, formatTZS } from "@/lib/api";
 import { ShoppingBag, LogOut, Check, X, Truck, Clock, ChevronDown, ChevronUp, BarChart2 } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 interface Order {
   id: string;
@@ -36,6 +37,7 @@ const STATUS_NEXT: Record<string, { action: string; label: string; color: string
 
 export default function SupplierPortal() {
   const router = useRouter();
+  const { toast } = useToast();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +61,7 @@ export default function SupplierPortal() {
       await api.patch(`/suppliers/portal/orders/${orderId}/status`, { status });
       setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status } : o));
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Hitilafu");
+      toast(e instanceof Error ? e.message : "Hitilafu imetokea", "error");
     } finally {
       setUpdating(null);
     }
