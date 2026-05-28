@@ -15,41 +15,215 @@
 
 All PINs: `1234`
 
-| Role | Phone | Name / Shop |
+| Role | Phone | Name / Shop | Key purpose |
+| --- | --- | --- | --- |
+| Admin | +255700000000 | Admin DukaOS | System admin, audit log, PIN reset |
+| **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED — every scenario (see below)** |
+| Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders in Jumla supplier portal |
+| Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, wholesale sales, bar category |
+| Merchant | +255700000005 | Fatuma Ally / Fatuma Beauty Shop | Beauty, online channel, out-of-stock scenario |
+| **Supplier** | **+255700000001** | **Jumla Traders Ltd** | **FEATURED — every order status in portal** |
+| Supplier | +255700000006 | Rafiki Beverages Ltd | Hassan's beverage supplier |
+| Supplier | +255700000007 | Beauty Supplies TZ | Fatuma's cosmetics supplier |
+
+---
+
+## Featured Accounts — All Scenarios Reference
+
+Use these two accounts when you need to demonstrate or test any specific feature. Every state the app can be in is pre-seeded here.
+
+### Mama Amina — Duka la Amina (`+255700000002`)
+
+Grocery shop, Mbagala, Temeke. Language: Kiswahili.
+
+#### Products (12 — every stock/expiry scenario)
+
+| Product | Scenario |
+| --- | --- |
+| Unga wa Sembe (2kg) | Good stock (30) · wholesale price set · `doesNotExpire: true` |
+| Mchele (1kg) | **LOW STOCK** — 4 in stock, minimum 10 · wholesale price set |
+| Mafuta ya Kupikia (1L) | Good stock (12) · expiry 6 months out · no wholesale |
+| Sukari (1kg) | **LOW STOCK** — 3 in stock, minimum 8 · wholesale price set |
+| Sabuni ya Kufulia | Good stock (25) · `doesNotExpire: true` · no wholesale |
+| Chumvi (500g) | Good stock (20) · `doesNotExpire: true` · no wholesale |
+| Maziwa Freshi (500ml) | **EXPIRING SOON** — expires in 14 days |
+| Soda (Fanta 300ml) | Good stock (48) · wholesale price set (min qty 24) |
+| Mayai (tray 30) | Good stock (10) · wholesale price set · `doesNotExpire: true` edge case |
+| Nyanya (kg) | **URGENT EXPIRY** — expires in 5 days (fresh produce) |
+| Uji wa Mtoto (500g) | **OUT OF STOCK** (0) · minimum 10 — zero-stock alert |
+| Siagi (Blue Band 250g) | Good stock (18) · **HIGH MARGIN** — buy 2,000 / sell 4,200 (110%) |
+
+#### Sales (10 — all payment methods, both pricing tiers, both channels)
+
+| Day | Payment method | Pricing tier | Channel | Notes |
+| --- | --- | --- | --- | --- |
+| 13 days ago | CASH | RETAIL | POS | Single-item sale |
+| 10 days ago | BANK | WHOLESALE | POS | Multi-item bulk buyer |
+| 8 days ago | CREDIT | RETAIL | POS | Credit sale scenario |
+| 6 days ago | CASH | RETAIL | POS | Multi-item |
+| 5 days ago | MPESA | RETAIL | POS | M-Pesa mobile money |
+| 4 days ago | TIGOPESA | RETAIL | POS | Tigo Pesa mobile money |
+| 3 days ago | AIRTEL_MONEY | RETAIL | ONLINE | Airtel Money · online channel |
+| 2 days ago | HALOPESA | RETAIL | POS | HaloPesa (CRDB) |
+| Yesterday | BANK | WHOLESALE | POS | Second wholesale sale |
+| Today | MPESA | RETAIL | ONLINE | Online + high-margin product |
+
+#### Supplier Orders → Jumla Traders (all 5 statuses)
+
+| Status | Items | Notes |
 | --- | --- | --- |
-| Admin | +255700000000 | Admin DukaOS |
-| Merchant | +255700000002 | Mama Amina / Duka la Amina (grocery, Temeke) |
-| Test Merchant | +255700000003 | Salum / Salum Pharmacy (Kinondoni) |
-| Supplier | +255700000001 | Jumla Traders Ltd (Kariakoo) |
+| **PENDING** | Rice (20kg) + Sugar (10kg) | Created today — low-stock items needing reorder |
+| **CONFIRMED** | Flour (20 bags) + Soda (24 pcs) | Jumla confirmed 2 days ago, awaiting dispatch |
+| **OUT_FOR_DELIVERY** | Cooking oil (10L) + Salt (30 pkt) | Driver on the way, created 4 days ago |
+| **DELIVERED** | Soap (15 bars) + Baby porridge (10 pkt) | Received 9 days ago — stock IN movements recorded |
+| **CANCELLED** | Tomatoes (15kg) | Cancelled 14 days ago — supplier couldn't supply |
+
+#### Customer Orders — Inbound (all 5 statuses + an extra CONFIRMED)
+
+| Status | Customer | Items | Notes |
+| --- | --- | --- | --- |
+| **PENDING** | Ali Hassan | Flour (2 bags) + Salt (4 pkt) | New today, not yet reviewed |
+| **CONFIRMED** | John Mwangi | Flour (2 bags) + Cooking oil (1L) | Accepted, stock reserved |
+| **CONFIRMED** | Neema Shaban | Eggs (2 trays) + Tomatoes (3kg) | Fresh produce delivery |
+| **OUT_FOR_DELIVERY** | Grace Mwacha | Milk (4 pcs) + Soap (9 bars) | Driver picked up 2 days ago |
+| **DELIVERED** | Jumanne Kipanga | Flour (10 bags) + Soda (24 pcs) — **WHOLESALE** | Completed 5 days ago |
+| **CANCELLED** | Said Othman | Rice (3kg) | Cancelled 7 days ago — customer changed mind |
+
+#### Stock Movements (manual IN · OUT · ADJUSTMENT)
+
+| Type | Product | Notes |
+| --- | --- | --- |
+| **IN** | Soap | 5 bars returned from a cancelled order (reshelved) |
+| **IN** | Soap + Baby porridge | Auto-recorded when DELIVERED supplier order was received |
+| **OUT** | Milk | 3 pcs sold at counter without POS (manual record) |
+| **ADJUSTMENT** | Flour | Stocktake found 2 bags more than recorded — corrected to 32 |
+
+---
+
+### Jumla Traders Ltd — Supplier Portal (`+255700000001`)
+
+Supplies both Amina (grocery) and Salum (pharmacy). Every order status is visible in the portal.
+
+#### Orders visible in supplier portal
+
+| From | Status | Items |
+| --- | --- | --- |
+| Duka la Amina | **PENDING** | Rice + Sugar |
+| Duka la Amina | **CONFIRMED** | Flour + Soda |
+| Duka la Amina | **OUT_FOR_DELIVERY** | Cooking oil + Salt |
+| Duka la Amina | **DELIVERED** | Soap + Baby porridge |
+| Duka la Amina | **CANCELLED** | Tomatoes |
+| Salum Pharmacy | **CONFIRMED** | Panadol + ORS |
+| Salum Pharmacy | **OUT_FOR_DELIVERY** | Vitamin C |
+
+The supplier portal allows Jumla to:
+
+- View all incoming orders grouped by status
+- Advance PENDING → CONFIRMED → OUT_FOR_DELIVERY
+- See which merchant ordered and their location
+- View the dashboard with order counts by status and top merchants
 
 ---
 
 ## Manual Production Smoke Test
 
 1. Open the frontend URL.
-2. Log in with the test merchant account (`+255700000002` / `1234`).
-3. Confirm the dashboard loads without API errors.
-4. Switch the period filter to `All` and confirm all-time totals render.
-5. Confirm the dashboard shows a payment mix section and a business history timeline.
+2. Log in with `+255700000002` / `1234` (Mama Amina).
+3. Confirm the dashboard loads — check today / week / month / all filters.
+4. Confirm low-stock alerts appear (Mchele, Sukari, Uji wa Mtoto).
+5. Confirm the dashboard shows payment mix and business history timeline.
 6. Use the language toggle and confirm labels switch between English and Swahili.
-7. Refresh the page and confirm the selected language is preserved.
-8. Open Inventory and confirm seeded products appear.
-9. Open Suppliers and confirm the supplier record appears.
-10. Open Sales, add at least one item to the cart, confirm `Bank` appears as a payment option.
-11. Complete a sale using `Bank` and confirm success feedback appears.
-12. Open Sales history and confirm the new sale is visible with the correct payment method.
-13. Return to Dashboard and confirm recent sales/payment mix updated.
-14. Log out.
-15. Log in with the supplier account (`+255700000001` / `1234`).
-16. Confirm the supplier portal loads with any pending orders.
-17. Log out.
-18. Log in with the admin account (`+255700000000` / `1234`).
-19. Navigate to `/admin` and confirm the overview stats load.
-20. Log out.
+7. Refresh the page and confirm language is preserved.
+8. Open Inventory — confirm 12 products appear with correct stock badges (low/out/expiring).
+9. Open Sales — record a CASH sale, confirm stock decrements.
+10. Open Orders — confirm all 5 supplier order statuses are visible.
+11. Open Orders → Customer Orders — confirm all 6 customer order statuses are visible.
+12. Log out.
+13. Log in with `+255700000001` / `1234` (Jumla Traders).
+14. Confirm the supplier portal loads — confirm 7 orders from 2 merchants are visible.
+15. Confirm PENDING → CONFIRMED status update works.
+16. Log out.
+17. Log in with `+255700000000` / `1234` (Admin).
+18. Navigate to `/admin` — confirm overview stats, users list, audit log all load.
+19. Log out.
 
 ---
 
 ## Feature Test Checklists
+
+### Dashboard scenarios (use Mama Amina `+255700000002`)
+
+1. Log in and open the dashboard.
+2. Switch between Today / Week / Month / All filters — confirm totals change correctly.
+3. Confirm the payment mix chart shows at least: CASH, MPESA, BANK, TIGOPESA, HALOPESA, AIRTEL_MONEY, CREDIT.
+4. Confirm the business history timeline shows entries going back 13+ days.
+5. Confirm the low-stock alert panel lists: Mchele, Sukari, Uji wa Mtoto (out of stock).
+6. Confirm the expiry warning shows: Nyanya (5 days), Maziwa Freshi (14 days).
+7. Confirm the pending orders count includes at least 3 active supplier orders (PENDING + CONFIRMED + OUT_FOR_DELIVERY).
+
+### Inventory — all product scenarios (use Mama Amina)
+
+1. Open Inventory.
+2. Confirm Uji wa Mtoto shows as **out of stock** (red badge, 0).
+3. Confirm Mchele and Sukari show as **low stock** badges.
+4. Confirm Nyanya shows an **urgent expiry** indicator.
+5. Confirm Maziwa Freshi shows an **expiring soon** indicator.
+6. Confirm Siagi shows a high margin (110%).
+7. Click stock adjustment on Unga wa Sembe — set an ADJUSTMENT to a new value, confirm it saves and a StockMovement record is created.
+8. Check the stock movement history for Unga — confirm ADJUSTMENT entry appears alongside earlier IN/OUT movements.
+
+### Sales — all payment methods (use Mama Amina)
+
+Record one sale for each payment method and confirm it appears in history:
+
+- CASH
+- MPESA
+- TIGOPESA
+- AIRTEL_MONEY
+- HALOPESA
+- BANK
+- CREDIT
+
+Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the discounted price is applied.
+
+### Supplier orders — all statuses (use Mama Amina + Jumla Traders)
+
+1. Log in as Amina and open Orders.
+2. Confirm all 5 statuses are visible: PENDING, CONFIRMED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED.
+3. Open the PENDING order — confirm the WhatsApp message is generated.
+4. Log out and log in as Jumla Traders (`+255700000001`).
+5. Open the supplier portal — confirm the PENDING order from Amina appears.
+6. Advance it to CONFIRMED — confirm status updates for both supplier and merchant.
+7. Advance to OUT_FOR_DELIVERY.
+8. Log back in as Amina — find the OUT_FOR_DELIVERY order and click Confirm Delivery.
+9. Confirm the order moves to DELIVERED and stock is incremented.
+10. Create a new order from Amina — then cancel it. Confirm status shows CANCELLED.
+11. Use the reorder button on the DELIVERED order — confirm a new PENDING order is created.
+
+### Customer orders — all statuses (use Mama Amina)
+
+1. Open Orders → Customer Orders.
+2. Confirm all 6 statuses are visible: PENDING, CONFIRMED (×2), OUT_FOR_DELIVERY, DELIVERED, CANCELLED.
+3. Open the PENDING order from Ali Hassan — confirm and verify stock deducts.
+4. Advance to OUT_FOR_DELIVERY, then DELIVERED.
+5. Open the CANCELLED order — confirm it is read-only.
+6. Visit the public catalog (`/catalog`) in a separate tab, place a new order.
+7. Return to Customer Orders — confirm the new PENDING order appears.
+
+### Stock movements — IN / OUT / ADJUSTMENT (use Mama Amina)
+
+1. Open Inventory → select Unga wa Sembe.
+2. View stock movement history — confirm IN movement from the DELIVERED supplier order is present.
+3. Confirm ADJUSTMENT and manual OUT movements are also listed.
+4. Do a manual ADJUSTMENT — verify new movement entry appears.
+
+### Supplier portal — all scenarios (use Jumla Traders `+255700000001`)
+
+1. Log in as Jumla Traders.
+2. Confirm orders from **two different merchants** (Amina and Salum) are visible.
+3. Confirm orders in all statuses are shown: PENDING, CONFIRMED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED.
+4. Advance one PENDING order to CONFIRMED. Confirm the merchant sees the update.
+5. Check the dashboard tab — confirm order count by status and top-merchant list.
 
 ### Registration form
 
@@ -57,29 +231,16 @@ All PINs: `1234`
 2. Select "Merchant" role.
 3. Confirm fields for City/Town, District/Area, and Shop Category are visible.
 4. Complete registration with a unique phone number.
-5. Log in and navigate to Settings — confirm shop location and category are correctly saved.
+5. Log in and navigate to Settings — confirm shop details are correctly saved.
 
 ### Settings page
 
-1. Log in as a merchant.
+1. Log in as any merchant.
 2. Navigate to Settings (bottom of nav).
 3. Update shop name, city, district, and category — click Save.
 4. Refresh and confirm the changes persisted.
-5. Change the language from Settings and confirm the UI updates immediately.
-6. Change PIN: enter current PIN, set a new PIN, confirm new PIN.
-7. Log out and confirm login works with the new PIN.
-
-### Customer Orders view
-
-1. In a browser tab, visit `/catalog` and browse to a shop.
-2. Add items to the cart and place a customer order with a test name and phone.
-3. Log in as the merchant in another tab.
-4. Navigate to Orders → Customer Orders.
-5. Confirm the order appears with PENDING status.
-6. Click Confirm — confirm stock deduction occurs.
-7. Advance status to OUT_FOR_DELIVERY and then DELIVERED.
-8. Test cancellation: cancel a PENDING order and confirm stock is NOT affected.
-9. Confirm a second order, then cancel it — confirm stock is released back.
+5. Change language — confirm the UI updates immediately.
+6. Change PIN — enter current PIN, set a new PIN, verify login with new PIN.
 
 ### PIN recovery (OTP)
 
@@ -91,14 +252,13 @@ All PINs: `1234`
 
 ### Token refresh
 
-1. Log in and note the `dukaos_token` in localStorage (DevTools → Application → Local Storage).
+1. Log in and note the `dukaos_token` in localStorage.
 2. Manually set the token to an expired value.
-3. Make any API request (e.g., visit the dashboard).
-4. Confirm the request succeeds without redirecting to login (token was refreshed silently via the `dukaos_refresh` cookie).
+3. Make any API request — confirm it succeeds (token refreshed silently via `dukaos_refresh` cookie).
 
 ### Status endpoint
 
-Visit `https://dukaos-production.up.railway.app/status`. Expected response:
+Visit `https://dukaos-production.up.railway.app/status`. Expected:
 
 ```json
 {
@@ -114,11 +274,11 @@ Visit `https://dukaos-production.up.railway.app/status`. Expected response:
 
 ### Admin dashboard
 
-1. Log in with the admin account (`+255700000000` / `1234`).
+1. Log in with `+255700000000` / `1234`.
 2. Navigate to `/admin`.
 3. Overview tab — confirm user/sale/order counts are non-zero.
-4. Users tab — confirm users list loads.
-5. PIN Reset tab — search for a test user by phone, reset their PIN, confirm login works with the new PIN.
+4. Users tab — confirm 8 users (1 admin + 4 merchants + 3 suppliers) appear.
+5. PIN Reset tab — search for `+255700000002`, reset PIN, confirm login works with new PIN.
 6. Audit Log tab — confirm recent events are displayed.
 
 ### Database backup
@@ -234,10 +394,13 @@ Run these in order before each production release:
 
 Manual post-deploy checks:
 
-- Settings page saves correctly
-- Customer Orders view loads
+- Featured merchant (`+255700000002`) dashboard loads with all period filters
+- Low-stock and out-of-stock alerts visible in inventory
+- All 5 supplier order statuses visible in Orders
+- All customer order statuses visible in Customer Orders
+- Supplier portal (`+255700000001`) shows orders from multiple merchants
 - Language toggle persists after hard refresh
-- Supplier portal loads and shows correct orders
+- Settings page saves correctly
 
 ---
 
@@ -255,7 +418,7 @@ Manual post-deploy checks:
 | `AT_API_KEY` | Recommended | Africa's Talking API key for OTP SMS |
 | `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
 | `AT_SENDER_ID` | Optional | Custom SMS sender ID |
-| `SENTRY_DSN` | Optional | Sentry project DSN for server-side error tracking |
+| `SENTRY_DSN` | Optional | Sentry project DSN for error tracking |
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
 | `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
 | `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
@@ -280,3 +443,14 @@ GET /status  →  {"status":"ok","db":{"status":"ok","latencyMs":N},...}
 ```
 
 For the full API surface see the **API Reference** section in `README.md`.
+
+---
+
+## Seeding
+
+```bash
+cd backend
+DATABASE_MIGRATE_URL="postgresql://postgres:...@trolley.proxy.rlwy.net:PORT/railway" node prisma/seed.js
+```
+
+The seed is idempotent — safe to run multiple times. It uses `upsert` for all users, shops, suppliers, and products (keyed by phone or fixed ID). Sales, orders, and stock movements are appended on each run; wipe those tables first if you want a clean slate.

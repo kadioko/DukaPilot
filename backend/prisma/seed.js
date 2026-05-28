@@ -13,271 +13,185 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   const pin1234 = await bcrypt.hash("1234", 10);
 
-  // ── Admin ──────────────────────────────────────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ADMIN
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   await prisma.user.upsert({
     where: { phone: "+255700000000" },
     update: {},
-    create: {
-      phone: "+255700000000",
-      pin: pin1234,
-      name: "Admin DukaOS",
-      role: "ADMIN",
-      language: "sw",
-    },
+    create: { phone: "+255700000000", pin: pin1234, name: "Admin DukaOS", role: "ADMIN", language: "sw" },
   });
 
-  // ── Supplier 1 — general wholesaler ───────────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUPPLIER 1 — Jumla Traders Ltd  ★ FEATURED SUPPLIER (all order statuses)
+  //   Portal shows: PENDING order from Amina, CONFIRMED from Hassan,
+  //   OUT_FOR_DELIVERY from Salum, DELIVERED (historical), CANCELLED
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const supplierUser = await prisma.user.upsert({
     where: { phone: "+255700000001" },
     update: {},
-    create: {
-      phone: "+255700000001",
-      pin: pin1234,
-      name: "Jumla Traders",
-      role: "SUPPLIER",
-      language: "sw",
-    },
+    create: { phone: "+255700000001", pin: pin1234, name: "Jumla Traders", role: "SUPPLIER", language: "sw" },
   });
   const supplier = await prisma.supplier.upsert({
     where: { userId: supplierUser.id },
     update: {},
-    create: {
-      name: "Jumla Traders Ltd",
-      phone: "+255700000001",
-      address: "Kariakoo, Dar es Salaam",
-      userId: supplierUser.id,
-    },
+    create: { name: "Jumla Traders Ltd", phone: "+255700000001", address: "Kariakoo, Dar es Salaam", userId: supplierUser.id },
   });
 
-  // ── Supplier 2 — beverages wholesaler ─────────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUPPLIER 2 — Rafiki Beverages Ltd (beverages wholesaler)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const supplierUser2 = await prisma.user.upsert({
     where: { phone: "+255700000006" },
     update: {},
-    create: {
-      phone: "+255700000006",
-      pin: pin1234,
-      name: "Rafiki Beverages",
-      role: "SUPPLIER",
-      language: "sw",
-    },
+    create: { phone: "+255700000006", pin: pin1234, name: "Rafiki Beverages", role: "SUPPLIER", language: "sw" },
   });
   const supplier2 = await prisma.supplier.upsert({
     where: { userId: supplierUser2.id },
     update: {},
-    create: {
-      name: "Rafiki Beverages Ltd",
-      phone: "+255700000006",
-      address: "Posta / Kisutu, Dar es Salaam",
-      userId: supplierUser2.id,
-    },
+    create: { name: "Rafiki Beverages Ltd", phone: "+255700000006", address: "Posta / Kisutu, Dar es Salaam", userId: supplierUser2.id },
   });
 
-  // ── Supplier 3 — cosmetics wholesaler ─────────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUPPLIER 3 — Beauty Supplies TZ (cosmetics wholesaler)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const supplierUser3 = await prisma.user.upsert({
     where: { phone: "+255700000007" },
     update: {},
-    create: {
-      phone: "+255700000007",
-      pin: pin1234,
-      name: "Beauty Supplies TZ",
-      role: "SUPPLIER",
-      language: "en",
-    },
+    create: { phone: "+255700000007", pin: pin1234, name: "Beauty Supplies TZ", role: "SUPPLIER", language: "en" },
   });
   const supplier3 = await prisma.supplier.upsert({
     where: { userId: supplierUser3.id },
     update: {},
-    create: {
-      name: "Beauty Supplies TZ",
-      phone: "+255700000007",
-      address: "Ilala, Dar es Salaam",
-      userId: supplierUser3.id,
-    },
+    create: { name: "Beauty Supplies TZ", phone: "+255700000007", address: "Ilala, Dar es Salaam", userId: supplierUser3.id },
   });
 
-  // ── Merchant 1 — grocery shop ──────────────────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MERCHANT 1 — Duka la Amina  ★ FEATURED MERCHANT (every scenario)
+  //   Products   : good stock · low stock · out of stock · expiring soon ·
+  //                urgent expiry · doesNotExpire · wholesale price · high margin
+  //   Sales      : all 7 payment methods · RETAIL + WHOLESALE pricing ·
+  //                POS + ONLINE channels · multi-item + single-item ·
+  //                today / week / older history
+  //   Sup orders : PENDING · CONFIRMED · OUT_FOR_DELIVERY · DELIVERED · CANCELLED
+  //   Cust orders: PENDING · CONFIRMED · OUT_FOR_DELIVERY · DELIVERED · CANCELLED
+  //   Stock mvts : IN (delivery) · OUT (sale) · ADJUSTMENT (manual correction)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const merchantUser = await prisma.user.upsert({
     where: { phone: "+255700000002" },
     update: {},
-    create: {
-      phone: "+255700000002",
-      pin: pin1234,
-      name: "Mama Amina",
-      role: "MERCHANT",
-      language: "sw",
-    },
+    create: { phone: "+255700000002", pin: pin1234, name: "Mama Amina", role: "MERCHANT", language: "sw" },
   });
   const shop = await prisma.shop.upsert({
     where: { userId: merchantUser.id },
     update: {},
-    create: {
-      name: "Duka la Amina",
-      location: "Mbagala",
-      district: "Temeke",
-      category: "grocery",
-      userId: merchantUser.id,
-    },
+    create: { name: "Duka la Amina", location: "Mbagala", district: "Temeke", category: "grocery", userId: merchantUser.id },
   });
 
-  // ── Merchant 2 — pharmacy shop ─────────────────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MERCHANT 2 — Salum Pharmacy
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const merchantUser2 = await prisma.user.upsert({
     where: { phone: "+255700000003" },
     update: {},
-    create: {
-      phone: "+255700000003",
-      pin: pin1234,
-      name: "Bwana Salum",
-      role: "MERCHANT",
-      language: "en",
-    },
+    create: { phone: "+255700000003", pin: pin1234, name: "Bwana Salum", role: "MERCHANT", language: "en" },
   });
   const shop2 = await prisma.shop.upsert({
     where: { userId: merchantUser2.id },
     update: {},
-    create: {
-      name: "Salum Pharmacy",
-      location: "Sinza",
-      district: "Kinondoni",
-      category: "pharmacy",
-      userId: merchantUser2.id,
-    },
+    create: { name: "Salum Pharmacy", location: "Sinza", district: "Kinondoni", category: "pharmacy", userId: merchantUser2.id },
   });
 
-  // ── Merchant 3 — bar / liquor shop ────────────────────────────────────────
-  // Scenario: high-turnover, credit-heavy sales, wholesale channel, one out-of-stock product
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MERCHANT 3 — Hassan Bar & Wines (wholesale sales, bar category)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const merchantUser3 = await prisma.user.upsert({
     where: { phone: "+255700000004" },
     update: {},
-    create: {
-      phone: "+255700000004",
-      pin: pin1234,
-      name: "Hassan Juma",
-      role: "MERCHANT",
-      language: "sw",
-    },
+    create: { phone: "+255700000004", pin: pin1234, name: "Hassan Juma", role: "MERCHANT", language: "sw" },
   });
   const shop3 = await prisma.shop.upsert({
     where: { userId: merchantUser3.id },
     update: {},
-    create: {
-      name: "Hassan Bar & Wines",
-      location: "Buguruni",
-      district: "Ilala",
-      category: "bar",
-      userId: merchantUser3.id,
-    },
+    create: { name: "Hassan Bar & Wines", location: "Buguruni", district: "Ilala", category: "bar", userId: merchantUser3.id },
   });
 
-  // ── Merchant 4 — beauty / cosmetics shop ─────────────────────────────────
-  // Scenario: online orders channel, two out-of-stock products, pending large restock
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MERCHANT 4 — Fatuma Beauty Shop (online channel, out-of-stock scenario)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const merchantUser4 = await prisma.user.upsert({
     where: { phone: "+255700000005" },
     update: {},
-    create: {
-      phone: "+255700000005",
-      pin: pin1234,
-      name: "Fatuma Ally",
-      role: "MERCHANT",
-      language: "sw",
-    },
+    create: { phone: "+255700000005", pin: pin1234, name: "Fatuma Ally", role: "MERCHANT", language: "sw" },
   });
   const shop4 = await prisma.shop.upsert({
     where: { userId: merchantUser4.id },
     update: {},
-    create: {
-      name: "Fatuma Beauty Shop",
-      location: "Tegeta",
-      district: "Kinondoni",
-      category: "beauty",
-      userId: merchantUser4.id,
-    },
+    create: { name: "Fatuma Beauty Shop", location: "Tegeta", district: "Kinondoni", category: "beauty", userId: merchantUser4.id },
   });
 
-  // ── Date helpers ──────────────────────────────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // DATE HELPERS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const daysFromNow = (n) => new Date(Date.now() + n * 24 * 60 * 60 * 1000);
   const daysAgo     = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 
-  const expirySoon  = daysFromNow(14);   // 2 weeks — dashboard "expiring soon" warning
-  const expiryUrgent = daysFromNow(5);   // 5 days — very urgent expiry
-  const expiryFar   = daysFromNow(180);  // 6 months — healthy
+  const expiryUrgent = daysFromNow(5);   // 5 days  — very urgent
+  const expirySoon   = daysFromNow(14);  // 14 days — dashboard warning
+  const expiryFar    = daysFromNow(180); // 6 months — healthy
 
-  // ── Products for Duka la Amina (shop 1) ──────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PRODUCTS — Duka la Amina  (every stock/expiry scenario)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const productDefs = [
-    // [0] Good stock, wholesale available — staple flour
-    {
-      name: "Unga wa Sembe (2kg)", sku: "UNG001", unit: "bag",
-      buyingPrice: 2800, sellingPrice: 3200,
-      wholesalePrice: 2950, wholesaleMinQty: 10,
-      currentStock: 30, minimumStock: 10,
-      doesNotExpire: true,
-    },
-    // [1] LOW STOCK — needs reorder (currentStock < minimumStock)
-    {
-      name: "Mchele (1kg)", sku: "MCH001", unit: "kg",
-      buyingPrice: 1800, sellingPrice: 2200,
-      wholesalePrice: 1950, wholesaleMinQty: 5,
-      currentStock: 4, minimumStock: 10,
-      doesNotExpire: true,
-    },
-    // [2] Healthy stock, expiry 6 months out
-    {
-      name: "Mafuta ya Kupikia (1L)", sku: "MAF001", unit: "litre",
+    // [0] GOOD STOCK · wholesale price · doesNotExpire
+    { name: "Unga wa Sembe (2kg)", sku: "UNG001", unit: "bag",
+      buyingPrice: 2800, sellingPrice: 3200, wholesalePrice: 2950, wholesaleMinQty: 10,
+      currentStock: 30, minimumStock: 10, doesNotExpire: true },
+    // [1] LOW STOCK (4 < min 10) · wholesale · doesNotExpire
+    { name: "Mchele (1kg)", sku: "MCH001", unit: "kg",
+      buyingPrice: 1800, sellingPrice: 2200, wholesalePrice: 1950, wholesaleMinQty: 5,
+      currentStock: 4, minimumStock: 10, doesNotExpire: true },
+    // [2] GOOD STOCK · expiry 6 months · no wholesale
+    { name: "Mafuta ya Kupikia (1L)", sku: "MAF001", unit: "litre",
       buyingPrice: 3500, sellingPrice: 4000,
-      currentStock: 12, minimumStock: 5,
-      expiryDate: expiryFar,
-    },
-    // [3] LOW STOCK — sugar, below minimum
-    {
-      name: "Sukari (1kg)", sku: "SUK001", unit: "kg",
-      buyingPrice: 2200, sellingPrice: 2600,
-      wholesalePrice: 2300, wholesaleMinQty: 5,
-      currentStock: 3, minimumStock: 8,
-      doesNotExpire: true,
-    },
-    // [4] Good stock, no expiry
-    {
-      name: "Sabuni ya Kufulia (bar)", sku: "SAB001", unit: "bar",
+      currentStock: 12, minimumStock: 5, expiryDate: expiryFar },
+    // [3] LOW STOCK (3 < min 8) · wholesale · doesNotExpire
+    { name: "Sukari (1kg)", sku: "SUK001", unit: "kg",
+      buyingPrice: 2200, sellingPrice: 2600, wholesalePrice: 2300, wholesaleMinQty: 5,
+      currentStock: 3, minimumStock: 8, doesNotExpire: true },
+    // [4] GOOD STOCK · doesNotExpire · no wholesale
+    { name: "Sabuni ya Kufulia (bar)", sku: "SAB001", unit: "bar",
       buyingPrice: 600, sellingPrice: 800,
-      currentStock: 25, minimumStock: 10,
-      doesNotExpire: true,
-    },
-    // [5] Good stock, no expiry
-    {
-      name: "Chumvi (500g)", sku: "CHU001", unit: "pkt",
+      currentStock: 25, minimumStock: 10, doesNotExpire: true },
+    // [5] GOOD STOCK · doesNotExpire · no wholesale
+    { name: "Chumvi (500g)", sku: "CHU001", unit: "pkt",
       buyingPrice: 300, sellingPrice: 500,
-      currentStock: 20, minimumStock: 10,
-      doesNotExpire: true,
-    },
-    // [6] EXPIRING SOON — 14 days, good for dashboard alert
-    {
-      name: "Maziwa Freshi (500ml)", sku: "MAZ001", unit: "pcs",
+      currentStock: 20, minimumStock: 10, doesNotExpire: true },
+    // [6] EXPIRING SOON (14 days) · no wholesale
+    { name: "Maziwa Freshi (500ml)", sku: "MAZ001", unit: "pcs",
       buyingPrice: 1000, sellingPrice: 1300,
-      currentStock: 8, minimumStock: 5,
-      expiryDate: expirySoon,
-    },
-    // [7] High stock, wholesale for bulk buyers
-    {
-      name: "Soda (Fanta 300ml)", sku: "SOD001", unit: "pcs",
-      buyingPrice: 700, sellingPrice: 1000,
-      wholesalePrice: 750, wholesaleMinQty: 24,
-      currentStock: 48, minimumStock: 12,
-      doesNotExpire: true,
-    },
-    // [8] NEW — Mayai (eggs tray), no expiry edge case
-    {
-      name: "Mayai (tray 30)", sku: "MAY001", unit: "tray",
-      buyingPrice: 7500, sellingPrice: 9000,
-      wholesalePrice: 8000, wholesaleMinQty: 5,
-      currentStock: 10, minimumStock: 3,
-      doesNotExpire: true,
-    },
-    // [9] NEW — Nyanya, VERY URGENT expiry in 5 days (fresh produce scenario)
-    {
-      name: "Nyanya (kg)", sku: "NYA001", unit: "kg",
+      currentStock: 8, minimumStock: 5, expiryDate: expirySoon },
+    // [7] GOOD STOCK · wholesale (bulk buyer) · doesNotExpire
+    { name: "Soda (Fanta 300ml)", sku: "SOD001", unit: "pcs",
+      buyingPrice: 700, sellingPrice: 1000, wholesalePrice: 750, wholesaleMinQty: 24,
+      currentStock: 48, minimumStock: 12, doesNotExpire: true },
+    // [8] GOOD STOCK · wholesale · doesNotExpire (eggs tray — doesNotExpire edge case)
+    { name: "Mayai (tray 30)", sku: "MAY001", unit: "tray",
+      buyingPrice: 7500, sellingPrice: 9000, wholesalePrice: 8000, wholesaleMinQty: 5,
+      currentStock: 10, minimumStock: 3, doesNotExpire: true },
+    // [9] URGENT EXPIRY (5 days) · fresh produce · no wholesale
+    { name: "Nyanya (kg)", sku: "NYA001", unit: "kg",
       buyingPrice: 1000, sellingPrice: 1500,
-      currentStock: 15, minimumStock: 5,
-      expiryDate: expiryUrgent,
-    },
+      currentStock: 15, minimumStock: 5, expiryDate: expiryUrgent },
+    // [10] OUT OF STOCK (0) · no wholesale — depleted scenario
+    { name: "Uji wa Mtoto (500g)", sku: "UJI001", unit: "pkt",
+      buyingPrice: 1800, sellingPrice: 2500,
+      currentStock: 0, minimumStock: 10, expiryDate: expiryFar },
+    // [11] HIGH MARGIN (100%+) · good stock · doesNotExpire
+    { name: "Siagi (Blue Band 250g)", sku: "SIA001", unit: "pcs",
+      buyingPrice: 2000, sellingPrice: 4200,
+      currentStock: 18, minimumStock: 5, doesNotExpire: true },
   ];
 
   const products = [];
@@ -290,45 +204,21 @@ async function main() {
     products.push(p);
   }
 
-  // ── Products for Salum Pharmacy (shop 2) ──────────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PRODUCTS — Salum Pharmacy
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const pharmDefs = [
-    // [0] Good stock, healthy expiry
-    {
-      name: "Panadol (tab x 10)", sku: "PAN001", unit: "pkt",
-      buyingPrice: 500, sellingPrice: 800,
-      currentStock: 50, minimumStock: 20,
-      expiryDate: expiryFar,
-    },
-    // [1] Good stock
-    {
-      name: "ORS Sachet", sku: "ORS001", unit: "pcs",
-      buyingPrice: 200, sellingPrice: 400,
-      currentStock: 100, minimumStock: 30,
-      expiryDate: expiryFar,
-    },
-    // [2] LOW STOCK — vitamin C
-    {
-      name: "Vitamin C 500mg", sku: "VTC001", unit: "pcs",
-      buyingPrice: 800, sellingPrice: 1200,
-      currentStock: 2, minimumStock: 10,
-      expiryDate: expiryFar,
-    },
-    // [3] NEW — Malaria rapid test kit, high margin
-    {
-      name: "Malaria Test Kit (RDT)", sku: "MLR001", unit: "pcs",
-      buyingPrice: 1500, sellingPrice: 3500,
-      currentStock: 30, minimumStock: 10,
-      expiryDate: expiryFar,
-    },
-    // [4] NEW — Bandages, OUT OF STOCK (demonstrates zero-stock dashboard alert)
-    {
-      name: "Bandage Roll (5cm)", sku: "BND001", unit: "pcs",
-      buyingPrice: 700, sellingPrice: 1200,
-      currentStock: 0, minimumStock: 15,
-      expiryDate: expiryFar,
-    },
+    { name: "Panadol (tab x 10)", sku: "PAN001", unit: "pkt",
+      buyingPrice: 500, sellingPrice: 800, currentStock: 50, minimumStock: 20, expiryDate: expiryFar },
+    { name: "ORS Sachet", sku: "ORS001", unit: "pcs",
+      buyingPrice: 200, sellingPrice: 400, currentStock: 100, minimumStock: 30, expiryDate: expiryFar },
+    { name: "Vitamin C 500mg", sku: "VTC001", unit: "pcs",
+      buyingPrice: 800, sellingPrice: 1200, currentStock: 2, minimumStock: 10, expiryDate: expiryFar },
+    { name: "Malaria Test Kit (RDT)", sku: "MLR001", unit: "pcs",
+      buyingPrice: 1500, sellingPrice: 3500, currentStock: 30, minimumStock: 10, expiryDate: expiryFar },
+    { name: "Bandage Roll (5cm)", sku: "BND001", unit: "pcs",
+      buyingPrice: 700, sellingPrice: 1200, currentStock: 0, minimumStock: 15, expiryDate: expiryFar },
   ];
-
   const pharmProducts = [];
   for (const def of pharmDefs) {
     const p = await prisma.product.upsert({
@@ -339,41 +229,22 @@ async function main() {
     pharmProducts.push(p);
   }
 
-  // ── Products for Hassan Bar & Wines (shop 3) ──────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PRODUCTS — Hassan Bar & Wines
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const barDefs = [
-    // [0] Beer crate — wholesale available, good stock
-    {
-      name: "Safari Lager (crate 24)", sku: "BEE001", unit: "crate",
-      buyingPrice: 28000, sellingPrice: 36000,
-      wholesalePrice: 30000, wholesaleMinQty: 3,
-      currentStock: 15, minimumStock: 5,
-      doesNotExpire: true,
-    },
-    // [1] Spirits — high margin, healthy stock
-    {
-      name: "Konyagi (350ml)", sku: "KON001", unit: "pcs",
-      buyingPrice: 3500, sellingPrice: 5500,
-      wholesalePrice: 4000, wholesaleMinQty: 12,
-      currentStock: 40, minimumStock: 10,
-      doesNotExpire: true,
-    },
-    // [2] Soda crate, LOW STOCK — needs urgent restock
-    {
-      name: "Coca-Cola (crate 24)", sku: "COK001", unit: "crate",
-      buyingPrice: 22000, sellingPrice: 28800,
-      wholesalePrice: 24000, wholesaleMinQty: 3,
-      currentStock: 2, minimumStock: 5,
-      doesNotExpire: true,
-    },
-    // [3] Snacks, EXPIRING SOON — 14 days
-    {
-      name: "Chips (Pringles 150g)", sku: "CHI001", unit: "pcs",
-      buyingPrice: 3000, sellingPrice: 4500,
-      currentStock: 20, minimumStock: 8,
-      expiryDate: expirySoon,
-    },
+    { name: "Safari Lager (crate 24)", sku: "BEE001", unit: "crate",
+      buyingPrice: 28000, sellingPrice: 36000, wholesalePrice: 30000, wholesaleMinQty: 3,
+      currentStock: 15, minimumStock: 5, doesNotExpire: true },
+    { name: "Konyagi (350ml)", sku: "KON001", unit: "pcs",
+      buyingPrice: 3500, sellingPrice: 5500, wholesalePrice: 4000, wholesaleMinQty: 12,
+      currentStock: 40, minimumStock: 10, doesNotExpire: true },
+    { name: "Coca-Cola (crate 24)", sku: "COK001", unit: "crate",
+      buyingPrice: 22000, sellingPrice: 28800, wholesalePrice: 24000, wholesaleMinQty: 3,
+      currentStock: 2, minimumStock: 5, doesNotExpire: true },
+    { name: "Chips (Pringles 150g)", sku: "CHI001", unit: "pcs",
+      buyingPrice: 3000, sellingPrice: 4500, currentStock: 20, minimumStock: 8, expiryDate: expirySoon },
   ];
-
   const barProducts = [];
   for (const def of barDefs) {
     const p = await prisma.product.upsert({
@@ -384,39 +255,20 @@ async function main() {
     barProducts.push(p);
   }
 
-  // ── Products for Fatuma Beauty Shop (shop 4) ──────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PRODUCTS — Fatuma Beauty Shop
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const beautyDefs = [
-    // [0] Good stock, wholesale available
-    {
-      name: "Dark & Lovely Relaxer Kit", sku: "RLX001", unit: "pcs",
-      buyingPrice: 6500, sellingPrice: 9500,
-      wholesalePrice: 7500, wholesaleMinQty: 6,
-      currentStock: 12, minimumStock: 5,
-      expiryDate: expiryFar,
-    },
-    // [1] LOW STOCK — lotion, needs restock
-    {
-      name: "Vaseline Body Lotion (400ml)", sku: "LOT001", unit: "pcs",
-      buyingPrice: 4000, sellingPrice: 6000,
-      currentStock: 3, minimumStock: 10,
-      expiryDate: expiryFar,
-    },
-    // [2] OUT OF STOCK — lip balm fully depleted
-    {
-      name: "Nivea Lip Balm", sku: "LIP001", unit: "pcs",
-      buyingPrice: 1500, sellingPrice: 2500,
-      currentStock: 0, minimumStock: 10,
-      expiryDate: expiryFar,
-    },
-    // [3] Good stock, sold mainly via online channel
-    {
-      name: "Nail Polish (OPI 15ml)", sku: "NAL001", unit: "pcs",
-      buyingPrice: 3500, sellingPrice: 6000,
-      currentStock: 18, minimumStock: 5,
-      doesNotExpire: true,
-    },
+    { name: "Dark & Lovely Relaxer Kit", sku: "RLX001", unit: "pcs",
+      buyingPrice: 6500, sellingPrice: 9500, wholesalePrice: 7500, wholesaleMinQty: 6,
+      currentStock: 12, minimumStock: 5, expiryDate: expiryFar },
+    { name: "Vaseline Body Lotion (400ml)", sku: "LOT001", unit: "pcs",
+      buyingPrice: 4000, sellingPrice: 6000, currentStock: 3, minimumStock: 10, expiryDate: expiryFar },
+    { name: "Nivea Lip Balm", sku: "LIP001", unit: "pcs",
+      buyingPrice: 1500, sellingPrice: 2500, currentStock: 0, minimumStock: 10, expiryDate: expiryFar },
+    { name: "Nail Polish (OPI 15ml)", sku: "NAL001", unit: "pcs",
+      buyingPrice: 3500, sellingPrice: 6000, currentStock: 18, minimumStock: 5, doesNotExpire: true },
   ];
-
   const beautyProducts = [];
   for (const def of beautyDefs) {
     const p = await prisma.product.upsert({
@@ -427,29 +279,40 @@ async function main() {
     beautyProducts.push(p);
   }
 
-  // ── Sales history for Duka la Amina (7 days) ─────────────────────────────
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SALES — Duka la Amina  (all 7 payment methods, both pricing tiers, both channels)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const salesData = [
-    // 6 days ago — cash, mixed items
-    { createdAt: daysAgo(6), paymentMethod: "CASH",
+    // 13 days ago — CASH · RETAIL · POS · single item (old history)
+    { createdAt: daysAgo(13), paymentMethod: "CASH", pricingTier: "RETAIL", channel: "POS",
+      items: [{ product: products[4], qty: 5 }] },
+    // 10 days ago — BANK · WHOLESALE · POS · multi-item (bulk buyer, two weeks back)
+    { createdAt: daysAgo(10), paymentMethod: "BANK", pricingTier: "WHOLESALE", channel: "POS",
+      items: [{ product: products[0], qty: 15 }, { product: products[7], qty: 48 }] },
+    // 8 days ago — CREDIT · RETAIL · POS (credit sale scenario)
+    { createdAt: daysAgo(8), paymentMethod: "CREDIT", pricingTier: "RETAIL", channel: "POS",
+      items: [{ product: products[2], qty: 2 }, { product: products[5], qty: 10 }] },
+    // 6 days ago — CASH · RETAIL · POS
+    { createdAt: daysAgo(6), paymentMethod: "CASH", pricingTier: "RETAIL", channel: "POS",
       items: [{ product: products[0], qty: 2 }, { product: products[3], qty: 1 }] },
-    // 5 days ago — M-Pesa
-    { createdAt: daysAgo(5), paymentMethod: "MPESA",
+    // 5 days ago — MPESA · RETAIL · POS
+    { createdAt: daysAgo(5), paymentMethod: "MPESA", pricingTier: "RETAIL", channel: "POS",
       items: [{ product: products[2], qty: 1 }, { product: products[4], qty: 3 }] },
-    // 4 days ago — cash
-    { createdAt: daysAgo(4), paymentMethod: "CASH",
+    // 4 days ago — TIGOPESA · RETAIL · POS
+    { createdAt: daysAgo(4), paymentMethod: "TIGOPESA", pricingTier: "RETAIL", channel: "POS",
       items: [{ product: products[5], qty: 5 }, { product: products[1], qty: 2 }] },
-    // 3 days ago — WHOLESALE, bank transfer to a small retailer
-    { createdAt: daysAgo(3), paymentMethod: "BANK", pricingTier: "WHOLESALE",
-      items: [{ product: products[0], qty: 12 }, { product: products[7], qty: 24 }] },
-    // 2 days ago — Tigo Pesa
-    { createdAt: daysAgo(2), paymentMethod: "TIGOPESA",
-      items: [{ product: products[6], qty: 2 }, { product: products[2], qty: 1 }] },
-    // yesterday — cash
-    { createdAt: daysAgo(1), paymentMethod: "CASH",
-      items: [{ product: products[3], qty: 3 }, { product: products[4], qty: 2 }] },
-    // today — M-Pesa, includes new products
-    { createdAt: daysAgo(0), paymentMethod: "MPESA",
-      items: [{ product: products[0], qty: 1 }, { product: products[1], qty: 1 }, { product: products[8], qty: 2 }] },
+    // 3 days ago — AIRTEL_MONEY · RETAIL · ONLINE (customer placed order online)
+    { createdAt: daysAgo(3), paymentMethod: "AIRTEL_MONEY", pricingTier: "RETAIL", channel: "ONLINE",
+      items: [{ product: products[8], qty: 1 }, { product: products[11], qty: 2 }] },
+    // 2 days ago — HALOPESA · RETAIL · POS (CRDB mobile money)
+    { createdAt: daysAgo(2), paymentMethod: "HALOPESA", pricingTier: "RETAIL", channel: "POS",
+      items: [{ product: products[6], qty: 2 }, { product: products[9], qty: 3 }] },
+    // yesterday — BANK · WHOLESALE · POS (second wholesale, different items)
+    { createdAt: daysAgo(1), paymentMethod: "BANK", pricingTier: "WHOLESALE", channel: "POS",
+      items: [{ product: products[0], qty: 10 }, { product: products[3], qty: 5 }] },
+    // today — MPESA · RETAIL · ONLINE (online channel, high-margin product)
+    { createdAt: daysAgo(0), paymentMethod: "MPESA", pricingTier: "RETAIL", channel: "ONLINE",
+      items: [{ product: products[11], qty: 1 }, { product: products[8], qty: 2 }, { product: products[0], qty: 1 }] },
   ];
 
   for (const s of salesData) {
@@ -458,32 +321,25 @@ async function main() {
     let profit = 0;
     const items = s.items.map(({ product, qty }) => {
       const unitPrice = pricingTier === "WHOLESALE" && product.wholesalePrice
-        ? product.wholesalePrice
-        : product.sellingPrice;
+        ? product.wholesalePrice : product.sellingPrice;
       const total = unitPrice * qty;
       totalAmount += total;
       profit += (unitPrice - product.buyingPrice) * qty;
       return { quantity: qty, unitPrice, buyingPrice: product.buyingPrice, totalPrice: total, productId: product.id };
     });
     await prisma.sale.create({
-      data: {
-        shopId: shop.id, totalAmount, profit,
-        paymentMethod: s.paymentMethod,
-        channel: s.channel || "POS",
-        pricingTier,
-        createdAt: s.createdAt,
-        items: { create: items },
-      },
+      data: { shopId: shop.id, totalAmount, profit, paymentMethod: s.paymentMethod,
+        channel: s.channel, pricingTier, createdAt: s.createdAt, items: { create: items } },
     });
   }
 
-  // ── Wholesale sales for Hassan Bar & Wines ────────────────────────────────
-  // Wholesale sale 1: beer + spirits to a minibar owner, paid by bank (2 days ago)
-  {
-    const wsItems = [
-      { product: barProducts[0], qty: 4 },  // 4 crates Safari Lager @ wholesale
-      { product: barProducts[1], qty: 24 }, // 24 Konyagi @ wholesale
-    ];
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SALES — Hassan Bar & Wines (wholesale)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  for (const [wsItems, paymentMethod, note, daysBack] of [
+    [[{ product: barProducts[0], qty: 4 }, { product: barProducts[1], qty: 24 }], "BANK",  "Minibar Buguruni — bulk order", 2],
+    [[{ product: barProducts[0], qty: 3 }, { product: barProducts[2], qty: 2 }], "MPESA", "Resto Buguruni — vitu vya wiki",  0],
+  ]) {
     let totalAmount = 0; let profit = 0;
     const items = wsItems.map(({ product, qty }) => {
       const unitPrice = product.wholesalePrice;
@@ -493,186 +349,316 @@ async function main() {
       return { quantity: qty, unitPrice, buyingPrice: product.buyingPrice, totalPrice: total, productId: product.id };
     });
     await prisma.sale.create({
-      data: {
-        shopId: shop3.id, totalAmount, profit,
-        paymentMethod: "BANK", channel: "POS", pricingTier: "WHOLESALE",
-        customerPhone: "+255754001001",
-        note: "Minibar Buguruni — bulk order",
-        createdAt: daysAgo(2),
-        items: { create: items },
-      },
+      data: { shopId: shop3.id, totalAmount, profit, paymentMethod, channel: "POS", pricingTier: "WHOLESALE",
+        note, createdAt: daysAgo(daysBack), items: { create: items } },
     });
   }
 
-  // Wholesale sale 2: beer crate + soda crate to restaurant, paid by M-Pesa (today)
-  {
-    const wsItems2 = [
-      { product: barProducts[0], qty: 3 },  // 3 crates Safari Lager @ wholesale
-      { product: barProducts[2], qty: 2 },  // 2 crates Coca-Cola @ wholesale
-    ];
-    let totalAmount = 0; let profit = 0;
-    const items = wsItems2.map(({ product, qty }) => {
-      const unitPrice = product.wholesalePrice;
-      const total = unitPrice * qty;
-      totalAmount += total;
-      profit += (unitPrice - product.buyingPrice) * qty;
-      return { quantity: qty, unitPrice, buyingPrice: product.buyingPrice, totalPrice: total, productId: product.id };
-    });
-    await prisma.sale.create({
-      data: {
-        shopId: shop3.id, totalAmount, profit,
-        paymentMethod: "MPESA", channel: "POS", pricingTier: "WHOLESALE",
-        customerPhone: "+255754002002",
-        note: "Resto Buguruni — vitu vya wiki",
-        createdAt: daysAgo(0),
-        items: { create: items },
-      },
-    });
-  }
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUPPLIER ORDERS — Duka la Amina → Jumla Traders  (ALL 5 statuses)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  // ── Pending supplier restock orders ──────────────────────────────────────
-  // Original — Duka la Amina restocking rice + sugar from Jumla Traders
+  // 1. PENDING — rice + sugar urgent restock (low-stock products)
   await prisma.order.create({
     data: {
-      shopId: shop.id,
-      supplierId: supplier.id,
-      status: "PENDING",
-      totalAmount: 28000,
-      note: "Restock ya wiki",
-      items: {
-        create: [
-          { productId: products[1].id, quantity: 10, unitPrice: 1800 },
-          { productId: products[3].id, quantity: 10, unitPrice: 2200 },
-        ],
-      },
+      shopId: shop.id, supplierId: supplier.id, status: "PENDING",
+      totalAmount: 28000, note: "Haraka — mchele na sukari vimeisha karibu",
+      createdAt: daysAgo(0),
+      items: { create: [
+        { productId: products[1].id, quantity: 20, unitPrice: 1800 }, // rice — low stock
+        { productId: products[3].id, quantity: 10, unitPrice: 2200 }, // sugar — low stock
+      ]},
     },
   });
 
-  // NEW — Hassan Bar restocking beer + soda from Rafiki Beverages (urgent, low stock on Coke)
+  // 2. CONFIRMED — flour + soda confirmed by Jumla Traders, awaiting dispatch
   await prisma.order.create({
     data: {
-      shopId: shop3.id,
-      supplierId: supplier2.id,
-      status: "PENDING",
-      totalAmount: 130000,
-      note: "Haraka — Coca-Cola imekwisha",
-      items: {
-        create: [
-          { productId: barProducts[0].id, quantity: 5,  unitPrice: 28000 }, // 5 crates beer
-          { productId: barProducts[2].id, quantity: 10, unitPrice: 22000 }, // 10 crates Coke — urgent
-        ],
-      },
+      shopId: shop.id, supplierId: supplier.id, status: "CONFIRMED",
+      totalAmount: 72000, note: "Agizo la wiki — Jumla wamethibitisha",
+      createdAt: daysAgo(2),
+      items: { create: [
+        { productId: products[0].id, quantity: 20, unitPrice: 2800 }, // flour
+        { productId: products[7].id, quantity: 24, unitPrice: 700  }, // soda
+      ]},
     },
   });
 
-  // NEW — Fatuma Beauty restocking lotion + lip balm from Beauty Supplies TZ
+  // 3. OUT_FOR_DELIVERY — cooking oil + salt on the way
   await prisma.order.create({
     data: {
-      shopId: shop4.id,
-      supplierId: supplier3.id,
-      status: "PENDING",
-      totalAmount: 81500,
-      note: "Stock ya Lotion na Lip Balm imekwisha — haraka",
-      items: {
-        create: [
-          { productId: beautyProducts[1].id, quantity: 20, unitPrice: 4000 }, // 20 lotions
-          { productId: beautyProducts[2].id, quantity: 15, unitPrice: 1500 }, // 15 lip balms (out of stock)
-        ],
-      },
+      shopId: shop.id, supplierId: supplier.id, status: "OUT_FOR_DELIVERY",
+      totalAmount: 53000, note: "Gari iko njiani — mafuta na chumvi",
+      createdAt: daysAgo(4),
+      items: { create: [
+        { productId: products[2].id, quantity: 10, unitPrice: 3500 }, // cooking oil
+        { productId: products[5].id, quantity: 30, unitPrice: 300  }, // salt
+      ]},
     },
   });
 
-  // ── Confirmed customer orders ─────────────────────────────────────────────
-  // Original — customer order for Duka la Amina, confirmed, awaiting dispatch
+  // 4. DELIVERED — soap + baby porridge received last week (also creates stock IN movements)
+  const deliveredOrder = await prisma.order.create({
+    data: {
+      shopId: shop.id, supplierId: supplier.id, status: "DELIVERED",
+      totalAmount: 19500, note: "Received — sabuni na uji",
+      createdAt: daysAgo(9),
+      items: { create: [
+        { productId: products[4].id,  quantity: 15, unitPrice: 600  }, // soap
+        { productId: products[10].id, quantity: 10, unitPrice: 1800 }, // baby porridge (now back in stock from this)
+      ]},
+    },
+  });
+  // Stock IN movements for the delivered order
+  await prisma.stockMovement.create({
+    data: { type: "IN", quantity: 15, productId: products[4].id,
+      note: `Order delivery #${deliveredOrder.id.slice(-6)}` },
+  });
+  await prisma.stockMovement.create({
+    data: { type: "IN", quantity: 10, productId: products[10].id,
+      note: `Order delivery #${deliveredOrder.id.slice(-6)}` },
+  });
+
+  // 5. CANCELLED — old tomato order cancelled because supplier couldn't supply
+  await prisma.order.create({
+    data: {
+      shopId: shop.id, supplierId: supplier.id, status: "CANCELLED",
+      totalAmount: 15000, note: "Ilifutwa — msambazaji hakuwa na nyanya",
+      createdAt: daysAgo(14),
+      items: { create: [
+        { productId: products[9].id, quantity: 15, unitPrice: 1000 }, // tomatoes
+      ]},
+    },
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUPPLIER ORDERS — other merchants → Jumla Traders
+  // (so Jumla's portal shows orders from multiple shops)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // Salum Pharmacy → Jumla Traders — CONFIRMED (Panadol restock)
+  await prisma.order.create({
+    data: {
+      shopId: shop2.id, supplierId: supplier.id, status: "CONFIRMED",
+      totalAmount: 50000, note: "Panadol na ORS restock",
+      createdAt: daysAgo(1),
+      items: { create: [
+        { productId: pharmProducts[0].id, quantity: 50, unitPrice: 500 },
+        { productId: pharmProducts[1].id, quantity: 100, unitPrice: 200 },
+      ]},
+    },
+  });
+
+  // Salum Pharmacy → Jumla Traders — OUT_FOR_DELIVERY (Vitamin C on the way)
+  await prisma.order.create({
+    data: {
+      shopId: shop2.id, supplierId: supplier.id, status: "OUT_FOR_DELIVERY",
+      totalAmount: 16000, note: "Vitamin C iko njiani",
+      createdAt: daysAgo(3),
+      items: { create: [
+        { productId: pharmProducts[2].id, quantity: 20, unitPrice: 800 },
+      ]},
+    },
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUPPLIER ORDERS — other merchants (Hassan, Fatuma) → their own suppliers
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // Hassan Bar → Rafiki Beverages — PENDING (urgent Coke restock)
+  await prisma.order.create({
+    data: {
+      shopId: shop3.id, supplierId: supplier2.id, status: "PENDING",
+      totalAmount: 130000, note: "Haraka — Coca-Cola imekwisha",
+      createdAt: daysAgo(0),
+      items: { create: [
+        { productId: barProducts[0].id, quantity: 5,  unitPrice: 28000 },
+        { productId: barProducts[2].id, quantity: 10, unitPrice: 22000 },
+      ]},
+    },
+  });
+
+  // Fatuma Beauty → Beauty Supplies TZ — PENDING (lotion + lip balm out of stock)
+  await prisma.order.create({
+    data: {
+      shopId: shop4.id, supplierId: supplier3.id, status: "PENDING",
+      totalAmount: 81500, note: "Lotion na Lip Balm imekwisha — haraka",
+      createdAt: daysAgo(0),
+      items: { create: [
+        { productId: beautyProducts[1].id, quantity: 20, unitPrice: 4000 },
+        { productId: beautyProducts[2].id, quantity: 15, unitPrice: 1500 },
+      ]},
+    },
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // CUSTOMER ORDERS — Duka la Amina  (ALL 5 statuses)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // 1. PENDING — new online order, not yet reviewed by Amina
   await prisma.customerOrder.create({
     data: {
-      shopId: shop.id,
-      customerName: "John Mwangi",
-      customerPhone: "+255712345678",
-      status: "CONFIRMED",
-      totalAmount: 9400,
+      shopId: shop.id, customerName: "Ali Hassan", customerPhone: "+255712000111",
+      status: "PENDING", totalAmount: 8200,
+      note: "Tuma Mbagala Rangi Tatu, duka la Mama Zena",
+      createdAt: daysAgo(0),
+      items: { create: [
+        { productId: products[0].id, quantity: 2, unitPrice: 3200, pricingTier: "RETAIL" },
+        { productId: products[5].id, quantity: 4, unitPrice: 500,  pricingTier: "RETAIL" },
+      ]},
+    },
+  });
+
+  // 2. CONFIRMED — Amina accepted, stock reserved, awaiting packing
+  await prisma.customerOrder.create({
+    data: {
+      shopId: shop.id, customerName: "John Mwangi", customerPhone: "+255712345678",
+      status: "CONFIRMED", totalAmount: 9400,
       note: "Peleka Mbagala bus stand",
-      items: {
-        create: [
-          { productId: products[0].id, quantity: 2, unitPrice: 3200, pricingTier: "RETAIL" },
-          { productId: products[2].id, quantity: 1, unitPrice: 4000, pricingTier: "RETAIL" },
-        ],
-      },
+      createdAt: daysAgo(1),
+      items: { create: [
+        { productId: products[0].id, quantity: 2, unitPrice: 3200, pricingTier: "RETAIL" },
+        { productId: products[2].id, quantity: 1, unitPrice: 4000, pricingTier: "RETAIL" },
+      ]},
     },
   });
 
-  // NEW — second confirmed customer order for Duka la Amina (eggs + tomatoes — fresh produce)
+  // 3. CONFIRMED (second) — eggs + tomatoes fresh produce delivery order
   await prisma.customerOrder.create({
     data: {
-      shopId: shop.id,
-      customerName: "Neema Shaban",
-      customerPhone: "+255789001122",
-      status: "CONFIRMED",
-      totalAmount: 22500,
+      shopId: shop.id, customerName: "Neema Shaban", customerPhone: "+255789001122",
+      status: "CONFIRMED", totalAmount: 22500,
       note: "Peleka Mbagala Rangi Tatu, karibu na kanisa",
-      items: {
-        create: [
-          { productId: products[8].id, quantity: 2, unitPrice: 9000, pricingTier: "RETAIL" }, // 2 trays eggs
-          { productId: products[9].id, quantity: 3, unitPrice: 1500, pricingTier: "RETAIL" }, // 3kg tomatoes
-        ],
-      },
+      createdAt: daysAgo(1),
+      items: { create: [
+        { productId: products[8].id, quantity: 2, unitPrice: 9000, pricingTier: "RETAIL" }, // eggs
+        { productId: products[9].id, quantity: 3, unitPrice: 1500, pricingTier: "RETAIL" }, // tomatoes
+      ]},
     },
   });
 
-  // NEW — confirmed customer order for Hassan Bar (snacks + soda, online channel)
+  // 4. OUT_FOR_DELIVERY — driver has picked up the order
   await prisma.customerOrder.create({
     data: {
-      shopId: shop3.id,
-      customerName: "Musa Omari",
-      customerPhone: "+255765009988",
-      status: "CONFIRMED",
-      totalAmount: 13500,
-      note: "Deliver to Buguruni Market, table 4",
-      items: {
-        create: [
-          { productId: barProducts[3].id, quantity: 2, unitPrice: 4500, pricingTier: "RETAIL" }, // 2 Pringles
-          { productId: barProducts[1].id, quantity: 2, unitPrice: 5500, pricingTier: "RETAIL" }, // 2 Konyagi
-        ],
-      },
+      shopId: shop.id, customerName: "Grace Mwacha", customerPhone: "+255754888777",
+      status: "OUT_FOR_DELIVERY", totalAmount: 15600,
+      note: "Mbagala Kwa Azizi — maziwa na sabuni",
+      createdAt: daysAgo(2),
+      items: { create: [
+        { productId: products[6].id, quantity: 4, unitPrice: 1300, pricingTier: "RETAIL" }, // milk
+        { productId: products[4].id, quantity: 9, unitPrice: 800,  pricingTier: "RETAIL" }, // soap
+      ]},
     },
   });
 
-  // ── Summary ────────────────────────────────────────────────────────────────
+  // 5. DELIVERED — completed wholesale online order
+  await prisma.customerOrder.create({
+    data: {
+      shopId: shop.id, customerName: "Jumanne Kipanga", customerPhone: "+255765444333",
+      status: "DELIVERED", totalAmount: 42600,
+      note: "Imetolewa — unga na soda kwa jumla",
+      createdAt: daysAgo(5),
+      items: { create: [
+        { productId: products[0].id, quantity: 10, unitPrice: 2950, pricingTier: "WHOLESALE" }, // flour wholesale
+        { productId: products[7].id, quantity: 24, unitPrice: 750,  pricingTier: "WHOLESALE" }, // soda wholesale
+      ]},
+    },
+  });
+
+  // 6. CANCELLED — customer changed their mind
+  await prisma.customerOrder.create({
+    data: {
+      shopId: shop.id, customerName: "Said Othman", customerPhone: "+255700999888",
+      status: "CANCELLED", totalAmount: 5400,
+      note: "Ilifutwa — mteja alibadili mawazo",
+      createdAt: daysAgo(7),
+      items: { create: [
+        { productId: products[1].id, quantity: 3, unitPrice: 2200, pricingTier: "RETAIL" }, // rice
+      ]},
+    },
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // CUSTOMER ORDERS — Hassan Bar (CONFIRMED + PENDING)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  await prisma.customerOrder.create({
+    data: {
+      shopId: shop3.id, customerName: "Musa Omari", customerPhone: "+255765009988",
+      status: "CONFIRMED", totalAmount: 13500,
+      note: "Deliver to Buguruni Market, table 4",
+      createdAt: daysAgo(0),
+      items: { create: [
+        { productId: barProducts[3].id, quantity: 2, unitPrice: 4500, pricingTier: "RETAIL" },
+        { productId: barProducts[1].id, quantity: 2, unitPrice: 5500, pricingTier: "RETAIL" },
+      ]},
+    },
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STOCK MOVEMENTS — Duka la Amina  (IN · OUT · ADJUSTMENT)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // These supplement the sale-generated OUT movements and delivery IN movements above.
+
+  // ADJUSTMENT — counted flour during stocktake, found 2 bags more than recorded
+  await prisma.stockMovement.create({
+    data: { type: "ADJUSTMENT", quantity: 32, productId: products[0].id,
+      note: "Uhesabuji wa bidhaa — zipatikane zaidi (2 magunia)" },
+  });
+
+  // OUT — 3 milks sold directly at counter (not via POS, manual record)
+  await prisma.stockMovement.create({
+    data: { type: "OUT", quantity: 3, productId: products[6].id,
+      note: "Mauzo ya haraka — bila risiti" },
+  });
+
+  // IN — returned 5 soaps from a cancelled order (reshelved)
+  await prisma.stockMovement.create({
+    data: { type: "IN", quantity: 5, productId: products[4].id,
+      note: "Bidhaa zilizorudishwa — agizo lililofutwa" },
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUMMARY
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   console.log("Seed complete");
-  console.log("+---------------------------------------------------------+");
-  console.log("|               TEST LOGIN CREDENTIALS                   |");
-  console.log("+---------------------------------------------------------+");
-  console.log("| ADMIN      +255700000000  PIN: 1234                     |");
-  console.log("|                                                         |");
-  console.log("| MERCHANT   +255700000002  PIN: 1234                     |");
-  console.log("|             Duka la Amina (grocery, Temeke)             |");
-  console.log("|             10 products | 7 days sales | 2 pending ord  |");
-  console.log("|             2 low-stock | 1 expiring soon | 1 urgent    |");
-  console.log("|                                                         |");
-  console.log("| MERCHANT   +255700000003  PIN: 1234                     |");
-  console.log("|             Salum Pharmacy (Kinondoni)                  |");
-  console.log("|             5 products | 1 low-stock | 1 out-of-stock   |");
-  console.log("|                                                         |");
-  console.log("| MERCHANT   +255700000004  PIN: 1234                     |");
-  console.log("|             Hassan Bar & Wines (Ilala)                  |");
-  console.log("|             4 products | 2 wholesale sales              |");
-  console.log("|             1 pending restock | 1 low-stock             |");
-  console.log("|             1 confirmed customer order                  |");
-  console.log("|                                                         |");
-  console.log("| MERCHANT   +255700000005  PIN: 1234                     |");
-  console.log("|             Fatuma Beauty Shop (Kinondoni)              |");
-  console.log("|             4 products | 1 low-stock | 1 out-of-stock   |");
-  console.log("|             1 pending restock                           |");
-  console.log("|                                                         |");
-  console.log("| SUPPLIER   +255700000001  PIN: 1234                     |");
-  console.log("|             Jumla Traders Ltd (Kariakoo)                |");
-  console.log("|                                                         |");
-  console.log("| SUPPLIER   +255700000006  PIN: 1234                     |");
-  console.log("|             Rafiki Beverages Ltd (Posta)                |");
-  console.log("|                                                         |");
-  console.log("| SUPPLIER   +255700000007  PIN: 1234                     |");
-  console.log("|             Beauty Supplies TZ (Ilala)                  |");
-  console.log("+---------------------------------------------------------+");
+  console.log("+------------------------------------------------------------------+");
+  console.log("|                   TEST LOGIN CREDENTIALS                        |");
+  console.log("+------------------------------------------------------------------+");
+  console.log("| ADMIN      +255700000000  PIN: 1234                              |");
+  console.log("|                                                                  |");
+  console.log("| MERCHANT   +255700000002  PIN: 1234   *** FEATURED MERCHANT ***  |");
+  console.log("|  Duka la Amina (grocery, Temeke/Mbagala)                        |");
+  console.log("|  12 products: good/low/out-of-stock, expiring-soon, urgent-     |");
+  console.log("|    expiry, doesNotExpire, wholesale, high-margin                |");
+  console.log("|  10 sales: all 7 payment methods, RETAIL+WHOLESALE, POS+ONLINE  |");
+  console.log("|  5 supplier orders: PENDING/CONFIRMED/OUT_FOR_DELIVERY/         |");
+  console.log("|    DELIVERED/CANCELLED                                          |");
+  console.log("|  6 customer orders: PENDING/CONFIRMED(x2)/OUT_FOR_DELIVERY/     |");
+  console.log("|    DELIVERED/CANCELLED                                          |");
+  console.log("|  3 stock movements: IN/OUT/ADJUSTMENT                           |");
+  console.log("|                                                                  |");
+  console.log("| MERCHANT   +255700000003  PIN: 1234                              |");
+  console.log("|  Salum Pharmacy (Kinondoni/Sinza) — 5 products                  |");
+  console.log("|                                                                  |");
+  console.log("| MERCHANT   +255700000004  PIN: 1234                              |");
+  console.log("|  Hassan Bar & Wines (Ilala/Buguruni) — 4 products               |");
+  console.log("|  2 wholesale sales | 1 PENDING order | 1 CONFIRMED customer ord  |");
+  console.log("|                                                                  |");
+  console.log("| MERCHANT   +255700000005  PIN: 1234                              |");
+  console.log("|  Fatuma Beauty Shop (Kinondoni/Tegeta) — 4 products              |");
+  console.log("|  1 PENDING restock order                                        |");
+  console.log("|                                                                  |");
+  console.log("| SUPPLIER   +255700000001  PIN: 1234   *** FEATURED SUPPLIER ***  |");
+  console.log("|  Jumla Traders Ltd (Kariakoo)                                   |");
+  console.log("|  Portal: orders from Amina (PENDING/CONFIRMED/OUT_FOR_DELIVERY/ |");
+  console.log("|    DELIVERED/CANCELLED) + Salum (CONFIRMED/OUT_FOR_DELIVERY)    |");
+  console.log("|                                                                  |");
+  console.log("| SUPPLIER   +255700000006  PIN: 1234                              |");
+  console.log("|  Rafiki Beverages Ltd (Posta) — Hassan's supplier               |");
+  console.log("|                                                                  |");
+  console.log("| SUPPLIER   +255700000007  PIN: 1234                              |");
+  console.log("|  Beauty Supplies TZ (Ilala) — Fatuma's supplier                 |");
+  console.log("+------------------------------------------------------------------+");
 }
 
 main()
