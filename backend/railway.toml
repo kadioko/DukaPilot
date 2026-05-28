@@ -3,7 +3,7 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "node src/app.js"
-preDeployCommand = "npx prisma migrate deploy"
+preDeployCommand = "DATABASE_URL=$DATABASE_MIGRATE_URL npx prisma migrate deploy"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 5
 
