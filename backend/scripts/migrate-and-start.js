@@ -22,7 +22,20 @@ try {
   });
   console.log("Migrations complete.");
 } catch (err) {
-  console.warn("Migration step failed (schema may already be current):", err.message);
+  const msg = err.message || "";
+  // Non-fatal: schema is already current or no pending migrations
+  if (
+    msg.includes("already applied") ||
+    msg.includes("no pending migrations") ||
+    msg.includes("up to date")
+  ) {
+    console.log("No pending migrations — schema already current.");
+  } else {
+    // Fatal: unexpected migration failure — exit so Railway restarts rather than
+    // serving traffic with a potentially outdated schema
+    console.error("FATAL: Migration failed unexpectedly:", msg);
+    process.exit(1);
+  }
 }
 
 require(path.resolve(appRoot, "src/app.js"));

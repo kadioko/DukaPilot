@@ -1,12 +1,16 @@
 const prisma = require("../lib/prisma");
 
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 async function getShopId(userId) {
   const shop = await prisma.shop.findUnique({ where: { userId } });
   if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
   return shop.id;
 }
 
-async function list(req, res) {
+const list = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { lowStock, search, page = 1, limit = 50 } = req.query;
   const pageNumber = Number(page);
@@ -40,9 +44,9 @@ async function list(req, res) {
       totalPages: Math.ceil(total / limitNumber),
     },
   });
-}
+});
 
-async function get(req, res) {
+const get = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const product = await prisma.product.findFirst({
     where: { id: req.params.id, shopId },
@@ -53,9 +57,9 @@ async function get(req, res) {
   });
   if (!product) return res.status(404).json({ error: "Product not found" });
   res.json({ product });
-}
+});
 
-async function create(req, res) {
+const create = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire } = req.body;
 
@@ -95,9 +99,9 @@ async function create(req, res) {
   }
 
   res.status(201).json({ product });
-}
+});
 
-async function update(req, res) {
+const update = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const existing = await prisma.product.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Product not found" });
@@ -125,9 +129,9 @@ async function update(req, res) {
   });
 
   res.json({ product });
-}
+});
 
-async function remove(req, res) {
+const remove = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const existing = await prisma.product.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Product not found" });
@@ -135,9 +139,9 @@ async function remove(req, res) {
   // Soft delete
   await prisma.product.update({ where: { id: req.params.id }, data: { isActive: false } });
   res.json({ message: "Product deactivated" });
-}
+});
 
-async function getLowStock(req, res) {
+const getLowStock = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const products = await prisma.product.findMany({
     where: { shopId, isActive: true },
@@ -145,6 +149,6 @@ async function getLowStock(req, res) {
     orderBy: [{ currentStock: "asc" }, { name: "asc" }],
   });
   res.json({ products: products.filter((p) => p.currentStock <= p.minimumStock) });
-}
+});
 
 module.exports = { list, get, create, update, remove, getLowStock };

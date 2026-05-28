@@ -1,7 +1,11 @@
 const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
 
-async function overview(req, res) {
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+const overview = asyncHandler(async (req, res) => {
   const [users, merchants, suppliers, admins, shops, products, sales, orders, auditLogs] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: "MERCHANT" } }),
@@ -17,9 +21,9 @@ async function overview(req, res) {
   res.json({
     summary: { users, merchants, suppliers, admins, shops, products, sales, orders, auditLogs },
   });
-}
+});
 
-async function listUsers(req, res) {
+const listUsers = asyncHandler(async (req, res) => {
   const users = await prisma.user.findMany({
     select: {
       id: true,
@@ -36,9 +40,9 @@ async function listUsers(req, res) {
   });
 
   res.json({ users });
-}
+});
 
-async function listAuditLogs(req, res) {
+const listAuditLogs = asyncHandler(async (req, res) => {
   const { action, resourceType, userId, limit = 100 } = req.query;
   const where = {};
   if (action) where.action = String(action);
@@ -57,10 +61,10 @@ async function listAuditLogs(req, res) {
   });
 
   res.json({ logs });
-}
+});
 
 // Admin: reset a user's PIN (requires new PIN in body)
-async function resetUserPin(req, res) {
+const resetUserPin = asyncHandler(async (req, res) => {
   const { userId } = req.params;
   const newPin = String(req.body.newPin || "").trim();
 
@@ -82,10 +86,10 @@ async function resetUserPin(req, res) {
   };
 
   res.json({ message: "PIN reset successfully" });
-}
+});
 
 // Admin: find user by phone (for support lookup)
-async function findUserByPhone(req, res) {
+const findUserByPhone = asyncHandler(async (req, res) => {
   const phone = String(req.query.phone || "").replace(/[\s()-]/g, "").trim();
   if (!phone) return res.status(400).json({ error: "phone query parameter required" });
 
@@ -105,6 +109,6 @@ async function findUserByPhone(req, res) {
 
   if (!user) return res.status(404).json({ error: "User not found" });
   res.json({ user });
-}
+});
 
 module.exports = { overview, listUsers, listAuditLogs, resetUserPin, findUserByPhone };

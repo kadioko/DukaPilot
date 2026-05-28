@@ -27,6 +27,9 @@
     "react-dom": "^19.2.6",
     "recharts": "^3.8.1"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "^1.52.0",

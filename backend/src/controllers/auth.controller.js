@@ -313,8 +313,12 @@ const verifyOtpAndResetPin = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "New PIN must be 4 to 8 digits" });
   }
 
-  // verifyOtp throws on failure
-  verifyOtp(phone, code);
+  // verifyOtp throws synchronously on failure -- catch to return 400
+  try {
+    verifyOtp(phone, code);
+  } catch (err) {
+    return res.status(400).json({ error: err.message || "Invalid or expired OTP" });
+  }
 
   const user = await prisma.user.findUnique({ where: { phone } });
   if (!user) return res.status(404).json({ error: "User not found" });

@@ -1,12 +1,16 @@
 const prisma = require("../lib/prisma");
 
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 async function getShopId(userId) {
   const shop = await prisma.shop.findUnique({ where: { userId } });
   if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
   return shop.id;
 }
 
-async function adjust(req, res) {
+const adjust = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { productId, type, quantity, note } = req.body;
 
@@ -44,22 +48,22 @@ async function adjust(req, res) {
   ]);
 
   res.json({ product: updatedProduct, movement });
-}
+});
 
-async function movements(req, res) {
+const movements = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { productId } = req.params;
 
   const product = await prisma.product.findFirst({ where: { id: productId, shopId } });
   if (!product) return res.status(404).json({ error: "Product not found" });
 
-  const movements = await prisma.stockMovement.findMany({
+  const stockMovements = await prisma.stockMovement.findMany({
     where: { productId },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
 
-  res.json({ product: { id: product.id, name: product.name }, movements });
-}
+  res.json({ product: { id: product.id, name: product.name }, movements: stockMovements });
+});
 
 module.exports = { adjust, movements };

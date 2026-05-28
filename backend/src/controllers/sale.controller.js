@@ -1,12 +1,16 @@
 const prisma = require("../lib/prisma");
 
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 async function getShopId(userId) {
   const shop = await prisma.shop.findUnique({ where: { userId } });
   if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
   return shop.id;
 }
 
-async function list(req, res) {
+const list = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { from, to, limit = 50, offset = 0 } = req.query;
 
@@ -33,9 +37,9 @@ async function list(req, res) {
   ]);
 
   res.json({ sales, total });
-}
+});
 
-async function create(req, res) {
+const create = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { items, paymentMethod = "CASH", paymentRef, customerPhone, note, saleMode, channel } = req.body;
   const pricingTier = String(saleMode || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
@@ -129,9 +133,9 @@ async function create(req, res) {
   });
 
   res.status(201).json({ sale });
-}
+});
 
-async function get(req, res) {
+const get = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const sale = await prisma.sale.findFirst({
     where: { id: req.params.id, shopId },
@@ -143,9 +147,9 @@ async function get(req, res) {
   });
   if (!sale) return res.status(404).json({ error: "Sale not found" });
   res.json({ sale });
-}
+});
 
-async function summary(req, res) {
+const summary = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { period = "today" } = req.query;
 
@@ -187,6 +191,6 @@ async function summary(req, res) {
     byPaymentMethod: byPayment,
     recentSales: sales.slice(0, 5),
   });
-}
+});
 
 module.exports = { list, create, get, summary };

@@ -1,5 +1,9 @@
 const prisma = require("../lib/prisma");
 
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 async function getShopId(userId) {
   const shop = await prisma.shop.findUnique({ where: { userId } });
   if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
@@ -15,7 +19,7 @@ function startOf(period) {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-async function overview(req, res) {
+const overview = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
   const { period = "today" } = req.query;
   const from = startOf(period);
@@ -153,6 +157,6 @@ async function overview(req, res) {
       totalRevenue: t._sum.totalPrice,
     })),
   });
-}
+});
 
 module.exports = { overview };

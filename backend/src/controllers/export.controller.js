@@ -1,5 +1,9 @@
 const prisma = require("../lib/prisma");
 
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 async function getShopId(userId) {
   const shop = await prisma.shop.findUnique({ where: { userId } });
   if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
@@ -21,7 +25,7 @@ function sendCsv(res, filename, rows) {
   res.send(csv);
 }
 
-async function exportSalesCsv(req, res) {
+const exportSalesCsv = asyncHandler(async (req, res) => {
   const where = {};
   if (req.user.role !== "ADMIN") {
     where.shopId = await getShopId(req.user.userId);
@@ -56,9 +60,9 @@ async function exportSalesCsv(req, res) {
 
   req.audit = { action: "export.sales.csv", resourceType: "sale_export", metadata: { count: sales.length } };
   sendCsv(res, "sales-export.csv", rows);
-}
+});
 
-async function exportInventoryCsv(req, res) {
+const exportInventoryCsv = asyncHandler(async (req, res) => {
   const where = { isActive: true };
   if (req.user.role !== "ADMIN") {
     where.shopId = await getShopId(req.user.userId);
@@ -93,6 +97,6 @@ async function exportInventoryCsv(req, res) {
 
   req.audit = { action: "export.inventory.csv", resourceType: "inventory_export", metadata: { count: products.length } };
   sendCsv(res, "inventory-export.csv", rows);
-}
+});
 
 module.exports = { exportSalesCsv, exportInventoryCsv };

@@ -1,13 +1,17 @@
 const prisma = require("../lib/prisma");
 const { buildWhatsAppOrderMessage } = require("../services/whatsapp.service");
 
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 async function getShop(userId) {
   const shop = await prisma.shop.findUnique({ where: { userId } });
   if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
   return shop;
 }
 
-async function list(req, res) {
+const list = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user.userId);
   const { status } = req.query;
 
@@ -26,9 +30,9 @@ async function list(req, res) {
   });
 
   res.json({ orders });
-}
+});
 
-async function create(req, res) {
+const create = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user.userId);
   const { supplierId, items, note } = req.body;
 
@@ -78,9 +82,9 @@ async function create(req, res) {
   const whatsappMessage = buildWhatsAppOrderMessage(order, shop);
 
   res.status(201).json({ order, whatsappMessage });
-}
+});
 
-async function get(req, res) {
+const get = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user.userId);
   const order = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
@@ -95,9 +99,9 @@ async function get(req, res) {
 
   const whatsappMessage = buildWhatsAppOrderMessage(order, shop);
   res.json({ order, whatsappMessage });
-}
+});
 
-async function cancel(req, res) {
+const cancel = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user.userId);
   const order = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
@@ -112,10 +116,10 @@ async function cancel(req, res) {
     data: { status: "CANCELLED" },
   });
   res.json({ order: updated });
-}
+});
 
 // Confirm received delivery: record stock movements
-async function confirmDelivery(req, res) {
+const confirmDelivery = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user.userId);
   const order = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
@@ -148,10 +152,10 @@ async function confirmDelivery(req, res) {
   });
 
   res.json({ message: "Delivery confirmed and stock updated" });
-}
+});
 
 // One-tap reorder based on previous order
-async function reorder(req, res) {
+const reorder = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user.userId);
   const previousOrder = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
@@ -190,6 +194,6 @@ async function reorder(req, res) {
 
   const whatsappMessage = buildWhatsAppOrderMessage(newOrder, shop);
   res.status(201).json({ order: newOrder, whatsappMessage });
-}
+});
 
 module.exports = { list, create, get, cancel, confirmDelivery, reorder };

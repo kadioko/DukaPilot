@@ -1,7 +1,11 @@
 const prisma = require("../lib/prisma");
 
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 // Merchant: manage their supplier relationships
-async function list(req, res) {
+const list = asyncHandler(async (req, res) => {
   const suppliers = await prisma.supplier.findMany({
     select: {
       id: true,
@@ -13,9 +17,9 @@ async function list(req, res) {
     orderBy: { name: "asc" },
   });
   res.json({ suppliers });
-}
+});
 
-async function get(req, res) {
+const get = asyncHandler(async (req, res) => {
   const supplier = await prisma.supplier.findUnique({
     where: { id: req.params.id },
     include: {
@@ -27,15 +31,15 @@ async function get(req, res) {
   });
   if (!supplier) return res.status(404).json({ error: "Supplier not found" });
   res.json({ supplier });
-}
+});
 
-async function create(req, res) {
+const create = asyncHandler(async (req, res) => {
   const { name, phone, address } = req.body;
   const supplier = await prisma.supplier.create({ data: { name, phone, address } });
   res.status(201).json({ supplier });
-}
+});
 
-async function update(req, res) {
+const update = asyncHandler(async (req, res) => {
   const { name, phone, address } = req.body;
   const supplier = await prisma.supplier.update({
     where: { id: req.params.id },
@@ -46,10 +50,10 @@ async function update(req, res) {
     },
   });
   res.json({ supplier });
-}
+});
 
 // Supplier portal: orders assigned to this supplier
-async function myOrders(req, res) {
+const myOrders = asyncHandler(async (req, res) => {
   const supplierRecord = await prisma.supplier.findUnique({
     where: { userId: req.user.userId },
   });
@@ -71,9 +75,9 @@ async function myOrders(req, res) {
   });
 
   res.json({ orders });
-}
+});
 
-async function updateOrderStatus(req, res) {
+const updateOrderStatus = asyncHandler(async (req, res) => {
   const supplierRecord = await prisma.supplier.findUnique({
     where: { userId: req.user.userId },
   });
@@ -103,10 +107,10 @@ async function updateOrderStatus(req, res) {
   });
 
   res.json({ order: updated });
-}
+});
 
 // Supplier dashboard: sales/demand data for their customers
-async function supplierDashboard(req, res) {
+const supplierDashboard = asyncHandler(async (req, res) => {
   const supplierRecord = await prisma.supplier.findUnique({
     where: { userId: req.user.userId },
   });
@@ -141,6 +145,6 @@ async function supplierDashboard(req, res) {
     pendingOrders,
     topMerchantIds: topMerchants.map((m) => m.shopId),
   });
-}
+});
 
 module.exports = { list, get, create, update, myOrders, updateOrderStatus, supplierDashboard };
