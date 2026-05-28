@@ -37,6 +37,7 @@
 ## New Feature Test Checklist (Go-Live Sprint)
 
 ### Registration form improvements
+
 1. Open the registration form.
 2. Select "Merchant" role.
 3. Confirm fields for City/Town, District/Area, and Shop Category are visible.
@@ -44,6 +45,7 @@
 5. Log in and go to Settings — confirm the shop location and category are correctly saved.
 
 ### Settings page
+
 1. Log in as a merchant.
 2. Navigate to Settings (bottom of nav).
 3. Update shop name, city, district, and category — click Save.
@@ -52,6 +54,7 @@
 6. Change PIN: enter current PIN, set a new PIN, confirm new PIN — verify login works with the new PIN.
 
 ### Customer Orders view
+
 1. In a browser tab, visit `/catalog` and browse to a shop.
 2. Add items to the cart and place a customer order with a test name and phone.
 3. Log in as the merchant in another tab.
@@ -63,6 +66,7 @@
 9. Confirm a CONFIRMED order, then cancel it — confirm stock is released back.
 
 ### PIN recovery (OTP)
+
 1. On the login screen, click "Forgot PIN?"
 2. Enter a registered phone number and submit.
 3. In development (no `AT_API_KEY`): check the backend console for the OTP code.
@@ -70,16 +74,19 @@
 5. Confirm login works with the new PIN.
 
 ### Token refresh
+
 1. Log in and note the `dukaos_token` in localStorage (DevTools → Application → Local Storage).
 2. Manually set the token to an expired value or wait 1 hour.
 3. Make any API request (e.g., visit the dashboard).
 4. Confirm the request succeeds without redirecting to login (token was refreshed silently via the `dukaos_refresh` cookie).
 
 ### Status endpoint
+
 - Visit `https://dukaos-production.up.railway.app/status`
 - Expected response includes `status: "ok"`, `db.status: "ok"`, `db.latencyMs`, `uptimeSeconds`.
 
 ### Admin dashboard
+
 1. Log in with an admin account.
 2. Navigate to `/admin`.
 3. Confirm the Overview tab shows correct user/sale/order counts.
@@ -88,6 +95,7 @@
 6. Check the Audit Log tab — confirm recent events are displayed.
 
 ### Database backup
+
 ```bash
 cd backend
 DATABASE_URL="..." node scripts/backup.js
@@ -168,7 +176,7 @@ DATABASE_URL="..." node scripts/backup.js
 ### Backend (Railway)
 
 | Variable | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `DATABASE_URL` | Yes | PostgreSQL connection URL |
 | `JWT_SECRET` | Yes | Long random secret — generate with `crypto.randomBytes(64).toString('hex')` |
 | `NODE_ENV` | Yes | Set to `production` |
@@ -182,7 +190,7 @@ DATABASE_URL="..." node scripts/backup.js
 ### Frontend (Vercel)
 
 | Variable | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Yes | Backend API URL — no trailing slash or newline |
 | `NEXT_PUBLIC_SENTRY_DSN` | Optional | Sentry DSN for client-side error tracking |
 
