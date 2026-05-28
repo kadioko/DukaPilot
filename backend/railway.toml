@@ -2,7 +2,8 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "npm run start:prod"
+startCommand = "node src/app.js"
+preDeployCommand = "npx prisma migrate deploy"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 5
 

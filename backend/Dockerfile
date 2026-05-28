@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:20
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -6,4 +6,4 @@ COPY prisma ./prisma
 RUN npx prisma generate
 COPY . .
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/app.js"]
+CMD ["node", "src/app.js"]
