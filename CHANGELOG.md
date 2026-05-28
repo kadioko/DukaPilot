@@ -5,51 +5,80 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — Go-Live Sprint
+## [1.1.0] — 2026-05-28 — Stability & Infrastructure Hardening
+
+### Fixed
+
+#### Backend — Express 5 error propagation
+- All async controller functions in `sale`, `order`, `supplier`, `stock`, `dashboard`, `export`, `admin`, and `product` controllers were missing `asyncHandler` wrapping. Unhandled promise rejections now correctly propagate to the Express 5 error handler instead of crashing workers.
+- `auth.controller.js` — `verifyOtp()` throws synchronously; it was not caught inside `asyncHandler`. Now wrapped in a `try/catch` that returns HTTP 400 instead of falling through to a 500.
+
+#### Backend — Migration startup
+- `scripts/migrate-and-start.js` — previously swallowed all migration errors silently. Now distinguishes "schema already current" (non-fatal, logs and continues) from unexpected failures (fatal — calls `process.exit(1)` so Railway restarts rather than serving with a stale schema).
+
+### Changed
+
+#### Backend — Infrastructure
+- `Dockerfile` upgraded from `node:20` to `node:24-alpine`.
+- Added `postgresql-client` to the Docker image (required by `scripts/backup.js` for `pg_dump`).
+- Added explicit `COPY prisma.config.js ./` step so Prisma 7 CLI can find the datasource config inside the container.
+
+#### Backend — Prisma config
+- Removed duplicate `backend/prisma/prisma.config.js`. The canonical config is `backend/prisma.config.js` (the project root relative to the `backend/` working directory), which is where Prisma 7 CLI looks via c12/jiti.
+
+#### Frontend — Tailwind 4
+- Deleted `frontend/tailwind.config.ts` — Tailwind CSS 4 uses CSS `@theme` directives only; a JS config file is unused and misleading.
+
+#### Frontend — TypeScript 6
+- Removed `"ignoreDeprecations": "6.0"` from `frontend/tsconfig.json` — no longer needed after TypeScript 6 migration is complete.
+
+### Added
+
+#### Frontend — Sentry server-side init
+- Added `frontend/src/instrumentation.ts` — required for `sentry.server.config.ts` to be loaded in Next.js 16. Without this file Sentry server-side error tracking was silently inactive.
+
+#### Config
+- `backend/.env.example` — documented `DATABASE_MIGRATE_URL` (public TCP proxy URL used by `migrate-and-start.js`).
+- `frontend/.env.example` — created with `NEXT_PUBLIC_API_URL`, Sentry DSN vars, and app name.
+- Both `package.json` files — added `"engines": { "node": ">=20" }`.
+
+---
+
+## [1.0.0] — 2026-05-26 — Go-Live Sprint
 
 ### Added
 
 #### Security & Authentication
-
-- **OTP PIN recovery** — "Forgot PIN?" on login screen sends a 6-digit SMS code via Africa's Talking; user sets new PIN after verification
-- **Short-lived JWT (1h) + refresh token (30d)** — access tokens now expire in 1 hour; frontend transparently refreshes using the secure `dukaos_refresh` cookie; `/api/auth/refresh` endpoint added
-- **Change PIN from settings** — authenticated users can change their own PIN by providing current PIN + new PIN via `/api/settings/pin`
-- **Admin PIN reset** — admins can look up any user by phone and reset their PIN via `/api/admin/users/:id/reset-pin` (all resets are audit-logged)
-- **Public catalog rate limiting** — `/api/public/*` routes now have a separate limiter (30 req / 15 min per IP) to prevent abuse/scraping
-- **`/status` endpoint** — richer than `/health`; includes DB ping latency, uptime seconds, version, and environment
+- **OTP PIN recovery** — "Forgot PIN?" on login screen sends a 6-digit SMS code via Africa's Talking; user sets new PIN after verification.
+- **Short-lived JWT (1h) + refresh token (30d)** — access tokens now expire in 1 hour; frontend silently refreshes via the secure `dukaos_refresh` cookie; `/api/auth/refresh` endpoint added.
+- **Logout endpoint** — `POST /api/auth/logout` clears both auth cookies.
+- **Change PIN from settings** — authenticated users can change PIN by providing current PIN + new PIN via `PATCH /api/settings/pin`.
+- **Admin PIN reset** — admins can look up any user by phone and reset their PIN via `PATCH /api/admin/users/:id/reset-pin`; all resets are audit-logged.
+- **Public catalog rate limiting** — `/api/public/*` routes now have a separate limiter (30 req / 15 min per IP).
+- **`/status` endpoint** — richer than `/health`; includes DB ping latency, uptime seconds, version, and environment.
 
 #### Product Features
-
-- **Settings page** (`/settings`) — merchants can update shop name, city, district, category, display name, language, and PIN from one place
-- **Customer orders view** (`/orders/customers`) — merchants now see all inbound customer orders from their public shop catalog, with status management (Confirm → Dispatch → Deliver / Cancel)
-- **CustomerOrder stock deduction** — confirming a customer order now reserves stock (decrements inventory); cancelling a CONFIRMED order releases the stock back
-- **Registration form improvements** — registration now collects shop city, district, and category (previously defaulted to "Dar es Salaam / general" for all users)
-- **Admin dashboard UI** — admin users now see a full dashboard with: system overview stats, user list, PIN reset tool, and audit log viewer
-- **Africa's Talking OTP service** — full SMS OTP integration; falls back to console logging in dev mode when `AT_API_KEY` is not set
+- **Settings page** (`/settings`) — merchants can update shop name, city, district, category, display name, language, and PIN from one place.
+- **Customer orders view** (`/orders/customers`) — merchants see all inbound customer orders from their public shop catalog with status management (Confirm → Dispatch → Deliver / Cancel).
+- **CustomerOrder stock deduction** — confirming a customer order decrements inventory; cancelling a CONFIRMED order releases stock back.
+- **Registration form improvements** — registration now collects shop city, district, and category.
+- **Admin dashboard UI** (`/admin`) — system overview stats, user list, PIN reset tool, and audit log viewer.
+- **Africa's Talking OTP service** — full SMS OTP integration; falls back to console logging in dev when `AT_API_KEY` is not set.
 
 #### Reliability & DevOps
-
-- **pg_dump backup script** (`backend/scripts/backup.js`) — runs `pg_dump | gzip`, retains configurable number of days, can be scheduled with cron or Railway cron service
-- **Sentry error tracking** — backend uses `@sentry/node`; frontend uses `@sentry/nextjs`; both are no-ops when DSN env vars are not set
-- **`normalizeBaseUrl`** in frontend API client now strips trailing newlines from `NEXT_PUBLIC_API_URL` (fixes misconfigured env var)
-
-#### Documentation
-
-- This `CHANGELOG.md`
-- `backend/.env.example` updated with all new env vars
-- `TESTING.md` updated with new test procedures
-- `README.md` updated to reflect new features
+- **pg_dump backup script** (`backend/scripts/backup.js`) — runs `pg_dump | gzip`, retains configurable number of days, scheduled via cron or Railway cron service.
+- **Sentry error tracking** — backend `@sentry/node`; frontend `@sentry/nextjs`; both are no-ops when DSN env vars are not set.
+- **`normalizeBaseUrl`** in frontend API client strips trailing newlines from `NEXT_PUBLIC_API_URL`.
 
 ### Changed
-
-- JWT access token expiry changed from 30 days to 1 hour (with refresh token for transparent re-auth)
-- `dukaos_token` cookie now holds short-lived access token; new `dukaos_refresh` cookie added for 30-day refresh
+- JWT access token expiry changed from 30 days to 1 hour (with refresh token for transparent re-auth).
+- `dukaos_token` cookie now holds short-lived access token; new `dukaos_refresh` cookie added for 30-day refresh.
 
 ---
 
-## [0.9.0] — Pre-Launch (prior work)
+## [0.9.0] — Pre-Launch
 
-### Added in 0.9.0
+### Added
 
 - Customer orders & public shop catalog (B2B2C channel)
 - Wholesale pricing tier (retail / wholesale per product)
@@ -61,7 +90,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Existing Features (initial build)
 
-- Merchant dashboard with period filters, charts, payment mix, business history
+- Merchant dashboard with period filters, charts, payment mix, all-time business history
 - POS / sales entry with all Tanzanian payment methods
 - Inventory management with low-stock alerts and stock adjustments
 - Supplier ordering with WhatsApp export (Kiswahili message)

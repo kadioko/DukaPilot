@@ -1,4 +1,4 @@
-# DukaOS — Merchant OS for Tanzania 🛒
+# DukaOS — Merchant OS for Tanzania
 
 > **Merchant operating system for informal retailers in Tanzania.**
 > Track stock, record sales, order from suppliers, and grow your business — all in Kiswahili, from your phone.
@@ -24,7 +24,8 @@ DukaOS starts as **software + payments + procurement**, then layers working-capi
 
 - **Frontend:** [https://duka-os.vercel.app/](https://duka-os.vercel.app/)
 - **Backend API:** [https://dukaos-production.up.railway.app/api](https://dukaos-production.up.railway.app/api)
-- **Health Check:** [https://dukaos-production.up.railway.app/health](https://dukaos-production.up.railway.app/health)
+- **Health:** [https://dukaos-production.up.railway.app/health](https://dukaos-production.up.railway.app/health)
+- **Status:** [https://dukaos-production.up.railway.app/status](https://dukaos-production.up.railway.app/status)
 
 ---
 
@@ -34,34 +35,39 @@ DukaOS starts as **software + payments + procurement**, then layers working-capi
 
 | Feature | Description |
 | --- | --- |
-| **Inventory tracking** | Add products, set buying/selling prices, track stock levels |
+| **Inventory tracking** | Add products, set buying/selling/wholesale prices, track stock levels |
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
-| **Business history** | Review all-time business history and monthly performance trends from the dashboard |
+| **Business history** | All-time business history and monthly performance trends from the dashboard |
 | **Supplier ordering** | Create orders from suppliers in one tap |
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
 | **One-tap reorder** | Repeat any previous order with a single button |
-| **Delivery confirmation** | Confirm goods received and auto-restock inventory (merchant only) |
+| **Delivery confirmation** | Confirm goods received and auto-restock inventory |
+| **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
+| **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
+| **PIN recovery** | "Forgot PIN?" sends a 6-digit OTP via SMS (Africa's Talking) |
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
+| **CSV export** | Download sales history or full inventory as a CSV file |
 
 ### For Suppliers (Wasambazaji)
 
 | Feature | Description |
 | --- | --- |
 | **Order dashboard** | See all incoming orders from merchants |
-| **Status management** | Confirm → Dispatch (supplier advances to OUT_FOR_DELIVERY only) |
+| **Status management** | PENDING → CONFIRMED → OUT_FOR_DELIVERY (merchant confirms delivery) |
 | **Route view** | Group pending orders by location |
 | **Performance data** | Which merchants order most frequently |
 
-### Current End-User Experience
+### For Admins
 
-- **Login and registration** — users sign in with phone number and PIN, and can switch the interface between Swahili and English from the auth screen or inside the app.
-- **Merchant dashboard** — merchants can review sales, profit, pending orders, low-stock alerts, payment mix, and all-time business history.
-- **Sales / POS** — merchants can record sales with cash, bank, credit, or supported mobile money methods.
-- **Supplier ordering** — merchants can create, repeat, and confirm supplier orders, then send the order details through WhatsApp.
-- **Supplier portal** — suppliers can review incoming orders and advance status (PENDING → CONFIRMED → OUT_FOR_DELIVERY). The merchant confirms delivery, which triggers automatic stock replenishment.
+| Feature | Description |
+| --- | --- |
+| **System overview** | User, shop, product, sale, and order counts |
+| **User management** | List all users; look up any user by phone |
+| **PIN reset** | Reset any user's PIN (all resets are audit-logged) |
+| **Audit log viewer** | Searchable log of all significant actions |
 
 ---
 
@@ -83,30 +89,34 @@ DukaOS starts as **software + payments + procurement**, then layers working-capi
 
 | Layer | Technology |
 | --- | --- |
-| **Backend** | Node.js · Express · Prisma ORM |
+| **Backend** | Node.js 24 · Express 5 · Prisma ORM 7 |
 | **Database** | PostgreSQL |
-| **Frontend** | Next.js 14 · React · TypeScript · Tailwind CSS |
-| **Auth** | JWT + phone + PIN login, with saved user language preference |
+| **Frontend** | Next.js 16 · React 19 · TypeScript 6 · Tailwind CSS 4 |
+| **Auth** | JWT (1h access + 30d refresh cookie) · phone + PIN login · OTP PIN recovery |
+| **SMS / OTP** | Africa's Talking (sandbox in dev, live in production) |
+| **Error tracking** | Sentry (`@sentry/node` + `@sentry/nextjs`) |
 | **Messaging** | WhatsApp deep links + WhatsApp Cloud API (optional) |
 | **Payments** | Cash, Bank, Credit, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa |
 | **Charts** | Recharts |
-| **Containerisation** | Docker + Docker Compose |
+| **Containerisation** | Docker (node:24-alpine) + Docker Compose |
+| **Hosting** | Railway (backend + Postgres) · Vercel (frontend) |
 
 ---
 
-## Verification and Authentication Status
+## Authentication
 
-- **Current production verification flow:** phone number + PIN + JWT session
-- **Current registration flow:** merchant or supplier account creation with phone and PIN
-- **Current language preference:** persisted per user and updated through `PATCH /api/auth/language`
-- **Not yet implemented:** OTP / SMS phone verification
-- **Recommended next step:** add OTP-based phone verification before high-trust financial workflows
+- **Login:** phone number + PIN → JWT access token (1h) + `dukaos_refresh` cookie (30d)
+- **Refresh:** frontend silently renews the access token via `POST /api/auth/refresh` — no visible logout
+- **PIN recovery:** "Forgot PIN?" on login screen → 6-digit SMS OTP via Africa's Talking → set new PIN
+- **Change PIN:** authenticated users can change PIN from `/settings`
+- **Admin PIN reset:** admin can reset any user's PIN via `/admin` (audit-logged)
+- **Registration:** collects phone, PIN, name, role (MERCHANT / SUPPLIER), shop city, district, and category
 
 ### Security Notes
 
-- PIN-only authentication is acceptable for early testing, but it is **not sufficient for stronger trust or payment-sensitive workflows**.
-- Before enabling higher-risk actions, add OTP verification, rate-limiting, stronger PIN policies, and account recovery controls.
-- Never commit real production secrets into git; keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
+- Rate limiting is applied on all `/api/*` routes (100 req / 15 min) and tighter on `/api/auth/*` and `/api/public/*`.
+- Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
+- OTP codes expire after 10 minutes and are single-use.
 
 ---
 
@@ -117,41 +127,66 @@ DukaOS/
 ├── backend/
 │   ├── prisma/
 │   │   ├── schema.prisma          # Full data model
-│   │   └── seed.js                # Demo merchant + supplier data
+│   │   ├── seed.js                # Demo merchant + supplier data
+│   │   └── migrations/            # Prisma migration history
+│   ├── prisma.config.js           # Prisma 7 datasource config (read by CLI)
+│   ├── scripts/
+│   │   ├── migrate-and-start.js   # Railway startup: migrate then start
+│   │   ├── backup.js              # pg_dump + gzip backup
+│   │   └── smoke-test.js          # Production smoke checks
 │   ├── src/
 │   │   ├── app.js                 # Express entrypoint
-│   │   ├── middleware/auth.js     # JWT middleware
-│   │   ├── lib/prisma.js          # Prisma client singleton
+│   │   ├── lib/
+│   │   │   ├── prisma.js          # Prisma client singleton
+│   │   │   └── sentry.js          # Sentry initialisation
+│   │   ├── middleware/
+│   │   │   ├── auth.js            # JWT middleware
+│   │   │   ├── audit.js           # Audit trail middleware
+│   │   │   └── rateLimit.js       # express-rate-limit config
 │   │   ├── controllers/
 │   │   │   ├── auth.controller.js
 │   │   │   ├── product.controller.js
 │   │   │   ├── sale.controller.js
 │   │   │   ├── order.controller.js
+│   │   │   ├── customerOrder.controller.js
 │   │   │   ├── supplier.controller.js
 │   │   │   ├── stock.controller.js
-│   │   │   └── dashboard.controller.js
+│   │   │   ├── dashboard.controller.js
+│   │   │   ├── export.controller.js
+│   │   │   ├── settings.controller.js
+│   │   │   └── admin.controller.js
 │   │   ├── routes/                # One file per resource
 │   │   └── services/
-│   │       └── whatsapp.service.js  # WhatsApp message builder
-│   ├── Dockerfile
+│   │       ├── whatsapp.service.js   # WhatsApp message builder
+│   │       └── otp.service.js        # Africa's Talking OTP
+│   ├── Dockerfile                 # node:24-alpine
+│   ├── .env.example
 │   └── package.json
 │
 ├── frontend/
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── page.tsx           # Login / Register
-│   │   │   ├── dashboard/         # Business overview with charts
-│   │   │   ├── inventory/         # Product list, stock adjustment
-│   │   │   ├── sales/             # POS + history
-│   │   │   ├── orders/            # Supplier orders + WhatsApp
-│   │   │   ├── suppliers/         # Supplier directory
-│   │   │   └── supplier/          # Supplier portal (separate login)
+│   │   │   ├── page.tsx               # Login / Register
+│   │   │   ├── dashboard/page.tsx     # Business overview + charts
+│   │   │   ├── inventory/page.tsx     # Product list, stock adjustment
+│   │   │   ├── sales/page.tsx         # POS + history
+│   │   │   ├── orders/
+│   │   │   │   ├── page.tsx           # Supplier orders + WhatsApp
+│   │   │   │   └── customers/page.tsx # Inbound customer orders
+│   │   │   ├── suppliers/page.tsx     # Supplier directory
+│   │   │   ├── supplier/page.tsx      # Supplier portal
+│   │   │   ├── settings/page.tsx      # Shop + account settings
+│   │   │   ├── admin/page.tsx         # Admin dashboard
+│   │   │   └── catalog/               # Public shop catalog (B2B2C)
 │   │   ├── components/
-│   │   │   └── layout/AppShell.tsx  # Sidebar + mobile nav
+│   │   │   └── layout/AppShell.tsx    # Sidebar + mobile nav
+│   │   ├── instrumentation.ts         # Sentry server-side init (Next.js 16)
 │   │   └── lib/
-│   │       ├── api.ts             # Typed fetch wrapper
-│   │       └── i18n.ts            # Kiswahili / English translations
-│   ├── Dockerfile
+│   │       ├── api.ts                 # Typed fetch wrapper
+│   │       └── i18n.ts                # Kiswahili / English translations
+│   ├── sentry.client.config.ts
+│   ├── sentry.server.config.ts
+│   ├── .env.example
 │   └── package.json
 │
 └── docker-compose.yml
@@ -162,22 +197,26 @@ DukaOS/
 ## Database Schema
 
 ```text
-User ──────── Shop ──────── Product ──────── StockMovement
-               │                │
-               └──── Sale ──────┘ (SaleItem)
-                      │
-                    Order ──── Supplier ──── (OrderItem)
+User ──────── Shop ──────────── Product ──────── StockMovement
+               │                    │
+               ├──── Sale ──────────┘ (SaleItem)
+               ├──── Order ──── Supplier
+               │       └────── (OrderItem)
+               └──── CustomerOrder
+                         └──── (CustomerOrderItem)
 ```
 
 **Core models:**
 
-- `User` — merchant or supplier, identified by phone + PIN
-- `Shop` — one shop per merchant (extensible to multi-shop)
-- `Product` — SKU, buying/selling price, stock level, minimum threshold
-- `Sale` + `SaleItem` — each sale records profit per line item
-- `StockMovement` — full audit trail of every stock change
-- `Order` + `OrderItem` — supplier purchase orders with status lifecycle
-- `Supplier` — can optionally have a user account (supplier portal)
+- `User` — merchant, supplier, or admin; identified by phone + PIN
+- `Shop` — one shop per merchant (extensible to multi-shop); has name, location, district, category
+- `Supplier` — can optionally have a User account (supplier portal)
+- `Product` — SKU, buying/selling/wholesale price, stock level, minimum threshold, expiry date
+- `Sale` + `SaleItem` — each sale records profit per line item; supports POS and ONLINE channels
+- `StockMovement` — full audit trail of every stock change (IN / OUT / ADJUSTMENT)
+- `Order` + `OrderItem` — merchant-to-supplier purchase orders with status lifecycle
+- `CustomerOrder` + `CustomerOrderItem` — customer-to-merchant orders from public catalog
+- `AuditLog` — records significant actions with user, method, path, IP, and metadata
 
 ---
 
@@ -185,7 +224,7 @@ User ──────── Shop ──────── Product ────
 
 ### Prerequisites
 
-- Docker + Docker Compose, **or** Node.js 18+ and PostgreSQL
+- Docker + Docker Compose, **or** Node.js 20+ and PostgreSQL
 
 ### Quick Start with Docker
 
@@ -193,21 +232,21 @@ User ──────── Shop ──────── Product ────
 git clone https://github.com/your-org/DukaOS.git
 cd DukaOS
 
-# Copy and edit env files
+# Copy and fill in env files
 cp backend/.env.example backend/.env
+# Edit backend/.env: set DATABASE_URL and JWT_SECRET
 
 # Start everything
 docker-compose up --build
 
-# In a separate terminal, run migrations and seed
-docker-compose exec backend npm run db:migrate -- --name init
+# In a separate terminal — seed test data
 docker-compose exec backend node prisma/seed.js
 ```
 
 The app will be available at:
 
 - **Frontend:** [http://localhost:3000](http://localhost:3000)
-- **Backend API:** [http://localhost:4000](http://localhost:4000)
+- **Backend API:** [http://localhost:4000/api](http://localhost:4000/api)
 
 ### Local Development (without Docker)
 
@@ -220,21 +259,22 @@ cd backend
 cp .env.example .env
 # Edit .env: set DATABASE_URL and JWT_SECRET
 npm install
-npm run db:migrate -- --name init
+npx prisma migrate dev --name init
 node prisma/seed.js
 npm run dev         # runs on :4000
 
 # 3. Frontend (new terminal)
 cd frontend
 npm install
-# Create .env.local:
-echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api" > .env.local
+cp .env.example .env.local
+# Edit .env.local: NEXT_PUBLIC_API_URL=http://localhost:4000/api
 npm run dev         # runs on :3000
 ```
 
 ### Local Verification Checklist
 
 - Backend health responds at `http://localhost:4000/health`
+- Status endpoint responds at `http://localhost:4000/status`
 - Frontend loads at `http://localhost:3000`
 - Test merchant can log in
 - Dashboard `All Time` tab renders
@@ -243,81 +283,121 @@ npm run dev         # runs on :3000
 
 ### Production Environment Variables
 
-- **Backend required:** `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL` or `VERCEL_FRONTEND_URL`
-- **Backend optional:** `WHATSAPP_API_URL`, `WHATSAPP_API_TOKEN`, `WHATSAPP_PHONE_ID`, `MPESA_API_URL`, `MPESA_BUSINESS_SHORT_CODE`, `MPESA_PASSKEY`, `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`
-- **Frontend required:** `NEXT_PUBLIC_API_URL=https://dukaos-production.up.railway.app/api`
+#### Backend (Railway)
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | Private PostgreSQL connection URL |
+| `DATABASE_MIGRATE_URL` | Yes | Public TCP proxy URL for `prisma migrate deploy` at startup |
+| `JWT_SECRET` | Yes | Generate: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
+| `NODE_ENV` | Yes | Set to `production` |
+| `FRONTEND_URL` | Yes | Vercel frontend URL for CORS |
+| `AT_API_KEY` | Recommended | Africa's Talking key for SMS OTP |
+| `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
+| `AT_SENDER_ID` | Optional | Custom SMS sender ID |
+| `SENTRY_DSN` | Optional | Sentry project DSN for error tracking |
+| `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
+| `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
+| `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
+| `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
+| `BACKUP_RETAIN_DAYS` | Optional | Days to keep backups (default: `7`) |
+
+#### Frontend (Vercel)
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | Yes | Backend API URL — no trailing slash or newline |
+| `NEXT_PUBLIC_SENTRY_DSN` | Optional | Sentry DSN for client-side error tracking |
+| `SENTRY_DSN` | Optional | Sentry DSN for server-side (SSR) error tracking |
 
 ### Production Database Workflow
 
-- **Official production command:** `npm run db:deploy`
-- **Container startup command:** `npm run start:prod`
+- **Startup command:** `node scripts/migrate-and-start.js` (runs `prisma migrate deploy` then starts the app; fatal migration failures cause `process.exit(1)` so Railway restarts rather than serving stale schema)
+- **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
 
 ### Deployment Checklist
 
 1. Push changes to `main`.
-2. Confirm the backend host has `DATABASE_URL`, `JWT_SECRET`, and frontend URL variables configured.
-3. Deploy the backend from the `backend` root directory using the Dockerfile startup path (`npm run start:prod` inside the container).
-4. If needed, run `npm run db:deploy` manually before release.
-5. Deploy the frontend with `NEXT_PUBLIC_API_URL` pointing to `https://dukaos-production.up.railway.app/api`.
-6. Verify Railway healthcheck path is `/health`.
-7. Run `cd backend && npm run smoke:prod` and `cd frontend && npm run smoke` against the live URLs.
-8. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
-9. Review `TESTING.md` for the full manual and automated smoke checklist.
-10. Verify language switching, bank sales, all-time analytics, and supplier flows after release.
+2. Confirm Railway has `DATABASE_URL`, `DATABASE_MIGRATE_URL`, `JWT_SECRET`, and `FRONTEND_URL` set.
+3. Deploy backend from the `backend/` root using the Dockerfile (`node scripts/migrate-and-start.js` is the container entrypoint via `railway.toml`).
+4. Deploy frontend on Vercel with `NEXT_PUBLIC_API_URL` pointing to the Railway API URL.
+5. Verify Railway healthcheck path is `/health`.
+6. Run `cd backend && npm run smoke:prod` and `cd frontend && npm run smoke` against the live URLs.
+7. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
+8. Review `TESTING.md` for the full manual and automated test checklist.
 
 ---
 
 ## Demo Accounts (after seeding)
 
-| Role | Phone | PIN | Notes |
+All PINs: `1234`
+
+| Role | Phone | Name / Shop | Notes |
 | --- | --- | --- | --- |
-| Merchant | +255700000002 | 1234 | Mama Amina's grocery shop in Mbagala |
-| Test Merchant | +255700000003 | 1234 | Dedicated production testing merchant account in Kinondoni |
-| Supplier | +255700000001 | 1234 | Jumla Traders Ltd, Kariakoo |
+| Admin | +255700000000 | Admin DukaOS | System administration |
+| Merchant | +255700000002 | Mama Amina / Duka la Amina | Grocery, Mbagala (Temeke) — 8 products, 7 days sales history |
+| Test Merchant | +255700000003 | Salum / Salum Pharmacy | Pharmacy, Kinondoni — 3 products |
+| Supplier | +255700000001 | Jumla Traders Ltd | Kariakoo, Dar es Salaam |
 
 ---
 
 ## API Reference
 
+All authenticated endpoints require `Authorization: Bearer <token>` or the `dukaos_token` cookie.
+
 ### Auth
 
 ```text
-POST   /api/auth/register    # Register new merchant or supplier
-POST   /api/auth/login       # Login, returns JWT
-GET    /api/auth/me          # Get current user profile
-PATCH  /api/auth/language    # Switch UI language (sw / en)
+POST   /api/auth/register              # Register new merchant or supplier
+POST   /api/auth/login                 # Login — returns JWT + sets refresh cookie
+POST   /api/auth/logout                # Clear auth cookies
+POST   /api/auth/refresh               # Silently renew access token using refresh cookie
+GET    /api/auth/me                    # Get current user profile
+PATCH  /api/auth/language              # Switch UI language (sw / en)
+POST   /api/auth/otp/request           # Request OTP for PIN recovery
+POST   /api/auth/otp/verify-reset      # Verify OTP and set new PIN
+```
+
+### Settings (Authenticated)
+
+```text
+GET    /api/settings                   # Get current user + shop settings
+PATCH  /api/settings/shop              # Update shop name, city, district, category
+PATCH  /api/settings/profile           # Update display name
+PATCH  /api/settings/language          # Change language preference
+PATCH  /api/settings/pin               # Change PIN (requires current PIN)
 ```
 
 ### Products (Merchant only)
 
 ```text
-GET    /api/products              # List all products (search, filter)
-GET    /api/products/low-stock    # Products at or below minimum stock
-GET    /api/products/:id          # Product detail + stock history
-POST   /api/products              # Create product
-PATCH  /api/products/:id          # Update product
-DELETE /api/products/:id          # Soft-delete (deactivate)
+GET    /api/products                   # List products (search, filter, pagination)
+GET    /api/products/low-stock         # Products at or below minimum stock
+GET    /api/products/:id               # Product detail + stock movement history
+POST   /api/products                   # Create product
+PATCH  /api/products/:id               # Update product
+DELETE /api/products/:id               # Soft-delete (deactivate)
 ```
 
-### Stock Movements
+### Stock
 
 ```text
-POST   /api/stock/adjust                    # Adjust stock (IN / OUT / ADJUSTMENT)
-GET    /api/stock/:productId/movements      # Full audit trail for a product
+POST   /api/stock/adjust               # Adjust stock (IN / OUT / ADJUSTMENT)
+GET    /api/stock/:productId/movements # Full audit trail for a product
 ```
 
 ### Sales
 
 ```text
-GET    /api/sales            # Sale history (filterable by date)
-GET    /api/sales/summary    # Aggregated totals by period (today/week/month)
-GET    /api/sales/:id        # Sale detail
-POST   /api/sales            # Record a sale (auto-decrements stock) with cash, bank, credit, or mobile money
+GET    /api/sales                      # Sale history (filterable by date range)
+GET    /api/sales/summary              # Aggregated totals by period (today/week/month)
+GET    /api/sales/:id                  # Sale detail
+POST   /api/sales                      # Record a sale (auto-decrements stock)
 ```
 
-### Orders
+### Orders (Merchant → Supplier)
 
 ```text
 GET    /api/orders                          # List orders (filterable by status)
@@ -325,86 +405,110 @@ GET    /api/orders/:id                      # Order detail + WhatsApp message
 POST   /api/orders                          # Create order (returns WhatsApp message)
 POST   /api/orders/:id/reorder              # One-tap repeat of previous order
 PATCH  /api/orders/:id/confirm-delivery     # Receive goods (auto-increments stock)
-PATCH  /api/orders/:id/cancel               # Cancel order
+PATCH  /api/orders/:id/cancel              # Cancel order
+```
+
+### Customer Orders (Inbound — Merchant manages)
+
+```text
+GET    /api/customer-orders                            # List inbound customer orders
+GET    /api/customer-orders/:id                        # Order detail
+POST   /api/customer-orders                            # Place customer order (public)
+PATCH  /api/customer-orders/:id/status                 # Advance status (CONFIRMED → DELIVERED)
+PATCH  /api/customer-orders/:id/cancel                 # Cancel order
 ```
 
 ### Suppliers
 
 ```text
-GET    /api/suppliers                                       # List all suppliers
-GET    /api/suppliers/:id                                   # Supplier detail
-POST   /api/suppliers                                       # Add supplier
-PATCH  /api/suppliers/:id                                   # Update supplier
+GET    /api/suppliers                               # List all suppliers
+GET    /api/suppliers/:id                           # Supplier detail
+POST   /api/suppliers                               # Add supplier
+PATCH  /api/suppliers/:id                           # Update supplier
 
 # Supplier portal (Supplier role)
-GET    /api/suppliers/portal/orders                         # My incoming orders
-GET    /api/suppliers/portal/dashboard                      # Dashboard stats
-PATCH  /api/suppliers/portal/orders/:orderId/status         # Update order status
+GET    /api/suppliers/portal/orders                 # My incoming orders
+GET    /api/suppliers/portal/dashboard              # Dashboard stats
+PATCH  /api/suppliers/portal/orders/:orderId/status # Update order status
 ```
 
 ### Dashboard
 
 ```text
-GET    /api/dashboard?period=today|week|month|all   # Full business overview, payment mix, and all-time business history
+GET    /api/dashboard?period=today|week|month|all   # Full business overview, payment mix, charts, all-time history
+```
+
+### Exports (Merchant / Admin)
+
+```text
+GET    /api/exports/sales      # Download sales as CSV
+GET    /api/exports/inventory  # Download inventory as CSV
+```
+
+### Admin (Admin role only)
+
+```text
+GET    /api/admin/overview                  # System-wide stats
+GET    /api/admin/users                     # List all users
+GET    /api/admin/users/search?phone=...    # Find user by phone
+PATCH  /api/admin/users/:userId/reset-pin   # Reset a user's PIN
+GET    /api/admin/audit-logs                # Audit log (filterable)
+```
+
+### Public (no auth)
+
+```text
+GET    /api/public/shops/:shopId/products   # Public product catalog for a shop
+```
+
+### System
+
+```text
+GET    /health   # {"status":"ok","service":"DukaOS API"}
+GET    /status   # DB ping, uptime, version, environment
 ```
 
 ---
 
 ## Testing and QA
 
-- Use `TESTING.md` as the primary release-verification reference.
+See `TESTING.md` for the full manual smoke checklist, automated test commands, and deployment readiness checks.
 
-### Smoke tests
+### Quick commands
 
-- Goal: fast checks against production-safe paths and critical availability.
-- Commands:
-  - `cd backend && npm run smoke:prod`
-  - `cd frontend && npm run smoke`
-  - `cd frontend && npm run smoke:login`
+```bash
+# Backend
+cd backend && npm run smoke:prod   # production smoke test
+cd backend && npm run test:api     # integration tests
 
-### Integration tests
-
-- Goal: API-level validation and negative-path checks with the Node test runner.
-- Commands:
-  - `cd backend && npm run test:api`
-
-### E2E tests
-
-- Goal: browser-level workflow checks with Playwright.
-- Commands:
-  - `cd frontend && npm run test:auth`
-  - `cd frontend && npm run test:e2e`
-
-### Minimum release regression checklist
-
-- login for merchant and supplier accounts
-- dashboard load with `today`, `month`, and `all` filters
-- language toggle persistence
-- bank payment sale creation
-- supplier order visibility and status transitions
-- inventory add, edit, and stock adjustment workflows
-- backend health endpoint response
+# Frontend
+cd frontend && npm run smoke       # page load smoke
+cd frontend && npm run smoke:login # Playwright browser smoke
+cd frontend && npm run test:auth   # auth negative-path E2E
+cd frontend && npm run test:e2e    # full Playwright suite
+cd frontend && npm run typecheck   # TypeScript type check
+```
 
 ---
 
 ## WhatsApp Integration
 
-Every order automatically generates a WhatsApp message in Kiswahili:
+Every supplier order automatically generates a WhatsApp message in Kiswahili:
 
 ```text
-🛒 *AGIZO JIPYA - Duka la Amina*
-📅 Tarehe: 6 Machi 2026
-🔢 Nambari ya Agizo: #A1B2C3D4
+AGIZO JIPYA - Duka la Amina
+Tarehe: 6 Machi 2026
+Nambari ya Agizo: #A1B2C3D4
 
-*Bidhaa Zilizoagizwa:*
-  • Unga wa Sembe (2kg): *10 bag*
-  • Mchele (1kg): *20 kg*
-  • Mafuta ya Kupikia (1L): *12 litre*
+Bidhaa Zilizoagizwa:
+  - Unga wa Sembe (2kg): 10 bag
+  - Mchele (1kg): 20 kg
+  - Mafuta ya Kupikia (1L): 12 litre
 
-💰 Jumla ya Thamani: TZS 85,600
-📍 Mahali pa Biashara: Mbagala, Temeke
+Jumla ya Thamani: TZS 85,600
+Mahali pa Biashara: Mbagala, Temeke
 
-Tafadhali thibitisha agizo hili. Asante! 🙏
+Tafadhali thibitisha agizo hili. Asante!
 ```
 
 The frontend provides a **"Fungua WhatsApp"** button that opens WhatsApp with the pre-filled message. For API-driven sending, configure `WHATSAPP_API_TOKEN` and `WHATSAPP_PHONE_ID` in the backend `.env`.
@@ -427,34 +531,39 @@ The frontend provides a **"Fungua WhatsApp"** button that opens WhatsApp with th
 
 ## Roadmap
 
-### Phase 1 — Now (Launched)
+### Phase 1 — Launched
 
 - [x] Merchant registration + PIN auth
-- [x] Product catalog + stock tracking
+- [x] Product catalog + stock tracking + expiry date
 - [x] Low-stock alerts
-- [x] POS sales recording
+- [x] POS sales recording with all Tanzanian payment methods
 - [x] Profit analytics (daily/weekly/monthly/all-time)
-- [x] Supplier directory
-- [x] Supplier ordering
-- [x] WhatsApp order export
+- [x] Wholesale pricing tier (retail / wholesale per product)
+- [x] Supplier directory + ordering
+- [x] WhatsApp order export (Kiswahili)
 - [x] One-tap reorder
 - [x] Delivery confirmation + auto stock update
-- [x] Supplier portal
-- [x] Kiswahili UI
-- [x] English/Swahili language toggle
-- [x] Bank payment method support
-- [x] Payment mix and business history dashboard views
+- [x] Supplier portal (PENDING → CONFIRMED → OUT_FOR_DELIVERY)
+- [x] Kiswahili/English interface with per-user language preference
+- [x] OTP PIN recovery via SMS (Africa's Talking)
+- [x] JWT refresh token (1h access + 30d refresh cookie)
+- [x] Settings page (shop info, PIN change, language)
+- [x] Customer orders + public shop catalog (B2B2C)
+- [x] Admin dashboard (users, PIN reset, audit log)
+- [x] CSV export (sales + inventory)
+- [x] Sentry error tracking (backend + frontend)
+- [x] pg_dump database backup script
+- [x] Audit trail middleware
 
 ### Phase 2 — Next
 
-- [ ] OTP-based phone verification (Africa's Talking / Twilio)
 - [ ] M-Pesa STK push integration (Vodacom Tanzania API)
 - [ ] Barcode/QR scanner for stock-in
 - [ ] Multi-store support
 - [ ] Receipt generation (SMS / PDF)
 - [ ] Bulk product import (CSV)
 - [ ] Offline mode (PWA with service worker)
-- [ ] Supplier route optimization
+- [ ] Supplier route optimisation
 
 ### Phase 3 — Scale
 
@@ -482,13 +591,7 @@ The frontend provides a **"Fungua WhatsApp"** button that opens WhatsApp with th
 
 **Wedge:** Mini-groceries and kiosks in Dar es Salaam
 
-**Priority areas:**
-
-- Kariakoo
-- Mbagala
-- Tegeta
-- Buguruni
-- Kinondoni
+**Priority areas:** Kariakoo, Mbagala, Tegeta, Buguruni, Kinondoni
 
 **Acquisition channels:**
 
@@ -521,4 +624,4 @@ MIT
 
 ---
 
-*DukaOS — Kujenga biashara Tanzania* 🇹🇿
+*DukaOS — Kujenga biashara Tanzania*
