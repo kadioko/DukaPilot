@@ -39,7 +39,7 @@ k6 run \
 ## Default test profile
 
 | Stage | VUs | Duration |
-|-------|-----|----------|
+| ------- | ----- | ---------- |
 | Ramp-up | 0 → 10 | 30s |
 | Sustained | 10 | 1m |
 | Ramp-down | 10 → 0 | 15s |
@@ -49,7 +49,7 @@ Total duration: ~1m 45s
 ## Pass thresholds
 
 | Metric | Threshold |
-|--------|-----------|
+| -------- | ----------- |
 | All requests p95 | < 800ms |
 | Login p95 | < 1000ms |
 | Dashboard p95 | < 800ms |
