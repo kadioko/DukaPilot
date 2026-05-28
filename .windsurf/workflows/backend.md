@@ -37,7 +37,7 @@ npm run dev        # nodemon on :4000
 | `prisma.config.js` | Prisma 7 datasource config (read by CLI from CWD = `backend/`) |
 | `prisma/seed.js` | Seeds 4 test accounts + demo data |
 | `scripts/migrate-and-start.js` | Railway startup: `prisma migrate deploy` then `node src/app.js` |
-| `scripts/backup.js` | `pg_dump | gzip` database backup |
+| `scripts/backup.js` | `pg_dump \| gzip` database backup |
 | `scripts/smoke-test.js` | Production smoke test against live API |
 | `src/middleware/auth.js` | JWT authentication middleware |
 | `src/middleware/audit.js` | Audit trail — logs every mutating request to `AuditLog` |
@@ -202,6 +202,7 @@ docker-compose up --build
 ```
 
 The Dockerfile:
+
 - Base: `node:24-alpine`
 - Installs `postgresql-client` for `pg_dump` backup support
 - Copies `prisma.config.js` before `prisma generate`
