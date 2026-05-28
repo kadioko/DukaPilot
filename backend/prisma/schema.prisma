@@ -121,6 +121,7 @@ model Product {
   createdAt           DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  @@index([shopId, isActive])
   @@map("products")
 }
 
@@ -151,6 +152,7 @@ model Sale {
   items           SaleItem[]
   createdAt       DateTime      @default(now())
 
+  @@index([shopId, createdAt])
   @@map("sales")
 }
 
@@ -181,6 +183,7 @@ model Order {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
+  @@index([shopId, status])
   @@map("orders")
 }
 

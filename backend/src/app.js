@@ -1,6 +1,7 @@
 require("dotenv").config();
 const Sentry = require("./lib/sentry");
 const express = require("express");
+const helmet = require("helmet");
 const cors = require("cors");
 const morgan = require("morgan");
 
@@ -57,6 +58,12 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
+app.use(helmet({
+  // Allow same-origin framing for admin UI (change to false to block all iframes)
+  frameguard: { action: "sameorigin" },
+  // Next.js frontend handles its own CSP; skip it here to avoid double-config
+  contentSecurityPolicy: false,
+}));
 app.use(cors(corsOptions));
 app.options("/{*path}", cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));

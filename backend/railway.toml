@@ -5,6 +5,8 @@ builder = "nixpacks"
 startCommand = "node scripts/migrate-and-start.js"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 5
+healthcheckPath = "/health"
+healthcheckTimeout = 30
 
 [[crons]]
 schedule = "0 2 * * *"
