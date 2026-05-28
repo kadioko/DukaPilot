@@ -1,9 +1,22 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { api } from "@/lib/api";
+import { api, formatTZS } from "@/lib/api";
+import {
+  Users,
+  Store,
+  Package,
+  ShoppingCart,
+  Truck,
+  ClipboardList,
+  Search,
+  Shield,
+  AlertTriangle,
+  Check,
+  X,
+} from "lucide-react";
 
-interface OverviewResponse {
+interface AdminOverview {
   summary: {
     users: number;
     merchants: number;
@@ -24,95 +37,331 @@ interface AdminUser {
   role: string;
   language: string;
   createdAt: string;
-  shop?: { name: string };
-  supplier?: { name: string };
+  shop?: { id: string; name: string } | null;
+  supplier?: { id: string; name: string } | null;
 }
 
 interface AuditLog {
   id: string;
   action: string;
   resourceType: string;
-  resourceId?: string | null;
+  resourceId?: string;
   method: string;
   path: string;
+  ipAddress?: string;
   createdAt: string;
-  user?: { name: string; role: string } | null;
+  user?: { id: string; name: string; phone: string; role: string } | null;
+}
+
+type Tab = "overview" | "users" | "audit" | "reset";
+
+function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
+  return (
+    <div className={`bg-white rounded-xl border border-gray-200 p-4`}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-gray-500 font-medium">{label}</p>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${color}`}>{icon}</div>
+      </div>
+      <p className="text-2xl font-bold text-gray-900">{value.toLocaleString()}</p>
+    </div>
+  );
 }
 
 export default function AdminPage() {
-  const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [tab, setTab] = useState<Tab>("overview");
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // User search / PIN reset
+  const [searchPhone, setSearchPhone] = useState("");
+  const [searchResult, setSearchResult] = useState<AdminUser | null>(null);
+  const [searchError, setSearchError] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [resetPin, setResetPin] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     Promise.all([
-      api.get<OverviewResponse>("/admin/overview"),
+      api.get<AdminOverview>("/admin/overview"),
       api.get<{ users: AdminUser[] }>("/admin/users"),
-      api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=20"),
-    ]).then(([o, u, l]) => {
-      setOverview(o);
-      setUsers(u.users);
-      setLogs(l.logs);
-    });
+      api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"),
+    ])
+      .then(([ov, u, al]) => {
+        setOverview(ov);
+        setUsers(u.users);
+        setAuditLogs(al.logs);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setSearchError("");
+    setSearchResult(null);
+    setResetMsg("");
+    setResetError("");
+    if (!searchPhone.trim()) return;
+    setSearching(true);
+    try {
+      const data = await api.get<{ user: AdminUser }>(`/admin/users/search?phone=${encodeURIComponent(searchPhone.trim())}`);
+      setSearchResult(data.user);
+    } catch (err: unknown) {
+      setSearchError(err instanceof Error ? err.message : "User not found");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function handleResetPin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!searchResult || !resetPin) return;
+    if (!/^\d{4,8}$/.test(resetPin)) {
+      setResetError("PIN must be 4-8 digits");
+      return;
+    }
+    setResetting(true);
+    setResetError("");
+    setResetMsg("");
+    try {
+      await api.post(`/admin/users/${searchResult.id}/reset-pin`, { newPin: resetPin });
+      setResetMsg(`PIN for ${searchResult.name} (${searchResult.phone}) has been reset.`);
+      setResetPin("");
+    } catch (err: unknown) {
+      setResetError(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "users", label: "Users" },
+    { id: "reset", label: "PIN Reset" },
+    { id: "audit", label: "Audit Log" },
+  ];
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Admin Overview</h1>
-          <p className="text-sm text-gray-500 mt-1">System-wide metrics, users, audit logs, and export tools.</p>
+      <div className="max-w-5xl mx-auto pb-24 lg:pb-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
+            <Shield className="w-4 h-4 text-white" />
+          </div>
+          <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
         </div>
 
-        {overview && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {Object.entries(overview.summary).map(([key, value]) => (
-              <div key={key} className="bg-white border border-gray-200 rounded-xl p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-400">{key}</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{value}</p>
-              </div>
-            ))}
+        {/* Tab nav */}
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6 w-fit">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors min-h-0 ${
+                tab === t.id ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* OVERVIEW */}
+        {tab === "overview" && overview && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="Total Users" value={overview.summary.users} icon={<Users className="w-4 h-4 text-blue-600" />} color="bg-blue-50" />
+            <StatCard label="Merchants" value={overview.summary.merchants} icon={<Store className="w-4 h-4 text-brand-600" />} color="bg-brand-50" />
+            <StatCard label="Suppliers" value={overview.summary.suppliers} icon={<Truck className="w-4 h-4 text-orange-600" />} color="bg-orange-50" />
+            <StatCard label="Shops" value={overview.summary.shops} icon={<Store className="w-4 h-4 text-purple-600" />} color="bg-purple-50" />
+            <StatCard label="Active Products" value={overview.summary.products} icon={<Package className="w-4 h-4 text-green-600" />} color="bg-green-50" />
+            <StatCard label="Total Sales" value={overview.summary.sales} icon={<ShoppingCart className="w-4 h-4 text-sky-600" />} color="bg-sky-50" />
+            <StatCard label="Supplier Orders" value={overview.summary.orders} icon={<ClipboardList className="w-4 h-4 text-indigo-600" />} color="bg-indigo-50" />
+            <StatCard label="Audit Events" value={overview.summary.auditLogs} icon={<Shield className="w-4 h-4 text-gray-600" />} color="bg-gray-100" />
           </div>
         )}
 
-        <div className="flex flex-wrap gap-3">
-          <a href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/exports/sales.csv`} className="inline-flex items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white">
-            Export Sales CSV
-          </a>
-          <a href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/exports/inventory.csv`} className="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">
-            Export Inventory CSV
-          </a>
-        </div>
+        {/* USERS */}
+        {tab === "users" && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-800 text-sm">All Users ({users.length})</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Name</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Phone</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Role</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Shop / Supplier</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{u.name}</td>
+                      <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{u.phone}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          u.role === "ADMIN" ? "bg-red-100 text-red-700"
+                          : u.role === "MERCHANT" ? "bg-brand-100 text-brand-700"
+                          : "bg-orange-100 text-orange-700"
+                        }`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500 text-xs">
+                        {u.shop?.name || u.supplier?.name || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-400 text-xs">
+                        {new Date(u.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="bg-white border border-gray-200 rounded-xl p-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Recent Users</h2>
-            <div className="space-y-3">
-              {users.slice(0, 10).map((user) => (
-                <div key={user.id} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
-                  <div>
-                    <p className="font-medium text-gray-900">{user.name}</p>
-                    <p className="text-xs text-gray-500">{user.phone} · {user.role}</p>
+        {/* PIN RESET */}
+        {tab === "reset" && (
+          <div className="max-w-md space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 flex items-start gap-2 text-sm text-amber-800">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <p>Only reset PINs for users who have verified their identity. All resets are audit-logged.</p>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4">
+              <h2 className="font-semibold text-gray-800 text-sm">Find User by Phone</h2>
+              <form onSubmit={handleSearch} className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="tel"
+                    value={searchPhone}
+                    onChange={(e) => setSearchPhone(e.target.value)}
+                    placeholder="+255 7XX XXX XXX"
+                    className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={searching}
+                  className="bg-brand-600 text-white text-sm px-3 py-2 rounded-lg disabled:opacity-60"
+                >
+                  {searching ? "..." : "Find"}
+                </button>
+              </form>
+              {searchError && (
+                <p className="text-red-600 text-sm flex items-center gap-1.5"><X className="w-3.5 h-3.5" />{searchError}</p>
+              )}
+
+              {searchResult && (
+                <div className="border border-gray-200 rounded-lg p-3 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center">
+                      <Users className="w-4 h-4 text-brand-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">{searchResult.name}</p>
+                      <p className="text-xs text-gray-500">{searchResult.phone} · {searchResult.role}</p>
+                      {searchResult.shop && <p className="text-xs text-gray-400">{searchResult.shop.name}</p>}
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-400">{new Date(user.createdAt).toLocaleDateString()}</p>
-                </div>
-              ))}
-            </div>
-          </section>
 
-          <section className="bg-white border border-gray-200 rounded-xl p-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Recent Audit Logs</h2>
-            <div className="space-y-3">
-              {logs.map((log) => (
-                <div key={log.id} className="border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
-                  <p className="font-medium text-gray-900">{log.action}</p>
-                  <p className="text-xs text-gray-500">{log.method} {log.path} · {log.resourceType}</p>
-                  <p className="text-xs text-gray-400">{log.user?.name || "Unknown user"} · {new Date(log.createdAt).toLocaleString()}</p>
+                  <form onSubmit={handleResetPin} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">New PIN (4-8 digits)</label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        value={resetPin}
+                        onChange={(e) => setResetPin(e.target.value)}
+                        placeholder="••••"
+                        maxLength={8}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        required
+                      />
+                    </div>
+                    {resetMsg && (
+                      <p className="text-green-700 text-sm flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5">
+                        <Check className="w-3.5 h-3.5" />{resetMsg}
+                      </p>
+                    )}
+                    {resetError && <p className="text-red-600 text-sm">{resetError}</p>}
+                    <button
+                      type="submit"
+                      disabled={resetting}
+                      className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-medium py-2 rounded-lg transition-colors"
+                    >
+                      {resetting ? "Resetting..." : "Reset PIN"}
+                    </button>
+                  </form>
                 </div>
-              ))}
+              )}
             </div>
-          </section>
-        </div>
+          </div>
+        )}
+
+        {/* AUDIT LOG */}
+        {tab === "audit" && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <h2 className="font-semibold text-gray-800 text-sm">Recent Audit Events (last 50)</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Action</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">User</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Path</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogs.map((log) => (
+                    <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2.5">
+                        <span className="font-mono text-xs text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{log.action}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-600">
+                        {log.user ? `${log.user.name} (${log.user.phone})` : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">
+                        {log.method} {log.path}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-400">
+                        {new Date(log.createdAt).toLocaleString("en-GB", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

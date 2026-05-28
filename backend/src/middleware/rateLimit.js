@@ -31,4 +31,15 @@ const authRateLimiter = rateLimit({
   },
 });
 
-module.exports = { apiRateLimiter, authRateLimiter };
+const publicRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getClientKey,
+  message: {
+    error: "Too many requests to the public catalog. Please wait a few minutes and try again.",
+  },
+});
+
+module.exports = { apiRateLimiter, authRateLimiter, publicRateLimiter };

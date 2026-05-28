@@ -3,7 +3,7 @@ import { t, type Lang } from "@/lib/i18n";
 const PROD_API_URL = "https://dukaos-production.up.railway.app/api";
 
 function normalizeBaseUrl(url: string): string {
-  return url.trim().replace(/\/$/, "");
+  return url.trim().replace(/\n/g, "").replace(/\/$/, "");
 }
 
 function getBaseUrl(): string {
@@ -49,10 +49,41 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
   return normalized;
 }
 
+let refreshingPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  if (refreshingPromise) return refreshingPromise;
+
+  refreshingPromise = (async () => {
+    try {
+      const baseUrl = getBaseUrl();
+      const res = await fetch(`${baseUrl}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data?.token) {
+        setToken(data.token);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      refreshingPromise = null;
+    }
+  })();
+
+  return refreshingPromise;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  lang: Lang = "en"
+  lang: Lang = "en",
+  _isRetry = false
 ): Promise<T> {
   const token = getToken();
   const baseUrl = getBaseUrl();
@@ -69,9 +100,20 @@ async function request<T>(
     throw new Error("Unable to reach the DukaOS server. Confirm the API URL is correct and the backend is online.");
   }
 
+  // On 401, attempt token refresh once then retry
+  if (res.status === 401 && !_isRetry) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      return request<T>(path, options, lang, true);
+    }
+    clearToken();
+    if (typeof window !== "undefined") window.location.href = "/";
+    throw new Error("Session expired");
+  }
+
   if (res.status === 401) {
     clearToken();
-    window.location.href = "/";
+    if (typeof window !== "undefined") window.location.href = "/";
     throw new Error("Session expired");
   }
 
@@ -92,8 +134,7 @@ async function request<T>(
     throw new Error("The DukaOS server returned an unexpected response format.");
   }
 
-  const data = payload;
-  return data as T;
+  return payload as T;
 }
 
 export const api = {

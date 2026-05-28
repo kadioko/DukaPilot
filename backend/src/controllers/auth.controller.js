@@ -1,9 +1,15 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
+const { issueOtp, verifyOtp } = require("../services/otp.service");
 
 const VALID_ROLES = new Set(["MERCHANT", "SUPPLIER"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
+
+// Access token: 1 hour. Refresh token: 30 days.
+const ACCESS_TOKEN_EXPIRY = "1h";
+const REFRESH_TOKEN_EXPIRY = "30d";
+const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
 function asyncHandler(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -25,21 +31,21 @@ function validatePin(pin) {
   return /^\d{4,8}$/.test(pin);
 }
 
-function getCookieOptions() {
+function getCookieOptions(maxAge) {
   const secure = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
     sameSite: secure ? "none" : "lax",
     secure,
     path: "/",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge,
   };
 }
 
-function setAuthCookie(res, token) {
-  const options = getCookieOptions();
+function setCookie(res, name, value, maxAge) {
+  const options = getCookieOptions(maxAge);
   const cookie = [
-    `dukaos_token=${encodeURIComponent(token)}`,
+    `${name}=${encodeURIComponent(value)}`,
     `Max-Age=${Math.floor(options.maxAge / 1000)}`,
     `Path=${options.path}`,
     `SameSite=${options.sameSite}`,
@@ -49,10 +55,10 @@ function setAuthCookie(res, token) {
   res.setHeader("Set-Cookie", cookie);
 }
 
-function clearAuthCookie(res) {
-  const options = getCookieOptions();
+function clearCookie(res, name) {
+  const options = getCookieOptions(0);
   const cookie = [
-    "dukaos_token=",
+    `${name}=`,
     "Max-Age=0",
     `Path=${options.path}`,
     `SameSite=${options.sameSite}`,
@@ -60,6 +66,46 @@ function clearAuthCookie(res) {
     options.secure ? "Secure" : "",
   ].filter(Boolean).join("; ");
   res.setHeader("Set-Cookie", cookie);
+}
+
+function setAuthCookies(res, accessToken, refreshToken) {
+  setCookie(res, "dukaos_token", accessToken, 60 * 60 * 1000); // 1h
+  setCookie(res, "dukaos_refresh", refreshToken, REFRESH_TOKEN_EXPIRY_MS); // 30d
+}
+
+function clearAuthCookies(res) {
+  clearCookie(res, "dukaos_token");
+  clearCookie(res, "dukaos_refresh");
+}
+
+// Legacy alias for code that only sets one cookie
+function setAuthCookie(res, token) {
+  setAuthCookies(res, token, token);
+}
+
+function clearAuthCookie(res) {
+  clearAuthCookies(res);
+}
+
+function issueAccessToken(user) {
+  return jwt.sign(
+    { userId: user.id, phone: user.phone, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_EXPIRY }
+  );
+}
+
+function issueRefreshToken(user) {
+  return jwt.sign(
+    { userId: user.id, type: "refresh" },
+    process.env.JWT_SECRET,
+    { expiresIn: REFRESH_TOKEN_EXPIRY }
+  );
+}
+
+// Keep legacy issueToken for any other callers
+function issueToken(user) {
+  return issueAccessToken(user);
 }
 
 const register = asyncHandler(async (req, res) => {
@@ -126,11 +172,12 @@ const register = asyncHandler(async (req, res) => {
     });
   }
 
-  const token = issueToken(user);
+  const accessToken = issueAccessToken(user);
+  const refreshToken = issueRefreshToken(user);
   const profile = await getProfile(user.id);
-  setAuthCookie(res, token);
+  setAuthCookies(res, accessToken, refreshToken);
   req.audit = { action: "auth.register", resourceType: "user", resourceId: user.id, metadata: { role: user.role } };
-  res.status(201).json({ token, user: profile });
+  res.status(201).json({ token: accessToken, user: profile });
 });
 
 const login = asyncHandler(async (req, res) => {
@@ -159,11 +206,12 @@ const login = asyncHandler(async (req, res) => {
     return res.status(401).json({ error: "Invalid phone or PIN" });
   }
 
-  const token = issueToken(user);
+  const accessToken = issueAccessToken(user);
+  const refreshToken = issueRefreshToken(user);
   const profile = await getProfile(user.id);
-  setAuthCookie(res, token);
+  setAuthCookies(res, accessToken, refreshToken);
   req.audit = { action: "auth.login", resourceType: "user", resourceId: user.id, metadata: { role: user.role } };
-  res.json({ token, user: profile });
+  res.json({ token: accessToken, user: profile });
 });
 
 const me = asyncHandler(async (req, res) => {
@@ -188,18 +236,95 @@ const updateLanguage = asyncHandler(async (req, res) => {
 });
 
 const logout = asyncHandler(async (req, res) => {
-  clearAuthCookie(res);
+  clearAuthCookies(res);
   req.audit = { action: "auth.logout", resourceType: "session", resourceId: req.user?.userId || null };
   res.json({ message: "Logged out" });
 });
 
-function issueToken(user) {
-  return jwt.sign(
-    { userId: user.id, phone: user.phone, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: "30d" }
+// POST /api/auth/refresh — issue new access token from refresh token cookie or body
+const refresh = asyncHandler(async (req, res) => {
+  const cookieHeader = req.headers.cookie || "";
+  const cookies = Object.fromEntries(
+    cookieHeader.split(";").map((p) => {
+      const idx = p.indexOf("=");
+      return idx >= 0 ? [p.slice(0, idx).trim(), decodeURIComponent(p.slice(idx + 1))] : [p.trim(), ""];
+    })
   );
-}
+
+  const refreshToken = cookies.dukaos_refresh || req.body?.refreshToken;
+  if (!refreshToken) return res.status(401).json({ error: "Refresh token required" });
+
+  let payload;
+  try {
+    payload = jwt.verify(refreshToken, process.env.JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired refresh token" });
+  }
+
+  if (payload.type !== "refresh") {
+    return res.status(401).json({ error: "Invalid token type" });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+  if (!user) return res.status(401).json({ error: "User not found" });
+
+  const newAccessToken = issueAccessToken(user);
+  setCookie(res, "dukaos_token", newAccessToken, 60 * 60 * 1000);
+  res.json({ token: newAccessToken });
+});
+
+// POST /api/auth/otp/request — send OTP to phone for PIN recovery
+const requestOtp = asyncHandler(async (req, res) => {
+  const phone = normalizePhone(req.body.phone);
+
+  if (!validatePhone(phone)) {
+    return res.status(400).json({ error: "Enter a valid phone number" });
+  }
+
+  const user = await prisma.user.findUnique({ where: { phone } });
+  // Don't reveal whether phone exists — always return success
+  if (user) {
+    try {
+      await issueOtp(phone);
+    } catch (err) {
+      console.error("OTP send error:", err.message);
+      // Don't expose internal error to client
+    }
+  }
+
+  res.json({ message: "If this number is registered, an OTP has been sent." });
+});
+
+// POST /api/auth/otp/verify-reset — verify OTP and reset PIN
+const verifyOtpAndResetPin = asyncHandler(async (req, res) => {
+  const phone = normalizePhone(req.body.phone);
+  const code = String(req.body.code || "").trim();
+  const newPin = String(req.body.newPin || "").trim();
+
+  if (!phone || !code || !newPin) {
+    return res.status(400).json({ error: "phone, code, and newPin are required" });
+  }
+
+  if (!validatePhone(phone)) {
+    return res.status(400).json({ error: "Enter a valid phone number" });
+  }
+
+  if (!validatePin(newPin)) {
+    return res.status(400).json({ error: "New PIN must be 4 to 8 digits" });
+  }
+
+  // verifyOtp throws on failure
+  verifyOtp(phone, code);
+
+  const user = await prisma.user.findUnique({ where: { phone } });
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const hashedPin = await bcrypt.hash(newPin, 10);
+  await prisma.user.update({ where: { id: user.id }, data: { pin: hashedPin } });
+
+  req.audit = { action: "auth.pin.resetViaOtp", resourceType: "user", resourceId: user.id };
+  res.json({ message: "PIN reset successfully. You can now log in with your new PIN." });
+});
 
 async function getProfile(userId) {
   return prisma.user.findUnique({
@@ -217,4 +342,4 @@ async function getProfile(userId) {
   });
 }
 
-module.exports = { register, login, me, updateLanguage, logout };
+module.exports = { register, login, me, updateLanguage, logout, refresh, requestOtp, verifyOtpAndResetPin, issueToken, setAuthCookie, clearAuthCookie };
