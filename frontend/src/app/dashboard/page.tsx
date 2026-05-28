@@ -230,8 +230,8 @@ export default function DashboardPage() {
                 />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
-                  formatter={(value: number, name: string) => [
-                    formatTZS(value),
+                  formatter={(value, name) => [
+                    formatTZS(typeof value === "number" ? value : 0),
                     name === "sales" ? t("dashboard.sales", lang) : t("dashboard.profit", lang),
                   ]}
                 />
