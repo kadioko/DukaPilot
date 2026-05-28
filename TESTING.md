@@ -4,10 +4,10 @@
 
 | | URL |
 | --- | --- |
-| Frontend | https://duka-os.vercel.app/ |
-| Backend API | https://dukaos-production.up.railway.app/api |
-| Health | https://dukaos-production.up.railway.app/health |
-| Status | https://dukaos-production.up.railway.app/status |
+| Frontend | [https://duka-os.vercel.app/](https://duka-os.vercel.app/) |
+| Backend API | [https://dukaos-production.up.railway.app/api](https://dukaos-production.up.railway.app/api) |
+| Health | [https://dukaos-production.up.railway.app/health](https://dukaos-production.up.railway.app/health) |
+| Status | [https://dukaos-production.up.railway.app/status](https://dukaos-production.up.railway.app/status) |
 
 ---
 
@@ -142,6 +142,7 @@ cd backend && npm run smoke:prod
 ```
 
 Covers:
+
 - Healthcheck success
 - Status endpoint success
 - Valid login success
@@ -161,6 +162,7 @@ cd frontend && npm run smoke
 ```
 
 Covers:
+
 - Login page shell loads
 - Manifest is reachable
 
@@ -171,6 +173,7 @@ cd frontend && npm run smoke:login
 ```
 
 Covers:
+
 - Live login works
 - Merchant dashboard loads
 - Inventory page opens after login
@@ -187,6 +190,7 @@ cd backend && npm run test:api
 ```
 
 Covers:
+
 - Health endpoint returns OK
 - Register validation edge cases reject bad payloads
 - Duplicate registration is rejected
@@ -229,6 +233,7 @@ Run these in order before each production release:
 7. `cd frontend && npm run test:e2e` — full Playwright suite
 
 Manual post-deploy checks:
+
 - Settings page saves correctly
 - Customer Orders view loads
 - Language toggle persists after hard refresh

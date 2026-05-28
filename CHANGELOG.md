@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+
 #### Backend — Express 5 error propagation
 - All async controller functions in `sale`, `order`, `supplier`, `stock`, `dashboard`, `export`, `admin`, and `product` controllers were missing `asyncHandler` wrapping. Unhandled promise rejections now correctly propagate to the Express 5 error handler instead of crashing workers.
 - `auth.controller.js` — `verifyOtp()` throws synchronously; it was not caught inside `asyncHandler`. Now wrapped in a `try/catch` that returns HTTP 400 instead of falling through to a 500.
