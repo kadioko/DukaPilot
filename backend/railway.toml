@@ -1,0 +1,11 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npm run start:prod"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 5
+
+[[crons]]
+schedule = "0 2 * * *"
+command = "node scripts/backup.js"
