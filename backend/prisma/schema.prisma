@@ -57,6 +57,7 @@ model User {
   shop         Shop?
   supplier     Supplier?
   auditLogs    AuditLog[]
+  reports      Report[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -75,6 +76,11 @@ model Shop {
   sales           Sale[]
   orders          Order[]
   customerOrders  CustomerOrder[]
+  // Subscription / trial
+  plan            String    @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
+  trialEndsAt     DateTime?
+  subscriptionEndsAt DateTime?
+  isActive        Boolean   @default(true)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -245,4 +251,47 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([resourceType, createdAt])
   @@map("audit_logs")
+}
+
+model Report {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ReportType @default(OTHER)
+  title       String
+  description String
+  status      ReportStatus @default(OPEN)
+  priority    Priority   @default(MEDIUM)
+  adminNotes  String?
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([priority])
+  @@map("reports")
+}
+
+enum ReportType {
+  BUG
+  FEATURE_REQUEST
+  ACCOUNT_ISSUE
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }

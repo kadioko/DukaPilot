@@ -17,6 +17,8 @@ const exportRoutes = require("./routes/export.routes");
 const publicRoutes = require("./routes/public.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const customerOrderRoutes = require("./routes/customerOrder.routes");
+const reportRoutes = require("./routes/report.routes");
+const subscriptionRoutes = require("./routes/subscription.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
@@ -108,6 +110,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/exports", exportRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/customer-orders", customerOrderRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/subscription", subscriptionRoutes);
 
 if (Sentry.setupExpressErrorHandler) Sentry.setupExpressErrorHandler(app);
 

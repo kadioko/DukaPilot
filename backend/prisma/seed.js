@@ -85,7 +85,7 @@ async function main() {
   const shop = await prisma.shop.upsert({
     where: { userId: merchantUser.id },
     update: {},
-    create: { name: "Duka la Amina", location: "Mbagala", district: "Temeke", category: "grocery", userId: merchantUser.id },
+    create: { name: "Duka la Amina", location: "Mbagala", district: "Temeke", category: "grocery", userId: merchantUser.id, trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), plan: "FREE_TRIAL", isActive: true },
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -99,7 +99,7 @@ async function main() {
   const shop2 = await prisma.shop.upsert({
     where: { userId: merchantUser2.id },
     update: {},
-    create: { name: "Salum Pharmacy", location: "Sinza", district: "Kinondoni", category: "pharmacy", userId: merchantUser2.id },
+    create: { name: "Salum Pharmacy", location: "Sinza", district: "Kinondoni", category: "pharmacy", userId: merchantUser2.id, trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), plan: "FREE_TRIAL", isActive: true },
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -113,7 +113,7 @@ async function main() {
   const shop3 = await prisma.shop.upsert({
     where: { userId: merchantUser3.id },
     update: {},
-    create: { name: "Hassan Bar & Wines", location: "Buguruni", district: "Ilala", category: "bar", userId: merchantUser3.id },
+    create: { name: "Hassan Bar & Wines", location: "Buguruni", district: "Ilala", category: "bar", userId: merchantUser3.id, trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), plan: "FREE_TRIAL", isActive: true },
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -127,7 +127,7 @@ async function main() {
   const shop4 = await prisma.shop.upsert({
     where: { userId: merchantUser4.id },
     update: {},
-    create: { name: "Fatuma Beauty Shop", location: "Tegeta", district: "Kinondoni", category: "beauty", userId: merchantUser4.id },
+    create: { name: "Fatuma Beauty Shop", location: "Tegeta", district: "Kinondoni", category: "beauty", userId: merchantUser4.id, trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), plan: "FREE_TRIAL", isActive: true },
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

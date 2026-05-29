@@ -1,0 +1,20 @@
+const express = require("express");
+const { authenticate, requireRole } = require("../middleware/auth");
+const {
+  getStatus,
+  adminListSubscriptions,
+  adminUpdateSubscription,
+  adminExtendTrial,
+} = require("../controllers/subscription.controller");
+
+const router = express.Router();
+
+// Merchant: check own subscription
+router.get("/status", authenticate, getStatus);
+
+// Admin routes
+router.get("/admin", authenticate, requireRole("ADMIN"), adminListSubscriptions);
+router.patch("/admin/:shopId", authenticate, requireRole("ADMIN"), adminUpdateSubscription);
+router.post("/admin/:shopId/extend-trial", authenticate, requireRole("ADMIN"), adminExtendTrial);
+
+module.exports = router;

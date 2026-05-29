@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   Bell,
+  AlertTriangle,
 } from "lucide-react";
 import { clearToken, api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -39,6 +40,7 @@ const merchantNav: NavItem[] = [
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck },
+  { href: "/reports", label: "Report Issue", icon: AlertTriangle },
 ];
 
 const adminNav: NavItem[] = [
@@ -47,6 +49,7 @@ const adminNav: NavItem[] = [
   { href: "/inventory", labelKey: "nav.inventory", icon: Package },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
+  { href: "/reports", label: "Reports", icon: AlertTriangle },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -56,6 +59,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [lowStockCount, setLowStockCount] = useState(0);
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
 
   useEffect(() => {
     api.get<{ user: User }>("/auth/me")
@@ -72,6 +76,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     if (user?.role === "MERCHANT") {
       api.get<{ products: unknown[] }>("/products/low-stock")
         .then((d) => setLowStockCount(d.products.length))
+        .catch(() => {});
+      api.get<{ daysLeft: number | null }>("/subscription/status")
+        .then((d) => setTrialDaysLeft(d.daysLeft ?? null))
         .catch(() => {});
     }
   }, [user]);
@@ -136,7 +143,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        {/* Nav */}
+        {/* Trial / subscription status banner */}
+        {user?.role === "MERCHANT" && trialDaysLeft !== null && trialDaysLeft <= 7 && (
+          <div className={`mx-3 mt-3 px-3 py-2 rounded-xl text-xs font-medium ${
+            trialDaysLeft <= 0
+              ? "bg-red-500/20 text-red-200 border border-red-500/30"
+              : "bg-yellow-500/20 text-yellow-200 border border-yellow-500/30"
+          }`}>
+            {trialDaysLeft <= 0
+              ? (lang === "sw" ? "Jaribio lako limeisha. Lipia kuendelea." : "Trial expired. Please subscribe.")
+              : (lang === "sw" ? `Jaribio: siku ${trialDaysLeft} zimebaki` : `Trial: ${trialDaysLeft} days left`)}
+            {" "}<Link href="/pricing" className="underline hover:no-underline">
+              {lang === "sw" ? "Lipia" : "Subscribe"}
+            </Link>
+          </div>
+        )}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {nav.map(({ href, labelKey, label, icon: Icon }) => (
             <Link
@@ -219,42 +240,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <ShoppingBag className="w-5 h-5 text-brand-600" />
             <span className="font-semibold text-gray-800 text-sm truncate">{displayName}</span>
           </div>
-          {lowStockCount > 0 && (
-            <div className="relative">
-              <Bell className="w-5 h-5 text-gray-500" />
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                {lowStockCount}
-              </span>
-            </div>
-          )}
+          <Link href="/notifications" className="relative text-gray-600">
+            <Bell className="w-5 h-5" />
+          </Link>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        {/* Page content */}
+        <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
+          {children}
+        </main>
       </div>
-
-      {/* Bottom nav for mobile */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-10">
-        {nav.slice(0, 5).map(({ href, labelKey, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className={clsx(
-              "flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs transition-colors",
-              pathname === href ? "text-brand-600" : "text-gray-500"
-            )}
-          >
-            <div className="relative">
-              <Icon className="w-5 h-5" />
-              {href === "/inventory" && lowStockCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-3.5 h-3.5 flex items-center justify-center text-[9px]">
-                  {lowStockCount}
-                </span>
-              )}
-            </div>
-            <span className="hidden xs:block">{labelKey ? t(labelKey, lang) : label}</span>
-          </Link>
-        ))}
-      </nav>
     </div>
   );
 }

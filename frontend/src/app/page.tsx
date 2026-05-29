@@ -516,7 +516,14 @@ export default function LoginPage() {
           {t("catalog.browse", lang)}
         </Link>
 
-        <p className="text-center text-brand-200 text-xs mt-6">
+        <Link
+          href="/pricing"
+          className="mt-2 w-full inline-flex items-center justify-center gap-2 text-brand-200 hover:text-white text-sm py-2 transition-colors"
+        >
+          {lang === "sw" ? "Ona bei zetu →" : "View pricing →"}
+        </Link>
+
+        <p className="text-center text-brand-200 text-xs mt-4">
           DukaOS — Kujenga biashara Tanzania
         </p>
       </div>

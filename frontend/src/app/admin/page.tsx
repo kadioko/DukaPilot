@@ -14,6 +14,9 @@ import {
   AlertTriangle,
   Check,
   X,
+  Clock,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 
 interface AdminOverview {
@@ -53,7 +56,32 @@ interface AuditLog {
   user?: { id: string; name: string; phone: string; role: string } | null;
 }
 
-type Tab = "overview" | "users" | "audit" | "reset";
+interface Report {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  adminNotes?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  user?: { id: string; name: string; phone: string; role: string } | null;
+}
+
+interface Subscription {
+  id: string;
+  name: string;
+  plan: string;
+  trialEndsAt?: string;
+  subscriptionEndsAt?: string;
+  isActive: boolean;
+  computedStatus: string;
+  daysLeft: number | null;
+  user?: { id: string; name: string; phone: string } | null;
+}
+
+type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions";
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
   return (
@@ -72,6 +100,12 @@ export default function AdminPage() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [reportFilter, setReportFilter] = useState("OPEN");
+  const [updatingReport, setUpdatingReport] = useState<string | null>(null);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [subFilter, setSubFilter] = useState("ALL");
+  const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // User search / PIN reset
@@ -89,11 +123,15 @@ export default function AdminPage() {
       api.get<AdminOverview>("/admin/overview"),
       api.get<{ users: AdminUser[] }>("/admin/users"),
       api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"),
+      api.get<{ reports: Report[] }>("/reports/admin?limit=200"),
+      api.get<{ shops: Subscription[] }>("/subscription/admin"),
     ])
-      .then(([ov, u, al]) => {
+      .then(([ov, u, al, rp, sub]) => {
         setOverview(ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
+        setReports(rp.reports);
+        setSubscriptions(sub.shops);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -138,11 +176,38 @@ export default function AdminPage() {
     }
   }
 
+  async function handleUpdateReport(reportId: string, status: string, adminNotes?: string) {
+    setUpdatingReport(reportId);
+    try {
+      const data = await api.patch<{ report: Report }>(`/reports/admin/${reportId}`, { status, adminNotes });
+      setReports((prev) => prev.map((r) => (r.id === reportId ? data.report : r)));
+    } catch (err: unknown) {
+      console.error("Failed to update report:", err);
+    } finally {
+      setUpdatingReport(null);
+    }
+  }
+
+  async function handleExtendTrial(shopId: string, days: number) {
+    setUpdatingSub(shopId);
+    try {
+      await api.post(`/subscription/admin/${shopId}/extend-trial`, { days });
+      const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
+      setSubscriptions(data.shops);
+    } catch (err) {
+      console.error("Failed to extend trial:", err);
+    } finally {
+      setUpdatingSub(null);
+    }
+  }
+
   const TABS: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "users", label: "Users" },
     { id: "reset", label: "PIN Reset" },
     { id: "audit", label: "Audit Log" },
+    { id: "reports", label: "Reports" },
+    { id: "subscriptions", label: "Subscriptions" },
   ];
 
   if (loading) {
@@ -354,6 +419,160 @@ export default function AdminPage() {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* REPORTS */}
+        {tab === "reports" && (
+          <div>
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {["OPEN", "IN_PROGRESS", "RESOLVED", "REJECTED", "ALL"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setReportFilter(s)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    reportFilter === s ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {s} ({s === "ALL" ? reports.length : reports.filter((r) => r.status === s).length})
+                </button>
+              ))}
+            </div>
+            <div className="space-y-3">
+              {(reportFilter === "ALL" ? reports : reports.filter((r) => r.status === reportFilter)).length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-500 text-sm">
+                  No reports in this category
+                </div>
+              ) : (
+                (reportFilter === "ALL" ? reports : reports.filter((r) => r.status === reportFilter)).map((report) => (
+                  <div key={report.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            report.priority === "URGENT" ? "bg-red-100 text-red-700" :
+                            report.priority === "HIGH" ? "bg-orange-100 text-orange-700" :
+                            report.priority === "MEDIUM" ? "bg-yellow-100 text-yellow-700" :
+                            "bg-gray-100 text-gray-600"
+                          }`}>{report.priority}</span>
+                          <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{report.type}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            report.status === "OPEN" ? "bg-blue-100 text-blue-700" :
+                            report.status === "IN_PROGRESS" ? "bg-yellow-100 text-yellow-700" :
+                            report.status === "RESOLVED" ? "bg-green-100 text-green-700" :
+                            "bg-red-100 text-red-700"
+                          }`}>{report.status}</span>
+                        </div>
+                        <h3 className="font-semibold text-gray-900 text-sm">{report.title}</h3>
+                        <p className="text-xs text-gray-600 mt-1">{report.description}</p>
+                        {report.user && (
+                          <p className="text-xs text-gray-500 mt-1">From: {report.user.name} ({report.user.phone}) — {report.user.role}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-1">{new Date(report.createdAt).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    {report.adminNotes && (
+                      <div className="mb-3 p-2 bg-blue-50 rounded-lg">
+                        <p className="text-xs text-blue-800"><strong>Note:</strong> {report.adminNotes}</p>
+                      </div>
+                    )}
+                    {report.status !== "RESOLVED" && report.status !== "REJECTED" && (
+                      <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-gray-100">
+                        {report.status === "OPEN" && (
+                          <button
+                            onClick={() => handleUpdateReport(report.id, "IN_PROGRESS")}
+                            disabled={updatingReport === report.id}
+                            className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium hover:bg-yellow-200 disabled:opacity-50"
+                          >
+                            Mark In Progress
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleUpdateReport(report.id, "RESOLVED")}
+                          disabled={updatingReport === report.id}
+                          className="px-3 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200 disabled:opacity-50"
+                        >
+                          Resolve
+                        </button>
+                        <button
+                          onClick={() => handleUpdateReport(report.id, "REJECTED")}
+                          disabled={updatingReport === report.id}
+                          className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200 disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SUBSCRIPTIONS */}
+        {tab === "subscriptions" && (
+          <div>
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {["ALL", "trial", "active", "expired", "suspended"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSubFilter(s)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    subFilter === s ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {s.toUpperCase()} ({s === "ALL" ? subscriptions.length : subscriptions.filter((x) => x.computedStatus === s).length})
+                </button>
+              ))}
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Shop</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Owner</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Plan</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Status</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Days Left</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(subFilter === "ALL" ? subscriptions : subscriptions.filter((x) => x.computedStatus === subFilter)).map((shop) => (
+                    <tr key={shop.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{shop.name}</td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">{shop.user?.name}<br />{shop.user?.phone}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          shop.plan === "PRO" ? "bg-purple-100 text-purple-700" :
+                          shop.plan === "BASIC" ? "bg-blue-100 text-blue-700" :
+                          "bg-gray-100 text-gray-600"
+                        }`}>{shop.plan}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          shop.computedStatus === "active" ? "bg-green-100 text-green-700" :
+                          shop.computedStatus === "trial" ? "bg-yellow-100 text-yellow-700" :
+                          shop.computedStatus === "expired" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-600"
+                        }`}>{shop.computedStatus}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">{shop.daysLeft !== null ? `${shop.daysLeft}d` : "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => handleExtendTrial(shop.id, 14)}
+                          disabled={updatingSub === shop.id}
+                          className="px-2 py-1 bg-brand-100 text-brand-700 rounded text-xs font-medium hover:bg-brand-200 disabled:opacity-50"
+                        >
+                          +14d trial
+                        </button>
                       </td>
                     </tr>
                   ))}
