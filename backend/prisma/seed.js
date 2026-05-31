@@ -17,9 +17,9 @@ async function main() {
   // ADMIN
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   await prisma.user.upsert({
-    where: { phone: "+255700000000" },
+    where: { phone: "+255743910580" },
     update: {},
-    create: { phone: "+255700000000", pin: pin1234, name: "Admin DukaOS", role: "ADMIN", language: "sw" },
+    create: { phone: "+255743910580", pin: pin1234, name: "Admin DukaOS", role: "ADMIN", language: "sw" },
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -624,7 +624,7 @@ async function main() {
   console.log("+------------------------------------------------------------------+");
   console.log("|                   TEST LOGIN CREDENTIALS                        |");
   console.log("+------------------------------------------------------------------+");
-  console.log("| ADMIN      +255700000000  PIN: 1234                              |");
+  console.log("| ADMIN      +255743910580  PIN: 1234                              |");
   console.log("|                                                                  |");
   console.log("| MERCHANT   +255700000002  PIN: 1234   *** FEATURED MERCHANT ***  |");
   console.log("|  Duka la Amina (grocery, Temeke/Mbagala)                        |");
