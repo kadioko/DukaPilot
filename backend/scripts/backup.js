@@ -2,27 +2,39 @@
 /**
  * DukaOS — PostgreSQL backup script
  *
+ * Creates a gzipped pg_dump and (optionally) uploads it to S3-compatible
+ * object storage (Cloudflare R2 / AWS S3) so a copy survives even a full
+ * Railway volume wipe.
+ *
  * Usage:
  *   node scripts/backup.js
  *
- * Required env vars (can be provided in .env or directly):
- *   DATABASE_URL — PostgreSQL connection URL
- *   BACKUP_DIR   — Directory to write backups to (default: ./backups)
- *   BACKUP_RETAIN_DAYS — Days to keep backups (default: 7)
+ * Required env vars:
+ *   DATABASE_URL — PostgreSQL connection URL (or DATABASE_MIGRATE_URL public proxy)
  *
- * Recommended: run daily via cron or Railway's cron job:
- *   0 2 * * * node /app/scripts/backup.js >> /var/log/dukaos-backup.log 2>&1
+ * Local backup (always runs):
+ *   BACKUP_DIR          — Directory to write backups to (default: ./backups)
+ *   BACKUP_RETAIN_DAYS  — Days to keep backups (default: 7)
  *
- * On Railway, add a separate "cron" service that runs this script using
- * the same DATABASE_URL environment variable from your project.
+ * Off-site backup (runs only if BACKUP_S3_BUCKET is set):
+ *   BACKUP_S3_BUCKET            — bucket name
+ *   BACKUP_S3_ENDPOINT          — S3 endpoint. For R2:
+ *                                 https://<account_id>.r2.cloudflarestorage.com
+ *   BACKUP_S3_REGION            — region (default "auto", correct for R2)
+ *   BACKUP_S3_ACCESS_KEY_ID     — access key id
+ *   BACKUP_S3_SECRET_ACCESS_KEY — secret access key
+ *   BACKUP_S3_PREFIX            — key prefix (default "dukaos-backups/")
+ *
+ * On Railway: this runs as a daily cron (see railway.toml). The container
+ * must have pg_dump available (the Dockerfile installs postgresql-client).
  */
 
 require("dotenv").config();
-const { execSync, spawnSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.DATABASE_URL || process.env.DATABASE_MIGRATE_URL;
 if (!DATABASE_URL) {
   console.error("[backup] ERROR: DATABASE_URL is not set");
   process.exit(1);
@@ -57,9 +69,9 @@ if (result.status !== 0) {
 
 const stat = fs.statSync(filepath);
 const sizeMB = (stat.size / (1024 * 1024)).toFixed(2);
-console.log(`[backup] Backup complete: ${filename} (${sizeMB} MB)`);
+console.log(`[backup] Local backup complete: ${filename} (${sizeMB} MB)`);
 
-// Delete backups older than RETAIN_DAYS
+// Delete local backups older than RETAIN_DAYS
 const cutoff = Date.now() - RETAIN_DAYS * 24 * 60 * 60 * 1000;
 let deleted = 0;
 for (const file of fs.readdirSync(BACKUP_DIR)) {
@@ -69,8 +81,73 @@ for (const file of fs.readdirSync(BACKUP_DIR)) {
   if (fileStat.mtimeMs < cutoff) {
     fs.unlinkSync(fullPath);
     deleted++;
-    console.log(`[backup] Deleted old backup: ${file}`);
+    console.log(`[backup] Deleted old local backup: ${file}`);
   }
 }
-console.log(`[backup] Cleanup complete: ${deleted} old backup(s) removed`);
-console.log(`[backup] Done.`);
+console.log(`[backup] Local cleanup complete: ${deleted} old backup(s) removed`);
+
+// ── Off-site upload to S3 / Cloudflare R2 ──────────────────────────────────
+async function uploadToS3() {
+  const bucket = process.env.BACKUP_S3_BUCKET;
+  if (!bucket) {
+    console.log("[backup] BACKUP_S3_BUCKET not set — skipping off-site upload.");
+    return;
+  }
+
+  const {
+    S3Client,
+    PutObjectCommand,
+    ListObjectsV2Command,
+    DeleteObjectsCommand,
+  } = require("@aws-sdk/client-s3");
+
+  const prefix = process.env.BACKUP_S3_PREFIX || "dukaos-backups/";
+  const client = new S3Client({
+    region: process.env.BACKUP_S3_REGION || "auto",
+    endpoint: process.env.BACKUP_S3_ENDPOINT || undefined,
+    credentials: {
+      accessKeyId: process.env.BACKUP_S3_ACCESS_KEY_ID,
+      secretAccessKey: process.env.BACKUP_S3_SECRET_ACCESS_KEY,
+    },
+  });
+
+  const key = `${prefix}${filename}`;
+  console.log(`[backup] Uploading to s3://${bucket}/${key} ...`);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: fs.createReadStream(filepath),
+      ContentType: "application/gzip",
+    })
+  );
+  console.log("[backup] Off-site upload complete.");
+
+  // Retention on the bucket: delete objects older than RETAIN_DAYS
+  const listed = await client.send(
+    new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix })
+  );
+  const stale = (listed.Contents || []).filter(
+    (o) => o.LastModified && o.LastModified.getTime() < cutoff
+  );
+  if (stale.length > 0) {
+    await client.send(
+      new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: { Objects: stale.map((o) => ({ Key: o.Key })) },
+      })
+    );
+    console.log(`[backup] Off-site cleanup: removed ${stale.length} old object(s).`);
+  }
+}
+
+uploadToS3()
+  .then(() => {
+    console.log("[backup] Done.");
+  })
+  .catch((err) => {
+    // Off-site upload failure should not silently pass — exit non-zero so the
+    // cron is marked failed and you get alerted, but the local dump still exists.
+    console.error("[backup] Off-site upload FAILED:", err.message);
+    process.exit(1);
+  });
