@@ -25,11 +25,24 @@ const statusConfig = {
   REJECTED: { icon: XCircle, color: "bg-red-100 text-red-700", label: "Rejected", labelSw: "Imekataliwa" },
 };
 
+type ReportStatus = keyof typeof statusConfig;
+
+interface Report {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  status: ReportStatus;
+  adminNotes?: string | null;
+  createdAt: string;
+}
+
 export default function ReportsPage() {
   const [tab, setTab] = useState<"new" | "my">("new");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
-  const [myReports, setMyReports] = useState([]);
+  const [myReports, setMyReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Form state
@@ -65,7 +78,7 @@ export default function ReportsPage() {
   async function loadMyReports() {
     setLoading(true);
     try {
-      const data = await api.get("/reports/my");
+      const data = await api.get<{ reports: Report[] }>("/reports/my");
       setMyReports(data.reports);
     } catch (err) {
       console.error("Failed to load reports:", err);
@@ -208,7 +221,7 @@ export default function ReportsPage() {
                 <p>No reports submitted yet</p>
               </div>
             ) : (
-              myReports.map((report: any) => {
+              myReports.map((report: Report) => {
                 const StatusIcon = statusConfig[report.status].icon;
                 return (
                   <div key={report.id} className="bg-white rounded-xl border border-gray-200 p-4">
