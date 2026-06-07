@@ -22,7 +22,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 
 ## Live Production
 
-- **Frontend:** [https://duka-os.vercel.app/](https://duka-os.vercel.app/)
+- **Frontend:** [https://dukapilot.vercel.app/](https://dukapilot.vercel.app/)
 - **Backend API:** [https://dukapilotproduction.up.railway.app/api](https://dukapilotproduction.up.railway.app/api)
 - **Health:** [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health)
 - **Status:** [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status)
@@ -38,6 +38,9 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Inventory tracking** | Add products, set buying/selling/wholesale prices, track stock levels |
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
+| **Debt tracking** | Credit sales automatically create receivables; merchants can add, track, and mark debts paid |
+| **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
+| **Staff roles** | Add staff members and manage role permissions for selling, stock, staff, and reports |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
 | **Supplier ordering** | Create orders from suppliers in one tap |
@@ -47,9 +50,11 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
+| **DukaPilot AI Assistant** | Live recommendations from sales, stock, debts, expenses, and pending orders |
 | **PIN recovery** | "Forgot PIN?" sends a 6-digit OTP via SMS (Africa's Talking) |
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
 | **CSV export** | Download sales history or full inventory as a CSV file |
+| **Legal pages** | Public About, Terms, and Privacy pages with English/Swahili switching |
 
 ### For Suppliers (Wasambazaji)
 
@@ -170,6 +175,10 @@ DukaPilot/
 │   │   │   ├── dashboard/page.tsx     # Business overview + charts
 │   │   │   ├── inventory/page.tsx     # Product list, stock adjustment
 │   │   │   ├── sales/page.tsx         # POS + history
+│   │   │   ├── debts/page.tsx         # Customer credit / receivables
+│   │   │   ├── expenses/page.tsx      # Business expense tracking
+│   │   │   ├── staff/page.tsx         # Staff roles + permissions
+│   │   │   ├── assistant/page.tsx     # DukaPilot AI Assistant insights
 │   │   │   ├── orders/
 │   │   │   │   ├── page.tsx           # Supplier orders + WhatsApp
 │   │   │   │   └── customers/page.tsx # Inbound customer orders
@@ -177,7 +186,10 @@ DukaPilot/
 │   │   │   ├── supplier/page.tsx      # Supplier portal
 │   │   │   ├── settings/page.tsx      # Shop + account settings
 │   │   │   ├── admin/page.tsx         # Admin dashboard
-│   │   │   └── catalog/               # Public shop catalog (B2B2C)
+│   │   │   ├── catalog/               # Public shop catalog (B2B2C)
+│   │   │   ├── about/page.tsx
+│   │   │   ├── terms/page.tsx
+│   │   │   └── privacy/page.tsx
 │   │   ├── components/
 │   │   │   └── layout/AppShell.tsx    # Sidebar + mobile nav
 │   │   ├── instrumentation.ts         # Sentry server-side init (Next.js 16)
@@ -213,6 +225,9 @@ User ──────── Shop ──────────── Product 
 - `Supplier` — can optionally have a User account (supplier portal)
 - `Product` — SKU, buying/selling/wholesale price, stock level, minimum threshold, expiry date
 - `Sale` + `SaleItem` — each sale records profit per line item; supports POS and ONLINE channels
+- `Debt` — customer credit balances with open, partial, paid, and cancelled statuses
+- `Expense` — merchant cost tracking by category and date
+- `StaffMember` — staff roster with role and permission flags
 - `StockMovement` — full audit trail of every stock change (IN / OUT / ADJUSTMENT)
 - `Order` + `OrderItem` — merchant-to-supplier purchase orders with status lifecycle
 - `CustomerOrder` + `CustomerOrderItem` — customer-to-merchant orders from public catalog
@@ -229,7 +244,7 @@ User ──────── Shop ──────────── Product 
 ### Quick Start with Docker
 
 ```bash
-git clone https://github.com/your-org/DukaPilot.git
+git clone https://github.com/kadioko/DukaPilot.git
 cd DukaPilot
 
 # Copy and fill in env files
@@ -291,7 +306,7 @@ npm run dev         # runs on :3000
 | `DATABASE_MIGRATE_URL` | Yes | Public TCP proxy URL for `prisma migrate deploy` at startup |
 | `JWT_SECRET` | Yes | Generate: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `NODE_ENV` | Yes | Set to `production` |
-| `FRONTEND_URL` | Yes | Vercel frontend URL for CORS |
+| `FRONTEND_URL` | Yes | Vercel frontend URL for CORS (`https://dukapilot.vercel.app`) |
 | `AT_API_KEY` | Recommended | Africa's Talking key for SMS OTP |
 | `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
 | `AT_SENDER_ID` | Optional | Custom SMS sender ID |
@@ -306,7 +321,7 @@ npm run dev         # runs on :3000
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Yes | Backend API URL — no trailing slash or newline |
+| `NEXT_PUBLIC_API_URL` | Yes | `https://dukapilotproduction.up.railway.app/api` — no trailing slash or newline |
 | `NEXT_PUBLIC_SENTRY_DSN` | Optional | Sentry DSN for client-side error tracking |
 | `SENTRY_DSN` | Optional | Sentry DSN for server-side (SSR) error tracking |
 
@@ -322,7 +337,7 @@ npm run dev         # runs on :3000
 1. Push changes to `main`.
 2. Confirm Railway has `DATABASE_URL`, `DATABASE_MIGRATE_URL`, `JWT_SECRET`, and `FRONTEND_URL` set.
 3. Deploy backend from the `backend/` root using the Dockerfile (`node scripts/migrate-and-start.js` is the container entrypoint via `railway.toml`).
-4. Deploy frontend on Vercel with `NEXT_PUBLIC_API_URL` pointing to the Railway API URL.
+4. Deploy frontend on Vercel with `NEXT_PUBLIC_API_URL=https://dukapilotproduction.up.railway.app/api`.
 5. Verify Railway healthcheck path is `/health`.
 6. Run `cd backend && npm run smoke:prod` and `cd frontend && npm run smoke` against the live URLs.
 7. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
@@ -336,7 +351,7 @@ All PINs: `1234`
 
 | Role | Phone | Name / Shop | Key scenarios |
 | --- | --- | --- | --- |
-| Admin | +255700000000 | Admin DukaPilot | Overview stats, user list, PIN reset, audit log |
+| Admin | +255743910580 | Admin DukaPilot | Overview stats, user list, PIN reset, audit log |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED** — 12 products (all stock/expiry states), 10 sales (all payment methods + wholesale + online), 5 supplier order statuses, 6 customer order statuses, stock movements IN/OUT/ADJUSTMENT |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders from Jumla Traders visible in supplier portal |
 | Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, Buguruni (Ilala) — wholesale sales + Rafiki Beverages orders |

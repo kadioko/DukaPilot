@@ -4,7 +4,7 @@
 
 | | URL |
 | --- | --- |
-| Frontend | [https://duka-os.vercel.app/](https://duka-os.vercel.app/) |
+| Frontend | [https://dukapilot.vercel.app/](https://dukapilot.vercel.app/) |
 | Backend API | [https://dukapilotproduction.up.railway.app/api](https://dukapilotproduction.up.railway.app/api) |
 | Health | [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health) |
 | Status | [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status) |
@@ -17,7 +17,7 @@ All PINs: `1234`
 
 | Role | Phone | Name / Shop | Key purpose |
 | --- | --- | --- | --- |
-| Admin | +255700000000 | Admin DukaPilot | System admin, audit log, PIN reset |
+| Admin | +255743910580 | Admin DukaPilot | System admin, audit log, PIN reset |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED — every scenario (see below)** |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders in Jumla supplier portal |
 | Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, wholesale sales, bar category |
@@ -143,7 +143,7 @@ The supplier portal allows Jumla to:
 14. Confirm the supplier portal loads — confirm 7 orders from 2 merchants are visible.
 15. Confirm PENDING → CONFIRMED status update works.
 16. Log out.
-17. Log in with `+255700000000` / `1234` (Admin).
+17. Log in with `+255743910580` / `1234` (Admin).
 18. Navigate to `/admin` — confirm overview stats, users list, audit log all load.
 19. Log out.
 
@@ -242,6 +242,15 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 5. Change language — confirm the UI updates immediately.
 6. Change PIN — enter current PIN, set a new PIN, verify login with new PIN.
 
+### Debts, expenses, staff, and assistant
+
+1. Log in as Mama Amina (`+255700000002` / `1234`).
+2. Open `/debts` — confirm existing credit-sale debt totals load. Add a small manual debt, then mark it paid.
+3. Open `/expenses` — add a test expense with category `OTHER`; confirm the total updates.
+4. Open `/staff` — add a cashier, toggle at least one permission, and confirm the active/inactive button works.
+5. Open `/assistant` — confirm recommendations mention low stock, debt, expenses, or pending orders when those records exist.
+6. Switch language between Kiswahili and English and confirm all four pages update their labels.
+
 ### PIN recovery (OTP)
 
 1. On the login screen, click "Forgot PIN?"
@@ -274,7 +283,7 @@ Visit `https://dukapilotproduction.up.railway.app/status`. Expected:
 
 ### Admin dashboard
 
-1. Log in with `+255700000000` / `1234`.
+1. Log in with `+255743910580` / `1234`.
 2. Navigate to `/admin`.
 3. Overview tab — confirm user/sale/order counts are non-zero.
 4. Users tab — confirm 8 users (1 admin + 4 merchants + 3 suppliers) appear.
@@ -341,6 +350,7 @@ Covers:
 - Customer Orders page opens after login
 - Settings page opens after login
 - Sales page opens after login
+- Debts, Expenses, Staff, and Assistant pages open after login
 - Logout returns to the login page
 
 ### Integration tests
@@ -401,6 +411,7 @@ Manual post-deploy checks:
 - Supplier portal (`+255700000001`) shows orders from multiple merchants
 - Language toggle persists after hard refresh
 - Settings page saves correctly
+- Debt, expense, staff, and assistant pages load for merchants
 
 ---
 
@@ -414,7 +425,7 @@ Manual post-deploy checks:
 | `DATABASE_MIGRATE_URL` | Yes | Public TCP proxy URL for `prisma migrate deploy` at startup |
 | `JWT_SECRET` | Yes | Long random secret — generate with `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `NODE_ENV` | Yes | Set to `production` |
-| `FRONTEND_URL` | Yes | Vercel frontend URL for CORS |
+| `FRONTEND_URL` | Yes | Vercel frontend URL for CORS (`https://dukapilot.vercel.app`) |
 | `AT_API_KEY` | Recommended | Africa's Talking API key for OTP SMS |
 | `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
 | `AT_SENDER_ID` | Optional | Custom SMS sender ID |
@@ -429,7 +440,7 @@ Manual post-deploy checks:
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Yes | Backend API URL — no trailing slash or newline |
+| `NEXT_PUBLIC_API_URL` | Yes | `https://dukapilotproduction.up.railway.app/api` — no trailing slash or newline |
 | `NEXT_PUBLIC_SENTRY_DSN` | Optional | Sentry DSN for client-side error tracking |
 | `SENTRY_DSN` | Optional | Sentry DSN for server-side (SSR) error tracking |
 

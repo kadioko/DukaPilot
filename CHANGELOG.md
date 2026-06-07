@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] — 2026-06-08 — DukaPilot Rebrand & Operations
+
+### Added
+
+- Rebranded product, package names, logo asset, manifest, and public pages to **DukaPilot**.
+- Added public `/about`, `/terms`, and `/privacy` pages with English/Swahili switching.
+- Added debt tracking with automatic debt creation for credit sales and payment status tracking.
+- Added expense tracking by category.
+- Added staff role management with permission flags for selling, stock, staff, and reports.
+- Added `/assistant` as the DukaPilot AI Assistant positioning and live recommendation surface.
+
+### Fixed
+
+- Updated production API defaults to `https://dukapilotproduction.up.railway.app/api`.
+- Added a frontend fallback that rewrites the old Railway API URL to the new DukaPilot API URL if a stale Vercel env value is present.
+- Allowed `https://dukapilot.vercel.app` in backend CORS.
+- Bumped the service-worker cache to `dukapilot-v2` and stopped precaching `/` so stale login code does not persist after deploys.
+- Updated express-rate-limit key generation to use the IPv6-safe helper.
+
+---
+
 ## [1.1.0] — 2026-05-28 — Stability & Infrastructure Hardening
 
 ### Fixed

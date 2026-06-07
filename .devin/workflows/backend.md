@@ -120,7 +120,7 @@ Seed uses `DATABASE_MIGRATE_URL` (falls back to `DATABASE_URL`) so it works both
 
 | Role | Phone |
 | --- | --- |
-| Admin | +255700000000 |
+| Admin | +255743910580 |
 | Supplier | +255700000001 |
 | Merchant (Duka la Amina) | +255700000002 |
 | Test Merchant (Salum Pharmacy) | +255700000003 |
