@@ -248,8 +248,17 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 2. Open `/debts` — confirm existing credit-sale debt totals load. Add a small manual debt, then mark it paid.
 3. Open `/expenses` — add a test expense with category `OTHER`; confirm the total updates.
 4. Open `/staff` — add a cashier, toggle at least one permission, and confirm the active/inactive button works.
-5. Open `/assistant` — confirm recommendations mention low stock, debt, expenses, or pending orders when those records exist.
-6. Switch language between Kiswahili and English and confirm all four pages update their labels.
+5. Add a staff phone and PIN, then log out and confirm the staff member can log in with that phone/PIN.
+6. Confirm cashier permissions allow `/sales` but block stock/report/staff routes when those permissions are off.
+7. Open `/assistant` — confirm recommendations rank named stock, debt, expense, top-product, or pending-order actions when those records exist.
+8. Switch language between Kiswahili and English and confirm all four pages update their labels.
+
+### Onboarding and public trust pages
+
+1. Register a new merchant and confirm the app routes to `/onboarding`.
+2. Confirm onboarding links open Settings, Inventory, Sales, Catalog, and Pricing.
+3. Open `/contact`, `/help`, and `/demo`; confirm English/Swahili switching works and WhatsApp uses `+255743910580`.
+4. Open `/catalog`, search for a product that does not exist, and confirm the polished empty state explains catalog sharing and shows demo shop links when shops exist.
 
 ### PIN recovery (OTP)
 
@@ -412,6 +421,9 @@ Manual post-deploy checks:
 - Language toggle persists after hard refresh
 - Settings page saves correctly
 - Debt, expense, staff, and assistant pages load for merchants
+- Staff permission enforcement blocks restricted staff sessions from stock, reports, staff management, and settings profile changes
+- `/contact`, `/help`, `/demo`, and `/onboarding` render without console errors
+- `/catalog` empty/search state shows merchant education, demo shops, and WhatsApp/register CTAs
 
 ---
 
@@ -429,6 +441,17 @@ Manual post-deploy checks:
 | `AT_API_KEY` | Recommended | Africa's Talking API key for OTP SMS |
 | `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
 | `AT_SENDER_ID` | Optional | Custom SMS sender ID |
+
+### Production monitor
+
+Run:
+
+```bash
+cd backend
+npm run monitor:prod
+```
+
+This checks backend health, frontend shell, public catalog/API loading, CORS preflight for the Vercel origin, login, authenticated dashboard access, controlled 401 handling, and stale old Railway API URL leakage.
 | `SENTRY_DSN` | Optional | Sentry project DSN for error tracking |
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
 | `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |

@@ -1,13 +1,8 @@
 const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-}
-
-async function getShopId(userId) {
-  const shop = await prisma.shop.findUnique({ where: { userId } });
-  if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
-  return shop.id;
 }
 
 function startOf(period) {
@@ -20,7 +15,7 @@ function startOf(period) {
 }
 
 const overview = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const { period = "today" } = req.query;
   const from = startOf(period);
   const salesWhere = from ? { shopId, createdAt: { gte: from } } : { shopId };

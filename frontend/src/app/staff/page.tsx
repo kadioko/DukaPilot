@@ -15,6 +15,7 @@ interface StaffMember {
   canManageStaff: boolean;
   canViewReports: boolean;
   isActive: boolean;
+  pin?: string | null;
 }
 
 const roles = ["MANAGER", "CASHIER", "STOCK_CLERK", "OWNER"];
@@ -22,7 +23,7 @@ const roles = ["MANAGER", "CASHIER", "STOCK_CLERK", "OWNER"];
 export default function StaffPage() {
   const lang = useLang();
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER" });
+  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "" });
 
   async function load() {
     const data = await api.get<{ staff: StaffMember[] }>("/staff", lang);
@@ -36,7 +37,7 @@ export default function StaffPage() {
   async function addStaff(event: React.FormEvent) {
     event.preventDefault();
     await api.post("/staff", form, lang);
-    setForm({ name: "", phone: "", role: "CASHIER" });
+    setForm({ name: "", phone: "", role: "CASHIER", pin: "" });
     await load();
   }
 
@@ -58,13 +59,16 @@ export default function StaffPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "Majukumu ya Wafanyakazi" : "Staff Roles"}</h1>
           <p className="mt-1 text-sm text-gray-600">
-            {lang === "sw" ? "Panga majukumu na ruhusa za watu wanaosaidia duka." : "Assign roles and permissions for the people helping run the shop."}
+            {lang === "sw"
+              ? "Panga majukumu, ruhusa na PIN za kuingia kwa watu wanaosaidia duka."
+              : "Assign roles, permissions, and login PINs for the people helping run the shop."}
           </p>
         </div>
 
-        <form onSubmit={addStaff} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-4">
+        <form onSubmit={addStaff} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-5">
           <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required placeholder={lang === "sw" ? "Jina" : "Name"} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder={lang === "sw" ? "Simu" : "Phone"} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="numeric" maxLength={8} placeholder={lang === "sw" ? "PIN ya kuingia" : "Login PIN"} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} />
           <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select>

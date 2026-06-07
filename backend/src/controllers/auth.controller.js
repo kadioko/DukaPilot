@@ -67,7 +67,9 @@ function clearCookie(res, name) {
     options.httpOnly ? "HttpOnly" : "",
     options.secure ? "Secure" : "",
   ].filter(Boolean).join("; ");
-  res.setHeader("Set-Cookie", cookie);
+  const existing = res.getHeader("Set-Cookie");
+  const cookies = Array.isArray(existing) ? existing : existing ? [existing] : [];
+  res.setHeader("Set-Cookie", [...cookies, cookie]);
 }
 
 function setAuthCookies(res, accessToken, refreshToken) {
@@ -93,17 +95,34 @@ function clearAuthCookie(res) {
   clearAuthCookies(res);
 }
 
-function issueAccessToken(user) {
+function staffPermissions(staff) {
+  if (!staff) return null;
+  return {
+    canSell: Boolean(staff.canSell),
+    canManageStock: Boolean(staff.canManageStock),
+    canManageStaff: Boolean(staff.canManageStaff),
+    canViewReports: Boolean(staff.canViewReports),
+  };
+}
+
+function issueAccessToken(user, staff = null) {
   return jwt.sign(
-    { userId: user.id, phone: user.phone, role: user.role },
+    {
+      userId: user.id,
+      phone: staff?.phone || user.phone,
+      role: user.role,
+      staffId: staff?.id,
+      staffRole: staff?.role,
+      permissions: staffPermissions(staff),
+    },
     process.env.JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
 }
 
-function issueRefreshToken(user) {
+function issueRefreshToken(user, staff = null) {
   return jwt.sign(
-    { userId: user.id, type: "refresh" },
+    { userId: user.id, staffId: staff?.id, type: "refresh" },
     process.env.JWT_SECRET,
     { expiresIn: REFRESH_TOKEN_EXPIRY }
   );
@@ -203,25 +222,33 @@ const login = asyncHandler(async (req, res) => {
   }
 
   const user = await prisma.user.findUnique({ where: { phone } });
-  if (!user) {
-    return res.status(401).json({ error: "Invalid phone or PIN" });
+  let staff = null;
+  let accountUser = user;
+
+  if (user) {
+    const match = await bcrypt.compare(pin, user.pin);
+    if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
+  } else {
+    staff = await prisma.staffMember.findFirst({
+      where: { phone, isActive: true, pin: { not: null } },
+      include: { shop: { include: { user: true } } },
+    });
+    if (!staff || !staff.pin) return res.status(401).json({ error: "Invalid phone or PIN" });
+    const match = await bcrypt.compare(pin, staff.pin);
+    if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
+    accountUser = staff.shop.user;
   }
 
-  const match = await bcrypt.compare(pin, user.pin);
-  if (!match) {
-    return res.status(401).json({ error: "Invalid phone or PIN" });
-  }
-
-  const accessToken = issueAccessToken(user);
-  const refreshToken = issueRefreshToken(user);
-  const profile = await getProfile(user.id);
+  const accessToken = issueAccessToken(accountUser, staff);
+  const refreshToken = issueRefreshToken(accountUser, staff);
+  const profile = staff ? await getStaffProfile(staff.id) : await getProfile(accountUser.id);
   setAuthCookies(res, accessToken, refreshToken);
-  req.audit = { action: "auth.login", resourceType: "user", resourceId: user.id, metadata: { role: user.role } };
+  req.audit = { action: "auth.login", resourceType: staff ? "staff" : "user", resourceId: staff?.id || accountUser.id, metadata: { role: accountUser.role, staffRole: staff?.role } };
   res.json({ token: accessToken, user: profile });
 });
 
 const me = asyncHandler(async (req, res) => {
-  const profile = await getProfile(req.user.userId);
+  const profile = req.user.staffId ? await getStaffProfile(req.user.staffId) : await getProfile(req.user.userId);
   if (!profile) return res.status(404).json({ error: "User not found" });
   res.json({ user: profile });
 });
@@ -274,7 +301,13 @@ const refresh = asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: payload.userId } });
   if (!user) return res.status(401).json({ error: "User not found" });
 
-  const newAccessToken = issueAccessToken(user);
+  let staff = null;
+  if (payload.staffId) {
+    staff = await prisma.staffMember.findFirst({ where: { id: payload.staffId, isActive: true } });
+    if (!staff) return res.status(401).json({ error: "Staff access expired" });
+  }
+
+  const newAccessToken = issueAccessToken(user, staff);
   setCookie(res, "dukapilot_token", newAccessToken, 60 * 60 * 1000);
   clearCookie(res, "dukaos_token");
   res.json({ token: newAccessToken });
@@ -351,6 +384,46 @@ async function getProfile(userId) {
       createdAt: true,
     },
   });
+}
+
+async function getStaffProfile(staffId) {
+  const staff = await prisma.staffMember.findUnique({
+    where: { id: staffId },
+    include: {
+      shop: {
+        select: {
+          id: true,
+          name: true,
+          location: true,
+          district: true,
+          category: true,
+          user: { select: { id: true, phone: true, name: true, role: true, language: true, createdAt: true } },
+        },
+      },
+    },
+  });
+  if (!staff || !staff.isActive) return null;
+  return {
+    id: staff.shop.user.id,
+    phone: staff.phone || staff.shop.user.phone,
+    name: staff.name,
+    role: staff.shop.user.role,
+    language: staff.shop.user.language,
+    shop: {
+      id: staff.shop.id,
+      name: staff.shop.name,
+      location: staff.shop.location,
+      district: staff.shop.district,
+      category: staff.shop.category,
+    },
+    staff: {
+      id: staff.id,
+      name: staff.name,
+      role: staff.role,
+      permissions: staffPermissions(staff),
+    },
+    createdAt: staff.shop.user.createdAt,
+  };
 }
 
 module.exports = { register, login, me, updateLanguage, logout, refresh, requestOtp, verifyOtpAndResetPin, issueToken, setAuthCookie, clearAuthCookie };

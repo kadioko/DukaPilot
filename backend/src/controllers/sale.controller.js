@@ -1,20 +1,15 @@
 const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-}
-
-async function getShopId(userId) {
-  const shop = await prisma.shop.findUnique({ where: { userId } });
-  if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
-  return shop.id;
 }
 
 const VALID_PAYMENT_METHODS = ['CASH', 'MPESA', 'TIGOPESA', 'AIRTEL_MONEY', 'HALOPESA', 'BANK', 'CREDIT'];
 const VALID_CHANNELS = ['POS', 'ONLINE'];
 
 const list = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const { from, to, limit = 50, offset = 0, paymentMethod, channel } = req.query;
 
   const where = { shopId };
@@ -51,7 +46,7 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const create = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const { items, paymentMethod = "CASH", paymentRef, customerName, customerPhone, note, saleMode, channel } = req.body;
   const normalizedPaymentMethod = String(paymentMethod || "CASH").toUpperCase();
   const pricingTier = String(saleMode || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
@@ -165,7 +160,7 @@ const create = asyncHandler(async (req, res) => {
 });
 
 const get = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const sale = await prisma.sale.findFirst({
     where: { id: req.params.id, shopId },
     include: {
@@ -179,7 +174,7 @@ const get = asyncHandler(async (req, res) => {
 });
 
 const summary = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const { period = "today" } = req.query;
 
   let from;

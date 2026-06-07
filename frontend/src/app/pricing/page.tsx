@@ -15,6 +15,7 @@ interface Plan {
   color: string;
   badge?: LocalizedText;
   features: LocalizedText[];
+  bestFor: LocalizedText;
   cta: LocalizedText;
   highlight: boolean;
 }
@@ -33,6 +34,7 @@ const plans: Plan[] = [
       { sw: "Maagizo ya wasambazaji", en: "Supplier orders" },
       { sw: "Kiswahili na English", en: "Swahili and English" },
     ],
+    bestFor: { sw: "Duka linalotaka kujaribu mfumo kabla ya kulipia.", en: "A shop that wants to try the system before paying." },
     cta: { sw: "Anza Bure", en: "Start Free" },
     highlight: false,
   },
@@ -50,6 +52,7 @@ const plans: Plan[] = [
       { sw: "Usafirishaji wa data (CSV/PDF)", en: "Data export (CSV/PDF)" },
       { sw: "Msaada wa WhatsApp", en: "WhatsApp support" },
     ],
+    bestFor: { sw: "Duka moja lenye bidhaa, mauzo, madeni na matumizi ya kila siku.", en: "One shop tracking products, sales, debts, and daily expenses." },
     cta: { sw: "Chagua Msingi", en: "Choose Basic" },
     highlight: true,
   },
@@ -67,6 +70,7 @@ const plans: Plan[] = [
       { sw: "Akaunti nyingi za wafanyakazi", en: "Multiple staff accounts" },
       { sw: "Msaada wa kipaumbele 24/7", en: "Priority 24/7 support" },
     ],
+    bestFor: { sw: "Biashara inayokua yenye wafanyakazi wengi, SMS na matawi.", en: "A growing business with more staff, SMS, and branches." },
     cta: { sw: "Chagua Pro", en: "Choose Pro" },
     highlight: false,
   },
@@ -132,6 +136,9 @@ const copy = {
   ctaTitle: { sw: "Anza Leo - Bure kwa Siku 14", en: "Start Today - Free for 14 Days" },
   ctaSubtitle: { sw: "Fungua akaunti bila kadi ya benki.", en: "Create an account with no bank card needed." },
   register: { sw: "Jisajili Bure", en: "Register Free" },
+  contactSales: { sw: "Ongea WhatsApp", en: "Talk on WhatsApp" },
+  bestFor: { sw: "Inafaa kwa", en: "Best for" },
+  includes: { sw: "Inajumuisha", en: "Includes" },
 };
 
 function getPricingInitialLang(): Lang | null {
@@ -191,6 +198,9 @@ export default function PricingPage() {
           <Link href="/" className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5">
             {copy.home[lang]}
           </Link>
+          <Link href="/contact" className="hidden sm:inline text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5">
+            {lang === "sw" ? "Mawasiliano" : "Contact"}
+          </Link>
           <Link href="/" className="text-sm bg-brand-600 text-white px-4 py-1.5 rounded-lg hover:bg-brand-700">
             {copy.signIn[lang]}
           </Link>
@@ -226,7 +236,9 @@ export default function PricingPage() {
 
               <div className="mb-4">
                 <h2 className="text-lg font-bold text-gray-900">{plan.name[lang]}</h2>
-                <p className="text-xs text-gray-500">{plan.id}</p>
+                <p className="mt-1 text-xs leading-5 text-gray-500">
+                  <span className="font-semibold text-gray-700">{copy.bestFor[lang]}:</span> {plan.bestFor[lang]}
+                </p>
               </div>
 
               <div className="mb-6">
@@ -245,6 +257,7 @@ export default function PricingPage() {
                 )}
               </div>
 
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-gray-400">{copy.includes[lang]}</p>
               <ul className="space-y-2.5 mb-6">
                 {plan.features.map((feature) => (
                   <li key={feature.en} className="flex items-start gap-2 text-sm text-gray-700">
@@ -264,6 +277,13 @@ export default function PricingPage() {
               >
                 {plan.cta[lang]}
               </Link>
+              <a
+                href={`https://wa.me/255743910580?text=${encodeURIComponent(`Nataka kujua kuhusu mpango wa ${plan.name.sw} wa DukaPilot`)}`}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-green-300 hover:text-green-700"
+              >
+                <Phone className="h-4 w-4" />
+                {copy.contactSales[lang]}
+              </a>
             </div>
           ))}
         </div>
@@ -338,6 +358,9 @@ export default function PricingPage() {
         </div>
         <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm text-gray-500">
           <Link href="/about" className="hover:text-brand-700">{lang === "sw" ? "Kuhusu" : "About"}</Link>
+          <Link href="/contact" className="hover:text-brand-700">{lang === "sw" ? "Mawasiliano" : "Contact"}</Link>
+          <Link href="/help" className="hover:text-brand-700">{lang === "sw" ? "Msaada" : "Help"}</Link>
+          <Link href="/demo" className="hover:text-brand-700">Demo</Link>
           <Link href="/terms" className="hover:text-brand-700">{lang === "sw" ? "Masharti" : "Terms"}</Link>
           <Link href="/privacy" className="hover:text-brand-700">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
         </div>

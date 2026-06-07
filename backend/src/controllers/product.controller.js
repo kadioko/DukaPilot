@@ -1,17 +1,12 @@
 const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-async function getShopId(userId) {
-  const shop = await prisma.shop.findUnique({ where: { userId } });
-  if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
-  return shop.id;
-}
-
 const list = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const { lowStock, search, page = 1, limit = 50 } = req.query;
   const pageNumber = Number(page);
   const limitNumber = Number(limit);
@@ -47,7 +42,7 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const get = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const product = await prisma.product.findFirst({
     where: { id: req.params.id, shopId },
     include: {
@@ -60,7 +55,7 @@ const get = asyncHandler(async (req, res) => {
 });
 
 const create = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire } = req.body;
 
   if (!name || buyingPrice == null || sellingPrice == null) {
@@ -102,7 +97,7 @@ const create = asyncHandler(async (req, res) => {
 });
 
 const update = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const existing = await prisma.product.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Product not found" });
 
@@ -132,7 +127,7 @@ const update = asyncHandler(async (req, res) => {
 });
 
 const remove = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const existing = await prisma.product.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Product not found" });
 
@@ -142,7 +137,7 @@ const remove = asyncHandler(async (req, res) => {
 });
 
 const getLowStock = asyncHandler(async (req, res) => {
-  const shopId = await getShopId(req.user.userId);
+  const shopId = await getShopIdForUser(req.user);
   const products = await prisma.product.findMany({
     where: { shopId, isActive: true },
     include: { supplier: { select: { id: true, name: true, phone: true } } },

@@ -1,13 +1,8 @@
 const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-}
-
-async function getShopId(userId) {
-  const shop = await prisma.shop.findUnique({ where: { userId } });
-  if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
-  return shop.id;
 }
 
 function csvValue(value) {
@@ -28,7 +23,7 @@ function sendCsv(res, filename, rows) {
 const exportSalesCsv = asyncHandler(async (req, res) => {
   const where = {};
   if (req.user.role !== "ADMIN") {
-    where.shopId = await getShopId(req.user.userId);
+    where.shopId = await getShopIdForUser(req.user);
   }
 
   const sales = await prisma.sale.findMany({
@@ -65,7 +60,7 @@ const exportSalesCsv = asyncHandler(async (req, res) => {
 const exportInventoryCsv = asyncHandler(async (req, res) => {
   const where = { isActive: true };
   if (req.user.role !== "ADMIN") {
-    where.shopId = await getShopId(req.user.userId);
+    where.shopId = await getShopIdForUser(req.user);
   }
 
   const products = await prisma.product.findMany({

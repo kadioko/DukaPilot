@@ -124,13 +124,34 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
             }
           : { phone: normalizedPhone, pin: normalizedPin };
 
-      const data = await api.post<{ token: string; user: { role: string } }>(endpoint, body, lang);
+      const data = await api.post<{
+        token: string;
+        user: {
+          role: string;
+          staff?: {
+            permissions?: {
+              canSell?: boolean;
+              canManageStock?: boolean;
+              canManageStaff?: boolean;
+              canViewReports?: boolean;
+            };
+          };
+        };
+      }>(endpoint, body, lang);
       setToken(data.token);
 
       if (data.user.role === "SUPPLIER") {
         router.push("/supplier");
       } else if (data.user.role === "ADMIN") {
         router.push("/admin");
+      } else if (view === "register" && data.user.role === "MERCHANT") {
+        router.push("/onboarding");
+      } else if (data.user.staff) {
+        const permissions = data.user.staff.permissions || {};
+        if (permissions.canViewReports) router.push("/dashboard");
+        else if (permissions.canSell) router.push("/sales");
+        else if (permissions.canManageStock) router.push("/inventory");
+        else router.push("/reports");
       } else {
         router.push("/dashboard");
       }
@@ -539,6 +560,10 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </p>
         <div className="mt-3 flex flex-wrap justify-center gap-3 text-xs text-brand-200">
           <Link href="/about" className="hover:text-white">{lang === "sw" ? "Kuhusu" : "About"}</Link>
+          <Link href="/pricing" className="hover:text-white">{lang === "sw" ? "Bei" : "Pricing"}</Link>
+          <Link href="/contact" className="hover:text-white">{lang === "sw" ? "Mawasiliano" : "Contact"}</Link>
+          <Link href="/help" className="hover:text-white">{lang === "sw" ? "Msaada" : "Help"}</Link>
+          <Link href="/demo" className="hover:text-white">{lang === "sw" ? "Demo" : "Demo"}</Link>
           <Link href="/terms" className="hover:text-white">{lang === "sw" ? "Masharti" : "Terms"}</Link>
           <Link href="/privacy" className="hover:text-white">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
         </div>

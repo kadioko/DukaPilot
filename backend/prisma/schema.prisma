@@ -234,6 +234,7 @@ model StaffMember {
   id           String    @id @default(cuid())
   name         String
   phone        String?
+  pin          String?
   role         StaffRole @default(CASHIER)
   canSell      Boolean   @default(true)
   canManageStock Boolean @default(false)

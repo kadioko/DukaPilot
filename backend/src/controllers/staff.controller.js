@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const bcrypt = require("bcryptjs");
 const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
@@ -6,6 +7,19 @@ function asyncHandler(fn) {
 }
 
 const ROLES = new Set(["OWNER", "MANAGER", "CASHIER", "STOCK_CLERK"]);
+const SAFE_STAFF_SELECT = {
+  id: true,
+  name: true,
+  phone: true,
+  role: true,
+  canSell: true,
+  canManageStock: true,
+  canManageStaff: true,
+  canViewReports: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+};
 
 function permissionsFor(role) {
   if (role === "OWNER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true };
@@ -18,9 +32,21 @@ function boolValue(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function normalizePhone(value) {
+  return String(value || "").replace(/[\s()-]/g, "").trim();
+}
+
+function validatePin(pin) {
+  return /^\d{4,8}$/.test(String(pin || "").trim());
+}
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const staff = await prisma.staffMember.findMany({ where: { shopId }, orderBy: [{ isActive: "desc" }, { name: "asc" }] });
+  const staff = await prisma.staffMember.findMany({
+    where: { shopId },
+    select: SAFE_STAFF_SELECT,
+    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+  });
   res.json({ staff });
 });
 
@@ -28,14 +54,18 @@ const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const name = String(req.body.name || "").trim();
   const role = String(req.body.role || "CASHIER").toUpperCase();
+  const phone = normalizePhone(req.body.phone);
+  const pin = String(req.body.pin || "").trim();
   if (!name) return res.status(400).json({ error: "Staff name is required" });
   if (!ROLES.has(role)) return res.status(400).json({ error: "Invalid staff role" });
+  if (pin && (!phone || !validatePin(pin))) return res.status(400).json({ error: "Staff login requires a phone and 4 to 8 digit PIN" });
 
   const defaults = permissionsFor(role);
   const staff = await prisma.staffMember.create({
     data: {
       name,
-      phone: String(req.body.phone || "").trim() || null,
+      phone: phone || null,
+      pin: pin ? await bcrypt.hash(pin, 10) : null,
       role,
       canSell: boolValue(req.body.canSell, defaults.canSell),
       canManageStock: boolValue(req.body.canManageStock, defaults.canManageStock),
@@ -43,6 +73,7 @@ const create = asyncHandler(async (req, res) => {
       canViewReports: boolValue(req.body.canViewReports, defaults.canViewReports),
       shopId,
     },
+    select: SAFE_STAFF_SELECT,
   });
 
   req.audit = { action: "staff.create", resourceType: "staff", resourceId: staff.id };
@@ -55,13 +86,19 @@ const update = asyncHandler(async (req, res) => {
   if (!existing) return res.status(404).json({ error: "Staff member not found" });
 
   const role = String(req.body.role || existing.role).toUpperCase();
+  const pin = req.body.pin === undefined ? undefined : String(req.body.pin || "").trim();
   if (!ROLES.has(role)) return res.status(400).json({ error: "Invalid staff role" });
+  const nextPhone = req.body.phone === undefined ? existing.phone : normalizePhone(req.body.phone);
+  if (pin !== undefined && pin && (!nextPhone || !validatePin(pin))) {
+    return res.status(400).json({ error: "Staff login requires a phone and 4 to 8 digit PIN" });
+  }
 
   const staff = await prisma.staffMember.update({
     where: { id: existing.id },
     data: {
       name: req.body.name === undefined ? existing.name : String(req.body.name || "").trim(),
-      phone: req.body.phone === undefined ? existing.phone : String(req.body.phone || "").trim() || null,
+      phone: req.body.phone === undefined ? existing.phone : nextPhone || null,
+      ...(pin !== undefined ? { pin: pin ? await bcrypt.hash(pin, 10) : null } : {}),
       role,
       canSell: boolValue(req.body.canSell, existing.canSell),
       canManageStock: boolValue(req.body.canManageStock, existing.canManageStock),
@@ -69,6 +106,7 @@ const update = asyncHandler(async (req, res) => {
       canViewReports: boolValue(req.body.canViewReports, existing.canViewReports),
       isActive: boolValue(req.body.isActive, existing.isActive),
     },
+    select: SAFE_STAFF_SELECT,
   });
 
   req.audit = { action: "staff.update", resourceType: "staff", resourceId: staff.id };

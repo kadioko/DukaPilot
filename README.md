@@ -55,6 +55,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
 | **CSV export** | Download sales history or full inventory as a CSV file |
 | **Legal pages** | Public About, Terms, and Privacy pages with English/Swahili switching |
+| **Onboarding + trust pages** | Contact, Help/FAQ, Demo accounts, and a guided five-step merchant onboarding checklist |
 
 ### For Suppliers (Wasambazaji)
 
@@ -138,7 +139,8 @@ DukaPilot/
 │   ├── scripts/
 │   │   ├── migrate-and-start.js   # Railway startup: migrate then start
 │   │   ├── backup.js              # pg_dump + gzip backup
-│   │   └── smoke-test.js          # Production smoke checks
+│   │   ├── smoke-test.js          # Production smoke checks
+│   │   └── production-monitor.js  # Health/CORS/catalog/login monitor
 │   ├── src/
 │   │   ├── app.js                 # Express entrypoint
 │   │   ├── lib/
@@ -179,6 +181,7 @@ DukaPilot/
 │   │   │   ├── expenses/page.tsx      # Business expense tracking
 │   │   │   ├── staff/page.tsx         # Staff roles + permissions
 │   │   │   ├── assistant/page.tsx     # DukaPilot AI Assistant insights
+│   │   │   ├── onboarding/page.tsx    # Merchant setup checklist
 │   │   │   ├── orders/
 │   │   │   │   ├── page.tsx           # Supplier orders + WhatsApp
 │   │   │   │   └── customers/page.tsx # Inbound customer orders
@@ -188,6 +191,9 @@ DukaPilot/
 │   │   │   ├── admin/page.tsx         # Admin dashboard
 │   │   │   ├── catalog/               # Public shop catalog (B2B2C)
 │   │   │   ├── about/page.tsx
+│   │   │   ├── contact/page.tsx
+│   │   │   ├── help/page.tsx
+│   │   │   ├── demo/page.tsx
 │   │   │   ├── terms/page.tsx
 │   │   │   └── privacy/page.tsx
 │   │   ├── components/
@@ -227,7 +233,7 @@ User ──────── Shop ──────────── Product 
 - `Sale` + `SaleItem` — each sale records profit per line item; supports POS and ONLINE channels
 - `Debt` — customer credit balances with open, partial, paid, and cancelled statuses
 - `Expense` — merchant cost tracking by category and date
-- `StaffMember` — staff roster with role and permission flags
+- `StaffMember` — staff roster with optional PIN login and role permission flags
 - `StockMovement` — full audit trail of every stock change (IN / OUT / ADJUSTMENT)
 - `Order` + `OrderItem` — merchant-to-supplier purchase orders with status lifecycle
 - `CustomerOrder` + `CustomerOrderItem` — customer-to-merchant orders from public catalog
@@ -340,8 +346,15 @@ npm run dev         # runs on :3000
 4. Deploy frontend on Vercel with `NEXT_PUBLIC_API_URL=https://dukapilotproduction.up.railway.app/api`.
 5. Verify Railway healthcheck path is `/health`.
 6. Run `cd backend && npm run smoke:prod` and `cd frontend && npm run smoke` against the live URLs.
-7. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
-8. Review `TESTING.md` for the full manual and automated test checklist.
+7. Run `cd backend && npm run monitor:prod` for health, CORS, catalog, login, dashboard, and stale API URL checks.
+8. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
+9. Review `TESTING.md` for the full manual and automated test checklist.
+
+### Launch Notes
+
+- Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, staff, and reports access for staff sessions.
+- Offline support is currently limited to the cached app shell and `/offline.html` fallback. Offline sale creation with later sync is not enabled yet, so do not market DukaPilot as fully offline-first until that workflow is built and verified.
+- The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 
 ---
 

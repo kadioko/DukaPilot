@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, ArrowLeft, Store, Package } from "lucide-react";
+import { Search, ArrowLeft, Store, Package, Share2, MessageCircle, ExternalLink } from "lucide-react";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
@@ -59,6 +59,9 @@ export default function CatalogPage() {
     }
     return Object.values(map);
   }, [products]);
+
+  const demoLinks = shops.slice(0, 3);
+  const hasNoMarketplace = !loading && shops.length === 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -131,9 +134,66 @@ export default function CatalogPage() {
         {loading ? (
           <div className="text-center py-16 text-gray-400 text-sm">{t("common.loading", lang)}</div>
         ) : products.length === 0 ? (
-          <div className="text-center py-16">
-            <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">{t("catalog.noProducts", lang)}</p>
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 sm:p-10">
+            <div className="mx-auto max-w-2xl text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+                {hasNoMarketplace ? <Store className="h-7 w-7" /> : <Package className="h-7 w-7" />}
+              </div>
+              <h1 className="text-xl font-bold text-gray-950">
+                {hasNoMarketplace
+                  ? lang === "sw" ? "Hakuna maduka ya umma bado" : "No public shops yet"
+                  : t("catalog.noProducts", lang)}
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-gray-600">
+                {hasNoMarketplace
+                  ? lang === "sw"
+                    ? "DukaPilot huonyesha bidhaa hapa pale mfanyabiashara anapoongeza bidhaa na kushare link ya catalog yake."
+                    : "DukaPilot shows products here once a merchant adds inventory and shares their catalog link."
+                  : lang === "sw"
+                    ? "Jaribu kuondoa utafutaji au uchague duka jingine. Bidhaa zinaweza kuwa zimeisha au hazijawekwa hadharani."
+                    : "Try clearing the search or choosing another shop. Products may be out of stock or not public yet."}
+              </p>
+
+              <div className="mt-6 grid gap-3 text-left sm:grid-cols-3">
+                {[
+                  [Share2, lang === "sw" ? "Mfanyabiashara anaingia" : "Merchant signs in", lang === "sw" ? "Anaongeza bidhaa na bei zake." : "They add products and prices."],
+                  [ExternalLink, lang === "sw" ? "Anashare link" : "They share a link", lang === "sw" ? "Kila duka lina ukurasa wake wa catalog." : "Every shop gets its own catalog page."],
+                  [MessageCircle, lang === "sw" ? "Mteja anaagiza" : "Customer orders", lang === "sw" ? "Agizo linaingia kwenye dashboard." : "The order lands in the dashboard."],
+                ].map(([Icon, title, body]) => (
+                  <div key={String(title)} className="rounded-xl bg-gray-50 p-4">
+                    <Icon className="mb-3 h-5 w-5 text-brand-700" />
+                    <p className="text-sm font-semibold text-gray-950">{title as string}</p>
+                    <p className="mt-1 text-xs leading-5 text-gray-600">{body as string}</p>
+                  </div>
+                ))}
+              </div>
+
+              {demoLinks.length > 0 && (
+                <div className="mt-6 rounded-xl bg-brand-50 p-4 text-left">
+                  <p className="text-sm font-semibold text-gray-950">{lang === "sw" ? "Jaribu maduka haya" : "Try these demo shops"}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {demoLinks.map((shop) => (
+                      <Link
+                        key={shop.id}
+                        href={`/catalog/${shop.id}`}
+                        className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-brand-700 shadow-sm hover:text-brand-900"
+                      >
+                        {shop.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                <Link href="/?view=register" className="rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
+                  {lang === "sw" ? "Fungua duka lako" : "Create your shop"}
+                </Link>
+                <a href="https://wa.me/255743910580" className="rounded-xl border border-gray-300 px-5 py-3 text-sm font-bold text-gray-700 hover:border-green-400 hover:text-green-700">
+                  WhatsApp: +255 743 910 580
+                </a>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
@@ -142,7 +202,7 @@ export default function CatalogPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <Store className="w-4 h-4 text-brand-600" />
                   <h2 className="font-semibold text-gray-900 text-sm">{shop.name}</h2>
-                  <span className="text-xs text-gray-400">• {shop.location}</span>
+                  <span className="text-xs text-gray-400">- {shop.location}</span>
                   <Link href={`/catalog/${shop.id}`} className="ml-auto text-xs font-semibold text-brand-700 hover:underline whitespace-nowrap">
                     {t("catalog.viewShop", lang)}
                   </Link>

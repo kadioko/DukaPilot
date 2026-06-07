@@ -1,9 +1,10 @@
 const router = require("express").Router();
 const { list, create, update, remove } = require("../controllers/expense.controller");
-const { authenticate, requireRole } = require("../middleware/auth");
+const { authenticate, requireRole, requirePermission } = require("../middleware/auth");
 
 router.use(authenticate);
 router.use(requireRole("MERCHANT", "ADMIN"));
+router.use(requirePermission("canViewReports"));
 
 router.get("/", list);
 router.post("/", create);

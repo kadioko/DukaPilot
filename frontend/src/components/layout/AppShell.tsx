@@ -29,6 +29,15 @@ interface User {
   language?: Lang;
   shop?: { name: string };
   supplier?: { name: string };
+  staff?: {
+    role: string;
+    permissions: {
+      canSell: boolean;
+      canManageStock: boolean;
+      canManageStaff: boolean;
+      canViewReports: boolean;
+    };
+  };
 }
 
 interface NavItem {
@@ -36,18 +45,19 @@ interface NavItem {
   labelKey?: string;
   label?: string;
   icon: typeof LayoutDashboard;
+  permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports";
 }
 
 const merchantNav: NavItem[] = [
-  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
-  { href: "/inventory", labelKey: "nav.inventory", icon: Package },
-  { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart },
-  { href: "/debts", labelKey: "nav.debts", icon: HandCoins },
-  { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText },
-  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
-  { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck },
-  { href: "/staff", labelKey: "nav.staff", icon: Users },
-  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports" },
+  { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock" },
+  { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell" },
+  { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell" },
+  { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canViewReports" },
+  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock" },
+  { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock" },
+  { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff" },
+  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports" },
   { href: "/reports", label: "Report Issue", icon: AlertTriangle },
 ];
 
@@ -117,7 +127,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
   }
 
-  const nav = user?.role === "ADMIN" ? adminNav : merchantNav;
+  const nav = user?.role === "ADMIN"
+    ? adminNav
+    : merchantNav.filter((item) => !user?.staff || !item.permission || user.staff.permissions[item.permission]);
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
 
   return (
@@ -222,7 +234,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-brand-300 text-xs">{user?.role === "MERCHANT" ? t("app.merchant", lang) : user?.role === "ADMIN" ? "Admin" : t("app.supplier", lang)}</p>
+              <p className="text-brand-300 text-xs">
+                {user?.staff
+                  ? user.staff.role.replace("_", " ")
+                  : user?.role === "MERCHANT"
+                    ? t("app.merchant", lang)
+                    : user?.role === "ADMIN"
+                      ? "Admin"
+                      : t("app.supplier", lang)}
+              </p>
             </div>
           </div>
           <button

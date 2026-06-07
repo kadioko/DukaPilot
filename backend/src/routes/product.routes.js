@@ -1,10 +1,11 @@
 const router = require("express").Router();
 const ctrl = require("../controllers/product.controller");
-const { authenticate, requireRole } = require("../middleware/auth");
+const { authenticate, requireRole, requirePermission } = require("../middleware/auth");
 const { productCreateValidation, productListValidation, productUpdateValidation } = require("../middleware/validation");
 
 router.use(authenticate);
 router.use(requireRole("MERCHANT", "ADMIN"));
+router.use(requirePermission("canManageStock"));
 
 router.get("/", productListValidation, ctrl.list);
 router.get("/low-stock", ctrl.getLowStock);

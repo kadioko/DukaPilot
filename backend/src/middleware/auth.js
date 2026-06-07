@@ -43,4 +43,17 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { authenticate, requireRole, readCookieToken };
+function requirePermission(permission) {
+  return (req, res, next) => {
+    if (req.user.role === "ADMIN") return next();
+    if (!req.user.staffId) return next();
+
+    const permissions = req.user.permissions || {};
+    if (!permissions[permission]) {
+      return res.status(403).json({ error: "You do not have permission for this action" });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, requireRole, requirePermission, readCookieToken };
