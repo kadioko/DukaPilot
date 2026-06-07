@@ -1,4 +1,4 @@
-# DukaOS Load Tests
+# DukaPilot Load Tests
 
 Uses [k6](https://k6.io/) — an open-source load testing tool.
 
@@ -79,7 +79,7 @@ A summary is printed to stdout:
 
 ```
 ╔══════════════════════════════════════════╗
-║         DukaOS Load Test Summary          ║
+║         DukaPilot Load Test Summary          ║
 ╠══════════════════════════════════════════╣
 ║  Login p95:      312ms                   ║
 ║  Dashboard p95:  245ms                   ║

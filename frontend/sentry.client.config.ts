@@ -1,5 +1,5 @@
 /**
- * Sentry client-side configuration — DukaOS Frontend
+ * Sentry client-side configuration — DukaPilot Frontend
  *
  * Required env var:
  *   NEXT_PUBLIC_SENTRY_DSN — your Sentry project DSN (public)

@@ -1,4 +1,4 @@
-# DukaOS Backend — Development Workflow
+# DukaPilot Backend — Development Workflow
 
 ## Stack
 
@@ -132,7 +132,7 @@ Seed uses `DATABASE_MIGRATE_URL` (falls back to `DATABASE_URL`) so it works both
 Copy `.env.example` to `.env`. Minimum required for local dev:
 
 ```env
-DATABASE_URL="postgresql://user:pass@localhost:5432/dukaos"
+DATABASE_URL="postgresql://user:pass@localhost:5432/dukapilot"
 JWT_SECRET="any-long-random-string"
 ```
 
@@ -195,7 +195,7 @@ npm run smoke:prod    # Smoke test against live production API
 
 ```bash
 # Build the backend image
-docker build -t dukaos-backend .
+docker build -t dukapilot-backend .
 
 # Or run everything with docker-compose from the repo root
 docker-compose up --build

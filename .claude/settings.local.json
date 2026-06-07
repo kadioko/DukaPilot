@@ -3,10 +3,10 @@
     "allow": [
       "Bash(PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npm --prefix frontend run test:supplier)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:3000/)",
-      "Bash(cd /c/Users/USER/Documents/Coding/\"Projects 2\"/DukaOS)",
-      "Bash(git -C /c/Users/USER/Documents/Coding/Projects 2/DukaOS status --short)",
-      "Bash(DATABASE_URL=\"postgresql://dukaos:dukaos_secret@localhost:5432/dukaos\" npx prisma migrate dev --name add_sale_channel_pricing_tier_customer_orders --create-only)",
-      "Bash(DATABASE_URL=\"postgresql://placeholder:placeholder@localhost:5432/dukaos\" npx prisma generate)"
+      "Bash(cd /c/Users/USER/Documents/Coding/\"Projects 2\"/DukaPilot)",
+      "Bash(git -C /c/Users/USER/Documents/Coding/Projects 2/DukaPilot status --short)",
+      "Bash(DATABASE_URL=\"postgresql://dukapilot:dukapilot_secret@localhost:5432/dukapilot\" npx prisma migrate dev --name add_sale_channel_pricing_tier_customer_orders --create-only)",
+      "Bash(DATABASE_URL=\"postgresql://placeholder:placeholder@localhost:5432/dukapilot\" npx prisma generate)"
     ]
   }
 }

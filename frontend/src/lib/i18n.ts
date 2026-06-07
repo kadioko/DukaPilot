@@ -1,5 +1,5 @@
 /**
- * DukaOS Translations
+ * DukaPilot Translations
  * sw = Kiswahili (default)
  * en = English
  */
@@ -8,15 +8,20 @@ import { useSyncExternalStore } from "react";
 
 export type Lang = "sw" | "en";
 
-const STORAGE_KEY = "dukaos_language";
+const STORAGE_KEY = "dukapilot_language";
+const LEGACY_STORAGE_KEY = "dukaos_language";
 const listeners = new Set<() => void>();
 
 const translations: Record<string, Record<Lang, string>> = {
   "nav.dashboard": { sw: "Dashibodi", en: "Dashboard" },
   "nav.inventory": { sw: "Hifadhi ya Bidhaa", en: "Inventory" },
   "nav.sales": { sw: "Mauzo", en: "Sales" },
+  "nav.debts": { sw: "Madeni", en: "Debts" },
+  "nav.expenses": { sw: "Matumizi", en: "Expenses" },
   "nav.orders": { sw: "Maagizo", en: "Orders" },
   "nav.suppliers": { sw: "Wasambazaji", en: "Suppliers" },
+  "nav.staff": { sw: "Wafanyakazi", en: "Staff" },
+  "nav.assistant": { sw: "Msaidizi AI", en: "AI Assistant" },
   "nav.settings": { sw: "Mipangilio", en: "Settings" },
   "nav.customerOrders": { sw: "Maagizo ya Wateja", en: "Customer Orders" },
   "app.language": { sw: "Lugha", en: "Language" },
@@ -198,8 +203,8 @@ const translations: Record<string, Record<Lang, string>> = {
   "auth.error.invalidCredentials": { sw: "Nambari ya simu au PIN si sahihi. Jaribu tena.", en: "Invalid phone number or PIN. Please try again." },
   "auth.error.sessionExpired": { sw: "Muda wa sesi yako umeisha. Tafadhali ingia tena.", en: "Your session expired. Please sign in again." },
   "auth.error.rateLimited": { sw: "Umejaribu mara nyingi sana. Tafadhali subiri dakika chache kabla ya kujaribu tena.", en: "Too many attempts. Please wait a few minutes before trying again." },
-  "auth.error.serverOffline": { sw: "Imeshindikana kufikia seva ya DukaOS. Hakikisha API URL ni sahihi na backend ipo hewani.", en: "Unable to reach the DukaOS server. Confirm the API URL is correct and the backend is online." },
-  "auth.error.unexpectedResponse": { sw: "Seva ya DukaOS imerudisha majibu yasiyotegemewa.", en: "The DukaOS server returned an unexpected response format." },
+  "auth.error.serverOffline": { sw: "Imeshindikana kufikia seva ya DukaPilot. Hakikisha API URL ni sahihi na backend ipo hewani.", en: "Unable to reach the DukaPilot server. Confirm the API URL is correct and the backend is online." },
+  "auth.error.unexpectedResponse": { sw: "Seva ya DukaPilot imerudisha majibu yasiyotegemewa.", en: "The DukaPilot server returned an unexpected response format." },
 
   "common.save": { sw: "Hifadhi", en: "Save" },
   "common.cancel": { sw: "Futa", en: "Cancel" },
@@ -281,15 +286,18 @@ export function setLanguage(lang: Lang) {
   currentLang = lang;
   if (typeof window !== "undefined") {
     window.localStorage.setItem(STORAGE_KEY, lang);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   }
   listeners.forEach((listener) => listener());
 }
 
 export function getLanguage(): Lang {
   if (typeof window !== "undefined") {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY);
     if (stored === "sw" || stored === "en") {
       currentLang = stored;
+      window.localStorage.setItem(STORAGE_KEY, stored);
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     }
   }
   return currentLang;

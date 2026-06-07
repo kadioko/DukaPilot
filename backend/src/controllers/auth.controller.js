@@ -52,7 +52,9 @@ function setCookie(res, name, value, maxAge) {
     options.httpOnly ? "HttpOnly" : "",
     options.secure ? "Secure" : "",
   ].filter(Boolean).join("; ");
-  res.setHeader("Set-Cookie", cookie);
+  const existing = res.getHeader("Set-Cookie");
+  const cookies = Array.isArray(existing) ? existing : existing ? [existing] : [];
+  res.setHeader("Set-Cookie", [...cookies, cookie]);
 }
 
 function clearCookie(res, name) {
@@ -69,11 +71,15 @@ function clearCookie(res, name) {
 }
 
 function setAuthCookies(res, accessToken, refreshToken) {
-  setCookie(res, "dukaos_token", accessToken, 60 * 60 * 1000); // 1h
-  setCookie(res, "dukaos_refresh", refreshToken, REFRESH_TOKEN_EXPIRY_MS); // 30d
+  setCookie(res, "dukapilot_token", accessToken, 60 * 60 * 1000); // 1h
+  setCookie(res, "dukapilot_refresh", refreshToken, REFRESH_TOKEN_EXPIRY_MS); // 30d
+  clearCookie(res, "dukaos_token");
+  clearCookie(res, "dukaos_refresh");
 }
 
 function clearAuthCookies(res) {
+  clearCookie(res, "dukapilot_token");
+  clearCookie(res, "dukapilot_refresh");
   clearCookie(res, "dukaos_token");
   clearCookie(res, "dukaos_refresh");
 }
@@ -251,7 +257,7 @@ const refresh = asyncHandler(async (req, res) => {
     })
   );
 
-  const refreshToken = cookies.dukaos_refresh || req.body?.refreshToken;
+  const refreshToken = cookies.dukapilot_refresh || cookies.dukaos_refresh || req.body?.refreshToken;
   if (!refreshToken) return res.status(401).json({ error: "Refresh token required" });
 
   let payload;
@@ -269,7 +275,8 @@ const refresh = asyncHandler(async (req, res) => {
   if (!user) return res.status(401).json({ error: "User not found" });
 
   const newAccessToken = issueAccessToken(user);
-  setCookie(res, "dukaos_token", newAccessToken, 60 * 60 * 1000);
+  setCookie(res, "dukapilot_token", newAccessToken, 60 * 60 * 1000);
+  clearCookie(res, "dukaos_token");
   res.json({ token: newAccessToken });
 });
 

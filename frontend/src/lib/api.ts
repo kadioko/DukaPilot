@@ -1,6 +1,8 @@
 import { t, type Lang } from "@/lib/i18n";
 
 const PROD_API_URL = "https://dukaos-production.up.railway.app/api";
+const TOKEN_KEY = "dukapilot_token";
+const LEGACY_TOKEN_KEY = "dukaos_token";
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\n/g, "").replace(/\/$/, "");
@@ -20,7 +22,7 @@ function getBaseUrl(): string {
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("dukaos_token");
+  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
 }
 
 export function getFriendlyErrorMessage(message: string, lang: Lang): string {
@@ -38,11 +40,11 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
     return t("auth.error.rateLimited", lang);
   }
 
-  if (normalized === "Unable to reach the DukaOS server. Confirm the API URL is correct and the backend is online.") {
+  if (normalized === "Unable to reach the DukaPilot server. Confirm the API URL is correct and the backend is online.") {
     return t("auth.error.serverOffline", lang);
   }
 
-  if (normalized === "The DukaOS server returned an unexpected response format.") {
+  if (normalized === "The DukaPilot server returned an unexpected response format.") {
     return t("auth.error.unexpectedResponse", lang);
   }
 
@@ -97,7 +99,7 @@ async function request<T>(
   try {
     res = await fetch(`${baseUrl}${path}`, { ...options, headers, credentials: "include" });
   } catch {
-    throw new Error("Unable to reach the DukaOS server. Confirm the API URL is correct and the backend is online.");
+    throw new Error("Unable to reach the DukaPilot server. Confirm the API URL is correct and the backend is online.");
   }
 
   // On 401, attempt token refresh once then retry
@@ -131,7 +133,7 @@ async function request<T>(
   }
 
   if (!isJson) {
-    throw new Error("The DukaOS server returned an unexpected response format.");
+    throw new Error("The DukaPilot server returned an unexpected response format.");
   }
 
   return payload as T;
@@ -147,11 +149,13 @@ export const api = {
 };
 
 export function setToken(token: string) {
-  localStorage.setItem("dukaos_token", token);
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 export function clearToken() {
-  localStorage.removeItem("dukaos_token");
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 export function formatTZS(amount: number): string {

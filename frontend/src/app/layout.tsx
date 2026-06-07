@@ -4,7 +4,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 import ServiceWorkerRegistrar from "@/components/ui/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
-  title: "DukaOS - Merchant OS Tanzania",
+  title: "DukaPilot - Merchant OS Tanzania",
   description: "Stock, mauzo, na maagizo kwa maduka madogo Tanzania",
   manifest: "/manifest.json",
 };

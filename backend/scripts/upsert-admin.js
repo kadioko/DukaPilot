@@ -1,6 +1,6 @@
 /**
  * One-shot script: upsert admin user with new phone number.
- * Run via: railway run --service DukaOS node scripts/upsert-admin.js
+ * Run via: railway run --service DukaPilot node scripts/upsert-admin.js
  * Uses DATABASE_MIGRATE_URL (public proxy) if set, else DATABASE_URL.
  */
 const { Pool } = require("pg");
@@ -44,7 +44,7 @@ async function main() {
        ON CONFLICT (phone) DO UPDATE
          SET pin = EXCLUDED.pin, name = EXCLUDED.name, "updatedAt" = $5
        RETURNING id, phone, name, role`,
-      [randomUUID(), newPhone, pin, "Admin DukaOS", now]
+      [randomUUID(), newPhone, pin, "Admin DukaPilot", now]
     );
 
     console.log("Admin upserted:", result.rows[0]);

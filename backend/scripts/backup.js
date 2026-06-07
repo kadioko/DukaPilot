@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * DukaOS — PostgreSQL backup script
+ * DukaPilot — PostgreSQL backup script
  *
  * Creates a gzipped pg_dump and (optionally) uploads it to S3-compatible
  * object storage (Cloudflare R2 / AWS S3) so a copy survives even a full
@@ -23,7 +23,7 @@
  *   BACKUP_S3_REGION            — region (default "auto", correct for R2)
  *   BACKUP_S3_ACCESS_KEY_ID     — access key id
  *   BACKUP_S3_SECRET_ACCESS_KEY — secret access key
- *   BACKUP_S3_PREFIX            — key prefix (default "dukaos-backups/")
+ *   BACKUP_S3_PREFIX            — key prefix (default "dukapilot-backups/")
  *
  * On Railway: this runs as a daily cron (see railway.toml). The container
  * must have pg_dump available (the Dockerfile installs postgresql-client).
@@ -48,7 +48,7 @@ fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 const now = new Date();
 const timestamp = now.toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
-const filename = `dukaos-backup-${timestamp}.sql.gz`;
+const filename = `dukapilot-backup-${timestamp}.sql.gz`;
 const filepath = path.join(BACKUP_DIR, filename);
 
 console.log(`[backup] Starting backup at ${now.toISOString()}`);
@@ -75,7 +75,7 @@ console.log(`[backup] Local backup complete: ${filename} (${sizeMB} MB)`);
 const cutoff = Date.now() - RETAIN_DAYS * 24 * 60 * 60 * 1000;
 let deleted = 0;
 for (const file of fs.readdirSync(BACKUP_DIR)) {
-  if (!file.startsWith("dukaos-backup-") || !file.endsWith(".sql.gz")) continue;
+  if (!file.startsWith("dukapilot-backup-") || !file.endsWith(".sql.gz")) continue;
   const fullPath = path.join(BACKUP_DIR, file);
   const fileStat = fs.statSync(fullPath);
   if (fileStat.mtimeMs < cutoff) {
@@ -101,7 +101,7 @@ async function uploadToS3() {
     DeleteObjectsCommand,
   } = require("@aws-sdk/client-s3");
 
-  const prefix = process.env.BACKUP_S3_PREFIX || "dukaos-backups/";
+  const prefix = process.env.BACKUP_S3_PREFIX || "dukapilot-backups/";
   const client = new S3Client({
     region: process.env.BACKUP_S3_REGION || "auto",
     endpoint: process.env.BACKUP_S3_ENDPOINT || undefined,

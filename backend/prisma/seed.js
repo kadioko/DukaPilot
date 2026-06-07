@@ -19,7 +19,7 @@ async function main() {
   await prisma.user.upsert({
     where: { phone: "+255743910580" },
     update: {},
-    create: { phone: "+255743910580", pin: pin1234, name: "Admin DukaOS", role: "ADMIN", language: "sw" },
+    create: { phone: "+255743910580", pin: pin1234, name: "Admin DukaPilot", role: "ADMIN", language: "sw" },
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

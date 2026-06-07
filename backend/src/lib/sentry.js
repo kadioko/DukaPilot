@@ -1,5 +1,5 @@
 /**
- * Sentry error tracking — DukaOS Backend
+ * Sentry error tracking — DukaPilot Backend
  *
  * Required env var:
  *   SENTRY_DSN — your Sentry project DSN

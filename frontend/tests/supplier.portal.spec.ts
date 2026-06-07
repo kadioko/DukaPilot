@@ -30,7 +30,7 @@ test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }
   ];
 
   await page.addInitScript(() => {
-    window.localStorage.setItem("dukaos_token", "playwright-supplier-token");
+    window.localStorage.setItem("dukapilot_token", "playwright-supplier-token");
   });
 
   await page.route("**/api/suppliers/portal/dashboard", async (route) => {

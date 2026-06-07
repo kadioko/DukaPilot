@@ -13,6 +13,10 @@ import {
   X,
   Bell,
   AlertTriangle,
+  ReceiptText,
+  Users,
+  HandCoins,
+  Sparkles,
 } from "lucide-react";
 import { clearToken, api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -38,8 +42,12 @@ const merchantNav: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart },
+  { href: "/debts", labelKey: "nav.debts", icon: HandCoins },
+  { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck },
+  { href: "/staff", labelKey: "nav.staff", icon: Users },
+  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
   { href: "/reports", label: "Report Issue", icon: AlertTriangle },
 ];
 
@@ -48,7 +56,11 @@ const adminNav: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart },
+  { href: "/debts", labelKey: "nav.debts", icon: HandCoins },
+  { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
+  { href: "/staff", labelKey: "nav.staff", icon: Users },
+  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
   { href: "/reports", label: "Reports", icon: AlertTriangle },
 ];
 
@@ -106,7 +118,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   const nav = user?.role === "ADMIN" ? adminNav : merchantNav;
-  const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaOS";
+  const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -130,7 +142,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <LogoMark className="h-10 w-10 rounded-xl bg-white shadow-sm" />
           <div className="min-w-0">
             <p className="font-bold text-sm leading-tight truncate">{displayName}</p>
-            <p className="text-brand-300 text-xs">DukaOS</p>
+            <p className="text-brand-300 text-xs">DukaPilot</p>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}

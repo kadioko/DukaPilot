@@ -86,7 +86,7 @@ export default function SupplierPortal() {
           <div className="flex items-center gap-3">
             <LogoMark className="h-9 w-9 rounded-xl bg-white shadow-sm" />
             <div>
-              <p className="font-bold">DukaOS - Msambazaji</p>
+              <p className="font-bold">DukaPilot - Msambazaji</p>
               <p className="text-brand-300 text-xs">Portal ya Wasambazaji</p>
             </div>
           </div>

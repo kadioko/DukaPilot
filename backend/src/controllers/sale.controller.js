@@ -52,12 +52,17 @@ const list = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopId(req.user.userId);
-  const { items, paymentMethod = "CASH", paymentRef, customerPhone, note, saleMode, channel } = req.body;
+  const { items, paymentMethod = "CASH", paymentRef, customerName, customerPhone, note, saleMode, channel } = req.body;
+  const normalizedPaymentMethod = String(paymentMethod || "CASH").toUpperCase();
   const pricingTier = String(saleMode || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
   const saleChannel = String(channel || "POS").toUpperCase() === "ONLINE" ? "ONLINE" : "POS";
 
   if (!items || items.length === 0) {
     return res.status(400).json({ error: "Sale must have at least one item" });
+  }
+
+  if (normalizedPaymentMethod === "CREDIT" && !customerPhone) {
+    return res.status(400).json({ error: "Customer phone is required for credit sales" });
   }
 
   // Validate products belong to this shop and have sufficient stock
@@ -108,7 +113,7 @@ const create = asyncHandler(async (req, res) => {
       data: {
         totalAmount,
         profit: totalProfit,
-        paymentMethod: paymentMethod.toUpperCase(),
+        paymentMethod: normalizedPaymentMethod,
         paymentRef,
         channel: saleChannel,
         pricingTier,
@@ -136,6 +141,19 @@ const create = asyncHandler(async (req, res) => {
           quantity: item.quantity,
           note: `Sale #${newSale.id.slice(-6)}`,
           productId: item.productId,
+        },
+      });
+    }
+
+    if (normalizedPaymentMethod === "CREDIT") {
+      await tx.debt.create({
+        data: {
+          customerName: String(customerName || "").trim() || null,
+          customerPhone,
+          amount: totalAmount,
+          note: note || `Credit sale #${newSale.id.slice(-6)}`,
+          saleId: newSale.id,
+          shopId,
         },
       });
     }

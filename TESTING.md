@@ -1,4 +1,4 @@
-# DukaOS Testing Guide
+# DukaPilot Testing Guide
 
 ## Live URLs
 
@@ -17,7 +17,7 @@ All PINs: `1234`
 
 | Role | Phone | Name / Shop | Key purpose |
 | --- | --- | --- | --- |
-| Admin | +255700000000 | Admin DukaOS | System admin, audit log, PIN reset |
+| Admin | +255700000000 | Admin DukaPilot | System admin, audit log, PIN reset |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED — every scenario (see below)** |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders in Jumla supplier portal |
 | Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, wholesale sales, bar category |
@@ -252,9 +252,9 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 
 ### Token refresh
 
-1. Log in and note the `dukaos_token` in localStorage.
+1. Log in and note the `dukapilot_token` in localStorage.
 2. Manually set the token to an expired value.
-3. Make any API request — confirm it succeeds (token refreshed silently via `dukaos_refresh` cookie).
+3. Make any API request — confirm it succeeds (token refreshed silently via `dukapilot_refresh` cookie).
 
 ### Status endpoint
 
@@ -263,7 +263,7 @@ Visit `https://dukaos-production.up.railway.app/status`. Expected:
 ```json
 {
   "status": "ok",
-  "service": "DukaOS API",
+  "service": "DukaPilot API",
   "version": "1.0.0",
   "uptimeSeconds": 3600,
   "db": { "status": "ok", "latencyMs": 12 },
@@ -438,7 +438,7 @@ Manual post-deploy checks:
 ## API Quick Reference
 
 ```text
-GET /health  →  {"status":"ok","service":"DukaOS API"}
+GET /health  →  {"status":"ok","service":"DukaPilot API"}
 GET /status  →  {"status":"ok","db":{"status":"ok","latencyMs":N},...}
 ```
 

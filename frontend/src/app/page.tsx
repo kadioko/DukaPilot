@@ -213,7 +213,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         {/* Logo */}
         <div className="text-center mb-8">
           <LogoMark className="h-16 w-16 rounded-2xl bg-white shadow-lg mb-4" />
-          <h1 className="text-3xl font-bold text-white">DukaOS</h1>
+          <h1 className="text-3xl font-bold text-white">DukaPilot</h1>
           <p className="text-brand-200 mt-1 text-sm">Merchant OS - Tanzania</p>
         </div>
 
@@ -535,8 +535,13 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </Link>
 
         <p className="text-center text-brand-200 text-xs mt-4">
-          DukaOS - Kujenga biashara Tanzania
+          DukaPilot - Kujenga biashara Tanzania
         </p>
+        <div className="mt-3 flex flex-wrap justify-center gap-3 text-xs text-brand-200">
+          <Link href="/about" className="hover:text-white">{lang === "sw" ? "Kuhusu" : "About"}</Link>
+          <Link href="/terms" className="hover:text-white">{lang === "sw" ? "Masharti" : "Terms"}</Link>
+          <Link href="/privacy" className="hover:text-white">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
+        </div>
       </div>
     </div>
   );

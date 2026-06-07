@@ -1,11 +1,11 @@
-# DukaOS — Merchant OS for Tanzania
+# DukaPilot — Merchant OS for Tanzania
 
 > **Merchant operating system for informal retailers in Tanzania.**
 > Track stock, record sales, order from suppliers, and grow your business — all in Kiswahili, from your phone.
 
 ---
 
-## Why DukaOS
+## Why DukaPilot
 
 Tanzania has over **1 million informal operators** in Dar es Salaam alone, with wholesale/retail as the single largest segment. These merchants lose money every day from:
 
@@ -16,7 +16,7 @@ Tanzania has over **1 million informal operators** in Dar es Salaam alone, with 
 
 Mobile money adoption is strong and growing. The infrastructure exists. What is missing is a tool built for how these merchants actually work — in Kiswahili, on a basic smartphone, with no training required.
 
-DukaOS starts as **software + payments + procurement**, then layers working-capital financing later once trust and compliance are established.
+DukaPilot starts as **software + payments + procurement**, then layers working-capital financing later once trust and compliance are established.
 
 ---
 
@@ -29,7 +29,7 @@ DukaOS starts as **software + payments + procurement**, then layers working-capi
 
 ---
 
-## What DukaOS Does
+## What DukaPilot Does
 
 ### For Merchants (Wafanyabiashara)
 
@@ -105,7 +105,7 @@ DukaOS starts as **software + payments + procurement**, then layers working-capi
 
 ## Authentication
 
-- **Login:** phone number + PIN → JWT access token (1h) + `dukaos_refresh` cookie (30d)
+- **Login:** phone number + PIN → JWT access token (1h) + `dukapilot_refresh` cookie (30d)
 - **Refresh:** frontend silently renews the access token via `POST /api/auth/refresh` — no visible logout
 - **PIN recovery:** "Forgot PIN?" on login screen → 6-digit SMS OTP via Africa's Talking → set new PIN
 - **Change PIN:** authenticated users can change PIN from `/settings`
@@ -123,7 +123,7 @@ DukaOS starts as **software + payments + procurement**, then layers working-capi
 ## Project Structure
 
 ```text
-DukaOS/
+DukaPilot/
 ├── backend/
 │   ├── prisma/
 │   │   ├── schema.prisma          # Full data model
@@ -229,8 +229,8 @@ User ──────── Shop ──────────── Product 
 ### Quick Start with Docker
 
 ```bash
-git clone https://github.com/your-org/DukaOS.git
-cd DukaOS
+git clone https://github.com/your-org/DukaPilot.git
+cd DukaPilot
 
 # Copy and fill in env files
 cp backend/.env.example backend/.env
@@ -252,7 +252,7 @@ The app will be available at:
 
 ```bash
 # 1. Database
-createdb dukaos
+createdb dukapilot
 
 # 2. Backend
 cd backend
@@ -336,7 +336,7 @@ All PINs: `1234`
 
 | Role | Phone | Name / Shop | Key scenarios |
 | --- | --- | --- | --- |
-| Admin | +255700000000 | Admin DukaOS | Overview stats, user list, PIN reset, audit log |
+| Admin | +255700000000 | Admin DukaPilot | Overview stats, user list, PIN reset, audit log |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED** — 12 products (all stock/expiry states), 10 sales (all payment methods + wholesale + online), 5 supplier order statuses, 6 customer order statuses, stock movements IN/OUT/ADJUSTMENT |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders from Jumla Traders visible in supplier portal |
 | Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, Buguruni (Ilala) — wholesale sales + Rafiki Beverages orders |

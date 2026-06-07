@@ -47,6 +47,31 @@ enum PricingTier {
   WHOLESALE
 }
 
+enum DebtStatus {
+  OPEN
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum ExpenseCategory {
+  RENT
+  SALARY
+  UTILITIES
+  TRANSPORT
+  STOCK
+  MARKETING
+  TAX
+  OTHER
+}
+
+enum StaffRole {
+  OWNER
+  MANAGER
+  CASHIER
+  STOCK_CLERK
+}
+
 model User {
   id           String    @id @default(cuid())
   phone        String    @unique
@@ -76,6 +101,9 @@ model Shop {
   sales           Sale[]
   orders          Order[]
   customerOrders  CustomerOrder[]
+  debts           Debt[]
+  expenses        Expense[]
+  staffMembers    StaffMember[]
   // Subscription / trial
   plan            String    @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
   trialEndsAt     DateTime?
@@ -156,10 +184,69 @@ model Sale {
   shopId          String
   shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   items           SaleItem[]
+  debt            Debt?
   createdAt       DateTime      @default(now())
 
   @@index([shopId, createdAt])
   @@map("sales")
+}
+
+model Debt {
+  id             String     @id @default(cuid())
+  customerName   String?
+  customerPhone  String
+  amount         Float
+  amountPaid     Float      @default(0)
+  dueDate        DateTime?
+  note           String?
+  status         DebtStatus @default(OPEN)
+  shopId         String
+  shop           Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  saleId         String?    @unique
+  sale           Sale?      @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([shopId, status])
+  @@index([customerPhone])
+  @@map("debts")
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  title       String
+  amount      Float
+  category    ExpenseCategory @default(OTHER)
+  vendor      String?
+  note        String?
+  spentAt     DateTime        @default(now())
+  shopId      String
+  shop        Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([shopId, spentAt])
+  @@index([shopId, category])
+  @@map("expenses")
+}
+
+model StaffMember {
+  id           String    @id @default(cuid())
+  name         String
+  phone        String?
+  role         StaffRole @default(CASHIER)
+  canSell      Boolean   @default(true)
+  canManageStock Boolean @default(false)
+  canManageStaff Boolean @default(false)
+  canViewReports Boolean @default(false)
+  isActive     Boolean   @default(true)
+  shopId       String
+  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([shopId, role])
+  @@map("staff_members")
 }
 
 model SaleItem {

@@ -78,7 +78,7 @@ async function issueOtp(phone) {
   const code = generateCode();
   otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
 
-  const message = `Nambari yako ya DukaOS ni: ${code}. Inatumika kwa dakika 10. / Your DukaOS code: ${code}. Valid 10 mins.`;
+  const message = `Nambari yako ya DukaPilot ni: ${code}. Inatumika kwa dakika 10. / Your DukaPilot code: ${code}. Valid 10 mins.`;
   return sendSms(phone, message);
 }
 

@@ -74,7 +74,7 @@ const plans: Plan[] = [
 
 const competitors = [
   {
-    name: "DukaOS",
+    name: "DukaPilot",
     price: { sw: "TZS 15,000/mwezi", en: "TZS 15,000/month" },
     highlight: true,
   },
@@ -122,7 +122,7 @@ const copy = {
   subtitle: { sw: "Hakuna gharama zilizofichwa. Chagua mpango unaolingana na duka lako.", en: "No hidden fees. Choose the plan that fits your shop." },
   free: { sw: "BURE", en: "FREE" },
   for: { sw: "kwa", en: "for" },
-  comparison: { sw: "DukaOS dhidi ya washindani", en: "DukaOS compared to competitors" },
+  comparison: { sw: "DukaPilot dhidi ya washindani", en: "DukaPilot compared to competitors" },
   app: { sw: "Programu", en: "App" },
   price: { sw: "Bei", en: "Price" },
   swahili: { sw: "Kiswahili", en: "Swahili" },
@@ -169,7 +169,7 @@ export default function PricingPage() {
       <nav className="px-4 py-4 flex flex-wrap items-center justify-between gap-3 max-w-5xl mx-auto">
         <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold text-brand-700">
           <LogoMark className="h-9 w-9 rounded-xl" />
-          DukaOS
+          DukaPilot
         </Link>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
@@ -335,6 +335,11 @@ export default function PricingPage() {
               WhatsApp: +255 743 910 580
             </a>
           </div>
+        </div>
+        <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm text-gray-500">
+          <Link href="/about" className="hover:text-brand-700">{lang === "sw" ? "Kuhusu" : "About"}</Link>
+          <Link href="/terms" className="hover:text-brand-700">{lang === "sw" ? "Masharti" : "Terms"}</Link>
+          <Link href="/privacy" className="hover:text-brand-700">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
         </div>
       </div>
     </div>

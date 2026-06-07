@@ -1,6 +1,6 @@
-# Changelog — DukaOS
+# Changelog — DukaPilot
 
-All notable changes to DukaOS are documented here.
+All notable changes to DukaPilot are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
@@ -59,7 +59,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 #### Security & Authentication
 
 - **OTP PIN recovery** — "Forgot PIN?" on login screen sends a 6-digit SMS code via Africa's Talking; user sets new PIN after verification.
-- **Short-lived JWT (1h) + refresh token (30d)** — access tokens now expire in 1 hour; frontend silently refreshes via the secure `dukaos_refresh` cookie; `/api/auth/refresh` endpoint added.
+- **Short-lived JWT (1h) + refresh token (30d)** — access tokens now expire in 1 hour; frontend silently refreshes via the secure `dukapilot_refresh` cookie; `/api/auth/refresh` endpoint added.
 - **Logout endpoint** — `POST /api/auth/logout` clears both auth cookies.
 - **Change PIN from settings** — authenticated users can change PIN by providing current PIN + new PIN via `PATCH /api/settings/pin`.
 - **Admin PIN reset** — admins can look up any user by phone and reset their PIN via `PATCH /api/admin/users/:id/reset-pin`; all resets are audit-logged.
@@ -84,7 +84,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed — 1.0.0
 
 - JWT access token expiry changed from 30 days to 1 hour (with refresh token for transparent re-auth).
-- `dukaos_token` cookie now holds short-lived access token; new `dukaos_refresh` cookie added for 30-day refresh.
+- `dukapilot_token` cookie now holds short-lived access token; new `dukapilot_refresh` cookie added for 30-day refresh.
 
 ---
 

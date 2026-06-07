@@ -17,13 +17,13 @@ async function run() {
 
   const home = await request("/");
   assert(home.response.ok, `Home page failed: ${home.response.status}`);
-  assert(home.html.includes("DukaOS"), "Home page does not include the DukaOS heading");
+  assert(home.html.includes("DukaPilot"), "Home page does not include the DukaPilot heading");
   assert(home.html.includes("Karibu!") || home.html.includes("Welcome back!"), "Home page does not include the auth welcome copy");
   console.log("✓ Login page shell passed");
 
   const manifest = await request("/manifest.json");
   assert(manifest.response.ok, `Manifest request failed: ${manifest.response.status}`);
-  assert(manifest.html.includes("DukaOS"), "Manifest does not include the DukaOS app name");
+  assert(manifest.html.includes("DukaPilot"), "Manifest does not include the DukaPilot app name");
   console.log("✓ Manifest passed");
 
   console.log("Frontend smoke test completed successfully.");

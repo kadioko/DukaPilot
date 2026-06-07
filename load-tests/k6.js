@@ -1,5 +1,5 @@
 /**
- * DukaOS — k6 Load Test
+ * DukaPilot — k6 Load Test
  *
  * Tests the most critical production endpoints under realistic concurrent load.
  *
@@ -180,7 +180,7 @@ export function handleSummary(data) {
 
   const summary = [
     "╔══════════════════════════════════════════╗",
-    "║         DukaOS Load Test Summary          ║",
+    "║         DukaPilot Load Test Summary          ║",
     "╠══════════════════════════════════════════╣",
     `║  Login p95:      ${String(p95("login_duration") + "ms").padEnd(24)}║`,
     `║  Dashboard p95:  ${String(p95("dashboard_duration") + "ms").padEnd(24)}║`,

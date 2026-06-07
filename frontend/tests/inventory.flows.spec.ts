@@ -20,7 +20,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   ];
 
   await page.addInitScript(() => {
-    window.localStorage.setItem("dukaos_token", "playwright-merchant-token");
+    window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
   });
 
   await page.route("**/api/auth/me", async (route) => {

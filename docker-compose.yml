@@ -5,9 +5,9 @@ services:
     image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_USER: dukaos
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dukaos_secret}
-      POSTGRES_DB: dukaos
+      POSTGRES_USER: dukapilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dukapilot_secret}
+      POSTGRES_DB: dukapilot
     ports:
       - "5432:5432"
     volumes:
@@ -21,7 +21,7 @@ services:
     ports:
       - "4000:4000"
     environment:
-      DATABASE_URL: postgresql://dukaos:${POSTGRES_PASSWORD:-dukaos_secret}@db:5432/dukaos
+      DATABASE_URL: postgresql://dukapilot:${POSTGRES_PASSWORD:-dukapilot_secret}@db:5432/dukapilot
       JWT_SECRET: ${JWT_SECRET:-change_this_secret_in_production}
       PORT: 4000
     volumes:

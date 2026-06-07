@@ -15,7 +15,7 @@ function readCookieToken(req) {
       })
   );
 
-  return cookies.dukaos_token || null;
+  return cookies.dukapilot_token || cookies.dukaos_token || null;
 }
 
 function authenticate(req, res, next) {

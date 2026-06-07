@@ -1,6 +1,6 @@
 {
-  "name": "DukaOS",
-  "short_name": "DukaOS",
+  "name": "DukaPilot",
+  "short_name": "DukaPilot",
   "description": "Merchant OS for Tanzania",
   "start_url": "/",
   "display": "standalone",
@@ -8,7 +8,7 @@
   "theme_color": "#16a34a",
   "icons": [
     {
-      "src": "/logo/dukaos-logo.svg",
+      "src": "/logo/dukapilot-logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

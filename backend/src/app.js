@@ -19,6 +19,9 @@ const settingsRoutes = require("./routes/settings.routes");
 const customerOrderRoutes = require("./routes/customerOrder.routes");
 const reportRoutes = require("./routes/report.routes");
 const subscriptionRoutes = require("./routes/subscription.routes");
+const debtRoutes = require("./routes/debt.routes");
+const expenseRoutes = require("./routes/expense.routes");
+const staffRoutes = require("./routes/staff.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
@@ -73,7 +76,7 @@ app.use(morgan("dev"));
 app.use(setAuditContext);
 app.use(auditTrail);
 
-app.get("/health", (req, res) => res.json({ status: "ok", service: "DukaOS API" }));
+app.get("/health", (req, res) => res.json({ status: "ok", service: "DukaPilot API" }));
 
 const SERVICE_START = Date.now();
 app.get("/status", async (req, res) => {
@@ -88,7 +91,7 @@ app.get("/status", async (req, res) => {
   }
   res.json({
     status: dbStatus === "ok" ? "ok" : "degraded",
-    service: "DukaOS API",
+    service: "DukaPilot API",
     version: process.env.npm_package_version || "1.0.0",
     uptimeSeconds: Math.floor((Date.now() - SERVICE_START) / 1000),
     db: { status: dbStatus, latencyMs: dbLatencyMs },
@@ -112,6 +115,9 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/customer-orders", customerOrderRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/subscription", subscriptionRoutes);
+app.use("/api/debts", debtRoutes);
+app.use("/api/expenses", expenseRoutes);
+app.use("/api/staff", staffRoutes);
 
 if (Sentry.setupExpressErrorHandler) Sentry.setupExpressErrorHandler(app);
 
@@ -128,7 +134,7 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  console.log(`🛒 DukaOS API running on port ${PORT}`);
+  console.log(`🛒 DukaPilot API running on port ${PORT}`);
 });
 
 module.exports = app;
