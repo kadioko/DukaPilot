@@ -1,11 +1,10 @@
 // DukaPilot Service Worker — offline support
 // Strategy: cache-first for static assets, network-first for API calls
 
-const CACHE_NAME = "dukapilot-v1";
+const CACHE_NAME = "dukapilot-v2";
 
 // Static assets to pre-cache on install
 const PRECACHE_URLS = [
-  "/",
   "/manifest.json",
   "/offline.html",
 ];
