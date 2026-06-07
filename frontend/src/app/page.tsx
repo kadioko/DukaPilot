@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, getFriendlyErrorMessage, setToken } from "@/lib/api";
 import { ShoppingBag, Phone, Lock, Eye, EyeOff, ArrowRight, Store, MapPin, ChevronDown } from "lucide-react";
@@ -31,10 +31,11 @@ const SHOP_CATEGORIES = [
 
 type View = "login" | "register" | "forgot";
 
-export default function LoginPage() {
+export function LoginPageContent({ initialView = "login" }: { initialView?: View }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const lang = useLang();
-  const [view, setView] = useState<View>("login");
+  const [view, setView] = useState<View>(initialView);
 
   // Login / Register fields
   const [phone, setPhone] = useState("");
@@ -55,6 +56,17 @@ export default function LoginPage() {
   const [forgotNewPin, setForgotNewPin] = useState("");
   const [forgotStep, setForgotStep] = useState<"phone" | "code">("phone");
   const [forgotMsg, setForgotMsg] = useState("");
+
+  useEffect(() => {
+    if (initialView !== "login") {
+      return;
+    }
+
+    const requestedView = searchParams.get("view");
+    if (requestedView === "register" || requestedView === "forgot") {
+      setView(requestedView);
+    }
+  }, [initialView, searchParams]);
 
   function resetForms() {
     setError("");
@@ -278,7 +290,7 @@ export default function LoginPage() {
                       inputMode="numeric"
                       value={forgotNewPin}
                       onChange={(e) => setForgotNewPin(e.target.value)}
-                      placeholder="••••"
+                      placeholder="PIN"
                       maxLength={8}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                       required
@@ -458,7 +470,7 @@ export default function LoginPage() {
                       type={showPin ? "text" : "password"}
                       value={pin}
                       onChange={(e) => setPin(e.target.value)}
-                      placeholder="••••"
+                      placeholder="PIN"
                       maxLength={8}
                       inputMode="numeric"
                       autoComplete={view === "register" ? "new-password" : "current-password"}
@@ -520,13 +532,21 @@ export default function LoginPage() {
           href="/pricing"
           className="mt-2 w-full inline-flex items-center justify-center gap-2 text-brand-200 hover:text-white text-sm py-2 transition-colors"
         >
-          {lang === "sw" ? "Ona bei zetu →" : "View pricing →"}
+          {lang === "sw" ? "Ona bei zetu ->" : "View pricing ->"}
         </Link>
 
         <p className="text-center text-brand-200 text-xs mt-4">
-          DukaOS — Kujenga biashara Tanzania
+          DukaOS - Kujenga biashara Tanzania
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

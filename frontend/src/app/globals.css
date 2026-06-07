@@ -1,8 +1,8 @@
-@import "tailwindcss";
-
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
-/* Tailwind 4 CSS-based theme — replaces tailwind.config.ts theme.extend */
+@import "tailwindcss";
+
+/* Tailwind 4 CSS-based theme - replaces tailwind.config.ts theme.extend */
 @theme {
   --color-brand-50: #f0fdf4;
   --color-brand-100: #dcfce7;

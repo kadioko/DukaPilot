@@ -112,7 +112,7 @@ export default function PricingPage() {
             Nyumbani
           </Link>
           <Link
-            href="/login"
+            href="/"
             className="text-sm bg-brand-600 text-white px-4 py-1.5 rounded-lg hover:bg-brand-700"
           >
             Ingia
@@ -125,13 +125,13 @@ export default function PricingPage() {
         <div className="text-center py-12">
           <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-4">
             <Zap className="w-3 h-3" />
-            Jaribio la siku 14 BURE — hakuna kadi ya benki
+            Jaribio la siku 14 BURE - hakuna kadi ya benki
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Bei Rahisi kwa Biashara ya Tanzania
           </h1>
           <p className="text-gray-500 text-sm">
-            Affordable pricing for Tanzanian businesses — no hidden fees
+            Affordable pricing for Tanzanian businesses - no hidden fees
           </p>
         </div>
 
@@ -285,8 +285,8 @@ export default function PricingPage() {
 
         {/* CTA */}
         <div className="bg-brand-600 rounded-2xl p-8 text-center text-white">
-          <h2 className="text-xl font-bold mb-2">Anza Leo — Bure kwa Siku 14</h2>
-          <p className="text-brand-200 text-sm mb-6">Start today — free for 14 days, no credit card needed</p>
+          <h2 className="text-xl font-bold mb-2">Anza Leo - Bure kwa Siku 14</h2>
+          <p className="text-brand-200 text-sm mb-6">Start today - free for 14 days, no credit card needed</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/register"
@@ -295,11 +295,11 @@ export default function PricingPage() {
               Jisajili Bure / Register Free
             </Link>
             <a
-              href="https://wa.me/255700000000"
+              href="https://wa.me/255743910580"
               className="bg-green-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
             >
               <Phone className="w-4 h-4" />
-              WhatsApp: +255 700 000 000
+              WhatsApp: +255 743 910 580
             </a>
           </div>
         </div>
