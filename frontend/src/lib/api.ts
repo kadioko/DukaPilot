@@ -4,6 +4,7 @@ const LEGACY_PROD_API_URL = "https://dukaos-production.up.railway.app/api";
 const PROD_API_URL = "https://dukapilotproduction.up.railway.app/api";
 const TOKEN_KEY = "dukapilot_token";
 const LEGACY_TOKEN_KEY = "dukaos_token";
+const REQUEST_TIMEOUT_MS = 20000;
 
 function normalizeBaseUrl(url: string): string {
   const normalized = url.trim().replace(/\n/g, "").replace(/\/$/, "");
@@ -98,10 +99,14 @@ async function request<T>(
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   let res: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    res = await fetch(`${baseUrl}${path}`, { ...options, headers, credentials: "include" });
+    res = await fetch(`${baseUrl}${path}`, { ...options, headers, credentials: "include", signal: controller.signal });
   } catch {
     throw new Error("Unable to reach the DukaPilot server. Confirm the API URL is correct and the backend is online.");
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   // On 401, attempt token refresh once then retry

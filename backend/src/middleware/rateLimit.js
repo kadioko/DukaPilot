@@ -1,16 +1,15 @@
 const rateLimit = require("express-rate-limit");
+const { ipKeyGenerator } = rateLimit;
 
 // Extract real client IP from x-forwarded-for (set by Railway's proxy)
 function getClientKey(req) {
   const forwardedFor = req.headers["x-forwarded-for"];
   if (typeof forwardedFor === "string" && forwardedFor.trim()) {
-    return forwardedFor.split(",")[0].trim();
+    return ipKeyGenerator(forwardedFor.split(",")[0].trim());
   }
-  return req.ip || req.socket?.remoteAddress || "unknown";
+  return ipKeyGenerator(req.ip || req.socket?.remoteAddress || "unknown");
 }
 
-// Shared options: disable the IPv6 validation warning since we handle
-// key generation ourselves via getClientKey.
 const sharedOptions = {
   standardHeaders: true,
   legacyHeaders: false,
