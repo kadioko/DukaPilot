@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
+import LogoMark from "@/components/brand/LogoMark";
 
 interface ShopInfo {
   id: string;
@@ -187,7 +188,7 @@ export default function ShopPage() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Store className="w-5 h-5 text-brand-600 flex-shrink-0" />
+            <LogoMark className="h-8 w-8 rounded-lg flex-shrink-0" />
             <div className="min-w-0">
               <p className="font-bold text-sm text-gray-900 truncate">{shop.name}</p>
               <p className="text-xs text-gray-500 truncate">{shop.location}{shop.district ? `, ${shop.district}` : ""}</p>

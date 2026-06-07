@@ -1,141 +1,212 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Star, Zap, Shield, Phone } from "lucide-react";
+import LogoMark from "@/components/brand/LogoMark";
+import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 
-const plans = [
+type LocalizedText = Record<Lang, string>;
+
+interface Plan {
+  id: "FREE_TRIAL" | "BASIC" | "PRO";
+  name: LocalizedText;
+  price: number;
+  period: LocalizedText;
+  color: string;
+  badge?: LocalizedText;
+  features: LocalizedText[];
+  cta: LocalizedText;
+  highlight: boolean;
+}
+
+const plans: Plan[] = [
   {
     id: "FREE_TRIAL",
-    name: "Jaribio Bure",
-    nameEn: "Free Trial",
+    name: { sw: "Jaribio Bure", en: "Free Trial" },
     price: 0,
-    period: "siku 14",
-    periodEn: "14 days",
+    period: { sw: "siku 14", en: "14 days" },
     color: "border-gray-200",
-    badge: null,
     features: [
-      "Bidhaa zote (inventory)",
-      "Mauzo ya POS & online",
-      "Ripoti ya msingi",
-      "Maagizo ya wasambazaji",
-      "Lugha: Kiswahili & English",
+      { sw: "Hifadhi ya bidhaa kamili", en: "Full inventory management" },
+      { sw: "Mauzo ya POS na online", en: "POS and online sales" },
+      { sw: "Ripoti za msingi", en: "Basic reports" },
+      { sw: "Maagizo ya wasambazaji", en: "Supplier orders" },
+      { sw: "Kiswahili na English", en: "Swahili and English" },
     ],
-    featuresEn: [
-      "Full inventory management",
-      "POS & online sales",
-      "Basic reports",
-      "Supplier orders",
-      "Swahili & English",
-    ],
-    cta: "Anza Bure",
-    ctaEn: "Start Free",
-    ctaHref: "/register",
+    cta: { sw: "Anza Bure", en: "Start Free" },
     highlight: false,
   },
   {
     id: "BASIC",
-    name: "Msingi",
-    nameEn: "Basic",
+    name: { sw: "Msingi", en: "Basic" },
     price: 15000,
-    period: "kwa mwezi",
-    periodEn: "per month",
+    period: { sw: "kwa mwezi", en: "per month" },
     color: "border-brand-300",
-    badge: "Maarufu",
+    badge: { sw: "Maarufu", en: "Popular" },
     features: [
-      "Kila kitu katika Jaribio",
-      "Bidhaa zisizo na kikomo",
-      "Ripoti za kina",
-      "Usafirishaji wa data (CSV/PDF)",
-      "Msaada wa WhatsApp",
+      { sw: "Kila kitu katika Jaribio", en: "Everything in Trial" },
+      { sw: "Bidhaa zisizo na kikomo", en: "Unlimited products" },
+      { sw: "Ripoti za kina", en: "Detailed reports" },
+      { sw: "Usafirishaji wa data (CSV/PDF)", en: "Data export (CSV/PDF)" },
+      { sw: "Msaada wa WhatsApp", en: "WhatsApp support" },
     ],
-    featuresEn: [
-      "Everything in Trial",
-      "Unlimited products",
-      "Detailed reports",
-      "Data export (CSV/PDF)",
-      "WhatsApp support",
-    ],
-    cta: "Chagua Msingi",
-    ctaEn: "Choose Basic",
-    ctaHref: "/register",
+    cta: { sw: "Chagua Msingi", en: "Choose Basic" },
     highlight: true,
   },
   {
     id: "PRO",
-    name: "Pro",
-    nameEn: "Pro",
+    name: { sw: "Pro", en: "Pro" },
     price: 35000,
-    period: "kwa mwezi",
-    periodEn: "per month",
+    period: { sw: "kwa mwezi", en: "per month" },
     color: "border-purple-300",
-    badge: "Bora Zaidi",
+    badge: { sw: "Bora Zaidi", en: "Best Value" },
     features: [
-      "Kila kitu katika Msingi",
-      "Matawi mengi (branches)",
-      "SMS notifications",
-      "Akaunti nyingi za wafanyakazi",
-      "Msaada wa kipaumbele 24/7",
+      { sw: "Kila kitu katika Msingi", en: "Everything in Basic" },
+      { sw: "Matawi mengi", en: "Multi-branch support" },
+      { sw: "SMS notifications", en: "SMS notifications" },
+      { sw: "Akaunti nyingi za wafanyakazi", en: "Multiple staff accounts" },
+      { sw: "Msaada wa kipaumbele 24/7", en: "Priority 24/7 support" },
     ],
-    featuresEn: [
-      "Everything in Basic",
-      "Multi-branch support",
-      "SMS notifications",
-      "Multiple staff accounts",
-      "Priority 24/7 support",
-    ],
-    cta: "Chagua Pro",
-    ctaEn: "Choose Pro",
-    ctaHref: "/register",
+    cta: { sw: "Chagua Pro", en: "Choose Pro" },
     highlight: false,
   },
 ];
 
 const competitors = [
-  { name: "DukaOS", price: "TZS 15,000/mwezi", highlight: true },
-  { name: "QuickBooks POS", price: "TZS 150,000+/mwezi", highlight: false },
-  { name: "Tally", price: "TZS 80,000+/mwezi", highlight: false },
-  { name: "iKhokha", price: "TZS 50,000+/mwezi", highlight: false },
+  {
+    name: "DukaOS",
+    price: { sw: "TZS 15,000/mwezi", en: "TZS 15,000/month" },
+    highlight: true,
+  },
+  {
+    name: "QuickBooks POS",
+    price: { sw: "TZS 150,000+/mwezi", en: "TZS 150,000+/month" },
+    highlight: false,
+  },
+  {
+    name: "Tally",
+    price: { sw: "TZS 80,000+/mwezi", en: "TZS 80,000+/month" },
+    highlight: false,
+  },
+  {
+    name: "iKhokha",
+    price: { sw: "TZS 50,000+/mwezi", en: "TZS 50,000+/month" },
+    highlight: false,
+  },
 ];
 
+const faqs = [
+  {
+    q: { sw: "Je, ninahitaji kadi ya benki kuanza?", en: "Do I need a bank card to start?" },
+    a: { sw: "Hapana. Jaribu siku 14 bila malipo yoyote.", en: "No. Try free for 14 days with no payment required." },
+  },
+  {
+    q: { sw: "Malipo yanafanywa vipi?", en: "How do I pay?" },
+    a: { sw: "M-Pesa, Tigo Pesa, Airtel Money, au benki.", en: "M-Pesa, Tigo Pesa, Airtel Money, or bank transfer." },
+  },
+  {
+    q: { sw: "Ninaweza kubadilisha mpango?", en: "Can I upgrade or downgrade?" },
+    a: { sw: "Ndiyo, wakati wowote. Tofauti itahesabiwa kulingana na muda uliobaki.", en: "Yes, anytime. The difference is prorated." },
+  },
+  {
+    q: { sw: "Data yangu iko salama?", en: "Is my data safe?" },
+    a: { sw: "Ndiyo. Data inahifadhiwa kwenye seva salama na ina backup.", en: "Yes. Your data is stored securely and backed up." },
+  },
+];
+
+const copy = {
+  home: { sw: "Nyumbani", en: "Home" },
+  signIn: { sw: "Ingia", en: "Sign in" },
+  freeBadge: { sw: "Jaribio la siku 14 BURE - hakuna kadi ya benki", en: "14-day FREE trial - no bank card needed" },
+  title: { sw: "Bei Rahisi kwa Biashara ya Tanzania", en: "Simple Pricing for Tanzanian Businesses" },
+  subtitle: { sw: "Hakuna gharama zilizofichwa. Chagua mpango unaolingana na duka lako.", en: "No hidden fees. Choose the plan that fits your shop." },
+  free: { sw: "BURE", en: "FREE" },
+  for: { sw: "kwa", en: "for" },
+  comparison: { sw: "DukaOS dhidi ya washindani", en: "DukaOS compared to competitors" },
+  app: { sw: "Programu", en: "App" },
+  price: { sw: "Bei", en: "Price" },
+  swahili: { sw: "Kiswahili", en: "Swahili" },
+  tanzania: { sw: "Tanzania", en: "Tanzania" },
+  us: { sw: "Sisi", en: "Us" },
+  no: { sw: "Hapana", en: "No" },
+  ctaTitle: { sw: "Anza Leo - Bure kwa Siku 14", en: "Start Today - Free for 14 Days" },
+  ctaSubtitle: { sw: "Fungua akaunti bila kadi ya benki.", en: "Create an account with no bank card needed." },
+  register: { sw: "Jisajili Bure", en: "Register Free" },
+};
+
+function getPricingInitialLang(): Lang | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const requestedLang = new URLSearchParams(window.location.search).get("lang");
+  return requestedLang === "sw" || requestedLang === "en" ? requestedLang : null;
+}
+
 export default function PricingPage() {
-  const formatTZS = (amount: number) =>
-    `TZS ${amount.toLocaleString("en-TZ")}`;
+  const globalLang = useLang();
+  const [selectedLang, setSelectedLang] = useState<Lang | null>(() => {
+    return null;
+  });
+  const lang = selectedLang || globalLang;
+  const formatTZS = (amount: number) => `TZS ${amount.toLocaleString("en-TZ")}`;
+
+  useEffect(() => {
+    const requestedLang = getPricingInitialLang();
+    if (requestedLang) {
+      setSelectedLang(requestedLang);
+      setAppLanguage(requestedLang);
+    }
+  }, []);
+
+  function updateLanguage(nextLang: Lang) {
+    setSelectedLang(nextLang);
+    setAppLanguage(nextLang);
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white">
-      {/* Nav */}
-      <nav className="px-4 py-4 flex items-center justify-between max-w-5xl mx-auto">
-        <Link href="/" className="text-xl font-bold text-brand-700">
+      <nav className="px-4 py-4 flex flex-wrap items-center justify-between gap-3 max-w-5xl mx-auto">
+        <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold text-brand-700">
+          <LogoMark className="h-9 w-9 rounded-xl" />
           DukaOS
         </Link>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+            <Link
+              href="/pricing?lang=sw"
+              onClick={() => updateLanguage("sw")}
+              className={`px-2 py-1 rounded-md text-xs font-semibold min-h-0 ${lang === "sw" ? "bg-brand-600 text-white" : "text-gray-500 hover:text-gray-900"}`}
+            >
+              {t("app.swahili", lang)}
+            </Link>
+            <Link
+              href="/pricing?lang=en"
+              onClick={() => updateLanguage("en")}
+              className={`px-2 py-1 rounded-md text-xs font-semibold min-h-0 ${lang === "en" ? "bg-brand-600 text-white" : "text-gray-500 hover:text-gray-900"}`}
+            >
+              {t("app.english", lang)}
+            </Link>
+          </div>
           <Link href="/" className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5">
-            Nyumbani
+            {copy.home[lang]}
           </Link>
-          <Link
-            href="/"
-            className="text-sm bg-brand-600 text-white px-4 py-1.5 rounded-lg hover:bg-brand-700"
-          >
-            Ingia
+          <Link href="/" className="text-sm bg-brand-600 text-white px-4 py-1.5 rounded-lg hover:bg-brand-700">
+            {copy.signIn[lang]}
           </Link>
         </div>
       </nav>
 
       <div className="max-w-5xl mx-auto px-4 pb-16">
-        {/* Header */}
         <div className="text-center py-12">
           <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-4">
             <Zap className="w-3 h-3" />
-            Jaribio la siku 14 BURE - hakuna kadi ya benki
+            {copy.freeBadge[lang]}
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Bei Rahisi kwa Biashara ya Tanzania
-          </h1>
-          <p className="text-gray-500 text-sm">
-            Affordable pricing for Tanzanian businesses - no hidden fees
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{copy.title[lang]}</h1>
+          <p className="text-gray-500 text-sm">{copy.subtitle[lang]}</p>
         </div>
 
-        {/* Pricing cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
           {plans.map((plan) => (
             <div
@@ -148,96 +219,87 @@ export default function PricingPage() {
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                   <span className="bg-brand-600 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
                     <Star className="w-3 h-3" />
-                    {plan.badge}
+                    {plan.badge[lang]}
                   </span>
                 </div>
               )}
 
               <div className="mb-4">
-                <h2 className="text-lg font-bold text-gray-900">{plan.name}</h2>
-                <p className="text-xs text-gray-500">{plan.nameEn}</p>
+                <h2 className="text-lg font-bold text-gray-900">{plan.name[lang]}</h2>
+                <p className="text-xs text-gray-500">{plan.id}</p>
               </div>
 
               <div className="mb-6">
                 {plan.price === 0 ? (
                   <div>
-                    <span className="text-3xl font-bold text-gray-900">BURE</span>
-                    <p className="text-xs text-gray-500 mt-1">kwa {plan.period} / {plan.periodEn}</p>
+                    <span className="text-3xl font-bold text-gray-900">{copy.free[lang]}</span>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {copy.for[lang]} {plan.period[lang]}
+                    </p>
                   </div>
                 ) : (
                   <div>
-                    <span className="text-3xl font-bold text-gray-900">
-                      {formatTZS(plan.price)}
-                    </span>
-                    <p className="text-xs text-gray-500 mt-1">{plan.period} / {plan.periodEn}</p>
+                    <span className="text-3xl font-bold text-gray-900">{formatTZS(plan.price)}</span>
+                    <p className="text-xs text-gray-500 mt-1">{plan.period[lang]}</p>
                   </div>
                 )}
               </div>
 
               <ul className="space-y-2.5 mb-6">
-                {plan.features.map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                {plan.features.map((feature) => (
+                  <li key={feature.en} className="flex items-start gap-2 text-sm text-gray-700">
                     <Check className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                    <span>{f}</span>
+                    <span>{feature[lang]}</span>
                   </li>
                 ))}
               </ul>
 
               <Link
-                href={plan.ctaHref}
+                href="/register"
                 className={`block w-full text-center py-2.5 rounded-xl text-sm font-semibold transition-colors ${
                   plan.highlight
                     ? "bg-brand-600 text-white hover:bg-brand-700"
                     : "bg-gray-100 text-gray-800 hover:bg-gray-200"
                 }`}
               >
-                {plan.cta} / {plan.ctaEn}
+                {plan.cta[lang]}
               </Link>
             </div>
           ))}
         </div>
 
-        {/* Comparison */}
         <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-10">
           <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
             <Shield className="w-4 h-4 text-brand-600" />
-            DukaOS dhidi ya washindani / Compared to competitors
+            {copy.comparison[lang]}
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="text-left py-2 pr-4 text-gray-600 font-medium">Programu / App</th>
-                  <th className="text-left py-2 text-gray-600 font-medium">Bei / Price</th>
-                  <th className="text-left py-2 text-gray-600 font-medium">Swahili</th>
-                  <th className="text-left py-2 text-gray-600 font-medium">Tanzania</th>
+                  <th className="text-left py-2 pr-4 text-gray-600 font-medium">{copy.app[lang]}</th>
+                  <th className="text-left py-2 text-gray-600 font-medium">{copy.price[lang]}</th>
+                  <th className="text-left py-2 text-gray-600 font-medium">{copy.swahili[lang]}</th>
+                  <th className="text-left py-2 text-gray-600 font-medium">{copy.tanzania[lang]}</th>
                 </tr>
               </thead>
               <tbody>
-                {competitors.map((c) => (
-                  <tr key={c.name} className={`border-b border-gray-50 ${c.highlight ? "bg-brand-50" : ""}`}>
+                {competitors.map((competitor) => (
+                  <tr key={competitor.name} className={`border-b border-gray-50 ${competitor.highlight ? "bg-brand-50" : ""}`}>
                     <td className="py-2 pr-4 font-medium text-gray-900">
-                      {c.name}
-                      {c.highlight && (
-                        <span className="ml-2 text-xs bg-brand-600 text-white px-1.5 py-0.5 rounded">Sisi</span>
+                      {competitor.name}
+                      {competitor.highlight && (
+                        <span className="ml-2 text-xs bg-brand-600 text-white px-1.5 py-0.5 rounded">{copy.us[lang]}</span>
                       )}
                     </td>
-                    <td className={`py-2 ${c.highlight ? "text-brand-700 font-bold" : "text-gray-600"}`}>
-                      {c.price}
-                    </td>
-                    <td className="py-2">
-                      {c.highlight ? (
-                        <Check className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <span className="text-red-400 text-xs">Hapana</span>
-                      )}
+                    <td className={`py-2 ${competitor.highlight ? "text-brand-700 font-bold" : "text-gray-600"}`}>
+                      {competitor.price[lang]}
                     </td>
                     <td className="py-2">
-                      {c.highlight ? (
-                        <Check className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <span className="text-red-400 text-xs">Hapana</span>
-                      )}
+                      {competitor.highlight ? <Check className="w-4 h-4 text-green-500" /> : <span className="text-red-400 text-xs">{copy.no[lang]}</span>}
+                    </td>
+                    <td className="py-2">
+                      {competitor.highlight ? <Check className="w-4 h-4 text-green-500" /> : <span className="text-red-400 text-xs">{copy.no[lang]}</span>}
                     </td>
                   </tr>
                 ))}
@@ -246,53 +308,24 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* FAQ */}
         <div className="grid md:grid-cols-2 gap-4 mb-10">
-          {[
-            {
-              q: "Je, ninahitaji kadi ya benki kuanza?",
-              qEn: "Do I need a bank card to start?",
-              a: "Hapana. Jaribu siku 14 bila malipo yoyote.",
-              aEn: "No. Try free for 14 days, no payment required.",
-            },
-            {
-              q: "Malipo yanafanywa vipi?",
-              qEn: "How do I pay?",
-              a: "M-Pesa, Tigo Pesa, Airtel Money, au benki.",
-              aEn: "M-Pesa, Tigo Pesa, Airtel Money, or bank transfer.",
-            },
-            {
-              q: "Ninaweza kubadilisha mpango?",
-              qEn: "Can I upgrade/downgrade?",
-              a: "Ndiyo, wakati wowote. Tofauti italipwa au kurudishwa.",
-              aEn: "Yes, anytime. Difference is prorated.",
-            },
-            {
-              q: "Data yangu iko salama?",
-              qEn: "Is my data safe?",
-              a: "Ndiyo. Data imehifadhiwa Tanzania kwenye seva salama.",
-              aEn: "Yes. Data stored securely, backed up daily.",
-            },
-          ].map((faq, i) => (
-            <div key={i} className="bg-gray-50 rounded-xl p-4">
-              <p className="font-semibold text-gray-900 text-sm mb-1">{faq.q}</p>
-              <p className="text-xs text-gray-500 mb-2">{faq.qEn}</p>
-              <p className="text-sm text-gray-700">{faq.a}</p>
-              <p className="text-xs text-gray-500">{faq.aEn}</p>
+          {faqs.map((faq) => (
+            <div key={faq.q.en} className="bg-gray-50 rounded-xl p-4">
+              <p className="font-semibold text-gray-900 text-sm mb-2">{faq.q[lang]}</p>
+              <p className="text-sm text-gray-700">{faq.a[lang]}</p>
             </div>
           ))}
         </div>
 
-        {/* CTA */}
         <div className="bg-brand-600 rounded-2xl p-8 text-center text-white">
-          <h2 className="text-xl font-bold mb-2">Anza Leo - Bure kwa Siku 14</h2>
-          <p className="text-brand-200 text-sm mb-6">Start today - free for 14 days, no credit card needed</p>
+          <h2 className="text-xl font-bold mb-2">{copy.ctaTitle[lang]}</h2>
+          <p className="text-brand-200 text-sm mb-6">{copy.ctaSubtitle[lang]}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/register"
               className="bg-white text-brand-700 font-bold px-6 py-3 rounded-xl hover:bg-brand-50 transition-colors"
             >
-              Jisajili Bure / Register Free
+              {copy.register[lang]}
             </Link>
             <a
               href="https://wa.me/255743910580"

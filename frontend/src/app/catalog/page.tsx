@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ShoppingBag, Search, ArrowLeft, Store, Package } from "lucide-react";
+import { Search, ArrowLeft, Store, Package } from "lucide-react";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
+import LogoMark from "@/components/brand/LogoMark";
 
 interface Shop {
   id: string;
@@ -71,7 +72,7 @@ export default function CatalogPage() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <ShoppingBag className="w-5 h-5 text-brand-600 flex-shrink-0" />
+            <LogoMark className="h-8 w-8 rounded-lg flex-shrink-0" />
             <div className="min-w-0">
               <p className="font-bold text-sm text-gray-900 truncate">{t("catalog.title", lang)}</p>
               <p className="text-xs text-gray-500 truncate">{t("catalog.subtitle", lang)}</p>

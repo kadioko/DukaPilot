@@ -9,7 +9,6 @@ import {
   ClipboardList,
   Truck,
   LogOut,
-  ShoppingBag,
   Menu,
   X,
   Bell,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { clearToken, api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
+import LogoMark from "@/components/brand/LogoMark";
 import clsx from "clsx";
 
 interface User {
@@ -127,9 +127,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 p-5 border-b border-brand-700">
-          <div className="bg-white/10 rounded-xl p-2">
-            <ShoppingBag className="w-5 h-5 text-white" />
-          </div>
+          <LogoMark className="h-10 w-10 rounded-xl bg-white shadow-sm" />
           <div className="min-w-0">
             <p className="font-bold text-sm leading-tight truncate">{displayName}</p>
             <p className="text-brand-300 text-xs">DukaOS</p>
@@ -237,7 +235,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2 flex-1">
-            <ShoppingBag className="w-5 h-5 text-brand-600" />
+            <LogoMark className="h-7 w-7 rounded-lg" />
             <span className="font-semibold text-gray-800 text-sm truncate">{displayName}</span>
           </div>
           <Link href="/notifications" className="relative text-gray-600">

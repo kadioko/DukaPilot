@@ -3,7 +3,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, getFriendlyErrorMessage, setToken } from "@/lib/api";
-import { ShoppingBag, Phone, Lock, Eye, EyeOff, ArrowRight, Store, MapPin, ChevronDown } from "lucide-react";
+import { Phone, Lock, Eye, EyeOff, ArrowRight, Store, MapPin, ChevronDown } from "lucide-react";
+import LogoMark from "@/components/brand/LogoMark";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 
 function normalizePhone(value: string): string {
@@ -211,11 +212,9 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
 
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-            <ShoppingBag className="w-8 h-8 text-brand-600" />
-          </div>
+          <LogoMark className="h-16 w-16 rounded-2xl bg-white shadow-lg mb-4" />
           <h1 className="text-3xl font-bold text-white">DukaOS</h1>
-          <p className="text-brand-200 mt-1 text-sm">Merchant OS • Tanzania</p>
+          <p className="text-brand-200 mt-1 text-sm">Merchant OS - Tanzania</p>
         </div>
 
         {/* Card */}

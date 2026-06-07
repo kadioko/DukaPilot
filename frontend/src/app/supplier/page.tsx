@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, clearToken, formatTZS } from "@/lib/api";
-import { ShoppingBag, LogOut, Check, X, Truck, Clock, ChevronDown, ChevronUp, BarChart2 } from "lucide-react";
+import { LogOut, Check, X, Truck, Clock, ChevronDown, ChevronUp, BarChart2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import LogoMark from "@/components/brand/LogoMark";
 
 interface Order {
   id: string;
@@ -83,9 +84,9 @@ export default function SupplierPortal() {
       <header className="bg-brand-800 text-white px-4 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <ShoppingBag className="w-5 h-5" />
+            <LogoMark className="h-9 w-9 rounded-xl bg-white shadow-sm" />
             <div>
-              <p className="font-bold">DukaOS — Msambazaji</p>
+              <p className="font-bold">DukaOS - Msambazaji</p>
               <p className="text-brand-300 text-xs">Portal ya Wasambazaji</p>
             </div>
           </div>
