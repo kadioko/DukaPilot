@@ -30,7 +30,7 @@ With overrides:
 
 ```bash
 k6 run \
-  --env BASE_URL=https://dukaos-production.up.railway.app \
+  --env BASE_URL=https://dukapilotproduction.up.railway.app \
   --env MERCHANT_PHONE=+255700000002 \
   --env MERCHANT_PIN=1234 \
   load-tests/k6.js

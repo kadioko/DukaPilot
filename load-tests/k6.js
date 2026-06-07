@@ -9,7 +9,7 @@
  *
  * Run:
  *   k6 run load-tests/k6.js
- *   k6 run --env BASE_URL=https://dukaos-production.up.railway.app load-tests/k6.js
+ *   k6 run --env BASE_URL=https://dukapilotproduction.up.railway.app load-tests/k6.js
  *
  * Stages:
  *   0 → 10 VUs over 30s  (ramp-up)
@@ -27,7 +27,7 @@ import { Trend, Rate } from "k6/metrics";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const BASE_URL = __ENV.BASE_URL || "https://dukaos-production.up.railway.app";
+const BASE_URL = __ENV.BASE_URL || "https://dukapilotproduction.up.railway.app";
 const MERCHANT_PHONE = __ENV.MERCHANT_PHONE || "+255700000002";
 const MERCHANT_PIN   = __ENV.MERCHANT_PIN   || "1234";
 const SUPPLIER_PHONE = __ENV.SUPPLIER_PHONE || "+255700000001";

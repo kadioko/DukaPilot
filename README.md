@@ -23,9 +23,9 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 ## Live Production
 
 - **Frontend:** [https://duka-os.vercel.app/](https://duka-os.vercel.app/)
-- **Backend API:** [https://dukaos-production.up.railway.app/api](https://dukaos-production.up.railway.app/api)
-- **Health:** [https://dukaos-production.up.railway.app/health](https://dukaos-production.up.railway.app/health)
-- **Status:** [https://dukaos-production.up.railway.app/status](https://dukaos-production.up.railway.app/status)
+- **Backend API:** [https://dukapilotproduction.up.railway.app/api](https://dukapilotproduction.up.railway.app/api)
+- **Health:** [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health)
+- **Status:** [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status)
 
 ---
 

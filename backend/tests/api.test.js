@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const PROD_BASE_URL = process.env.SMOKE_BASE_URL || "https://dukaos-production.up.railway.app";
+const PROD_BASE_URL = process.env.SMOKE_BASE_URL || "https://dukapilotproduction.up.railway.app";
 const LOGIN_PHONE = process.env.SMOKE_TEST_PHONE || "+255700000003";
 const LOGIN_PIN = process.env.SMOKE_TEST_PIN || "1234";
 
