@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
-import { Plus, X, ShoppingCart, Check, Minus, Search, Clock } from "lucide-react";
+import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 
@@ -32,6 +32,18 @@ interface SaleRecord {
   items: Array<{ quantity: number; unitPrice: number; totalPrice: number; product: { name: string; unit: string } }>;
 }
 
+interface PendingSale {
+  id: string;
+  createdAt: string;
+  total: number;
+  payload: {
+    items: Array<{ productId: string; quantity: number; unitPrice: number }>;
+    saleMode: "RETAIL" | "WHOLESALE";
+    paymentMethod: string;
+    paymentRef?: string;
+  };
+}
+
 const PAYMENT_METHODS = [
   { value: "CASH", labelKey: "sales.cash", color: "gray" },
   { value: "MPESA", labelKey: "sales.mpesa", color: "green" },
@@ -41,6 +53,21 @@ const PAYMENT_METHODS = [
   { value: "BANK", labelKey: "sales.bank", color: "indigo" },
   { value: "CREDIT", labelKey: "sales.credit", color: "orange" },
 ];
+
+const PENDING_SALES_KEY = "dukapilot_pending_sales";
+
+function readPendingSales(): PendingSale[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(PENDING_SALES_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function writePendingSales(sales: PendingSale[]) {
+  window.localStorage.setItem(PENDING_SALES_KEY, JSON.stringify(sales));
+}
 
 export default function SalesPage() {
   const lang = useLang();
@@ -55,11 +82,44 @@ export default function SalesPage() {
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [view, setView] = useState<"pos" | "history">("pos");
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [pendingSales, setPendingSales] = useState<PendingSale[]>([]);
 
   useEffect(() => {
     api.get<{ products: Product[] }>("/products")
       .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
   }, []);
+
+  const syncPendingSales = useCallback(async () => {
+    const pending = readPendingSales();
+    if (pending.length === 0) {
+      setPendingSales([]);
+      return;
+    }
+
+    const remaining: PendingSale[] = [];
+    for (const sale of pending) {
+      try {
+        await api.post("/sales", sale.payload, lang);
+      } catch {
+        remaining.push(sale);
+      }
+    }
+    writePendingSales(remaining);
+    setPendingSales(remaining);
+    if (remaining.length < pending.length) {
+      toast(lang === "sw" ? "Mauzo ya offline yamesawazishwa." : "Offline sales synced.", "success");
+      api.get<{ products: Product[] }>("/products")
+        .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)))
+        .catch(() => {});
+    }
+  }, [lang, toast]);
+
+  useEffect(() => {
+    setPendingSales(readPendingSales());
+    syncPendingSales().catch(() => {});
+    window.addEventListener("online", syncPendingSales);
+    return () => window.removeEventListener("online", syncPendingSales);
+  }, [syncPendingSales]);
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -125,17 +185,18 @@ export default function SalesPage() {
   async function completeSale() {
     if (cart.length === 0) return;
     setCompleting(true);
+    const payload = {
+      items: cart.map((i) => ({
+        productId: i.product.id,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+      })),
+      saleMode,
+      paymentMethod,
+      paymentRef: paymentRef || undefined,
+    };
     try {
-      await api.post("/sales", {
-        items: cart.map((i) => ({
-          productId: i.product.id,
-          quantity: i.quantity,
-          unitPrice: i.unitPrice,
-        })),
-        saleMode,
-        paymentMethod,
-        paymentRef: paymentRef || undefined,
-      });
+      await api.post("/sales", payload, lang);
       toast(t("sales.completed", lang), "success");
       setCart([]);
       setPaymentRef("");
@@ -143,7 +204,21 @@ export default function SalesPage() {
       api.get<{ products: Product[] }>("/products")
         .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : t("common.error", lang), "error");
+      const message = e instanceof Error ? e.message : t("common.error", lang);
+      const canQueue = typeof navigator !== "undefined" && (!navigator.onLine || message.includes("Unable to reach"));
+      if (canQueue) {
+        const queued = [
+          ...readPendingSales(),
+          { id: crypto.randomUUID(), createdAt: new Date().toISOString(), total, payload },
+        ];
+        writePendingSales(queued);
+        setPendingSales(queued);
+        setCart([]);
+        setPaymentRef("");
+        toast(lang === "sw" ? "Mtandao haupo. Mauzo yamehifadhiwa kusubiri sync." : "Offline. Sale saved and will sync later.", "success");
+      } else {
+        toast(message, "error");
+      }
     } finally {
       setCompleting(false);
     }
@@ -167,8 +242,9 @@ export default function SalesPage() {
         </div>
 
         {view === "pos" && (
-          <div className="mb-4 flex items-center gap-2">
-            <span className="text-xs text-gray-500 uppercase tracking-wide">{t("sales.priceMode", lang)}</span>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 uppercase tracking-wide">{t("sales.priceMode", lang)}</span>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               {(["RETAIL", "WHOLESALE"] as const).map((m) => (
                 <button
@@ -188,6 +264,16 @@ export default function SalesPage() {
                 </button>
               ))}
             </div>
+            </div>
+            {pendingSales.length > 0 && (
+              <button
+                onClick={() => syncPendingSales()}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+              >
+                <WifiOff className="h-4 w-4" />
+                {lang === "sw" ? `${pendingSales.length} yanangoja sync` : `${pendingSales.length} pending sync`}
+              </button>
+            )}
           </div>
         )}
 

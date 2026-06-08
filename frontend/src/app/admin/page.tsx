@@ -38,10 +38,12 @@ interface AdminUser {
   phone: string;
   name: string;
   role: string;
-  language: string;
+  language?: string;
   createdAt: string;
   shop?: { id: string; name: string } | null;
   supplier?: { id: string; name: string } | null;
+  isActive?: boolean;
+  accountType?: "USER" | "STAFF";
 }
 
 interface AuditLog {
@@ -79,6 +81,7 @@ interface Subscription {
   computedStatus: string;
   daysLeft: number | null;
   user?: { id: string; name: string; phone: string } | null;
+  lastPayment?: { amount: number; method: string; reference?: string | null; paidAt: string } | null;
 }
 
 type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions";
@@ -147,9 +150,14 @@ export default function AdminPage() {
     setSearching(true);
     try {
       const data = await api.get<{ user: AdminUser }>(`/admin/users/search?phone=${encodeURIComponent(searchPhone.trim())}`);
-      setSearchResult(data.user);
+      setSearchResult({ ...data.user, accountType: "USER" });
     } catch (err: unknown) {
-      setSearchError(err instanceof Error ? err.message : "User not found");
+      try {
+        const data = await api.get<{ staff: AdminUser }>(`/admin/staff/search?phone=${encodeURIComponent(searchPhone.trim())}`);
+        setSearchResult({ ...data.staff, accountType: "STAFF" });
+      } catch {
+        setSearchError(err instanceof Error ? err.message : "User or staff member not found");
+      }
     } finally {
       setSearching(false);
     }
@@ -166,7 +174,10 @@ export default function AdminPage() {
     setResetError("");
     setResetMsg("");
     try {
-      await api.post(`/admin/users/${searchResult.id}/reset-pin`, { newPin: resetPin });
+      const endpoint = searchResult.accountType === "STAFF"
+        ? `/admin/staff/${searchResult.id}/reset-pin`
+        : `/admin/users/${searchResult.id}/reset-pin`;
+      await api.post(endpoint, { newPin: resetPin });
       setResetMsg(`PIN for ${searchResult.name} (${searchResult.phone}) has been reset.`);
       setResetPin("");
     } catch (err: unknown) {
@@ -192,10 +203,45 @@ export default function AdminPage() {
     setUpdatingSub(shopId);
     try {
       await api.post(`/subscription/admin/${shopId}/extend-trial`, { days });
-      const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
-      setSubscriptions(data.shops);
+      await refreshSubscriptions();
     } catch (err) {
       console.error("Failed to extend trial:", err);
+    } finally {
+      setUpdatingSub(null);
+    }
+  }
+
+  async function refreshSubscriptions() {
+    const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
+    setSubscriptions(data.shops);
+  }
+
+  async function handleRecordPayment(shop: Subscription, plan: "BASIC" | "PRO") {
+    setUpdatingSub(shop.id);
+    try {
+      await api.post(`/subscription/admin/${shop.id}/payments`, {
+        plan,
+        months: 1,
+        amount: plan === "PRO" ? 35000 : 15000,
+        method: "MPESA",
+        reference: `MANUAL-${Date.now().toString().slice(-6)}`,
+        note: "Marked paid by admin",
+      });
+      await refreshSubscriptions();
+    } catch (err) {
+      console.error("Failed to record subscription payment:", err);
+    } finally {
+      setUpdatingSub(null);
+    }
+  }
+
+  async function handleToggleShopActive(shop: Subscription) {
+    setUpdatingSub(shop.id);
+    try {
+      await api.patch(`/subscription/admin/${shop.id}`, { isActive: !shop.isActive });
+      await refreshSubscriptions();
+    } catch (err) {
+      console.error("Failed to update shop status:", err);
     } finally {
       setUpdatingSub(null);
     }
@@ -345,7 +391,10 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900 text-sm">{searchResult.name}</p>
-                      <p className="text-xs text-gray-500">{searchResult.phone} · {searchResult.role}</p>
+                      <p className="text-xs text-gray-500">
+                        {searchResult.phone} - {searchResult.role}
+                        {searchResult.accountType === "STAFF" ? " (Staff)" : ""}
+                      </p>
                       {searchResult.shop && <p className="text-xs text-gray-400">{searchResult.shop.name}</p>}
                     </div>
                   </div>
@@ -541,6 +590,7 @@ export default function AdminPage() {
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Plan</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Status</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Days Left</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Last Payment</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Actions</th>
                   </tr>
                 </thead>
@@ -564,15 +614,43 @@ export default function AdminPage() {
                           "bg-gray-100 text-gray-600"
                         }`}>{shop.computedStatus}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs">{shop.daysLeft !== null ? `${shop.daysLeft}d` : "—"}</td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">{shop.daysLeft !== null ? `${shop.daysLeft}d` : "-"}</td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">
+                        {shop.lastPayment ? `${formatTZS(shop.lastPayment.amount)} ${shop.lastPayment.method}` : "None"}
+                      </td>
                       <td className="px-4 py-2.5">
-                        <button
-                          onClick={() => handleExtendTrial(shop.id, 14)}
-                          disabled={updatingSub === shop.id}
-                          className="px-2 py-1 bg-brand-100 text-brand-700 rounded text-xs font-medium hover:bg-brand-200 disabled:opacity-50"
-                        >
-                          +14d trial
-                        </button>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            onClick={() => handleRecordPayment(shop, "BASIC")}
+                            disabled={updatingSub === shop.id}
+                            className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200 disabled:opacity-50"
+                          >
+                            Paid Basic
+                          </button>
+                          <button
+                            onClick={() => handleRecordPayment(shop, "PRO")}
+                            disabled={updatingSub === shop.id}
+                            className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium hover:bg-purple-200 disabled:opacity-50"
+                          >
+                            Paid Pro
+                          </button>
+                          <button
+                            onClick={() => handleExtendTrial(shop.id, 14)}
+                            disabled={updatingSub === shop.id}
+                            className="px-2 py-1 bg-brand-100 text-brand-700 rounded text-xs font-medium hover:bg-brand-200 disabled:opacity-50"
+                          >
+                            +14d trial
+                          </button>
+                          <button
+                            onClick={() => handleToggleShopActive(shop)}
+                            disabled={updatingSub === shop.id}
+                            className={`px-2 py-1 rounded text-xs font-medium disabled:opacity-50 ${
+                              shop.isActive ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-green-100 text-green-700 hover:bg-green-200"
+                            }`}
+                          >
+                            {shop.isActive ? "Suspend" : "Activate"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

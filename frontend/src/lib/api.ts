@@ -51,6 +51,10 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
     return t("auth.error.unexpectedResponse", lang);
   }
 
+  if (normalized === "Subscription required" || normalized === "SUBSCRIPTION_REQUIRED") {
+    return t("billing.subscriptionRequired", lang);
+  }
+
   return normalized;
 }
 

@@ -5,6 +5,7 @@ const {
   adminListSubscriptions,
   adminUpdateSubscription,
   adminExtendTrial,
+  adminRecordPayment,
 } = require("../controllers/subscription.controller");
 
 const router = express.Router();
@@ -16,5 +17,6 @@ router.get("/status", authenticate, getStatus);
 router.get("/admin", authenticate, requireRole("ADMIN"), adminListSubscriptions);
 router.patch("/admin/:shopId", authenticate, requireRole("ADMIN"), adminUpdateSubscription);
 router.post("/admin/:shopId/extend-trial", authenticate, requireRole("ADMIN"), adminExtendTrial);
+router.post("/admin/:shopId/payments", authenticate, requireRole("ADMIN"), adminRecordPayment);
 
 module.exports = router;

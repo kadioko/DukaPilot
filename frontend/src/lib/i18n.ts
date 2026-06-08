@@ -205,6 +205,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "auth.error.rateLimited": { sw: "Umejaribu mara nyingi sana. Tafadhali subiri dakika chache kabla ya kujaribu tena.", en: "Too many attempts. Please wait a few minutes before trying again." },
   "auth.error.serverOffline": { sw: "Imeshindikana kufikia seva ya DukaPilot. Hakikisha API URL ni sahihi na backend ipo hewani.", en: "Unable to reach the DukaPilot server. Confirm the API URL is correct and the backend is online." },
   "auth.error.unexpectedResponse": { sw: "Seva ya DukaPilot imerudisha majibu yasiyotegemewa.", en: "The DukaPilot server returned an unexpected response format." },
+  "billing.subscriptionRequired": { sw: "Jaribio au usajili umeisha. Wasiliana WhatsApp +255743910580 ili kuendelea kutumia DukaPilot.", en: "Your trial or subscription has expired. Contact WhatsApp +255743910580 to continue using DukaPilot." },
 
   "common.save": { sw: "Hifadhi", en: "Save" },
   "common.cancel": { sw: "Futa", en: "Cancel" },

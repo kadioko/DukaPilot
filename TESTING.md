@@ -251,7 +251,24 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 5. Add a staff phone and PIN, then log out and confirm the staff member can log in with that phone/PIN.
 6. Confirm cashier permissions allow `/sales` but block stock/report/staff routes when those permissions are off.
 7. Open `/assistant` — confirm recommendations rank named stock, debt, expense, top-product, or pending-order actions when those records exist.
-8. Switch language between Kiswahili and English and confirm all four pages update their labels.
+8. Click assistant action links and confirm they open the relevant workflow, including inventory search when a product is named.
+9. Switch language between Kiswahili and English and confirm all four pages update their labels.
+
+### Subscription and payment admin
+
+1. Log in as Admin (`+255743910580` / `1234`) and open `/admin`.
+2. Open Subscriptions and confirm active/trial/expired/suspended filters work.
+3. Use `Paid Basic` or `Paid Pro` on a test shop and confirm the plan, status, and last payment update.
+4. Suspend a test shop and confirm write actions return a subscription-required message while read-only views still load.
+5. Search for a staff phone in PIN Reset and confirm staff PIN reset works.
+
+### Offline sales queue
+
+1. Log in as a merchant and open `/sales`.
+2. Simulate offline mode in browser dev tools or disconnect the network.
+3. Add items and complete a sale.
+4. Confirm the pending-sync badge appears and the cart clears.
+5. Restore network and confirm the pending sale syncs, then products refresh.
 
 ### Onboarding and public trust pages
 
@@ -422,6 +439,8 @@ Manual post-deploy checks:
 - Settings page saves correctly
 - Debt, expense, staff, and assistant pages load for merchants
 - Staff permission enforcement blocks restricted staff sessions from stock, reports, staff management, and settings profile changes
+- Subscription payment actions, suspension, and mutation enforcement work from Admin
+- Offline sales queue syncs after connection returns
 - `/contact`, `/help`, `/demo`, and `/onboarding` render without console errors
 - `/catalog` empty/search state shows merchant education, demo shops, and WhatsApp/register CTAs
 

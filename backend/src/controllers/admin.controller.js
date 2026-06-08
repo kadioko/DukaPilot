@@ -88,6 +88,30 @@ const resetUserPin = asyncHandler(async (req, res) => {
   res.json({ message: "PIN reset successfully" });
 });
 
+const resetStaffPin = asyncHandler(async (req, res) => {
+  const { staffId } = req.params;
+  const newPin = String(req.body.newPin || "").trim();
+
+  if (!/^\d{4,8}$/.test(newPin)) {
+    return res.status(400).json({ error: "New PIN must be 4 to 8 digits" });
+  }
+
+  const staff = await prisma.staffMember.findUnique({ where: { id: staffId } });
+  if (!staff) return res.status(404).json({ error: "Staff member not found" });
+
+  const hashedPin = await bcrypt.hash(newPin, 10);
+  await prisma.staffMember.update({ where: { id: staffId }, data: { pin: hashedPin } });
+
+  req.audit = {
+    action: "admin.staff.resetPin",
+    resourceType: "staff",
+    resourceId: staffId,
+    metadata: { adminId: req.user.userId },
+  };
+
+  res.json({ message: "Staff PIN reset successfully" });
+});
+
 // Admin: find user by phone (for support lookup)
 const findUserByPhone = asyncHandler(async (req, res) => {
   const phone = String(req.query.phone || "").replace(/[\s()-]/g, "").trim();
@@ -111,4 +135,25 @@ const findUserByPhone = asyncHandler(async (req, res) => {
   res.json({ user });
 });
 
-module.exports = { overview, listUsers, listAuditLogs, resetUserPin, findUserByPhone };
+const findStaffByPhone = asyncHandler(async (req, res) => {
+  const phone = String(req.query.phone || "").replace(/[\s()-]/g, "").trim();
+  if (!phone) return res.status(400).json({ error: "phone query parameter required" });
+
+  const staff = await prisma.staffMember.findFirst({
+    where: { phone },
+    select: {
+      id: true,
+      phone: true,
+      name: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+      shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } },
+    },
+  });
+
+  if (!staff) return res.status(404).json({ error: "Staff member not found" });
+  res.json({ staff });
+});
+
+module.exports = { overview, listUsers, listAuditLogs, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone };

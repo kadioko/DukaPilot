@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { isSubscriptionActive } = require("../middleware/subscription");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -47,6 +48,7 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
       isActive: true,
       createdAt: true,
       user: { select: { id: true, name: true, phone: true } },
+      subscriptionPayments: { orderBy: { paidAt: "desc" }, take: 1 },
     },
     orderBy: { createdAt: "desc" },
     take: 500,
@@ -58,7 +60,7 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
     const subActive = s.subscriptionEndsAt && s.subscriptionEndsAt > now;
     const computedStatus = !s.isActive ? "suspended" : trialActive ? "trial" : subActive ? "active" : "expired";
     const daysLeft = s.trialEndsAt ? Math.max(0, Math.ceil((s.trialEndsAt - now) / (1000 * 60 * 60 * 24))) : null;
-    return { ...s, computedStatus, daysLeft };
+    return { ...s, computedStatus, daysLeft, lastPayment: s.subscriptionPayments[0] || null };
   });
 
   // Filter
@@ -116,4 +118,44 @@ const adminExtendTrial = asyncHandler(async (req, res) => {
   res.json({ shop: updated, message: `Trial extended by ${days} days` });
 });
 
-module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial };
+const adminRecordPayment = asyncHandler(async (req, res) => {
+  const { shopId } = req.params;
+  const plan = String(req.body.plan || "BASIC").toUpperCase();
+  const months = Math.max(1, Math.min(24, Number(req.body.months) || 1));
+  const amount = Number(req.body.amount);
+  const method = String(req.body.method || "MANUAL").toUpperCase();
+  const reference = String(req.body.reference || "").trim() || null;
+  const note = String(req.body.note || "").trim() || null;
+
+  if (!["BASIC", "PRO"].includes(plan)) return res.status(400).json({ error: "Plan must be BASIC or PRO" });
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Payment amount must be positive" });
+
+  const existing = await prisma.shop.findUnique({ where: { id: shopId }, select: { subscriptionEndsAt: true } });
+  if (!existing) return res.status(404).json({ error: "Shop not found" });
+
+  const base = existing.subscriptionEndsAt && existing.subscriptionEndsAt > new Date() ? existing.subscriptionEndsAt : new Date();
+  const subscriptionEndsAt = new Date(base);
+  subscriptionEndsAt.setMonth(subscriptionEndsAt.getMonth() + months);
+
+  const [payment, shop] = await prisma.$transaction([
+    prisma.subscriptionPayment.create({
+      data: { shopId, plan, amount, months, method, reference, note },
+    }),
+    prisma.shop.update({
+      where: { id: shopId },
+      data: { plan, subscriptionEndsAt, isActive: true },
+      select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+    }),
+  ]);
+
+  req.audit = {
+    action: "admin.subscription.paymentRecorded",
+    resourceType: "shop",
+    resourceId: shopId,
+    metadata: { adminId: req.user.userId, paymentId: payment.id, plan, amount, months, method },
+  };
+
+  res.status(201).json({ payment, shop, active: isSubscriptionActive(shop) });
+});
+
+module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial, adminRecordPayment };

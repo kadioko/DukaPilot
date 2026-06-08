@@ -104,6 +104,7 @@ model Shop {
   debts           Debt[]
   expenses        Expense[]
   staffMembers    StaffMember[]
+  subscriptionPayments SubscriptionPayment[]
   // Subscription / trial
   plan            String    @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
   trialEndsAt     DateTime?
@@ -113,6 +114,23 @@ model Shop {
   updatedAt       DateTime  @updatedAt
 
   @@map("shops")
+}
+
+model SubscriptionPayment {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  plan        String
+  amount      Float
+  months      Int      @default(1)
+  method      String   @default("MANUAL")
+  reference   String?
+  note        String?
+  paidAt      DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([shopId, paidAt])
+  @@map("subscription_payments")
 }
 
 model Supplier {

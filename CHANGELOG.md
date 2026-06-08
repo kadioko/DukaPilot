@@ -18,11 +18,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added staff role management with PIN login and backend permission enforcement for selling, stock, staff, and reports.
 - Added `/assistant` as the DukaPilot AI Assistant positioning and ranked recommendation surface.
 - Added `npm run monitor:prod` for production health, CORS, catalog, login, dashboard, and stale API URL checks.
+- Added manual subscription payment records, admin plan activation controls, shop suspension, and mutation-level subscription enforcement.
+- Added staff PIN reset support for admins.
+- Added browser-local offline sales queue with retry-on-reconnect sync.
 
 ### Fixed
 
 - Improved `/pricing` with plan fit, inclusions, WhatsApp CTAs, and consistent public links.
 - Improved `/catalog` empty/search state with merchant education, demo shop links, and WhatsApp/register CTAs.
+- Improved AI Assistant cards with why-it-matters notes and direct workflow links.
 - Updated production API defaults to `https://dukapilotproduction.up.railway.app/api`.
 - Added a frontend fallback that rewrites the old Railway API URL to the new DukaPilot API URL if a stale Vercel env value is present.
 - Allowed `https://dukapilot.vercel.app` in backend CORS.

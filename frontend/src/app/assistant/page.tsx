@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
@@ -30,6 +31,8 @@ interface Recommendation {
   title: string;
   body: string;
   action: string;
+  href: string;
+  why: string;
 }
 
 export default function AssistantPage() {
@@ -84,10 +87,13 @@ export default function AssistantPage() {
                     </p>
                     <h3 className="mt-1 font-semibold text-gray-950">{item.title}</h3>
                     <p className="mt-1 text-sm leading-6 text-gray-600">{item.body}</p>
-                    <p className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand-700">
+                    <p className="mt-2 text-xs leading-5 text-gray-500">
+                      <span className="font-semibold text-gray-700">{lang === "sw" ? "Kwa nini:" : "Why:"}</span> {item.why}
+                    </p>
+                    <Link href={item.href} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-900">
                       {item.action}
                       <ArrowRight className="h-4 w-4" />
-                    </p>
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -142,6 +148,10 @@ function buildRecommendations({
         ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`
         : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`,
       action: lang === "sw" ? "Fungua inventory na agiza tena" : "Open inventory and reorder",
+      href: `/inventory?search=${encodeURIComponent(mostUrgentStock.name)}`,
+      why: lang === "sw"
+        ? "Stock ikiisha, mauzo husimama na mteja huenda kwa duka lingine."
+        : "When stock runs out, sales stop and customers move to another shop.",
     });
   }
 
@@ -160,6 +170,10 @@ function buildRecommendations({
         ? customer ? `Anza na ${customer}. Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.` : `Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.`
         : customer ? `Start with ${customer}. ${debts.summary.openCount} debt records are still open.` : `${debts.summary.openCount} debt records are still open.`,
       action: lang === "sw" ? "Fungua madeni na rekodi malipo" : "Open debts and record payment",
+      href: "/debts",
+      why: lang === "sw"
+        ? "Madeni yakikaa muda mrefu hupunguza cash ya kununua stock mpya."
+        : "Old debts reduce the cash available to buy new stock.",
     });
   }
 
@@ -179,6 +193,10 @@ function buildRecommendations({
         ? `Matumizi ya siku 7 zilizopita ni ${formatTZS(expenseTrend.current)}. Linganisha na faida ili ujue gharama zinazokula margin.`
         : `Last 7 days expenses are ${formatTZS(expenseTrend.current)}. Compare them against profit to find costs eating margin.`,
       action: lang === "sw" ? "Fungua matumizi" : "Open expenses",
+      href: "/expenses",
+      why: lang === "sw"
+        ? "Gharama ndogo ndogo zikikua bila kufuatiliwa zinaweza kula faida ya duka."
+        : "Small costs can quietly eat shop profit when they are not tracked.",
     });
   }
 
@@ -196,6 +214,10 @@ function buildRecommendations({
         ? `Bidhaa hii imeleta ${formatTZS(topProduct.totalRevenue)} kwenye mauzo. Iweke mbele kwenye duka na catalog.`
         : `This product has generated ${formatTZS(topProduct.totalRevenue)} in sales. Feature it in the shop and catalog.`,
       action: lang === "sw" ? "Tumia kama bidhaa ya kuvutia wateja" : "Use it as a customer magnet",
+      href: `/inventory?search=${encodeURIComponent(topProduct.product.name)}`,
+      why: lang === "sw"
+        ? "Bidhaa inayouza vizuri inaweza kuvuta wateja wanunue bidhaa nyingine pia."
+        : "A strong seller can bring customers in and lift other basket items too.",
     });
   }
 
@@ -212,6 +234,10 @@ function buildRecommendations({
         ? "Maagizo yanapochelewa, wateja hupoteza imani. Thibitisha, tuma au futa yaliyozeeka."
         : "Delayed orders reduce customer trust. Confirm, dispatch, or cancel stale orders.",
       action: lang === "sw" ? "Fungua maagizo" : "Open orders",
+      href: "/orders/customers",
+      why: lang === "sw"
+        ? "Order ikichelewa hupunguza uaminifu na inaweza kupoteza mauzo ya kesho."
+        : "Slow orders reduce trust and can cost tomorrow's sales.",
     });
   }
 
