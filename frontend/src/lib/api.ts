@@ -6,7 +6,9 @@ const LEGACY_TOKEN_KEY = "dukaos_token";
 const REQUEST_TIMEOUT_MS = 20000;
 
 function normalizeBaseUrl(url: string): string {
-  return url.trim().replace(/\n/g, "").replace(/\/$/, "");
+  const normalized = url.trim().replace(/\n/g, "").replace(/\/$/, "");
+  const staleHost = ["dukaos", "production.up.railway.app"].join("-");
+  return normalized.includes(staleHost) ? PROD_API_URL : normalized;
 }
 
 function getBaseUrl(): string {
