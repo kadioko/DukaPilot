@@ -17,6 +17,7 @@ import {
   Users,
   HandCoins,
   Sparkles,
+  CreditCard,
 } from "lucide-react";
 import { clearToken, api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -58,6 +59,7 @@ const merchantNav: NavItem[] = [
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock" },
   { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff" },
   { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports" },
+  { href: "/billing", label: "Billing", icon: CreditCard, permission: "canManageStaff" },
   { href: "/reports", label: "Report Issue", icon: AlertTriangle },
 ];
 
@@ -71,6 +73,7 @@ const adminNav: NavItem[] = [
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
   { href: "/staff", labelKey: "nav.staff", icon: Users },
   { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
+  { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/reports", label: "Reports", icon: AlertTriangle },
 ];
 
@@ -177,6 +180,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               : (lang === "sw" ? `Jaribio: siku ${trialDaysLeft} zimebaki` : `Trial: ${trialDaysLeft} days left`)}
             {" "}<Link href="/pricing" className="underline hover:no-underline">
               {lang === "sw" ? "Lipia" : "Subscribe"}
+            </Link>
+            {" "}<Link href="/billing" className="underline hover:no-underline">
+              {lang === "sw" ? "Tuma malipo" : "Send payment"}
             </Link>
           </div>
         )}

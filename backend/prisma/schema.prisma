@@ -385,6 +385,7 @@ enum ReportType {
   BUG
   FEATURE_REQUEST
   ACCOUNT_ISSUE
+  BILLING
   OTHER
 }
 

@@ -444,6 +444,17 @@ Manual post-deploy checks:
 - `/contact`, `/help`, `/demo`, and `/onboarding` render without console errors
 - `/catalog` empty/search state shows merchant education, demo shops, and WhatsApp/register CTAs
 
+Current sprint checks:
+
+- New merchant registration creates a shop with a 14-day free trial visible from `/subscription/status`.
+- `/billing` shows subscription status, M-Pesa instructions, WhatsApp support, and lets the merchant submit a payment reference as a `BILLING` report.
+- Admin `/admin` overview shows Business Operations metrics: active shops, trials, expiring trials, unpaid, suspended, support issues, billing requests, and suspicious errors.
+- Admin can review `BILLING` reports, then use Subscriptions to mark Paid Basic/Pro and confirm Last Payment updates.
+- `/assistant` shows a daily command list, why-it-matters notes, expected impact, direct action buttons, and a WhatsApp-style owner summary.
+- Offline sales show queued/synced/failed sync history. Stock conflicts should leave the sale pending with a visible retry error.
+- `/onboarding` includes Settings, Inventory, Staff, Sales, Catalog, and Pricing/Billing actions, with checklist progress saved locally.
+- `/pricing`, `/contact`, `/help`, and `/demo` explain payment/support clearly and keep WhatsApp `+255743910580` visible.
+
 ---
 
 ## Required Environment Variables for Production

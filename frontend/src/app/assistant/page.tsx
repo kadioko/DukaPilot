@@ -33,6 +33,7 @@ interface Recommendation {
   action: string;
   href: string;
   why: string;
+  impact: string;
 }
 
 export default function AssistantPage() {
@@ -52,6 +53,7 @@ export default function AssistantPage() {
   }, []);
 
   const recommendations = buildRecommendations({ dashboard, allTime, debts, expenses, lang });
+  const ownerSummary = buildOwnerSummary(recommendations, lang);
 
   return (
     <AppShell>
@@ -71,7 +73,17 @@ export default function AssistantPage() {
         </div>
 
         <section className="rounded-lg border border-gray-200 bg-white p-5">
-          <h2 className="font-semibold text-gray-950">{lang === "sw" ? "Mapendekezo ya sasa" : "Current recommendations"}</h2>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-semibold text-gray-950">{lang === "sw" ? "Orodha ya leo" : "Today's command list"}</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {lang === "sw" ? "DukaPilot inapanga hatua muhimu kwanza." : "DukaPilot ranks the most useful next action first."}
+              </p>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600 sm:max-w-xs">
+              <span className="font-semibold text-gray-800">WhatsApp:</span> {ownerSummary}
+            </div>
+          </div>
           <div className="mt-4 grid gap-3">
             {recommendations.length === 0 ? (
               <p className="text-sm text-gray-500">{lang === "sw" ? "Ongeza mauzo, bidhaa, madeni au matumizi ili msaidizi aanze kutoa mapendekezo." : "Add sales, inventory, debts, or expenses so the assistant can start producing recommendations."}</p>
@@ -90,7 +102,10 @@ export default function AssistantPage() {
                     <p className="mt-2 text-xs leading-5 text-gray-500">
                       <span className="font-semibold text-gray-700">{lang === "sw" ? "Kwa nini:" : "Why:"}</span> {item.why}
                     </p>
-                    <Link href={item.href} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-900">
+                    <p className="mt-1 text-xs leading-5 text-gray-500">
+                      <span className="font-semibold text-gray-700">{lang === "sw" ? "Matokeo:" : "Expected impact:"}</span> {item.impact}
+                    </p>
+                    <Link href={item.href} className="mt-3 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
                       {item.action}
                       <ArrowRight className="h-4 w-4" />
                     </Link>
@@ -152,6 +167,9 @@ function buildRecommendations({
       why: lang === "sw"
         ? "Stock ikiisha, mauzo husimama na mteja huenda kwa duka lingine."
         : "When stock runs out, sales stop and customers move to another shop.",
+      impact: lang === "sw"
+        ? "Kulinda mauzo ya bidhaa inayohitajika kabla wiki haijaisha."
+        : "Protect sales from a needed item before the week ends.",
     });
   }
 
@@ -174,6 +192,9 @@ function buildRecommendations({
       why: lang === "sw"
         ? "Madeni yakikaa muda mrefu hupunguza cash ya kununua stock mpya."
         : "Old debts reduce the cash available to buy new stock.",
+      impact: lang === "sw"
+        ? "Kuongeza cash ya kununua stock au kulipa gharama za duka."
+        : "Free up cash for stock purchases or shop expenses.",
     });
   }
 
@@ -197,6 +218,9 @@ function buildRecommendations({
       why: lang === "sw"
         ? "Gharama ndogo ndogo zikikua bila kufuatiliwa zinaweza kula faida ya duka."
         : "Small costs can quietly eat shop profit when they are not tracked.",
+      impact: lang === "sw"
+        ? "Kupunguza gharama zisizo muhimu na kulinda margin."
+        : "Reduce unnecessary costs and protect margin.",
     });
   }
 
@@ -218,6 +242,9 @@ function buildRecommendations({
       why: lang === "sw"
         ? "Bidhaa inayouza vizuri inaweza kuvuta wateja wanunue bidhaa nyingine pia."
         : "A strong seller can bring customers in and lift other basket items too.",
+      impact: lang === "sw"
+        ? "Kuongeza basket size kwa kuweka bidhaa inayopendwa mbele."
+        : "Increase basket size by putting a proven seller in front.",
     });
   }
 
@@ -238,10 +265,26 @@ function buildRecommendations({
       why: lang === "sw"
         ? "Order ikichelewa hupunguza uaminifu na inaweza kupoteza mauzo ya kesho."
         : "Slow orders reduce trust and can cost tomorrow's sales.",
+      impact: lang === "sw"
+        ? "Kuboresha uaminifu wa wateja na kupunguza order zilizokwama."
+        : "Improve customer trust and reduce stuck orders.",
     });
   }
 
   return items.sort((a, b) => b.rank - a.rank).slice(0, 5);
+}
+
+function buildOwnerSummary(recommendations: Recommendation[], lang: "sw" | "en") {
+  if (recommendations.length === 0) {
+    return lang === "sw"
+      ? "Ongeza bidhaa na mauzo machache ili DukaPilot itoe hatua za leo."
+      : "Add a few products and sales so DukaPilot can produce today's actions.";
+  }
+
+  return recommendations
+    .slice(0, 3)
+    .map((item, index) => `${index + 1}. ${item.title}`)
+    .join(" ");
 }
 
 function mostUrgStockMinimum(product: { minimumStock: number }) {

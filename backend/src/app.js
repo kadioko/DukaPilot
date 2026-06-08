@@ -36,9 +36,7 @@ const allowedOrigins = new Set(
   [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://duka-os.vercel.app",
     "https://dukapilot.vercel.app",
-    "https://dukaos-khaki.vercel.app",
     process.env.FRONTEND_URL,
     process.env.VERCEL_FRONTEND_URL,
   ]

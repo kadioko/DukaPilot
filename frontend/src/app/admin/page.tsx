@@ -84,6 +84,12 @@ interface Subscription {
   lastPayment?: { amount: number; method: string; reference?: string | null; paidAt: string } | null;
 }
 
+interface AdminMetric {
+  label: string;
+  value: number;
+  tone: string;
+}
+
 type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions";
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
@@ -94,6 +100,15 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${color}`}>{icon}</div>
       </div>
       <p className="text-2xl font-bold text-gray-900">{value.toLocaleString()}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, tone }: AdminMetric) {
+  return (
+    <div className={`rounded-lg border px-3 py-2 ${tone}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
+      <p className="mt-1 text-xl font-bold">{value.toLocaleString()}</p>
     </div>
   );
 }
@@ -255,6 +270,18 @@ export default function AdminPage() {
     { id: "reports", label: "Reports" },
     { id: "subscriptions", label: "Subscriptions" },
   ];
+  const activeShops = subscriptions.filter((shop) => shop.computedStatus === "active").length;
+  const trialShops = subscriptions.filter((shop) => shop.computedStatus === "trial").length;
+  const unpaidShops = subscriptions.filter((shop) => shop.computedStatus === "expired").length;
+  const suspendedShops = subscriptions.filter((shop) => shop.computedStatus === "suspended").length;
+  const expiringTrials = subscriptions.filter((shop) => shop.computedStatus === "trial" && shop.daysLeft !== null && shop.daysLeft <= 3).length;
+  const supportIssues = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS").length;
+  const billingIssues = reports.filter((report) => report.type === "BILLING" && report.status !== "RESOLVED").length;
+  const suspiciousErrors = auditLogs.filter((log) =>
+    log.action.toLowerCase().includes("failed") ||
+    log.action.toLowerCase().includes("error") ||
+    log.path.includes("/auth/login")
+  ).length;
 
   if (loading) {
     return (
@@ -293,15 +320,33 @@ export default function AdminPage() {
 
         {/* OVERVIEW */}
         {tab === "overview" && overview && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="Total Users" value={overview.summary.users} icon={<Users className="w-4 h-4 text-blue-600" />} color="bg-blue-50" />
-            <StatCard label="Merchants" value={overview.summary.merchants} icon={<Store className="w-4 h-4 text-brand-600" />} color="bg-brand-50" />
-            <StatCard label="Suppliers" value={overview.summary.suppliers} icon={<Truck className="w-4 h-4 text-orange-600" />} color="bg-orange-50" />
-            <StatCard label="Shops" value={overview.summary.shops} icon={<Store className="w-4 h-4 text-purple-600" />} color="bg-purple-50" />
-            <StatCard label="Active Products" value={overview.summary.products} icon={<Package className="w-4 h-4 text-green-600" />} color="bg-green-50" />
-            <StatCard label="Total Sales" value={overview.summary.sales} icon={<ShoppingCart className="w-4 h-4 text-sky-600" />} color="bg-sky-50" />
-            <StatCard label="Supplier Orders" value={overview.summary.orders} icon={<ClipboardList className="w-4 h-4 text-indigo-600" />} color="bg-indigo-50" />
-            <StatCard label="Audit Events" value={overview.summary.auditLogs} icon={<Shield className="w-4 h-4 text-gray-600" />} color="bg-gray-100" />
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard label="Total Users" value={overview.summary.users} icon={<Users className="w-4 h-4 text-blue-600" />} color="bg-blue-50" />
+              <StatCard label="Merchants" value={overview.summary.merchants} icon={<Store className="w-4 h-4 text-brand-600" />} color="bg-brand-50" />
+              <StatCard label="Suppliers" value={overview.summary.suppliers} icon={<Truck className="w-4 h-4 text-orange-600" />} color="bg-orange-50" />
+              <StatCard label="Shops" value={overview.summary.shops} icon={<Store className="w-4 h-4 text-purple-600" />} color="bg-purple-50" />
+              <StatCard label="Active Products" value={overview.summary.products} icon={<Package className="w-4 h-4 text-green-600" />} color="bg-green-50" />
+              <StatCard label="Total Sales" value={overview.summary.sales} icon={<ShoppingCart className="w-4 h-4 text-sky-600" />} color="bg-sky-50" />
+              <StatCard label="Supplier Orders" value={overview.summary.orders} icon={<ClipboardList className="w-4 h-4 text-indigo-600" />} color="bg-indigo-50" />
+              <StatCard label="Audit Events" value={overview.summary.auditLogs} icon={<Shield className="w-4 h-4 text-gray-600" />} color="bg-gray-100" />
+            </div>
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-gray-900">Business Operations</h2>
+                <span className="text-xs text-gray-400">Live support view</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                <MiniMetric label="Active shops" value={activeShops} tone="border-green-200 bg-green-50 text-green-800" />
+                <MiniMetric label="Trials" value={trialShops} tone="border-yellow-200 bg-yellow-50 text-yellow-800" />
+                <MiniMetric label="Trials <=3d" value={expiringTrials} tone="border-orange-200 bg-orange-50 text-orange-800" />
+                <MiniMetric label="Unpaid" value={unpaidShops} tone="border-red-200 bg-red-50 text-red-800" />
+                <MiniMetric label="Suspended" value={suspendedShops} tone="border-gray-200 bg-gray-50 text-gray-800" />
+                <MiniMetric label="Support issues" value={supportIssues} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                <MiniMetric label="Billing requests" value={billingIssues} tone="border-purple-200 bg-purple-50 text-purple-800" />
+                <MiniMetric label="Suspicious errors" value={suspiciousErrors} tone="border-amber-200 bg-amber-50 text-amber-800" />
+              </div>
+            </section>
           </div>
         )}
 
@@ -510,7 +555,7 @@ export default function AdminPage() {
                             report.priority === "MEDIUM" ? "bg-yellow-100 text-yellow-700" :
                             "bg-gray-100 text-gray-600"
                           }`}>{report.priority}</span>
-                          <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{report.type}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs ${report.type === "BILLING" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{report.type}</span>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                             report.status === "OPEN" ? "bg-blue-100 text-blue-700" :
                             report.status === "IN_PROGRESS" ? "bg-yellow-100 text-yellow-700" :

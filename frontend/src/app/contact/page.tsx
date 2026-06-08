@@ -32,6 +32,17 @@ export default function ContactPage() {
             </a>
           ))}
         </div>
+        <section className="rounded-xl border border-green-200 bg-green-50 p-5">
+          <h2 className="font-semibold text-green-950">{lang === "sw" ? "Built for shop owners in Tanzania" : "Built for Tanzanian shop owners"}</h2>
+          <p className="mt-2 text-sm leading-6 text-green-900">
+            {lang === "sw"
+              ? "Tunasaidia duka kuanza haraka: bidhaa, mauzo, madeni, matumizi, staff, catalog na AI Assistant inayosema cha kufanya leo."
+              : "We help shops get running fast: products, sales, debts, expenses, staff, catalog, and an AI Assistant that says what to do today."}
+          </p>
+          <a href="https://wa.me/255743910580" className="mt-4 inline-flex rounded-xl bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700">
+            WhatsApp support
+          </a>
+        </section>
       </div>
     </PublicPageShell>
   );

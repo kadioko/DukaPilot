@@ -2,6 +2,7 @@ const FRONTEND_URL = (process.env.MONITOR_FRONTEND_URL || "https://dukapilot.ver
 const API_URL = (process.env.MONITOR_API_URL || "https://dukapilotproduction.up.railway.app").replace(/\/$/, "");
 const LOGIN_PHONE = process.env.MONITOR_LOGIN_PHONE || "+255700000002";
 const LOGIN_PIN = process.env.MONITOR_LOGIN_PIN || "1234";
+const STALE_RAILWAY_API_HOST = ["dukaos", "production.up.railway.app"].join("-");
 
 async function request(url, options = {}) {
   const response = await fetch(url, options);
@@ -39,7 +40,7 @@ async function run() {
     const { response, payload } = await request(`${FRONTEND_URL}/`);
     assert(response.ok, `expected 2xx, got ${response.status}`);
     assert(String(payload).includes("DukaPilot"), "frontend shell missing DukaPilot");
-    assert(!String(payload).includes("dukaos-production.up.railway.app"), "frontend shell includes stale Railway API URL");
+    assert(!String(payload).includes(STALE_RAILWAY_API_HOST), "frontend shell includes stale Railway API URL");
   });
 
   await check("catalog load", async () => {

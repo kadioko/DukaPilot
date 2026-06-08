@@ -36,12 +36,22 @@ interface PendingSale {
   id: string;
   createdAt: string;
   total: number;
+  attempts?: number;
+  lastError?: string;
   payload: {
     items: Array<{ productId: string; quantity: number; unitPrice: number }>;
     saleMode: "RETAIL" | "WHOLESALE";
     paymentMethod: string;
     paymentRef?: string;
   };
+}
+
+interface SyncEvent {
+  id: string;
+  at: string;
+  status: "synced" | "failed" | "queued";
+  total: number;
+  message: string;
 }
 
 const PAYMENT_METHODS = [
@@ -55,6 +65,7 @@ const PAYMENT_METHODS = [
 ];
 
 const PENDING_SALES_KEY = "dukapilot_pending_sales";
+const SYNC_HISTORY_KEY = "dukapilot_sales_sync_history";
 
 function readPendingSales(): PendingSale[] {
   if (typeof window === "undefined") return [];
@@ -67,6 +78,26 @@ function readPendingSales(): PendingSale[] {
 
 function writePendingSales(sales: PendingSale[]) {
   window.localStorage.setItem(PENDING_SALES_KEY, JSON.stringify(sales));
+}
+
+function readSyncHistory(): SyncEvent[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(SYNC_HISTORY_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function writeSyncHistory(events: SyncEvent[]) {
+  window.localStorage.setItem(SYNC_HISTORY_KEY, JSON.stringify(events.slice(0, 10)));
+}
+
+function newLocalId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export default function SalesPage() {
@@ -83,6 +114,7 @@ export default function SalesPage() {
   const [view, setView] = useState<"pos" | "history">("pos");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [pendingSales, setPendingSales] = useState<PendingSale[]>([]);
+  const [syncHistory, setSyncHistory] = useState<SyncEvent[]>([]);
 
   useEffect(() => {
     api.get<{ products: Product[] }>("/products")
@@ -97,14 +129,38 @@ export default function SalesPage() {
     }
 
     const remaining: PendingSale[] = [];
+    const events: SyncEvent[] = [];
     for (const sale of pending) {
       try {
         await api.post("/sales", sale.payload, lang);
-      } catch {
-        remaining.push(sale);
+        events.push({
+          id: newLocalId(),
+          at: new Date().toISOString(),
+          status: "synced",
+          total: sale.total,
+          message: lang === "sw" ? "Sale synced successfully" : "Sale synced successfully",
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : t("common.error", lang);
+        const nextSale = { ...sale, attempts: (sale.attempts || 0) + 1, lastError: message };
+        remaining.push(nextSale);
+        events.push({
+          id: newLocalId(),
+          at: new Date().toISOString(),
+          status: "failed",
+          total: sale.total,
+          message: message.includes("Insufficient stock")
+            ? (lang === "sw" ? "Stock imebadilika kabla ya sync. Kagua cart na inventory." : "Stock changed before sync. Review cart and inventory.")
+            : message,
+        });
       }
     }
     writePendingSales(remaining);
+    if (events.length > 0) {
+      const nextHistory = [...events, ...readSyncHistory()];
+      writeSyncHistory(nextHistory);
+      setSyncHistory(nextHistory.slice(0, 10));
+    }
     setPendingSales(remaining);
     if (remaining.length < pending.length) {
       toast(lang === "sw" ? "Mauzo ya offline yamesawazishwa." : "Offline sales synced.", "success");
@@ -116,6 +172,7 @@ export default function SalesPage() {
 
   useEffect(() => {
     setPendingSales(readPendingSales());
+    setSyncHistory(readSyncHistory());
     syncPendingSales().catch(() => {});
     window.addEventListener("online", syncPendingSales);
     return () => window.removeEventListener("online", syncPendingSales);
@@ -209,10 +266,20 @@ export default function SalesPage() {
       if (canQueue) {
         const queued = [
           ...readPendingSales(),
-          { id: crypto.randomUUID(), createdAt: new Date().toISOString(), total, payload },
+          { id: newLocalId(), createdAt: new Date().toISOString(), total, attempts: 0, payload },
         ];
+        const queuedEvent = {
+          id: newLocalId(),
+          at: new Date().toISOString(),
+          status: "queued" as const,
+          total,
+          message: lang === "sw" ? "Sale saved locally until internet returns." : "Sale saved locally until internet returns.",
+        };
+        const nextHistory = [queuedEvent, ...readSyncHistory()];
         writePendingSales(queued);
+        writeSyncHistory(nextHistory);
         setPendingSales(queued);
+        setSyncHistory(nextHistory.slice(0, 10));
         setCart([]);
         setPaymentRef("");
         toast(lang === "sw" ? "Mtandao haupo. Mauzo yamehifadhiwa kusubiri sync." : "Offline. Sale saved and will sync later.", "success");
@@ -275,6 +342,41 @@ export default function SalesPage() {
               </button>
             )}
           </div>
+        )}
+
+        {view === "pos" && (pendingSales.length > 0 || syncHistory.length > 0) && (
+          <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-amber-950">{lang === "sw" ? "Offline sales sync" : "Offline sales sync"}</p>
+                <p className="text-xs text-amber-800">
+                  {pendingSales.length > 0
+                    ? (lang === "sw" ? `${pendingSales.length} sale zinasubiri. Kila sale itajaribu tena internet ikirudi.` : `${pendingSales.length} sale(s) waiting. Each sale retries when internet returns.`)
+                    : (lang === "sw" ? "Hakuna sale inayosubiri sync." : "No sales are waiting to sync.")}
+                </p>
+              </div>
+              {pendingSales.some((sale) => sale.lastError) && (
+                <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
+                  {lang === "sw" ? "Kagua hitilafu" : "Review errors"}
+                </span>
+              )}
+            </div>
+            {syncHistory.length > 0 && (
+              <div className="mt-3 grid gap-2">
+                {syncHistory.slice(0, 3).map((event) => (
+                  <div key={event.id} className="flex items-start justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 text-xs">
+                    <div>
+                      <p className={`font-semibold ${event.status === "failed" ? "text-red-700" : event.status === "synced" ? "text-green-700" : "text-amber-800"}`}>
+                        {event.status.toUpperCase()} - {formatTZS(event.total)}
+                      </p>
+                      <p className="mt-0.5 text-gray-600">{event.message}</p>
+                    </div>
+                    <p className="whitespace-nowrap text-gray-400">{new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         {view === "pos" ? (

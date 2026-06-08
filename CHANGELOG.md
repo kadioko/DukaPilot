@@ -19,17 +19,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added `/assistant` as the DukaPilot AI Assistant positioning and ranked recommendation surface.
 - Added `npm run monitor:prod` for production health, CORS, catalog, login, dashboard, and stale API URL checks.
 - Added manual subscription payment records, admin plan activation controls, shop suspension, and mutation-level subscription enforcement.
+- Added merchant `/billing` page with M-Pesa payment instructions, payment reference submission through support reports, and WhatsApp handoff.
+- Added admin business-operations metrics for active shops, trials, expiring trials, unpaid/suspended shops, billing requests, support issues, and suspicious auth/error activity.
+- Added a 14-day trial date at merchant registration plus a migration to backfill free-trial shops missing trial dates.
 - Added staff PIN reset support for admins.
-- Added browser-local offline sales queue with retry-on-reconnect sync.
+- Added browser-local offline sales queue with retry-on-reconnect sync, visible sync history, and retry error messages.
 
 ### Fixed
 
 - Improved `/pricing` with plan fit, inclusions, WhatsApp CTAs, and consistent public links.
 - Improved `/catalog` empty/search state with merchant education, demo shop links, and WhatsApp/register CTAs.
 - Improved AI Assistant cards with why-it-matters notes and direct workflow links.
+- Improved AI Assistant into a daily command list with expected impact and a WhatsApp-style owner summary.
+- Improved onboarding into a tracked setup checklist including staff setup.
+- Improved public trust pages with payment/support/offline/demo guidance.
 - Updated production API defaults to `https://dukapilotproduction.up.railway.app/api`.
-- Added a frontend fallback that rewrites the old Railway API URL to the new DukaPilot API URL if a stale Vercel env value is present.
-- Allowed `https://dukapilot.vercel.app` in backend CORS.
+- Allowed `https://dukapilot.vercel.app` in backend CORS and removed old Vercel production origins from code.
 - Bumped the service-worker cache to `dukapilot-v2` and stopped precaching `/` so stale login code does not persist after deploys.
 - Updated express-rate-limit key generation to use the IPv6-safe helper.
 

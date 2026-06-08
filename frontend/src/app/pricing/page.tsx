@@ -328,6 +328,31 @@ export default function PricingPage() {
           </div>
         </div>
 
+        <div className="grid gap-4 md:grid-cols-2 mb-10">
+          <section className="bg-white rounded-2xl border border-green-200 p-6">
+            <h2 className="text-base font-bold text-gray-900 mb-2">{lang === "sw" ? "Jinsi ya kulipa" : "How payment works"}</h2>
+            <p className="text-sm leading-6 text-gray-600">
+              {lang === "sw"
+                ? "Tuma M-Pesa kwenda +255 743 910 580, weka reference kwenye Billing au tuma WhatsApp. Admin atahakiki na kuactivate mpango wako."
+                : "Send M-Pesa to +255 743 910 580, submit the reference in Billing or WhatsApp, and an admin verifies and activates your plan."}
+            </p>
+            <Link href="/billing" className="mt-4 inline-flex rounded-xl bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700">
+              {lang === "sw" ? "Weka payment reference" : "Submit payment reference"}
+            </Link>
+          </section>
+          <section className="bg-white rounded-2xl border border-brand-200 p-6">
+            <h2 className="text-base font-bold text-gray-900 mb-2">{lang === "sw" ? "Kwa nini DukaPilot" : "Why DukaPilot"}</h2>
+            <p className="text-sm leading-6 text-gray-600">
+              {lang === "sw"
+                ? "DukaPilot si POS tu. Ni AI assistant inayokuambia cha kufanya: agiza bidhaa, fuatilia deni, punguza gharama, na promote bidhaa yenye margin."
+                : "DukaPilot is not just POS. It is an AI assistant that tells you what to do: restock, collect debt, reduce costs, and promote high-margin products."}
+            </p>
+            <Link href="/assistant" className="mt-4 inline-flex rounded-xl border border-brand-200 px-5 py-3 text-sm font-bold text-brand-700 hover:bg-brand-50">
+              {lang === "sw" ? "Ona AI Assistant" : "See AI Assistant"}
+            </Link>
+          </section>
+        </div>
+
         <div className="grid md:grid-cols-2 gap-4 mb-10">
           {faqs.map((faq) => (
             <div key={faq.q.en} className="bg-gray-50 rounded-xl p-4">

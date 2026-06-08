@@ -41,6 +41,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Debt tracking** | Credit sales automatically create receivables; merchants can add, track, and mark debts paid |
 | **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
 | **Staff roles** | Add staff members and manage role permissions for selling, stock, staff, and reports |
+| **Billing page** | Merchants can see plan status, M-Pesa instructions, submit payment references, and contact WhatsApp support |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
@@ -51,8 +52,8 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
-| **DukaPilot AI Assistant** | Ranked recommendations with why-it-matters notes and direct action links |
-| **Offline sales queue** | Sales entered during connection loss are saved locally and sync when the browser comes back online |
+| **DukaPilot AI Assistant** | Daily command list with ranked recommendations, why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
+| **Offline sales queue** | Sales entered during connection loss are saved locally, show sync history/errors, and retry when the browser comes back online |
 | **PIN recovery** | "Forgot PIN?" sends a 6-digit OTP via SMS (Africa's Talking) |
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
 | **CSV export** | Download sales history or full inventory as a CSV file |
@@ -72,7 +73,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 
 | Feature | Description |
 | --- | --- |
-| **System overview** | User, shop, product, sale, and order counts |
+| **System overview** | User, shop, product, sale, order, active shop, trial, unpaid, suspended, billing, support, and suspicious-error counts |
 | **User management** | List all users; look up any user by phone |
 | **PIN reset** | Reset any user's PIN (all resets are audit-logged) |
 | **Audit log viewer** | Searchable log of all significant actions |
@@ -119,6 +120,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Change PIN:** authenticated users can change PIN from `/settings`
 - **Admin PIN reset:** admin can reset any user's PIN via `/admin` (audit-logged)
 - **Registration:** collects phone, PIN, name, role (MERCHANT / SUPPLIER), shop city, district, and category
+- **Merchant trial:** new merchant shops receive a 14-day free trial on registration; existing missing trial dates are backfilled by migration.
 
 ### Security Notes
 
@@ -355,7 +357,7 @@ npm run dev         # runs on :3000
 ### Launch Notes
 
 - Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, staff, and reports access for staff sessions.
-- Offline support includes the cached app shell, `/offline.html` fallback, and a browser-local pending sales queue that retries when the connection returns. Broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled yet.
+- Offline support includes the cached app shell, `/offline.html` fallback, and a browser-local pending sales queue with visible sync history/errors that retries when the connection returns. Broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled yet.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired or suspended shops can still view data and contact support, but operational mutations such as new sales, stock edits, expenses, staff changes, and orders require an active trial or subscription.
 

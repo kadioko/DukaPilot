@@ -176,12 +176,16 @@ const register = asyncHandler(async (req, res) => {
   });
 
   if (role === "MERCHANT") {
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 14);
+
     await prisma.shop.create({
       data: {
         name: shopName || `${name}'s Duka`,
         location: shopLocation || "Dar es Salaam",
         district: shopDistrict || null,
         category: shopCategory || "general",
+        trialEndsAt,
         userId: user.id,
       },
     });

@@ -1,14 +1,12 @@
 import { t, type Lang } from "@/lib/i18n";
 
-const LEGACY_PROD_API_URL = "https://dukaos-production.up.railway.app/api";
 const PROD_API_URL = "https://dukapilotproduction.up.railway.app/api";
 const TOKEN_KEY = "dukapilot_token";
 const LEGACY_TOKEN_KEY = "dukaos_token";
 const REQUEST_TIMEOUT_MS = 20000;
 
 function normalizeBaseUrl(url: string): string {
-  const normalized = url.trim().replace(/\n/g, "").replace(/\/$/, "");
-  return normalized === LEGACY_PROD_API_URL ? PROD_API_URL : normalized;
+  return url.trim().replace(/\n/g, "").replace(/\/$/, "");
 }
 
 function getBaseUrl(): string {
