@@ -1,0 +1,46 @@
+{
+  "packageId": "com.dukapilot.app",
+  "host": "dukapilot.vercel.app",
+  "name": "DukaPilot",
+  "launcherName": "DukaPilot",
+  "display": "standalone",
+  "themeColor": "#16a34a",
+  "themeColorDark": "#166534",
+  "navigationColor": "#166534",
+  "navigationColorDark": "#166534",
+  "navigationDividerColor": "#166534",
+  "navigationDividerColorDark": "#166534",
+  "backgroundColor": "#166534",
+  "enableNotifications": true,
+  "enableSiteSettingsShortcut": true,
+  "startUrl": "/",
+  "iconUrl": "https://dukapilot.vercel.app/logo/dukapilot-icon-512.png",
+  "maskableIconUrl": "https://dukapilot.vercel.app/logo/dukapilot-icon-512.png",
+  "monochromeIconUrl": "https://dukapilot.vercel.app/logo/dukapilot-icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "keystores/dukapilot-upload.jks",
+    "alias": "dukapilot"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://dukapilot.vercel.app/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 23,
+  "orientation": "default",
+  "fingerprints": [
+    {
+      "value": "F7:FB:49:AE:75:B8:AA:D7:F0:BD:BA:10:C4:FC:EB:43:EA:68:3C:14:99:0E:06:8E:58:12:B5:90:E6:84:E8:3C"
+    }
+  ],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}

@@ -17,3 +17,12 @@ Thumbs.db
 .vercel
 .env*.local
 load-tests/results.json
+
+# Android signing keys and build outputs
+.gradle/
+app/build/
+android/keystores/
+android/release/
+android/app/build/
+android/build/
+android/.gradle/
