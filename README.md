@@ -22,7 +22,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 
 ## Live Production
 
-- **Frontend:** [https://dukapilot.vercel.app/](https://dukapilot.vercel.app/)
+- **Frontend:** [https://www.dukapilot.com/](https://www.dukapilot.com/)
 - **Backend API:** [https://dukapilotproduction.up.railway.app/api](https://dukapilotproduction.up.railway.app/api)
 - **Health:** [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health)
 - **Status:** [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status)
@@ -316,7 +316,7 @@ npm run dev         # runs on :3000
 | `DATABASE_MIGRATE_URL` | Yes | Public TCP proxy URL for `prisma migrate deploy` at startup |
 | `JWT_SECRET` | Yes | Generate: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `NODE_ENV` | Yes | Set to `production` |
-| `FRONTEND_URL` | Yes | Vercel frontend URL for CORS (`https://dukapilot.vercel.app`) |
+| `FRONTEND_URL` | Yes | Official frontend URL for CORS (`https://www.dukapilot.com`) |
 | `AT_API_KEY` | Recommended | Africa's Talking key for SMS OTP |
 | `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
 | `AT_SENDER_ID` | Optional | Custom SMS sender ID |

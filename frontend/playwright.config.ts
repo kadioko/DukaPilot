@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || "https://dukapilot.vercel.app";
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || "https://www.dukapilot.com";
 
 export default defineConfig({
   testDir: "./tests",

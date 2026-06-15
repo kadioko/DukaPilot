@@ -1,6 +1,6 @@
 {
   "packageId": "com.dukapilot.app",
-  "host": "dukapilot.vercel.app",
+  "host": "www.dukapilot.com",
   "name": "DukaPilot",
   "launcherName": "DukaPilot",
   "display": "standalone",
@@ -14,9 +14,9 @@
   "enableNotifications": true,
   "enableSiteSettingsShortcut": true,
   "startUrl": "/",
-  "iconUrl": "https://dukapilot.vercel.app/logo/dukapilot-icon-512.png",
-  "maskableIconUrl": "https://dukapilot.vercel.app/logo/dukapilot-icon-512.png",
-  "monochromeIconUrl": "https://dukapilot.vercel.app/logo/dukapilot-icon-512.png",
+  "iconUrl": "https://www.dukapilot.com/logo/dukapilot-icon-512.png",
+  "maskableIconUrl": "https://www.dukapilot.com/logo/dukapilot-icon-512.png",
+  "monochromeIconUrl": "https://www.dukapilot.com/logo/dukapilot-icon-512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "keystores/dukapilot-upload.jks",
@@ -26,7 +26,7 @@
   "appVersionCode": 1,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://dukapilot.vercel.app/manifest.json",
+  "webManifestUrl": "https://www.dukapilot.com/manifest.json",
   "fallbackType": "customtabs",
   "features": {},
   "alphaDependencies": {

@@ -1,4 +1,4 @@
-const FRONTEND_URL = process.env.FRONTEND_SMOKE_URL || "https://dukapilot.vercel.app";
+const FRONTEND_URL = process.env.FRONTEND_SMOKE_URL || "https://www.dukapilot.com";
 
 async function request(path = "/") {
   const response = await fetch(`${FRONTEND_URL}${path}`);

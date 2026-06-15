@@ -1,4 +1,4 @@
-const FRONTEND_URL = (process.env.MONITOR_FRONTEND_URL || "https://dukapilot.vercel.app").replace(/\/$/, "");
+const FRONTEND_URL = (process.env.MONITOR_FRONTEND_URL || "https://www.dukapilot.com").replace(/\/$/, "");
 const API_URL = (process.env.MONITOR_API_URL || "https://dukapilotproduction.up.railway.app").replace(/\/$/, "");
 const LOGIN_PHONE = process.env.MONITOR_LOGIN_PHONE || "+255700000002";
 const LOGIN_PIN = process.env.MONITOR_LOGIN_PIN || "1234";

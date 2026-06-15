@@ -34,7 +34,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Improved onboarding into a tracked setup checklist including staff setup.
 - Improved public trust pages with payment/support/offline/demo guidance.
 - Updated production API defaults to `https://dukapilotproduction.up.railway.app/api`.
-- Allowed `https://dukapilot.vercel.app` in backend CORS and removed old Vercel production origins from code.
+- Allowed `https://www.dukapilot.com`, `https://dukapilot.com`, and the Vercel fallback URL in backend CORS.
 - Bumped the service-worker cache to `dukapilot-v2` and stopped precaching `/` so stale login code does not persist after deploys.
 - Updated express-rate-limit key generation to use the IPv6-safe helper.
 
