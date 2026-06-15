@@ -10,6 +10,9 @@ import {
   AlertTriangle,
   Clock,
   BarChart2,
+  ArrowRight,
+  Package,
+  Sparkles,
 } from "lucide-react";
 import {
   BarChart,
@@ -89,6 +92,7 @@ export default function DashboardPage() {
 
   const s = data?.summary;
   const allTime = data?.allTimeSummary;
+  const currentPeriodLabel = t(PERIODS.find((p) => p.key === period)?.labelKey || "common.today", lang);
 
   function paymentLabel(paymentMethod: string) {
     if (paymentMethod === "BANK") return t("sales.bank", lang);
@@ -103,37 +107,77 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="max-w-5xl mx-auto pb-20 lg:pb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-bold text-gray-900">{t("dashboard.title", lang)}</h1>
-          <Link
-            href="/sales"
-            className="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            {t("sales.startSale", lang)}
-          </Link>
-        </div>
+      <div className="mx-auto max-w-6xl pb-20 lg:pb-6">
+        <section className="mb-6 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+          <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
+            <div className="p-5 sm:p-6 lg:p-7">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-brand-700">DukaPilot</p>
+                  <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-950 sm:text-3xl">
+                    {t("dashboard.title", lang)}
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+                    {lang === "sw"
+                      ? `Muhtasari wa ${currentPeriodLabel.toLowerCase()} na hatua muhimu za duka lako.`
+                      : `${currentPeriodLabel} performance and the next actions your shop needs.`}
+                  </p>
+                </div>
+                <Link
+                  href="/sales"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-800"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  {t("sales.startSale", lang)}
+                </Link>
+              </div>
 
-        <div className="flex items-center justify-end mb-6">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {PERIODS.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => setPeriod(p.key)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors min-h-0 ${
-                  period === p.key
-                    ? "bg-white text-brand-700 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {t(p.labelKey, lang)}
-              </button>
-            ))}
+              <div className="mt-6 flex max-w-full gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1">
+                {PERIODS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPeriod(p.key)}
+                    className={`min-h-0 flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                      period === p.key
+                        ? "bg-white text-brand-800 shadow-sm"
+                        : "text-gray-500 hover:text-gray-800"
+                    }`}
+                  >
+                    {t(p.labelKey, lang)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="border-t border-gray-100 bg-gray-950 p-5 text-white lg:border-l lg:border-t-0 sm:p-6 lg:p-7">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-brand-300" />
+                <p className="text-sm font-bold">{lang === "sw" ? "Kinachohitaji hatua" : "Needs attention"}</p>
+              </div>
+              <div className="mt-5 space-y-3">
+                <QuickAction
+                  href="/inventory"
+                  icon={<Package className="h-4 w-4" />}
+                  label={lang === "sw" ? "Bidhaa chache stock" : "Low-stock items"}
+                  value={String(s?.lowStockCount || 0)}
+                />
+                <QuickAction
+                  href="/orders"
+                  icon={<Clock className="h-4 w-4" />}
+                  label={t("dashboard.pendingOrders", lang)}
+                  value={String(s?.pendingOrders || 0)}
+                />
+                <QuickAction
+                  href="/assistant"
+                  icon={<Sparkles className="h-4 w-4" />}
+                  label={lang === "sw" ? "AI hatua za leo" : "AI next actions"}
+                  value={lang === "sw" ? "Fungua" : "Open"}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <KpiCard
             label={t("dashboard.sales", lang)}
             value={formatTZS(s?.totalSales || 0)}
@@ -161,7 +205,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid lg:grid-cols-4 gap-3 mb-6">
+        <div className="mb-6 grid gap-3 lg:grid-cols-4">
           <KpiCard
             label={t("dashboard.allTime", lang)}
             value={formatTZS(allTime?.totalSales || 0)}
@@ -352,19 +396,46 @@ function KpiCard({
   sub?: string;
 }) {
   const bgMap: Record<string, string> = {
-    blue: "bg-blue-50",
-    green: "bg-green-50",
-    purple: "bg-purple-50",
-    orange: "bg-orange-50",
+    blue: "bg-sky-50 text-sky-700 ring-sky-100",
+    green: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    purple: "bg-violet-50 text-violet-700 ring-violet-100",
+    orange: "bg-amber-50 text-amber-700 ring-amber-100",
   };
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <div className={`w-8 h-8 ${bgMap[color]} rounded-lg flex items-center justify-center mb-3`}>
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-brand-200 hover:shadow-md">
+      <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ring-1 ${bgMap[color]}`}>
         {icon}
       </div>
-      <p className="text-lg font-bold text-gray-900 leading-tight">{value}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      <p className="break-words text-lg font-bold leading-tight text-gray-950">{value}</p>
+      <p className="mt-1 text-xs font-medium text-gray-500">{label}</p>
+      {sub && <p className="mt-1 text-xs text-gray-400">{sub}</p>}
     </div>
+  );
+}
+
+function QuickAction({
+  href,
+  icon,
+  label,
+  value,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <Link href={href} className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 p-3 text-sm transition hover:bg-white/15">
+      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-brand-200">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-gray-100">{label}</span>
+      </span>
+      <span className="flex items-center gap-1 font-bold text-white">
+        {value}
+        <ArrowRight className="h-3.5 w-3.5 text-gray-400 transition group-hover:translate-x-0.5" />
+      </span>
+    </Link>
   );
 }

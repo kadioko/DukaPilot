@@ -1,47 +1,108 @@
 "use client";
 
-import { Mail, MessageCircle, Phone } from "lucide-react";
+import Link from "next/link";
+import { Clock, Mail, MessageCircle, Phone, ShieldCheck } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import { useLang } from "@/lib/i18n";
 
 export default function ContactPage() {
   const lang = useLang();
+  const channels = [
+    {
+      Icon: MessageCircle,
+      title: "WhatsApp",
+      value: "+255 743 910 580",
+      detail: lang === "sw" ? "Njia ya haraka kwa setup, malipo na support." : "Fastest for setup, payments, and support.",
+      href: "https://wa.me/255743910580",
+    },
+    {
+      Icon: Phone,
+      title: lang === "sw" ? "Simu" : "Phone",
+      value: "+255 743 910 580",
+      detail: lang === "sw" ? "Piga kwa maswali ya haraka ya biashara." : "Call for quick business questions.",
+      href: "tel:+255743910580",
+    },
+    {
+      Icon: Mail,
+      title: "Email",
+      value: "support@dukapilot.com",
+      detail: lang === "sw" ? "Tuma ujumbe rasmi au maelezo marefu." : "Send formal requests or longer details.",
+      href: "mailto:support@dukapilot.com",
+    },
+  ];
 
   return (
     <PublicPageShell>
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-950">{lang === "sw" ? "Wasiliana na DukaPilot" : "Contact DukaPilot"}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">
-            {lang === "sw"
-              ? "Tupo kusaidia wafanyabiashara wa Tanzania kuanza, kuweka bei, kuhamisha bidhaa na kutumia DukaPilot vizuri."
-              : "We help Tanzanian shop owners get started, choose pricing, move inventory, and use DukaPilot well."}
-          </p>
-        </div>
+        <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+          <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="p-6 sm:p-8 lg:p-10">
+              <p className="text-sm font-semibold text-brand-700">DukaPilot support</p>
+              <h1 className="mt-3 max-w-2xl text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
+                {lang === "sw" ? "Wasiliana na watu wanaoelewa duka lako." : "Talk to people who understand your shop."}
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
+                {lang === "sw"
+                  ? "Tunakusaidia kuanza, kuchagua plan, kuweka bidhaa, kurekodi mauzo, staff, catalog na AI assistant."
+                  : "We help with setup, pricing plans, products, sales, staff, catalog links, and the AI assistant."}
+              </p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <a href="https://wa.me/255743910580" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-brand-800">
+                  <MessageCircle className="h-4 w-4" />
+                  WhatsApp support
+                </a>
+                <a href="mailto:support@dukapilot.com" className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-bold text-gray-800 hover:border-brand-300 hover:text-brand-800">
+                  <Mail className="h-4 w-4" />
+                  support@dukapilot.com
+                </a>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 bg-brand-900 p-6 text-white lg:border-l lg:border-t-0 sm:p-8 lg:p-10">
+              <div className="grid gap-4">
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                  <Clock className="h-5 w-5 text-brand-200" />
+                  <p className="mt-3 text-sm font-semibold">{lang === "sw" ? "Majibu ya haraka" : "Fast responses"}</p>
+                  <p className="mt-1 text-sm leading-6 text-brand-100">
+                    {lang === "sw" ? "WhatsApp ndio njia bora kwa support ya leo." : "WhatsApp is the best channel for same-day support."}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                  <ShieldCheck className="h-5 w-5 text-brand-200" />
+                  <p className="mt-3 text-sm font-semibold">{lang === "sw" ? "Kwa biashara Tanzania" : "For Tanzanian shops"}</p>
+                  <p className="mt-1 text-sm leading-6 text-brand-100">
+                    {lang === "sw" ? "Setup, malipo, madeni, bidhaa na staff kwa lugha unayopenda." : "Setup, payments, debts, products, and staff support in the language you prefer."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            [MessageCircle, "WhatsApp", "+255 743 910 580", "https://wa.me/255743910580"],
-            [Phone, lang === "sw" ? "Simu" : "Phone", "+255 743 910 580", "tel:+255743910580"],
-            [Mail, "Email", "support@dukapilot.com", "mailto:support@dukapilot.com"],
-          ].map(([Icon, title, value, href]) => (
-            <a key={String(title)} href={String(href)} className="rounded-xl border border-gray-200 p-5 hover:border-brand-300">
-              <Icon className="h-5 w-5 text-brand-700" />
-              <p className="mt-4 font-semibold text-gray-950">{String(title)}</p>
-              <p className="mt-1 text-sm text-gray-600">{String(value)}</p>
+        <section className="grid gap-4 md:grid-cols-3">
+          {channels.map(({ Icon, title, value, detail, href }) => (
+            <a key={title} href={href} className="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700 ring-1 ring-brand-100">
+                <Icon className="h-5 w-5" />
+              </span>
+              <p className="mt-4 font-semibold text-gray-950">{title}</p>
+              <p className="mt-1 text-sm font-medium text-brand-700">{value}</p>
+              <p className="mt-3 text-sm leading-6 text-gray-600">{detail}</p>
             </a>
           ))}
-        </div>
-        <section className="rounded-xl border border-green-200 bg-green-50 p-5">
-          <h2 className="font-semibold text-green-950">{lang === "sw" ? "Built for shop owners in Tanzania" : "Built for Tanzanian shop owners"}</h2>
-          <p className="mt-2 text-sm leading-6 text-green-900">
+        </section>
+
+        <section className="grid gap-4 rounded-3xl border border-green-200 bg-green-50 p-6 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div>
+            <h2 className="text-lg font-bold text-green-950">{lang === "sw" ? "Built for shop owners in Tanzania" : "Built for Tanzanian shop owners"}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-green-900">
             {lang === "sw"
               ? "Tunasaidia duka kuanza haraka: bidhaa, mauzo, madeni, matumizi, staff, catalog na AI Assistant inayosema cha kufanya leo."
               : "We help shops get running fast: products, sales, debts, expenses, staff, catalog, and an AI Assistant that says what to do today."}
-          </p>
-          <a href="https://wa.me/255743910580" className="mt-4 inline-flex rounded-xl bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700">
-            WhatsApp support
-          </a>
+            </p>
+          </div>
+          <Link href="/help" className="inline-flex items-center justify-center rounded-xl bg-green-700 px-5 py-3 text-sm font-bold text-white hover:bg-green-800">
+            {lang === "sw" ? "Soma msaada" : "Read help"}
+          </Link>
         </section>
       </div>
     </PublicPageShell>

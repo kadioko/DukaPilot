@@ -13,12 +13,12 @@ export default function PublicPageShell({ children }: { children: React.ReactNod
   ];
 
   return (
-    <main className="min-h-screen bg-white text-gray-900">
-      <header className="border-b border-gray-200 bg-white">
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      <header className="sticky top-0 z-20 border-b border-gray-200/80 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
           <Link href="/" className="flex items-center gap-3">
-            <LogoMark className="h-9 w-9 rounded-lg" />
-            <span className="font-bold">DukaPilot</span>
+            <LogoMark className="h-9 w-9 rounded-xl shadow-sm" />
+            <span className="text-sm font-bold tracking-tight text-gray-950">DukaPilot</span>
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <nav className="hidden items-center gap-3 text-sm font-medium text-gray-600 sm:flex">
@@ -44,7 +44,7 @@ export default function PublicPageShell({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <section className="mx-auto max-w-4xl px-4 py-12">{children}</section>
+      <section className="mx-auto max-w-5xl px-4 py-10 sm:py-12">{children}</section>
     </main>
   );
 }
