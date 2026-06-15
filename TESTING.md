@@ -8,6 +8,7 @@
 | Backend API | [https://dukapilotproduction.up.railway.app/api](https://dukapilotproduction.up.railway.app/api) |
 | Health | [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health) |
 | Status | [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status) |
+| Email | Mailtrap outbound + ImprovMX inbound forwarding |
 
 ---
 
@@ -425,8 +426,9 @@ Run these in order before each production release:
 3. `cd frontend && npm run typecheck` — TypeScript type check
 4. `cd frontend && npm run smoke` — frontend page load
 5. `cd frontend && npm run smoke:login` — Playwright browser login flow
-6. `cd frontend && npm run test:auth` — auth negative paths
-7. `cd frontend && npm run test:e2e` — full Playwright suite
+6. `cd backend && npm run email:dns-check` — Mailtrap/ImprovMX DNS
+7. `cd frontend && npm run test:auth` — auth negative paths
+8. `cd frontend && npm run test:e2e` — full Playwright suite
 
 Manual post-deploy checks:
 
@@ -471,6 +473,13 @@ Current sprint checks:
 | `AT_API_KEY` | Recommended | Africa's Talking API key for OTP SMS |
 | `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
 | `AT_SENDER_ID` | Optional | Custom SMS sender ID |
+| `MAIL_FROM` | Optional | Outbound sender, for example `DukaPilot <noreply@dukapilot.com>` |
+| `MAIL_REPLY_TO` | Optional | Reply-to address, usually `support@dukapilot.com` |
+| `MAILTRAP_API_TOKEN` | Optional | Mailtrap Email API token for outbound email |
+| `MAILTRAP_SMTP_HOST` | Optional | Mailtrap SMTP host, usually `live.smtp.mailtrap.io` |
+| `MAILTRAP_SMTP_PORT` | Optional | Mailtrap SMTP port, usually `587` |
+| `MAILTRAP_SMTP_USER` | Optional | Mailtrap SMTP username |
+| `MAILTRAP_SMTP_PASS` | Optional | Mailtrap SMTP password |
 
 ### Production monitor
 

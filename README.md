@@ -26,6 +26,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Backend API:** [https://dukapilotproduction.up.railway.app/api](https://dukapilotproduction.up.railway.app/api)
 - **Health:** [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health)
 - **Status:** [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status)
+- **Email:** Mailtrap for outbound app email; ImprovMX for inbound forwarding on `dukapilot.com`
 
 ---
 
@@ -320,6 +321,13 @@ npm run dev         # runs on :3000
 | `AT_API_KEY` | Recommended | Africa's Talking key for SMS OTP |
 | `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
 | `AT_SENDER_ID` | Optional | Custom SMS sender ID |
+| `MAIL_FROM` | Optional | Outbound sender, for example `DukaPilot <noreply@dukapilot.com>` |
+| `MAIL_REPLY_TO` | Optional | Reply-to address, usually `support@dukapilot.com` |
+| `MAILTRAP_API_TOKEN` | Optional | Mailtrap Email API token for outbound email |
+| `MAILTRAP_SMTP_HOST` | Optional | Mailtrap SMTP host, usually `live.smtp.mailtrap.io` |
+| `MAILTRAP_SMTP_PORT` | Optional | Mailtrap SMTP port, usually `587` |
+| `MAILTRAP_SMTP_USER` | Optional | Mailtrap SMTP username |
+| `MAILTRAP_SMTP_PASS` | Optional | Mailtrap SMTP password |
 | `SENTRY_DSN` | Optional | Sentry project DSN for error tracking |
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
 | `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
@@ -351,8 +359,9 @@ npm run dev         # runs on :3000
 5. Verify Railway healthcheck path is `/health`.
 6. Run `cd backend && npm run smoke:prod` and `cd frontend && npm run smoke` against the live URLs.
 7. Run `cd backend && npm run monitor:prod` for health, CORS, catalog, login, dashboard, and stale API URL checks.
-8. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
-9. Review `TESTING.md` for the full manual and automated test checklist.
+8. Run `cd backend && npm run email:dns-check` to verify Mailtrap outbound and ImprovMX inbound DNS.
+9. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
+10. Review `TESTING.md` for the full manual and automated test checklist.
 
 ### Launch Notes
 
