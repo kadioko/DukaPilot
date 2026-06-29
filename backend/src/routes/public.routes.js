@@ -2,11 +2,30 @@ const router = require("express").Router();
 const prisma = require("../lib/prisma");
 const { buildCustomerOrderMessage, sendWhatsAppMessage } = require("../services/whatsapp.service");
 
+function activeShopWhere(now = new Date()) {
+  return {
+    isActive: true,
+    OR: [
+      { plan: "FREE_TRIAL", trialEndsAt: { gt: now } },
+      { subscriptionEndsAt: { gt: now } },
+    ],
+  };
+}
+
+function isPublicShopActive(shop, now = new Date()) {
+  return Boolean(
+    shop?.isActive &&
+    ((shop.plan === "FREE_TRIAL" && shop.trialEndsAt && shop.trialEndsAt > now) ||
+      (shop.subscriptionEndsAt && shop.subscriptionEndsAt > now))
+  );
+}
+
 // GET /api/public/shops -> list shops that have active products
 router.get("/shops", async (req, res, next) => {
   try {
+    const now = new Date();
     const shops = await prisma.shop.findMany({
-      where: { products: { some: { isActive: true } } },
+      where: { ...activeShopWhere(now), products: { some: { isActive: true } } },
       select: {
         id: true,
         name: true,
@@ -37,7 +56,7 @@ router.get("/shops", async (req, res, next) => {
 router.get("/products", async (req, res, next) => {
   try {
     const { shopId, search, limit = 100 } = req.query;
-    const where = { isActive: true, currentStock: { gt: 0 } };
+    const where = { isActive: true, currentStock: { gt: 0 }, shop: activeShopWhere() };
     if (shopId) where.shopId = String(shopId);
     if (search) where.name = { contains: String(search), mode: "insensitive" };
 
@@ -74,11 +93,16 @@ router.get("/shops/:id", async (req, res, next) => {
         location: true,
         district: true,
         category: true,
+        plan: true,
+        trialEndsAt: true,
+        subscriptionEndsAt: true,
+        isActive: true,
         user: { select: { phone: true } },
         _count: { select: { products: { where: { isActive: true, currentStock: { gt: 0 } } } } },
       },
     });
     if (!shop) return res.status(404).json({ error: "Shop not found" });
+    if (!isPublicShopActive(shop)) return res.status(404).json({ error: "Shop not available" });
 
     const products = await prisma.product.findMany({
       where: { shopId: req.params.id, isActive: true, currentStock: { gt: 0 } },
@@ -125,6 +149,9 @@ router.post("/orders", async (req, res, next) => {
       include: { user: { select: { phone: true } } },
     });
     if (!shop) return res.status(404).json({ error: "Shop not found" });
+    if (!isPublicShopActive(shop)) {
+      return res.status(402).json({ error: "This shop is not currently accepting catalog orders" });
+    }
 
     const productIds = items.map((i) => i.productId);
     const products = await prisma.product.findMany({

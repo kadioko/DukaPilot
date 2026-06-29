@@ -71,6 +71,7 @@ const adminNav: NavItem[] = [
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins },
   { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
+  { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck },
   { href: "/staff", labelKey: "nav.staff", icon: Users },
   { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
   { href: "/billing", label: "Billing", icon: CreditCard },

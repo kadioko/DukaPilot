@@ -9,8 +9,10 @@ import { CheckCircle2, MessageCircle, ReceiptText, Send, Smartphone } from "luci
 
 interface SubscriptionStatus {
   plan: string;
-  active: boolean;
-  computedStatus: string;
+  isActive: boolean;
+  status: string;
+  trialActive?: boolean;
+  subActive?: boolean;
   daysLeft: number | null;
   trialEndsAt?: string | null;
   subscriptionEndsAt?: string | null;
@@ -29,6 +31,7 @@ export default function BillingPage() {
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
   const selectedPlan = plans.find((item) => item.id === plan) || plans[0];
+  const subscriptionActive = Boolean(status?.isActive && (status?.trialActive || status?.subActive || status?.status === "active"));
 
   useEffect(() => {
     api.get<SubscriptionStatus>("/subscription/status", lang).then(setStatus).catch(() => null);
@@ -70,12 +73,12 @@ export default function BillingPage() {
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{lang === "sw" ? "Mpango" : "Plan"}</p>
             <p className="mt-1 text-lg font-bold text-gray-950">{status?.plan || "FREE_TRIAL"}</p>
-            <p className="text-xs text-gray-500">{status?.computedStatus || "checking"}</p>
+            <p className="text-xs text-gray-500">{status?.status || "checking"}</p>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{lang === "sw" ? "Hali" : "Status"}</p>
-            <p className={`mt-1 text-lg font-bold ${status?.active ? "text-green-700" : "text-red-700"}`}>
-              {status?.active ? (lang === "sw" ? "Active" : "Active") : (lang === "sw" ? "Inahitaji malipo" : "Payment needed")}
+            <p className={`mt-1 text-lg font-bold ${subscriptionActive ? "text-green-700" : "text-red-700"}`}>
+              {subscriptionActive ? (lang === "sw" ? "Active" : "Active") : (lang === "sw" ? "Inahitaji malipo" : "Payment needed")}
             </p>
             <p className="text-xs text-gray-500">{status?.daysLeft !== null && status?.daysLeft !== undefined ? `${status.daysLeft} days left` : "-"}</p>
           </div>
