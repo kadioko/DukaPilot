@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
+import ProductProofSection from "@/components/marketing/ProductProofSection";
 import { useLang } from "@/lib/i18n";
 
 const accounts = [
@@ -35,6 +36,7 @@ export default function DemoPage() {
             <p>{lang === "sw" ? "4. Angalia Billing na payment reference." : "4. Check Billing and payment reference."}</p>
           </div>
         </section>
+        <ProductProofSection />
         <div className="grid gap-3">
           {accounts.map(([role, phone, name]) => (
             <section key={phone} className="rounded-xl border border-gray-200 p-5">

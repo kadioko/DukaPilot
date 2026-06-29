@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Star, Zap, Shield, Phone } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
+import ProductProofSection from "@/components/marketing/ProductProofSection";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 
 type LocalizedText = Record<Lang, string>;
@@ -215,6 +216,10 @@ export default function PricingPage() {
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">{copy.title[lang]}</h1>
           <p className="text-gray-500 text-sm">{copy.subtitle[lang]}</p>
+        </div>
+
+        <div className="mb-12">
+          <ProductProofSection />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">

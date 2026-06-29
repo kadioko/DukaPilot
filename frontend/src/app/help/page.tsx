@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { BookOpen, CheckCircle2, MessageCircle, Search, Sparkles } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
+import ProductProofSection from "@/components/marketing/ProductProofSection";
 import { useLang } from "@/lib/i18n";
 
 export default function HelpPage() {
@@ -52,6 +53,8 @@ export default function HelpPage() {
             {lang === "sw" ? "Maswali muhimu zaidi ya DukaPilot yapo hapa chini." : "The most important DukaPilot questions are answered below."}
           </p>
         </div>
+
+        <ProductProofSection compact />
 
         <div className="grid gap-4 md:grid-cols-2">
           {faqs.map(([q, a]) => (

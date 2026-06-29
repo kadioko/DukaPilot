@@ -5,8 +5,18 @@ import ServiceWorkerRegistrar from "@/components/ui/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.dukapilot.com"),
-  title: "DukaPilot - Merchant OS Tanzania",
-  description: "Stock, mauzo, na maagizo kwa maduka madogo Tanzania",
+  title: "DukaPilot - POS Tanzania, Inventory App, Mfumo wa Duka",
+  description:
+    "DukaPilot is a POS and inventory app for Tanzanian shops. Track stock, sales, debts, expenses, supplier orders, and duka stock management in Kiswahili.",
+  keywords: [
+    "POS Tanzania",
+    "inventory app Tanzania",
+    "mfumo wa duka",
+    "duka stock management",
+    "programu ya stock",
+    "shop management Tanzania",
+    "DukaPilot",
+  ],
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -18,6 +28,14 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: "/",
+  },
+  openGraph: {
+    title: "DukaPilot - POS and Inventory App for Tanzanian Shops",
+    description:
+      "Track stock, sales, debts, expenses, supplier orders, and profit in Kiswahili from your phone.",
+    url: "/",
+    siteName: "DukaPilot",
+    type: "website",
   },
 };
 
