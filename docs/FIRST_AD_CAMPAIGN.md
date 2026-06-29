@@ -115,6 +115,76 @@ CTA:
 
 > Jaribu bure.
 
+### Ad 6: Sales/POS Hook
+
+Headline:
+
+> Rekodi mauzo kwa sekunde.
+
+Body:
+
+> Chagua bidhaa, ongeza kiasi, ona jumla na stock ibadilike bila kuandika kila kitu kwenye daftari.
+
+CTA:
+
+> Tuma WhatsApp tupange setup.
+
+### Ad 7: AI Assistant Hook
+
+Headline:
+
+> AI Assistant wa duka lako.
+
+Body:
+
+> Uliza kuhusu mauzo, stock na madeni. DukaPilot inakupa hatua za kuchukua leo kwa Kiswahili.
+
+CTA:
+
+> Jaribu bure.
+
+### Ad 8: Expenses Hook
+
+Headline:
+
+> Matumizi ya duka yaonekane wazi.
+
+Body:
+
+> Rekodi kodi, usafiri, mishahara na gharama nyingine ili ujue biashara inabaki na nini.
+
+CTA:
+
+> Ongea na DukaPilot.
+
+### Ad 9: M-Pesa Hook
+
+Headline:
+
+> M-Pesa na mauzo vikae pamoja.
+
+Body:
+
+> Fuata malipo na kumbukumbu za mauzo bila kuchanganya meseji, daftari na kumbukumbu za dukani.
+
+CTA:
+
+> Panga setup WhatsApp.
+
+### Ad 10: Setup Hook
+
+Headline:
+
+> Tunaanza na setup ya duka.
+
+Body:
+
+> Ongeza bidhaa 10, rekodi mauzo 10, na rudi siku ya pili. DukaPilot inakuongoza hatua kwa hatua.
+
+CTA:
+
+> Jaribu bure siku 14.
+
 ## Image Creatives
 
 Editable SVG files:
@@ -124,8 +194,18 @@ Editable SVG files:
 - `marketing/ad-creatives/dukapilot-debts-square.svg`
 - `marketing/ad-creatives/dukapilot-supplier-order-square.svg`
 - `marketing/ad-creatives/dukapilot-low-stock-story.svg`
+- `marketing/ad-creatives/dukapilot-sales-pos-square.svg`
+- `marketing/ad-creatives/dukapilot-ai-assistant-square.svg`
+- `marketing/ad-creatives/dukapilot-expenses-square.svg`
+- `marketing/ad-creatives/dukapilot-mpesa-story.svg`
+- `marketing/ad-creatives/dukapilot-setup-story.svg`
 
-Export these to PNG before upload:
+Ready-to-share exports:
+
+- `marketing/ad-creatives/exports/png/`
+- `marketing/ad-creatives/exports/jpg/`
+
+Export sizes:
 
 - Square feed: 1080 x 1080
 - Story/Reels: 1080 x 1920
@@ -171,9 +251,9 @@ Caption:
 
 Run first 7 days with:
 
-- 5 image creatives
+- 10 image creatives
 - 1 short video
-- 3 ad copy variants
+- 5 ad copy variants
 - WhatsApp objective only
 
 Track:

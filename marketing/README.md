@@ -14,6 +14,13 @@ This folder holds launch and store-listing assets for DukaPilot.
 - `ad-creatives/dukapilot-debts-square.svg` - Debt-tracking square feed creative.
 - `ad-creatives/dukapilot-supplier-order-square.svg` - Supplier-order square feed creative.
 - `ad-creatives/dukapilot-low-stock-story.svg` - Low-stock story/reels creative.
+- `ad-creatives/dukapilot-sales-pos-square.svg` - Fast sales/POS square feed creative.
+- `ad-creatives/dukapilot-ai-assistant-square.svg` - AI assistant square feed creative.
+- `ad-creatives/dukapilot-expenses-square.svg` - Expense tracking square feed creative.
+- `ad-creatives/dukapilot-mpesa-story.svg` - M-Pesa payment follow-up story/reels creative.
+- `ad-creatives/dukapilot-setup-story.svg` - Guided onboarding story/reels creative.
+- `ad-creatives/exports/png/` - Ready-to-share PNG exports.
+- `ad-creatives/exports/jpg/` - Ready-to-share JPG exports.
 
 ## Core Message
 
@@ -40,6 +47,9 @@ Swahili:
 - Duka lako kwenye simu: mauzo, stock, madeni na maagizo.
 - Acha daftari peke yake. Tumia DukaPilot.
 - Jaribu DukaPilot bure siku 14. Hakuna kadi ya benki.
+- Rekodi mauzo kwa sekunde.
+- Matumizi ya duka yaonekane wazi.
+- Uliza AI Assistant bidhaa gani zinaisha.
 
 ## Screenshot Priorities
 
