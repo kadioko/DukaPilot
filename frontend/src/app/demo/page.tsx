@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
+import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { useLang } from "@/lib/i18n";
 
 const accounts = [
@@ -46,10 +47,13 @@ export default function DemoPage() {
             </section>
           ))}
         </div>
-        <Link href="/" className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
-          {lang === "sw" ? "Fungua login" : "Open login"}
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link href="/" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
+            {lang === "sw" ? "Fungua login" : "Open login"}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <WhatsAppCTA intent="demo" label={lang === "sw" ? "Nataka setup baada ya demo" : "I want setup after demo"} />
+        </div>
       </div>
     </PublicPageShell>
   );

@@ -72,6 +72,15 @@ enum StaffRole {
   STOCK_CLERK
 }
 
+enum OnboardingStatus {
+  NEW
+  CONTACTED
+  SETUP_DONE
+  ACTIVATED
+  CONVERTED
+  CHURN_RISK
+}
+
 model User {
   id           String    @id @default(cuid())
   phone        String    @unique
@@ -110,6 +119,9 @@ model Shop {
   trialEndsAt     DateTime?
   subscriptionEndsAt DateTime?
   isActive        Boolean   @default(true)
+  onboardingStatus OnboardingStatus @default(NEW)
+  lastContactedAt DateTime?
+  followUpNotes   String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

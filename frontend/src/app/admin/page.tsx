@@ -17,6 +17,7 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  MessageCircle,
 } from "lucide-react";
 
 interface AdminOverview {
@@ -80,6 +81,16 @@ interface Subscription {
   isActive: boolean;
   computedStatus: string;
   daysLeft: number | null;
+  onboardingStatus: "NEW" | "CONTACTED" | "SETUP_DONE" | "ACTIVATED" | "CONVERTED" | "CHURN_RISK";
+  lastContactedAt?: string | null;
+  followUpNotes?: string | null;
+  activation: {
+    productCount: number;
+    salesCount: number;
+    orderCount: number;
+    secondDayReturn: boolean;
+    activated: boolean;
+  };
   user?: { id: string; name: string; phone: string } | null;
   lastPayment?: { amount: number; method: string; reference?: string | null; paidAt: string } | null;
 }
@@ -124,6 +135,7 @@ export default function AdminPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [subFilter, setSubFilter] = useState("ALL");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
+  const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   // User search / PIN reset
@@ -150,6 +162,7 @@ export default function AdminPage() {
         setAuditLogs(al.logs);
         setReports(rp.reports);
         setSubscriptions(sub.shops);
+        setFollowUpDrafts(Object.fromEntries(sub.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -229,6 +242,7 @@ export default function AdminPage() {
   async function refreshSubscriptions() {
     const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
     setSubscriptions(data.shops);
+    setFollowUpDrafts(Object.fromEntries(data.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
   }
 
   async function handleRecordPayment(shop: Subscription, plan: "BASIC" | "PRO") {
@@ -262,6 +276,27 @@ export default function AdminPage() {
     }
   }
 
+  async function handleUpdateFollowUp(
+    shop: Subscription,
+    patch: Partial<Pick<Subscription, "onboardingStatus" | "lastContactedAt" | "followUpNotes">>
+  ) {
+    setUpdatingSub(shop.id);
+    try {
+      await api.patch(`/subscription/admin/${shop.id}`, patch);
+      await refreshSubscriptions();
+    } catch (err) {
+      console.error("Failed to update follow-up:", err);
+    } finally {
+      setUpdatingSub(null);
+    }
+  }
+
+  function whatsappLeadHref(shop: Subscription) {
+    const phone = shop.user?.phone?.replace(/[^\d]/g, "") || "";
+    const text = encodeURIComponent(`Habari ${shop.user?.name || ""}, hapa ni DukaPilot. Tunaweza kukusaidia kumalizia setup ya ${shop.name}: bidhaa 10, mauzo 10, na kurudi siku ya pili.`);
+    return `https://wa.me/${phone}?text=${text}`;
+  }
+
   const TABS: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "users", label: "Users" },
@@ -275,6 +310,7 @@ export default function AdminPage() {
   const unpaidShops = subscriptions.filter((shop) => shop.computedStatus === "expired").length;
   const suspendedShops = subscriptions.filter((shop) => shop.computedStatus === "suspended").length;
   const expiringTrials = subscriptions.filter((shop) => shop.computedStatus === "trial" && shop.daysLeft !== null && shop.daysLeft <= 3).length;
+  const activatedTrials = subscriptions.filter((shop) => shop.activation?.activated).length;
   const supportIssues = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS").length;
   const billingIssues = reports.filter((report) => report.type === "BILLING" && report.status !== "RESOLVED").length;
   const suspiciousErrors = auditLogs.filter((log) =>
@@ -340,6 +376,7 @@ export default function AdminPage() {
                 <MiniMetric label="Active shops" value={activeShops} tone="border-green-200 bg-green-50 text-green-800" />
                 <MiniMetric label="Trials" value={trialShops} tone="border-yellow-200 bg-yellow-50 text-yellow-800" />
                 <MiniMetric label="Trials <=3d" value={expiringTrials} tone="border-orange-200 bg-orange-50 text-orange-800" />
+                <MiniMetric label="Activated" value={activatedTrials} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
                 <MiniMetric label="Unpaid" value={unpaidShops} tone="border-red-200 bg-red-50 text-red-800" />
                 <MiniMetric label="Suspended" value={suspendedShops} tone="border-gray-200 bg-gray-50 text-gray-800" />
                 <MiniMetric label="Support issues" value={supportIssues} tone="border-blue-200 bg-blue-50 text-blue-800" />
@@ -635,6 +672,8 @@ export default function AdminPage() {
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Plan</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Status</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Days Left</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Activation</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Follow-up</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Last Payment</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Actions</th>
                   </tr>
@@ -660,6 +699,77 @@ export default function AdminPage() {
                         }`}>{shop.computedStatus}</span>
                       </td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{shop.daysLeft !== null ? `${shop.daysLeft}d` : "-"}</td>
+                      <td className="px-4 py-2.5 text-xs">
+                        <div className="space-y-1.5">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
+                            shop.activation?.activated ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                          }`}>
+                            {shop.activation?.activated ? <CheckCircle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                            {shop.activation?.activated ? "Activated" : "In progress"}
+                          </span>
+                          <div className="grid gap-1 text-gray-500">
+                            <span className={shop.activation?.productCount >= 10 ? "text-green-700" : ""}>
+                              Products: {shop.activation?.productCount || 0}/10
+                            </span>
+                            <span className={shop.activation?.salesCount >= 10 ? "text-green-700" : ""}>
+                              Sales: {shop.activation?.salesCount || 0}/10
+                            </span>
+                            <span className={shop.activation?.secondDayReturn ? "text-green-700" : ""}>
+                              2nd day: {shop.activation?.secondDayReturn ? "yes" : "no"}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs">
+                        <div className="min-w-[220px] space-y-2">
+                          <select
+                            value={shop.onboardingStatus}
+                            onChange={(e) => handleUpdateFollowUp(shop, { onboardingStatus: e.target.value as Subscription["onboardingStatus"] })}
+                            disabled={updatingSub === shop.id}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold text-gray-700"
+                          >
+                            <option value="NEW">NEW</option>
+                            <option value="CONTACTED">CONTACTED</option>
+                            <option value="SETUP_DONE">SETUP DONE</option>
+                            <option value="ACTIVATED">ACTIVATED</option>
+                            <option value="CONVERTED">CONVERTED</option>
+                            <option value="CHURN_RISK">CHURN RISK</option>
+                          </select>
+                          <p className="text-gray-500">
+                            Last contact: {shop.lastContactedAt ? new Date(shop.lastContactedAt).toLocaleDateString() : "never"}
+                          </p>
+                          <textarea
+                            value={followUpDrafts[shop.id] || ""}
+                            onChange={(e) => setFollowUpDrafts((prev) => ({ ...prev, [shop.id]: e.target.value }))}
+                            placeholder="Notes: owner objection, next action, setup status..."
+                            className="h-16 w-full resize-none rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              onClick={() => handleUpdateFollowUp(shop, { lastContactedAt: new Date().toISOString() })}
+                              disabled={updatingSub === shop.id}
+                              className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200 disabled:opacity-50"
+                            >
+                              Contacted today
+                            </button>
+                            <button
+                              onClick={() => handleUpdateFollowUp(shop, { followUpNotes: followUpDrafts[shop.id] || "" })}
+                              disabled={updatingSub === shop.id}
+                              className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-50"
+                            >
+                              Save notes
+                            </button>
+                            {shop.user?.phone && (
+                              <a
+                                href={whatsappLeadHref(shop)}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-brand-100 text-brand-700 rounded text-xs font-medium hover:bg-brand-200"
+                              >
+                                <MessageCircle className="h-3 w-3" /> WhatsApp
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">
                         {shop.lastPayment ? `${formatTZS(shop.lastPayment.amount)} ${shop.lastPayment.method}` : "None"}
                       </td>

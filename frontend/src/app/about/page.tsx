@@ -1,6 +1,7 @@
 "use client";
 
 import PublicPageShell from "@/components/marketing/PublicPageShell";
+import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { useLang } from "@/lib/i18n";
 
 export default function AboutPage() {
@@ -19,6 +20,9 @@ export default function AboutPage() {
               ? "DukaPilot husaidia wafanyabiashara Tanzania kufuatilia bidhaa, mauzo, madeni, matumizi, maagizo na wafanyakazi kwa lugha wanayoitumia kazini."
               : "DukaPilot helps Tanzanian merchants track inventory, sales, debts, expenses, orders, and staff in the language they use at work."}
           </p>
+          <div className="mt-6">
+            <WhatsAppCTA intent="about" label={lang === "sw" ? "Uliza kama inafaa duka langu" : "Ask if it fits my shop"} />
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">

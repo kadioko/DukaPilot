@@ -3,17 +3,23 @@
 import Link from "next/link";
 import { Clock, Mail, MessageCircle, Phone, ShieldCheck } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
+import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { useLang } from "@/lib/i18n";
 
 export default function ContactPage() {
   const lang = useLang();
+  const whatsappSetupHref = `https://wa.me/255743910580?text=${encodeURIComponent(
+    lang === "sw"
+      ? "Habari DukaPilot, nataka setup ya duka langu. Aina ya duka: "
+      : "Hello DukaPilot, I want help setting up my shop. Shop type: "
+  )}`;
   const channels = [
     {
       Icon: MessageCircle,
       title: "WhatsApp",
       value: "+255 743 910 580",
       detail: lang === "sw" ? "Njia ya haraka kwa setup, malipo na support." : "Fastest for setup, payments, and support.",
-      href: "https://wa.me/255743910580",
+      href: whatsappSetupHref,
     },
     {
       Icon: Phone,
@@ -47,10 +53,7 @@ export default function ContactPage() {
                   : "We help with setup, pricing plans, products, sales, staff, catalog links, and the AI assistant."}
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                <a href="https://wa.me/255743910580" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-brand-800">
-                  <MessageCircle className="h-4 w-4" />
-                  WhatsApp support
-                </a>
+                <WhatsAppCTA intent="contact" label="WhatsApp support" />
                 <a href="mailto:support@dukapilot.com" className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-bold text-gray-800 hover:border-brand-300 hover:text-brand-800">
                   <Mail className="h-4 w-4" />
                   support@dukapilot.com
@@ -100,9 +103,12 @@ export default function ContactPage() {
               : "We help shops get running fast: products, sales, debts, expenses, staff, catalog, and an AI Assistant that says what to do today."}
             </p>
           </div>
-          <Link href="/help" className="inline-flex items-center justify-center rounded-xl bg-green-700 px-5 py-3 text-sm font-bold text-white hover:bg-green-800">
-            {lang === "sw" ? "Soma msaada" : "Read help"}
-          </Link>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href="/help" className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-bold text-green-800 hover:bg-green-100">
+              {lang === "sw" ? "Soma msaada" : "Read help"}
+            </Link>
+            <WhatsAppCTA intent="contact" label={lang === "sw" ? "Nataka setup" : "I want setup"} />
+          </div>
         </section>
       </div>
     </PublicPageShell>

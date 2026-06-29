@@ -19,6 +19,7 @@ import {
   Store,
 } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
+import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 
 function normalizePhone(value: string): string {
@@ -235,12 +236,6 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     }
   }
 
-  const whatsappText = encodeURIComponent(
-    lang === "sw"
-      ? "Habari DukaPilot, nataka setup ya duka langu."
-      : "Hello DukaPilot, I want help setting up my shop."
-  );
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-700 to-brand-900 px-4 py-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center gap-8 lg:grid-cols-[1.08fr_420px]">
@@ -275,13 +270,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               {lang === "sw" ? "Anza bure siku 14" : "Start free for 14 days"}
               <ArrowRight className="h-4 w-4" />
             </button>
-            <a
-              href={`https://wa.me/255743910580?text=${whatsappText}`}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur transition-colors hover:bg-white/20"
-            >
-              <MessageCircle className="h-4 w-4" />
-              {lang === "sw" ? "Panga setup WhatsApp" : "Set up on WhatsApp"}
-            </a>
+            <WhatsAppCTA intent="setup" variant="light" />
           </div>
 
           <div className="mt-8 hidden max-w-2xl gap-3 sm:grid sm:grid-cols-3">

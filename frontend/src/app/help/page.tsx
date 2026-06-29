@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BookOpen, CheckCircle2, MessageCircle, Search, Sparkles } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
+import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { useLang } from "@/lib/i18n";
 
 export default function HelpPage() {
@@ -39,10 +40,7 @@ export default function HelpPage() {
               <p className="mt-2 text-sm leading-6 text-brand-900">
                 {lang === "sw" ? "Tuma screenshot au swali kwa WhatsApp, tutakuongoza hatua kwa hatua." : "Send a screenshot or question on WhatsApp and we will guide you step by step."}
               </p>
-              <a href="https://wa.me/255743910580" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-3 text-sm font-bold text-white hover:bg-brand-800">
-                <MessageCircle className="h-4 w-4" />
-                WhatsApp support
-              </a>
+              <WhatsAppCTA intent="help" label="WhatsApp support" className="mt-4 w-full" />
             </div>
           </div>
         </section>
@@ -75,9 +73,7 @@ export default function HelpPage() {
           <Link href="/contact" className="inline-flex items-center justify-center rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white hover:bg-brand-800">
             {lang === "sw" ? "Ongea na support" : "Talk to support"}
           </Link>
-          <a href="https://wa.me/255743910580" className="inline-flex items-center justify-center rounded-xl bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700">
-            WhatsApp +255 743 910 580
-          </a>
+          <WhatsAppCTA intent="help" label="WhatsApp +255 743 910 580" />
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check, Star, Zap, Shield, Phone } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
+import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 
 type LocalizedText = Record<Lang, string>;
@@ -377,13 +378,11 @@ export default function PricingPage() {
             >
               {copy.register[lang]}
             </Link>
-            <a
-              href="https://wa.me/255743910580"
-              className="bg-green-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-            >
-              <Phone className="w-4 h-4" />
-              WhatsApp: +255 743 910 580
-            </a>
+            <WhatsAppCTA
+              intent="pricing"
+              label="WhatsApp: +255 743 910 580"
+              className="bg-green-500 hover:bg-green-600"
+            />
           </div>
         </div>
         <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm text-gray-500">

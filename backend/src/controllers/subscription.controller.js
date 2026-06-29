@@ -46,13 +46,36 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
       trialEndsAt: true,
       subscriptionEndsAt: true,
       isActive: true,
+      onboardingStatus: true,
+      lastContactedAt: true,
+      followUpNotes: true,
       createdAt: true,
       user: { select: { id: true, name: true, phone: true } },
       subscriptionPayments: { orderBy: { paidAt: "desc" }, take: 1 },
+      _count: {
+        select: {
+          products: { where: { isActive: true } },
+          sales: true,
+          orders: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 500,
   });
+
+  const shopIds = shops.map((s) => s.id);
+  const secondDaySaleRows = shopIds.length
+    ? await prisma.sale.groupBy({
+        by: ["shopId"],
+        where: {
+          shopId: { in: shopIds },
+        },
+        _min: { createdAt: true },
+        _max: { createdAt: true },
+      })
+    : [];
+  const saleSpanByShop = new Map(secondDaySaleRows.map((row) => [row.shopId, row]));
 
   // Compute status for each
   const enriched = shops.map((s) => {
@@ -60,7 +83,18 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
     const subActive = s.subscriptionEndsAt && s.subscriptionEndsAt > now;
     const computedStatus = !s.isActive ? "suspended" : trialActive ? "trial" : subActive ? "active" : "expired";
     const daysLeft = s.trialEndsAt ? Math.max(0, Math.ceil((s.trialEndsAt - now) / (1000 * 60 * 60 * 24))) : null;
-    return { ...s, computedStatus, daysLeft, lastPayment: s.subscriptionPayments[0] || null };
+    const saleSpan = saleSpanByShop.get(s.id);
+    const firstSaleAt = saleSpan?._min.createdAt || null;
+    const lastSaleAt = saleSpan?._max.createdAt || null;
+    const secondDayReturn = Boolean(firstSaleAt && lastSaleAt && lastSaleAt.getTime() - firstSaleAt.getTime() >= 24 * 60 * 60 * 1000);
+    const activation = {
+      productCount: s._count.products,
+      salesCount: s._count.sales,
+      orderCount: s._count.orders,
+      secondDayReturn,
+      activated: s._count.products >= 10 && s._count.sales >= 10 && secondDayReturn,
+    };
+    return { ...s, computedStatus, daysLeft, lastPayment: s.subscriptionPayments[0] || null, activation };
   });
 
   // Filter
@@ -74,18 +108,37 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
 // Admin: update a shop's subscription
 const adminUpdateSubscription = asyncHandler(async (req, res) => {
   const { shopId } = req.params;
-  const { plan, trialEndsAt, subscriptionEndsAt, isActive } = req.body;
+  const { plan, trialEndsAt, subscriptionEndsAt, isActive, onboardingStatus, lastContactedAt, followUpNotes } = req.body;
 
   const updateData = {};
   if (plan) updateData.plan = String(plan);
   if (trialEndsAt !== undefined) updateData.trialEndsAt = trialEndsAt ? new Date(trialEndsAt) : null;
   if (subscriptionEndsAt !== undefined) updateData.subscriptionEndsAt = subscriptionEndsAt ? new Date(subscriptionEndsAt) : null;
   if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+  if (onboardingStatus !== undefined) {
+    const nextStatus = String(onboardingStatus).toUpperCase();
+    if (!["NEW", "CONTACTED", "SETUP_DONE", "ACTIVATED", "CONVERTED", "CHURN_RISK"].includes(nextStatus)) {
+      return res.status(400).json({ error: "Invalid onboarding status" });
+    }
+    updateData.onboardingStatus = nextStatus;
+  }
+  if (lastContactedAt !== undefined) updateData.lastContactedAt = lastContactedAt ? new Date(lastContactedAt) : null;
+  if (followUpNotes !== undefined) updateData.followUpNotes = String(followUpNotes || "").trim() || null;
 
   const shop = await prisma.shop.update({
     where: { id: shopId },
     data: updateData,
-    select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      plan: true,
+      trialEndsAt: true,
+      subscriptionEndsAt: true,
+      isActive: true,
+      onboardingStatus: true,
+      lastContactedAt: true,
+      followUpNotes: true,
+    },
   });
 
   req.audit = {
