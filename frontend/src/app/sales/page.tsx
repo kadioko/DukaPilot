@@ -1,8 +1,8 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
-import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff } from "lucide-react";
+import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2 } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 
@@ -102,9 +102,15 @@ function newLocalId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function formatSyncTime(value: string | null) {
+  if (!value) return "-";
+  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function SalesPage() {
   const lang = useLang();
   const { toast } = useToast();
+  const syncingRef = useRef(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
@@ -119,6 +125,8 @@ export default function SalesPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [pendingSales, setPendingSales] = useState<PendingSale[]>([]);
   const [syncHistory, setSyncHistory] = useState<SyncEvent[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<{ products: Product[] }>("/products")
@@ -126,51 +134,63 @@ export default function SalesPage() {
   }, []);
 
   const syncPendingSales = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
     const pending = readPendingSales();
     if (pending.length === 0) {
       setPendingSales([]);
+      setLastSyncAt(new Date().toISOString());
+      syncingRef.current = false;
+      setSyncing(false);
       return;
     }
 
-    const remaining: PendingSale[] = [];
-    const events: SyncEvent[] = [];
-    for (const sale of pending) {
-      try {
-        await api.post("/sales", sale.payload, lang);
-        events.push({
-          id: newLocalId(),
-          at: new Date().toISOString(),
-          status: "synced",
-          total: sale.total,
-          message: lang === "sw" ? "Sale synced successfully" : "Sale synced successfully",
-        });
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : t("common.error", lang);
-        const nextSale = { ...sale, attempts: (sale.attempts || 0) + 1, lastError: message };
-        remaining.push(nextSale);
-        events.push({
-          id: newLocalId(),
-          at: new Date().toISOString(),
-          status: "failed",
-          total: sale.total,
-          message: message.includes("Insufficient stock")
-            ? (lang === "sw" ? "Stock imebadilika kabla ya sync. Kagua cart na inventory." : "Stock changed before sync. Review cart and inventory.")
-            : message,
-        });
+    try {
+      const remaining: PendingSale[] = [];
+      const events: SyncEvent[] = [];
+      for (const sale of pending) {
+        try {
+          await api.post("/sales", sale.payload, lang);
+          events.push({
+            id: newLocalId(),
+            at: new Date().toISOString(),
+            status: "synced",
+            total: sale.total,
+            message: lang === "sw" ? "Sale synced successfully" : "Sale synced successfully",
+          });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : t("common.error", lang);
+          const nextSale = { ...sale, attempts: (sale.attempts || 0) + 1, lastError: message };
+          remaining.push(nextSale);
+          events.push({
+            id: newLocalId(),
+            at: new Date().toISOString(),
+            status: "failed",
+            total: sale.total,
+            message: message.includes("Insufficient stock")
+              ? (lang === "sw" ? "Stock imebadilika kabla ya sync. Kagua cart na inventory." : "Stock changed before sync. Review cart and inventory.")
+              : message,
+          });
+        }
       }
-    }
-    writePendingSales(remaining);
-    if (events.length > 0) {
-      const nextHistory = [...events, ...readSyncHistory()];
-      writeSyncHistory(nextHistory);
-      setSyncHistory(nextHistory.slice(0, 10));
-    }
-    setPendingSales(remaining);
-    if (remaining.length < pending.length) {
-      toast(lang === "sw" ? "Mauzo ya offline yamesawazishwa." : "Offline sales synced.", "success");
-      api.get<{ products: Product[] }>("/products")
-        .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)))
-        .catch(() => {});
+      writePendingSales(remaining);
+      if (events.length > 0) {
+        const nextHistory = [...events, ...readSyncHistory()];
+        writeSyncHistory(nextHistory);
+        setSyncHistory(nextHistory.slice(0, 10));
+      }
+      setPendingSales(remaining);
+      setLastSyncAt(new Date().toISOString());
+      if (remaining.length < pending.length) {
+        toast(lang === "sw" ? "Mauzo ya offline yamesawazishwa." : "Offline sales synced.", "success");
+        api.get<{ products: Product[] }>("/products")
+          .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)))
+          .catch(() => {});
+      }
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
     }
   }, [lang, toast]);
 
@@ -181,6 +201,24 @@ export default function SalesPage() {
     window.addEventListener("online", syncPendingSales);
     return () => window.removeEventListener("online", syncPendingSales);
   }, [syncPendingSales]);
+
+  function clearSyncHistory() {
+    writeSyncHistory([]);
+    setSyncHistory([]);
+  }
+
+  function removePendingSale(id: string) {
+    const sale = pendingSales.find((item) => item.id === id);
+    if (!sale?.lastError) return;
+    const confirmed = window.confirm(lang === "sw"
+      ? "Ondoa sale hii ya offline? Fanya hivi tu kama umeirekodi kwa mkono."
+      : "Remove this offline sale? Only do this if you recorded it manually.");
+    if (!confirmed) return;
+    const nextPending = pendingSales.filter((item) => item.id !== id);
+    writePendingSales(nextPending);
+    setPendingSales(nextPending);
+    toast(lang === "sw" ? "Sale ya offline imeondolewa." : "Offline sale removed.", "success");
+  }
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -349,35 +387,95 @@ export default function SalesPage() {
             {pendingSales.length > 0 && (
               <button
                 onClick={() => syncPendingSales()}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                disabled={syncing}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60"
               >
-                <WifiOff className="h-4 w-4" />
-                {lang === "sw" ? `${pendingSales.length} yanangoja sync` : `${pendingSales.length} pending sync`}
+                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                {syncing
+                  ? (lang === "sw" ? "Inasawazisha" : "Syncing")
+                  : (lang === "sw" ? `${pendingSales.length} yanangoja sync` : `${pendingSales.length} pending sync`)}
               </button>
             )}
           </div>
         )}
 
         {view === "pos" && (pendingSales.length > 0 || syncHistory.length > 0) && (
-          <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <div className="flex items-center justify-between gap-3">
+          <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-amber-950">{lang === "sw" ? "Offline sales sync" : "Offline sales sync"}</p>
+                <div className="flex items-center gap-2">
+                  <WifiOff className="h-4 w-4 text-amber-700" />
+                  <p className="text-sm font-semibold text-amber-950">{lang === "sw" ? "Offline sales sync" : "Offline sales sync"}</p>
+                </div>
                 <p className="text-xs text-amber-800">
                   {pendingSales.length > 0
                     ? (lang === "sw" ? `${pendingSales.length} sale zinasubiri. Kila sale itajaribu tena internet ikirudi.` : `${pendingSales.length} sale(s) waiting. Each sale retries when internet returns.`)
                     : (lang === "sw" ? "Hakuna sale inayosubiri sync." : "No sales are waiting to sync.")}
                 </p>
+                <p className="mt-1 text-[11px] text-amber-700">
+                  {typeof navigator !== "undefined" && navigator.onLine
+                    ? (lang === "sw" ? "Mtandao upo" : "Online")
+                    : (lang === "sw" ? "Mtandao haupo" : "Offline")}
+                  {" · "}
+                  {lang === "sw" ? "Jaribio la mwisho" : "Last check"} {formatSyncTime(lastSyncAt)}
+                </p>
               </div>
-              {pendingSales.some((sale) => sale.lastError) && (
-                <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
-                  {lang === "sw" ? "Kagua hitilafu" : "Review errors"}
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {pendingSales.some((sale) => sale.lastError) && (
+                  <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
+                    {lang === "sw" ? "Kagua hitilafu" : "Review errors"}
+                  </span>
+                )}
+                {pendingSales.length > 0 && (
+                  <button
+                    onClick={() => syncPendingSales()}
+                    disabled={syncing}
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-950 disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                    {lang === "sw" ? "Jaribu sync" : "Retry sync"}
+                  </button>
+                )}
+                {syncHistory.length > 0 && (
+                  <button onClick={clearSyncHistory} className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">
+                    {lang === "sw" ? "Futa historia" : "Clear history"}
+                  </button>
+                )}
+              </div>
             </div>
+            {pendingSales.length > 0 && (
+              <div className="mt-3 grid gap-2">
+                {pendingSales.map((sale) => (
+                  <div key={sale.id} className="rounded-lg bg-white/80 px-3 py-2 text-xs">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="font-semibold text-amber-950">
+                          {formatTZS(sale.total)} · {sale.payload.items.length} {lang === "sw" ? "bidhaa" : "item(s)"}
+                        </p>
+                        <p className="mt-0.5 text-gray-500">
+                          {new Date(sale.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          {" · "}
+                          {lang === "sw" ? "Majaribio" : "Attempts"} {sale.attempts || 0}
+                        </p>
+                        {sale.lastError && <p className="mt-1 font-medium text-red-700">{sale.lastError}</p>}
+                      </div>
+                      {sale.lastError && (
+                        <button
+                          onClick={() => removePendingSale(sale.id)}
+                          className="inline-flex items-center gap-1 self-start rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {lang === "sw" ? "Ondoa" : "Remove"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {syncHistory.length > 0 && (
               <div className="mt-3 grid gap-2">
-                {syncHistory.slice(0, 3).map((event) => (
+                {syncHistory.slice(0, 5).map((event) => (
                   <div key={event.id} className="flex items-start justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 text-xs">
                     <div>
                       <p className={`font-semibold ${event.status === "failed" ? "text-red-700" : event.status === "synced" ? "text-green-700" : "text-amber-800"}`}>
