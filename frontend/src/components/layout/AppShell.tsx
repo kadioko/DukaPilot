@@ -65,16 +65,7 @@ const merchantNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { href: "/admin", label: "Admin", icon: LayoutDashboard },
-  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
-  { href: "/inventory", labelKey: "nav.inventory", icon: Package },
-  { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart },
-  { href: "/debts", labelKey: "nav.debts", icon: HandCoins },
-  { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText },
-  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck },
-  { href: "/staff", labelKey: "nav.staff", icon: Users },
-  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles },
-  { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/reports", label: "Reports", icon: AlertTriangle },
 ];
 
