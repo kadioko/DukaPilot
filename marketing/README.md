@@ -9,6 +9,8 @@ This folder holds launch and store-listing assets for DukaPilot.
 - `play-store-screenshots/phone/` - Phone screenshots.
 - `play-store-screenshots/7-inch-tablet/` - 7-inch tablet screenshots.
 - `play-store-screenshots/10-inch-tablet/` - 10-inch tablet screenshots.
+- `ad-creatives/dukapilot-stock-profit-square.svg` - Square feed ad creative.
+- `ad-creatives/dukapilot-daftari-phone-story.svg` - Vertical story/reels ad creative.
 
 ## Core Message
 
@@ -56,3 +58,4 @@ For ads and store listings, prioritize screenshots that show real merchant value
 - Keep support and setup promises operationally realistic.
 
 See `docs/LAUNCH_PLAYBOOK.md` for the full acquisition plan.
+See `docs/FIELD_SALES_KIT.md`, `docs/REFERRAL_LOOP.md`, and `docs/FIRST_AD_CAMPAIGN.md` for field launch execution.

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, ExternalLink, Languages, PackagePlus, Settings, Share2, ShoppingCart, Users } from "lucide-react";
+import { CheckCircle2, ExternalLink, Languages, MessageCircle, PackagePlus, Settings, Share2, ShoppingCart, Users } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import { useLang } from "@/lib/i18n";
 
@@ -78,6 +78,11 @@ export default function OnboardingPage() {
   }
 
   const completeCount = steps.filter((step) => done[step.href]).length;
+  const referralText = encodeURIComponent(
+    lang === "sw"
+      ? "Nimeanza kutumia DukaPilot kufuatilia stock, mauzo na madeni ya duka. Kama una duka, jaribu hapa: https://www.dukapilot.com/ au tuma WhatsApp kwa support: https://wa.me/255743910580?text=Habari%20DukaPilot%2C%20nimeletwa%20na%20rafiki%20na%20nataka%20setup%20ya%20duka%20langu.%20Aina%20ya%20duka%3A%20"
+      : "I started using DukaPilot to track shop stock, sales, and customer debts. If you run a shop, try it here: https://www.dukapilot.com/ or WhatsApp support: https://wa.me/255743910580?text=Hello%20DukaPilot%2C%20a%20friend%20referred%20me%20and%20I%20want%20shop%20setup%20help.%20Shop%20type%3A%20"
+  );
 
   return (
     <AppShell>
@@ -139,6 +144,31 @@ export default function OnboardingPage() {
                 ? "Tip: ukiwa na bidhaa na mauzo machache tu, AI Assistant itaanza kutoa ushauri wa kuagiza bidhaa, kufuatilia madeni na kupunguza gharama."
                 : "Tip: with just a few products and sales, the AI Assistant starts giving advice on restocking, debt follow-up, and cost control."}
             </p>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-brand-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <Share2 className="mt-0.5 h-5 w-5 text-brand-700" />
+              <div>
+                <h2 className="font-semibold text-gray-950">
+                  {lang === "sw" ? "Mlete mfanyabiashara mwenzako" : "Refer another shop owner"}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-gray-600">
+                  {lang === "sw"
+                    ? "Ukimaliza setup, share ujumbe huu kwa rafiki mwenye duka. Akirekodi mauzo 10, unaweza kupata wiki 1 bure."
+                    : "After setup, share this message with a shop owner friend. If they record 10 sales, you can get 1 free week."}
+                </p>
+              </div>
+            </div>
+            <a
+              href={`https://wa.me/?text=${referralText}`}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white hover:bg-brand-800"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {lang === "sw" ? "Share WhatsApp" : "Share on WhatsApp"}
+            </a>
           </div>
         </section>
       </div>
