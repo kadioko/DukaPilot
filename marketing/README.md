@@ -21,6 +21,7 @@ This folder holds launch and store-listing assets for DukaPilot.
 - `ad-creatives/dukapilot-setup-story.svg` - Guided onboarding story/reels creative.
 - `ad-creatives/exports/png/` - Ready-to-share PNG exports.
 - `ad-creatives/exports/jpg/` - Ready-to-share JPG exports.
+- `linkedin-carousel/founder-launch/` - Founder LinkedIn launch carousel SVG sources and PNG/JPG exports.
 
 ## Core Message
 
