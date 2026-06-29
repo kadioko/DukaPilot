@@ -250,7 +250,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     <div className="min-h-screen bg-gradient-to-br from-brand-700 to-brand-900 px-4 py-4 lg:px-8">
       <header className="mx-auto flex w-full max-w-6xl flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-3 text-white shadow-xl shadow-black/10 backdrop-blur md:flex-row md:items-center md:justify-between">
         <Link href="/" className="flex items-center gap-3">
-          <LogoMark className="h-10 w-10 rounded-xl bg-white shadow-sm" />
+          <LogoMark className="h-10 w-10 rounded-xl shadow-sm ring-1 ring-white/20" />
           <div>
             <p className="text-sm font-bold leading-tight">DukaPilot</p>
             <p className="text-xs text-brand-100">Merchant OS - Tanzania</p>
