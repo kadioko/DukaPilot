@@ -6,6 +6,8 @@ This folder holds launch and store-listing assets for DukaPilot.
 
 - `play-store-feature-graphic.png` - Play Store feature graphic.
 - `play-store-feature-graphic.svg` - Editable source for the feature graphic.
+- `brand/dukapilot-logo.jpg` - JPG export of the DukaPilot logo mark.
+- `brand/dukapilot-icon.jpg` - JPG export of the app icon.
 - `play-store-screenshots/phone/` - Phone screenshots.
 - `play-store-screenshots/7-inch-tablet/` - 7-inch tablet screenshots.
 - `play-store-screenshots/10-inch-tablet/` - 10-inch tablet screenshots.
