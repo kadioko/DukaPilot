@@ -11,6 +11,9 @@ This folder holds launch and store-listing assets for DukaPilot.
 - `play-store-screenshots/10-inch-tablet/` - 10-inch tablet screenshots.
 - `ad-creatives/dukapilot-stock-profit-square.svg` - Square feed ad creative.
 - `ad-creatives/dukapilot-daftari-phone-story.svg` - Vertical story/reels ad creative.
+- `ad-creatives/dukapilot-debts-square.svg` - Debt-tracking square feed creative.
+- `ad-creatives/dukapilot-supplier-order-square.svg` - Supplier-order square feed creative.
+- `ad-creatives/dukapilot-low-stock-story.svg` - Low-stock story/reels creative.
 
 ## Core Message
 

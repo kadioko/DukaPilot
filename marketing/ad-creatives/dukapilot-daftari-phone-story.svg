@@ -14,9 +14,10 @@
   <path d="M154 878h260M154 944h240M154 1010h268M154 1076h210M154 1142h252" stroke="#cbd5e1" stroke-width="8" stroke-linecap="round"/>
   <rect x="592" y="700" width="340" height="630" rx="54" fill="#14532d"/>
   <rect x="620" y="758" width="284" height="514" rx="34" fill="#ffffff"/>
-  <rect x="650" y="812" width="56" height="56" rx="16" fill="#16a34a"/>
-  <text x="726" y="850" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="900">Duka la Amina</text>
-  <text x="650" y="945" fill="#16a34a" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="900">Muhtasari</text>
+  <rect x="644" y="806" width="62" height="62" rx="18" fill="#16a34a"/>
+  <text x="724" y="836" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="900">Duka la</text>
+  <text x="724" y="866" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="900">Amina</text>
+  <text x="650" y="945" fill="#16a34a" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="900">Dashboard</text>
   <rect x="650" y="990" width="224" height="44" rx="22" fill="#dcfce7"/>
   <rect x="650" y="1060" width="180" height="36" rx="18" fill="#bbf7d0"/>
   <rect x="650" y="1122" width="212" height="36" rx="18" fill="#86efac"/>

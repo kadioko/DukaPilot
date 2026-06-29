@@ -121,6 +121,9 @@ Editable SVG files:
 
 - `marketing/ad-creatives/dukapilot-stock-profit-square.svg`
 - `marketing/ad-creatives/dukapilot-daftari-phone-story.svg`
+- `marketing/ad-creatives/dukapilot-debts-square.svg`
+- `marketing/ad-creatives/dukapilot-supplier-order-square.svg`
+- `marketing/ad-creatives/dukapilot-low-stock-story.svg`
 
 Export these to PNG before upload:
 
@@ -168,7 +171,7 @@ Caption:
 
 Run first 7 days with:
 
-- 2 image creatives
+- 5 image creatives
 - 1 short video
 - 3 ad copy variants
 - WhatsApp objective only
@@ -184,4 +187,3 @@ Track:
 - Paid
 
 Kill ads that produce conversations but no setup. Keep ads that produce activated shops.
-
