@@ -21,6 +21,7 @@ import {
 import LogoMark from "@/components/brand/LogoMark";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
+import clsx from "clsx";
 
 function normalizePhone(value: string): string {
   return value.replace(/[\s()-]/g, "").trim();
@@ -61,6 +62,15 @@ const heroFeatures = [
     sw: "Tengeneza order ya supplier tayari kwa WhatsApp.",
     en: "Create supplier orders ready for WhatsApp.",
   },
+];
+
+const publicNav = [
+  { href: "/pricing", sw: "Bei", en: "Pricing" },
+  { href: "/catalog", sw: "Catalog", en: "Catalog" },
+  { href: "/help", sw: "Msaada", en: "Help" },
+  { href: "/contact", sw: "Mawasiliano", en: "Contact" },
+  { href: "/about", sw: "Kuhusu", en: "About" },
+  { href: "/demo", sw: "Demo", en: "Demo" },
 ];
 
 type View = "login" | "register" | "forgot";
@@ -237,10 +247,66 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-700 to-brand-900 px-4 py-6 lg:px-8">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center gap-8 lg:grid-cols-[1.08fr_420px]">
+    <div className="min-h-screen bg-gradient-to-br from-brand-700 to-brand-900 px-4 py-4 lg:px-8">
+      <header className="mx-auto flex w-full max-w-6xl flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-3 text-white shadow-xl shadow-black/10 backdrop-blur md:flex-row md:items-center md:justify-between">
+        <Link href="/" className="flex items-center gap-3">
+          <LogoMark className="h-10 w-10 rounded-xl bg-white shadow-sm" />
+          <div>
+            <p className="text-sm font-bold leading-tight">DukaPilot</p>
+            <p className="text-xs text-brand-100">Merchant OS - Tanzania</p>
+          </div>
+        </Link>
+
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <nav className="grid grid-cols-3 gap-1 rounded-xl bg-white/10 p-1 text-sm font-semibold text-brand-50 md:flex">
+            {publicNav.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="min-h-0 whitespace-nowrap rounded-lg px-3 py-2 text-center transition-colors hover:bg-white/15 hover:text-white"
+              >
+                {lang === "sw" ? item.sw : item.en}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/10 p-1">
+              <button
+                type="button"
+                onClick={() => setAppLanguage("sw")}
+                className={clsx(
+                  "min-h-0 rounded-lg px-3 py-2 text-xs font-bold transition-colors",
+                  lang === "sw" ? "bg-white text-brand-800 shadow-sm" : "text-brand-50 hover:bg-white/10"
+                )}
+              >
+                SW
+              </button>
+              <button
+                type="button"
+                onClick={() => setAppLanguage("en")}
+                className={clsx(
+                  "min-h-0 rounded-lg px-3 py-2 text-xs font-bold transition-colors",
+                  lang === "en" ? "bg-white text-brand-800 shadow-sm" : "text-brand-50 hover:bg-white/10"
+                )}
+              >
+                EN
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => switchView("register")}
+              className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-brand-800 shadow-sm transition-colors hover:bg-brand-50"
+            >
+              {lang === "sw" ? "Anza bure" : "Start free"}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto grid min-h-[calc(100vh-6rem)] w-full max-w-6xl items-center gap-8 py-8 lg:grid-cols-[1.08fr_420px]">
         <section className="text-white">
-          <div className="flex items-center gap-3">
+          <div className="hidden items-center gap-3 lg:flex">
             <LogoMark className="h-12 w-12 rounded-2xl bg-white shadow-lg" />
             <div>
               <p className="text-2xl font-bold tracking-tight">DukaPilot</p>
@@ -309,31 +375,6 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </section>
 
         <div className="w-full max-w-sm justify-self-center lg:justify-self-end">
-        {/* Language switcher */}
-        <div className="flex justify-center mb-6">
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-1.5 border border-white/10 shadow-lg">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-center text-brand-100 px-3 pt-1 pb-2">
-              {t("app.language", lang)}
-            </div>
-            <div className="grid grid-cols-2 gap-1">
-              <button
-                type="button"
-                onClick={() => setAppLanguage("sw")}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${lang === "sw" ? "bg-white text-brand-700 shadow-sm" : "text-white hover:bg-white/10"}`}
-              >
-                {t("app.swahili", lang)}
-              </button>
-              <button
-                type="button"
-                onClick={() => setAppLanguage("en")}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${lang === "en" ? "bg-white text-brand-700 shadow-sm" : "text-white hover:bg-white/10"}`}
-              >
-                {t("app.english", lang)}
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-xl p-6">
           {/* ===== FORGOT PIN VIEW ===== */}
