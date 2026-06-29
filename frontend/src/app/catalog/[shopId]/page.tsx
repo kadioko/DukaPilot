@@ -43,6 +43,7 @@ interface CartItem {
   quantity: number;
   unitPrice: number;
   pricingTier: "RETAIL" | "WHOLESALE";
+  currentStock: number;
 }
 
 type View = "shop" | "cart" | "checkout" | "success";
@@ -96,13 +97,13 @@ export default function ShopPage() {
       if (existing) {
         return prev.map((i) =>
           i.productId === product.id && i.pricingTier === tier
-            ? { ...i, quantity: i.quantity + 1 }
+            ? { ...i, quantity: Math.min(i.quantity + 1, i.currentStock) }
             : i
         );
       }
       return [
         ...prev,
-        { productId: product.id, name: product.name, unit: product.unit, quantity: 1, unitPrice, pricingTier: tier },
+        { productId: product.id, name: product.name, unit: product.unit, quantity: 1, unitPrice, pricingTier: tier, currentStock: product.currentStock },
       ];
     });
   }
@@ -112,7 +113,7 @@ export default function ShopPage() {
       prev
         .map((i) =>
           i.productId === productId && i.pricingTier === tier
-            ? { ...i, quantity: i.quantity + delta }
+            ? { ...i, quantity: Math.max(0, Math.min(i.quantity + delta, i.currentStock)) }
             : i
         )
         .filter((i) => i.quantity > 0)

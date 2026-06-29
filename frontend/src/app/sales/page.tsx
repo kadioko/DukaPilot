@@ -43,6 +43,8 @@ interface PendingSale {
     saleMode: "RETAIL" | "WHOLESALE";
     paymentMethod: string;
     paymentRef?: string;
+    customerName?: string;
+    customerPhone?: string;
   };
 }
 
@@ -108,6 +110,8 @@ export default function SalesPage() {
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [paymentRef, setPaymentRef] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [search, setSearch] = useState("");
   const [completing, setCompleting] = useState(false);
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
@@ -241,6 +245,10 @@ export default function SalesPage() {
 
   async function completeSale() {
     if (cart.length === 0) return;
+    if (paymentMethod === "CREDIT" && !customerPhone.trim()) {
+      toast(lang === "sw" ? "Weka namba ya simu ya mteja kwa mauzo ya deni." : "Enter the customer phone for credit sales.", "error");
+      return;
+    }
     setCompleting(true);
     const payload = {
       items: cart.map((i) => ({
@@ -251,12 +259,16 @@ export default function SalesPage() {
       saleMode,
       paymentMethod,
       paymentRef: paymentRef || undefined,
+      customerName: customerName.trim() || undefined,
+      customerPhone: customerPhone.trim() || undefined,
     };
     try {
       await api.post("/sales", payload, lang);
       toast(t("sales.completed", lang), "success");
       setCart([]);
       setPaymentRef("");
+      setCustomerName("");
+      setCustomerPhone("");
       // Refresh products stock
       api.get<{ products: Product[] }>("/products")
         .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
@@ -282,6 +294,8 @@ export default function SalesPage() {
         setSyncHistory(nextHistory.slice(0, 10));
         setCart([]);
         setPaymentRef("");
+        setCustomerName("");
+        setCustomerPhone("");
         toast(lang === "sw" ? "Mtandao haupo. Mauzo yamehifadhiwa kusubiri sync." : "Offline. Sale saved and will sync later.", "success");
       } else {
         toast(message, "error");
@@ -488,6 +502,24 @@ export default function SalesPage() {
                       <input value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)}
                         placeholder={t("sales.paymentReference", lang)}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                    )}
+
+                    {paymentMethod === "CREDIT" && (
+                      <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                        <input
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                          placeholder={lang === "sw" ? "Jina la mteja (hiari)" : "Customer name (optional)"}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        />
+                        <input
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value)}
+                          placeholder={lang === "sw" ? "Simu ya mteja *" : "Customer phone *"}
+                          type="tel"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        />
+                      </div>
                     )}
 
                     <button onClick={completeSale} disabled={completing || cart.length === 0}

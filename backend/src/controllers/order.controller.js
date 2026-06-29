@@ -43,14 +43,27 @@ const create = asyncHandler(async (req, res) => {
   const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
   if (!supplier) return res.status(404).json({ error: "Supplier not found" });
 
-  const productIds = items.map((i) => i.productId);
+  const normalizedItems = items.map((item) => ({
+    productId: String(item.productId || ""),
+    quantity: Number(item.quantity),
+    unitPrice: item.unitPrice,
+  }));
+
+  if (normalizedItems.some((item) => !item.productId || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+    return res.status(400).json({ error: "Each order item must include a productId and quantity greater than 0" });
+  }
+
+  const productIds = normalizedItems.map((i) => i.productId);
   const products = await prisma.product.findMany({
-    where: { id: { in: productIds } },
+    where: { id: { in: productIds }, shopId: shop.id, isActive: true },
   });
+  if (products.length !== productIds.length) {
+    return res.status(400).json({ error: "One or more products not found in this shop" });
+  }
   const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
 
   let totalAmount = 0;
-  const orderItemsData = items.map((item) => {
+  const orderItemsData = normalizedItems.map((item) => {
     const product = productMap[item.productId];
     if (!product) throw Object.assign(new Error(`Product ${item.productId} not found`), { status: 400 });
     const unitPrice = item.unitPrice || product.buyingPrice;

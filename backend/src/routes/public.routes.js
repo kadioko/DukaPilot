@@ -153,9 +153,18 @@ router.post("/orders", async (req, res, next) => {
       return res.status(402).json({ error: "This shop is not currently accepting catalog orders" });
     }
 
-    const productIds = items.map((i) => i.productId);
+    const normalizedItems = items.map((item) => ({
+      productId: String(item.productId || ""),
+      quantity: Number(item.quantity),
+      pricingTier: item.pricingTier,
+    }));
+    if (normalizedItems.some((item) => !item.productId || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+      return res.status(400).json({ error: "Each item must include a productId and quantity greater than 0" });
+    }
+
+    const productIds = normalizedItems.map((i) => i.productId);
     const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, shopId, isActive: true },
+      where: { id: { in: productIds }, shopId, isActive: true, currentStock: { gt: 0 } },
     });
     if (products.length !== productIds.length) {
       return res.status(400).json({ error: "One or more products not available" });
@@ -163,8 +172,14 @@ router.post("/orders", async (req, res, next) => {
 
     const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
     let totalAmount = 0;
-    const orderItemsData = items.map((item) => {
+    const orderItemsData = normalizedItems.map((item) => {
       const product = productMap[item.productId];
+      if (product.currentStock < item.quantity) {
+        throw Object.assign(
+          new Error(`Insufficient stock for ${product.name}: have ${product.currentStock}, need ${item.quantity}`),
+          { status: 400 }
+        );
+      }
       const tier = String(item.pricingTier || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
       const unitPrice = tier === "WHOLESALE" && product.wholesalePrice != null
         ? product.wholesalePrice
