@@ -1,9 +1,23 @@
 "use client";
+import Image from "next/image";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, getFriendlyErrorMessage, setToken } from "@/lib/api";
-import { Phone, Lock, Eye, EyeOff, ArrowRight, Store, MapPin, ChevronDown } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeDollarSign,
+  ChevronDown,
+  Eye,
+  EyeOff,
+  Lock,
+  MapPin,
+  MessageCircle,
+  PackageCheck,
+  Phone,
+  ReceiptText,
+  Store,
+} from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 
@@ -28,6 +42,24 @@ const SHOP_CATEGORIES = [
   { value: "electronics", sw: "Umeme / Simu", en: "Electronics" },
   { value: "clothing", sw: "Nguo", en: "Clothing" },
   { value: "general", sw: "Bidhaa Mchanganyiko", en: "General / Mixed" },
+];
+
+const heroFeatures = [
+  {
+    icon: PackageCheck,
+    sw: "Jua stock iliyobaki kabla haijaisha.",
+    en: "Know what stock is left before it runs out.",
+  },
+  {
+    icon: ReceiptText,
+    sw: "Rekodi mauzo, madeni, matumizi na faida.",
+    en: "Record sales, debts, expenses, and profit.",
+  },
+  {
+    icon: MessageCircle,
+    sw: "Tengeneza order ya supplier tayari kwa WhatsApp.",
+    en: "Create supplier orders ready for WhatsApp.",
+  },
 ];
 
 type View = "login" | "register" | "forgot";
@@ -203,9 +235,91 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     }
   }
 
+  const whatsappText = encodeURIComponent(
+    lang === "sw"
+      ? "Habari DukaPilot, nataka setup ya duka langu."
+      : "Hello DukaPilot, I want help setting up my shop."
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-700 to-brand-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-gradient-to-br from-brand-700 to-brand-900 px-4 py-6 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center gap-8 lg:grid-cols-[1.08fr_420px]">
+        <section className="text-white">
+          <div className="flex items-center gap-3">
+            <LogoMark className="h-12 w-12 rounded-2xl bg-white shadow-lg" />
+            <div>
+              <p className="text-2xl font-bold tracking-tight">DukaPilot</p>
+              <p className="text-sm font-medium text-brand-100">Merchant OS - Tanzania</p>
+            </div>
+          </div>
+
+          <div className="mt-8 max-w-2xl">
+            <h1 className="text-4xl font-bold leading-tight tracking-normal sm:text-5xl">
+              {lang === "sw"
+                ? "Mfumo wa duka kwenye simu."
+                : "Your shop system on your phone."}
+            </h1>
+            <p className="mt-5 max-w-xl text-base leading-7 text-brand-50 sm:text-lg">
+              {lang === "sw"
+                ? "DukaPilot husaidia wafanyabiashara Tanzania kujua bidhaa zilizobaki, faida ya leo, madeni ya wateja na muda wa kuagiza tena kwa Kiswahili."
+                : "DukaPilot helps Tanzanian merchants track what is in stock, today's profit, customer debts, and when to reorder in Swahili or English."}
+            </p>
+          </div>
+
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => switchView("register")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-brand-800 shadow-lg shadow-black/10 transition-colors hover:bg-brand-50"
+            >
+              {lang === "sw" ? "Anza bure siku 14" : "Start free for 14 days"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+            <a
+              href={`https://wa.me/255743910580?text=${whatsappText}`}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur transition-colors hover:bg-white/20"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {lang === "sw" ? "Panga setup WhatsApp" : "Set up on WhatsApp"}
+            </a>
+          </div>
+
+          <div className="mt-8 hidden max-w-2xl gap-3 sm:grid sm:grid-cols-3">
+            {heroFeatures.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <div key={feature.en} className="rounded-xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                  <Icon className="h-5 w-5 text-brand-100" />
+                  <p className="mt-3 text-sm font-semibold leading-5 text-white">
+                    {lang === "sw" ? feature.sw : feature.en}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 hidden max-w-2xl gap-4 sm:grid sm:grid-cols-[170px_1fr]">
+            <div className="rounded-xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+              <BadgeDollarSign className="h-5 w-5 text-brand-100" />
+              <p className="mt-3 text-sm font-bold text-white">TZS 15,000/month</p>
+              <p className="mt-1 text-xs leading-5 text-brand-100">
+                {lang === "sw" ? "Baada ya jaribio la bure." : "After the free trial."}
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/95 p-3 shadow-2xl shadow-black/20">
+              <Image
+                src="/marketing/phone-dashboard.png"
+                alt={lang === "sw" ? "Muonekano wa dashboard ya DukaPilot" : "DukaPilot dashboard preview"}
+                width={420}
+                height={744}
+                className="h-56 w-full rounded-xl object-cover object-top sm:h-64"
+                priority
+              />
+            </div>
+          </div>
+        </section>
+
+        <div className="w-full max-w-sm justify-self-center lg:justify-self-end">
         {/* Language switcher */}
         <div className="flex justify-center mb-6">
           <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-1.5 border border-white/10 shadow-lg">
@@ -229,13 +343,6 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <LogoMark className="h-16 w-16 rounded-2xl bg-white shadow-lg mb-4" />
-          <h1 className="text-3xl font-bold text-white">DukaPilot</h1>
-          <p className="text-brand-200 mt-1 text-sm">Merchant OS - Tanzania</p>
         </div>
 
         {/* Card */}
@@ -566,6 +673,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           <Link href="/demo" className="hover:text-white">{lang === "sw" ? "Demo" : "Demo"}</Link>
           <Link href="/terms" className="hover:text-white">{lang === "sw" ? "Masharti" : "Terms"}</Link>
           <Link href="/privacy" className="hover:text-white">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
+        </div>
         </div>
       </div>
     </div>
