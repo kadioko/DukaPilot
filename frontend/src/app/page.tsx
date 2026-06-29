@@ -64,6 +64,12 @@ const heroFeatures = [
   },
 ];
 
+const heroProofPoints = [
+  { sw: "AI inapanga kipaumbele cha leo", en: "AI ranks today's priorities" },
+  { sw: "Mauzo, stock, madeni na matumizi", en: "Sales, stock, debts, and expenses" },
+  { sw: "Imejengwa kwa maduka Tanzania", en: "Built for Tanzanian shops" },
+];
+
 const publicNav = [
   { href: "/pricing", sw: "Bei", en: "Pricing" },
   { href: "/catalog", sw: "Catalog", en: "Catalog" },
@@ -247,16 +253,15 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-700 to-brand-900 px-4 py-4 lg:px-8">
-      <header className="mx-auto flex w-full max-w-6xl flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-3 text-white shadow-xl shadow-black/10 backdrop-blur md:flex-row md:items-center md:justify-between">
+    <div className="min-h-screen bg-[linear-gradient(135deg,#0b5d34_0%,#13763f_44%,#0d342c_100%)] px-4 py-3 lg:px-8 lg:py-4">
+      <header className="sticky top-3 z-20 mx-auto flex w-full max-w-6xl flex-col gap-3 rounded-2xl border border-white/15 bg-[#0d6b3c]/90 p-3 text-white shadow-xl shadow-black/15 backdrop-blur md:flex-row md:items-center md:justify-between">
         <Link href="/" className="flex items-center gap-3">
-          <Image
+          <img
             src="/logo/dukapilot-icon-192.png"
             alt="DukaPilot"
             width={40}
             height={40}
-            className="h-10 w-10 rounded-xl shadow-sm ring-1 ring-white/20"
-            priority
+            className="h-10 w-10 rounded-xl bg-white/10 shadow-sm ring-1 ring-white/20"
           />
           <div>
             <p className="text-sm font-bold leading-tight">DukaPilot</p>
@@ -265,12 +270,12 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </Link>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <nav className="grid grid-cols-3 gap-1 rounded-xl bg-white/10 p-1 text-sm font-semibold text-brand-50 md:flex">
+          <nav className="grid grid-cols-3 gap-1 rounded-xl bg-white/10 p-1 text-[13px] font-semibold text-brand-50 sm:text-sm md:flex">
             {publicNav.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="min-h-0 whitespace-nowrap rounded-lg px-3 py-2 text-center transition-colors hover:bg-white/15 hover:text-white"
+                className="min-h-0 whitespace-nowrap rounded-lg px-2.5 py-2 text-center transition-colors hover:bg-white/15 hover:text-white md:px-3"
               >
                 {lang === "sw" ? item.sw : item.en}
               </Link>
@@ -311,7 +316,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </div>
       </header>
 
-      <div className="mx-auto grid min-h-[calc(100vh-6rem)] w-full max-w-6xl items-center gap-8 py-8 lg:grid-cols-[1.08fr_420px]">
+      <div className="mx-auto grid min-h-[calc(100vh-6rem)] w-full max-w-6xl items-center gap-7 py-6 lg:grid-cols-[1.08fr_420px] lg:gap-8 lg:py-8">
         <section className="text-white">
           <div className="hidden items-center gap-3 lg:flex">
             <LogoMark className="h-12 w-12 rounded-2xl bg-white shadow-lg" />
@@ -321,7 +326,11 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
             </div>
           </div>
 
-          <div className="mt-8 max-w-2xl">
+          <div className="mt-5 max-w-2xl lg:mt-8">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200/30 bg-amber-100 px-3 py-1.5 text-xs font-bold uppercase tracking-normal text-[#713f12] shadow-sm">
+              <BadgeDollarSign className="h-4 w-4" />
+              {lang === "sw" ? "AI assistant ya duka" : "AI shop assistant"}
+            </div>
             <h1 className="text-4xl font-bold leading-tight tracking-normal sm:text-5xl">
               {lang === "sw"
                 ? "Mfumo wa duka kwenye simu."
@@ -334,7 +343,18 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
             </p>
           </div>
 
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-5 flex flex-wrap gap-2">
+            {heroProofPoints.map((point) => (
+              <span
+                key={point.en}
+                className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-brand-50"
+              >
+                {lang === "sw" ? point.sw : point.en}
+              </span>
+            ))}
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
               onClick={() => switchView("register")}
