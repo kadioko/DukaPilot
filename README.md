@@ -27,6 +27,8 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Health:** [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health)
 - **Status:** [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status)
 - **Email:** Mailtrap for outbound app email; ImprovMX for inbound forwarding on `dukapilot.com`
+- **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
+- **Marketing assets:** [marketing/README.md](./marketing/README.md)
 
 ---
 
@@ -92,6 +94,25 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Working-capital financing** | Later stage, with BoT microfinance license or licensed partner |
 
 **Path to TZS 25M MRR (~$10k/month):** 300 merchants + 20 suppliers + transaction fees + setup. No thousands of users needed before revenue.
+
+---
+
+## Launch And Growth
+
+DukaPilot is now live, so the operating focus is activated merchants, not just signups.
+
+**Primary launch offer:** 14-day free trial, free WhatsApp setup for early shops, then TZS 15,000/month Basic or TZS 35,000/month Pro.
+
+**Activation definition:** a merchant adds at least 10 products, records at least 10 real sales, and returns to the app on a second day.
+
+**Best first channels:**
+
+- Founder-led field sales in dense retail areas such as Kariakoo, Ilala, Kinondoni, Mwenge, Sinza, Tegeta, Buguruni, and Mbagala.
+- WhatsApp referrals from onboarded merchants.
+- Supplier partnerships with wholesalers already serving many small shops.
+- Small Facebook/Instagram tests optimized for WhatsApp messages, not generic traffic.
+
+See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad copy, field-sales scripts, the 30-day launch plan, and the weekly metrics scoreboard.
 
 ---
 
