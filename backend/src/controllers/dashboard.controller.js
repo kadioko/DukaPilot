@@ -21,10 +21,15 @@ const overview = asyncHandler(async (req, res) => {
   const salesWhere = from ? { shopId, createdAt: { gte: from } } : { shopId };
   const activeProductsWhere = { shopId, isActive: true };
 
-  const [salesAgg, salesCount, totalProducts, lowStockCandidates, lowStockCount, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
+  const [salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCount, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
     prisma.sale.aggregate({
       where: salesWhere,
       _sum: { totalAmount: true, profit: true },
+    }),
+    prisma.expense.aggregate({
+      where: salesWhere.createdAt ? { shopId, spentAt: salesWhere.createdAt } : { shopId },
+      _sum: { amount: true },
+      _count: { id: true },
     }),
     prisma.sale.count({ where: salesWhere }),
     prisma.product.count({ where: activeProductsWhere }),
@@ -94,11 +99,18 @@ const overview = asyncHandler(async (req, res) => {
     orderBy: { _sum: { totalAmount: "desc" } },
   });
 
-  const historySales = await prisma.sale.findMany({
-    where: { shopId },
-    select: { totalAmount: true, profit: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const [historySales, allExpenseAgg] = await Promise.all([
+    prisma.sale.findMany({
+      where: { shopId },
+      select: { totalAmount: true, profit: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.expense.aggregate({ where: { shopId }, _sum: { amount: true }, _count: { id: true } }),
+  ]);
+  const totalExpenses = expenseAgg._sum.amount || 0;
+  const grossProfit = salesAgg._sum.profit || 0;
+  const allTimeProfit = historySales.reduce((sum, sale) => sum + sale.profit, 0);
+  const allTimeExpenses = allExpenseAgg._sum.amount || 0;
 
   const historyMap = {};
   for (const sale of historySales) {
@@ -118,7 +130,10 @@ const overview = asyncHandler(async (req, res) => {
     period,
     summary: {
       totalSales: salesAgg._sum.totalAmount || 0,
-      totalProfit: salesAgg._sum.profit || 0,
+      totalProfit: grossProfit,
+      totalExpenses,
+      netProfit: grossProfit - totalExpenses,
+      expenseCount: expenseAgg._count.id,
       salesCount,
       pendingOrders,
       totalProducts,
@@ -127,7 +142,10 @@ const overview = asyncHandler(async (req, res) => {
     },
     allTimeSummary: {
       totalSales: historySales.reduce((sum, sale) => sum + sale.totalAmount, 0),
-      totalProfit: historySales.reduce((sum, sale) => sum + sale.profit, 0),
+      totalProfit: allTimeProfit,
+      totalExpenses: allTimeExpenses,
+      netProfit: allTimeProfit - allTimeExpenses,
+      expenseCount: allExpenseAgg._count.id,
       salesCount: historySales.length,
       firstSaleAt,
     },

@@ -75,8 +75,10 @@ enum StaffRole {
 enum OnboardingStatus {
   NEW
   CONTACTED
+  NEEDS_HELP
   SETUP_DONE
   ACTIVATED
+  PAID
   CONVERTED
   CHURN_RISK
 }
@@ -114,6 +116,7 @@ model Shop {
   expenses        Expense[]
   staffMembers    StaffMember[]
   subscriptionPayments SubscriptionPayment[]
+  offlineSyncEvents OfflineSyncEvent[]
   // Subscription / trial
   plan            String    @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
   trialEndsAt     DateTime?
@@ -143,6 +146,23 @@ model SubscriptionPayment {
 
   @@index([shopId, paidAt])
   @@map("subscription_payments")
+}
+
+model OfflineSyncEvent {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  status    String
+  total     Float?
+  message   String?
+  attempts  Int      @default(0)
+  localId   String?
+  createdAt DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([status, createdAt])
+  @@map("offline_sync_events")
 }
 
 model Supplier {

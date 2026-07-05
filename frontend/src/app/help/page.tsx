@@ -15,7 +15,15 @@ export default function HelpPage() {
     [lang === "sw" ? "Staff wanaingiaje?" : "How do staff sign in?", lang === "sw" ? "Owner anaongeza staff, simu na PIN kwenye ukurasa wa Staff. Staff hutumia simu na PIN kuingia." : "The owner adds staff, phone, and PIN on the Staff page. Staff use that phone and PIN to sign in."],
     [lang === "sw" ? "Offline inafanya kazi?" : "Does offline work?", lang === "sw" ? "Ukurasa wa Sales unaweza kuhifadhi mauzo kwenye browser ukiwa offline na kuyasawazisha internet ikirudi. Kagua sync history kwa hitilafu za stock." : "The Sales page can save sales locally while offline and sync them when internet returns. Check sync history for stock conflict errors."],
     [lang === "sw" ? "Ninalipaje subscription?" : "How do I pay for subscription?", lang === "sw" ? "Tuma M-Pesa kwenda +255 743 910 580, kisha weka reference kwenye Billing au tuma WhatsApp. Admin atahakiki na kuactivate plan." : "Send M-Pesa to +255 743 910 580, then submit the reference on Billing or WhatsApp. Admin verifies and activates the plan."],
+    [lang === "sw" ? "Nitajuaje malipo yamekubaliwa?" : "How do I know payment was confirmed?", lang === "sw" ? "Billing inaonyesha maombi yako ya malipo na status. Admin akithibitisha, plan itaonekana active." : "Billing shows your payment requests and status. Once admin confirms, your plan shows active."],
     [lang === "sw" ? "AI Assistant inanisaidiaje?" : "How does the AI Assistant help?", lang === "sw" ? "Inapanga hatua za leo kama kuagiza bidhaa, kufuatilia madeni, kupunguza gharama na kushughulikia order." : "It ranks today's actions like restocking, following up debts, reducing costs, and handling orders."],
+    [lang === "sw" ? "Nafutaje akaunti yangu?" : "How do I delete my account?", lang === "sw" ? "Fungua ukurasa wa Delete Account kuona hatua, aina ya data inayofutwa, na muda wa retention." : "Open the Delete Account page to see the steps, deleted data types, and retention period."],
+  ];
+  const walkthrough = [
+    [lang === "sw" ? "Setup" : "Setup", lang === "sw" ? "Weka jina la duka, lugha, na mawasiliano." : "Set shop name, language, and contact details."],
+    [lang === "sw" ? "Bidhaa" : "Products", lang === "sw" ? "Ongeza stock, bei ya kununua, bei ya kuuza, na supplier." : "Add stock, buying price, selling price, and supplier."],
+    [lang === "sw" ? "Mauzo" : "Sales", lang === "sw" ? "Rekodi cash, M-Pesa, bank, au credit sale kwa simu." : "Record cash, M-Pesa, bank, or credit sales from the phone."],
+    [lang === "sw" ? "Hatua za AI" : "AI actions", lang === "sw" ? "Fungua Assistant kuona cha kufanya leo." : "Open Assistant to see what to do today."],
   ];
 
   return (
@@ -53,6 +61,19 @@ export default function HelpPage() {
         </div>
 
         <ProductProofSection compact />
+
+        <section className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="font-semibold text-gray-950">{lang === "sw" ? "Product walkthrough ya haraka" : "Quick product walkthrough"}</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {walkthrough.map(([title, body], index) => (
+              <div key={title} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-700 text-xs font-bold text-white">{index + 1}</span>
+                <h3 className="mt-3 text-sm font-semibold text-gray-950">{title}</h3>
+                <p className="mt-2 text-xs leading-5 text-gray-600">{body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <div className="grid gap-4 md:grid-cols-2">
           {faqs.map(([q, a]) => (

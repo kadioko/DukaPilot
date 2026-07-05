@@ -61,6 +61,10 @@ const create = asyncHandler(async (req, res) => {
   if (!name || buyingPrice == null || sellingPrice == null) {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
   }
+  const initialStock = currentStock === undefined || currentStock === "" ? 0 : Number(currentStock);
+  if (!Number.isFinite(initialStock) || initialStock < 0) {
+    return res.status(400).json({ error: "Current stock must be 0 or greater" });
+  }
 
   const product = await prisma.product.create({
     data: {
@@ -71,7 +75,7 @@ const create = asyncHandler(async (req, res) => {
       sellingPrice: Number(sellingPrice),
       wholesalePrice: wholesalePrice != null && wholesalePrice !== "" ? Number(wholesalePrice) : null,
       wholesaleMinQty: wholesaleMinQty != null && wholesaleMinQty !== "" ? Number(wholesaleMinQty) : null,
-      currentStock: Number(currentStock) || 0,
+      currentStock: initialStock,
       minimumStock: Number(minimumStock) || 5,
       shopId,
       supplierId: supplierId || null,

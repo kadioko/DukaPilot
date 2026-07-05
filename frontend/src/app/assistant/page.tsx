@@ -8,7 +8,7 @@ import { useLang } from "@/lib/i18n";
 import { ArrowRight, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 
 interface DashboardData {
-  summary: { totalSales: number; totalProfit: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
+  summary: { totalSales: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
   lowStockAlerts?: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string }>;
   topProducts?: Array<{ product?: { name: string; unit?: string }; totalQuantity?: number; totalRevenue?: number }>;
 }
@@ -170,6 +170,27 @@ function buildRecommendations({
   const mostUrgentStock = lowStock[0];
   const todaySalesCount = dashboard?.summary.salesCount || 0;
   const hasBusinessHistory = Boolean((allTime?.summary.salesCount || 0) > 0 || (allTime?.summary.totalSales || 0) > 0);
+
+  if ((dashboard?.summary.totalSales || 0) > 0 && (dashboard?.summary.netProfit || 0) < 0) {
+    items.push({
+      id: "net-profit",
+      rank: 95,
+      icon: ReceiptText,
+      tone: "bg-red-50 text-red-700",
+      title: lang === "sw" ? "Matumizi yamezidi faida ya leo" : "Expenses are above today's profit",
+      body: lang === "sw"
+        ? `Faida halisi ni ${formatTZS(dashboard?.summary.netProfit || 0)} baada ya matumizi ya ${formatTZS(dashboard?.summary.totalExpenses || 0)}.`
+        : `Net profit is ${formatTZS(dashboard?.summary.netProfit || 0)} after ${formatTZS(dashboard?.summary.totalExpenses || 0)} in expenses.`,
+      action: lang === "sw" ? "Kagua matumizi" : "Review expenses",
+      href: "/expenses",
+      why: lang === "sw"
+        ? "Duka linaweza kuuza lakini bado lisipate faida kama gharama zimepanda."
+        : "A shop can sell well and still lose money when costs rise.",
+      impact: lang === "sw"
+        ? "Tambua gharama zinazokula faida na punguza mapema."
+        : "Find costs eating profit and reduce them early.",
+    });
+  }
 
   if (hasBusinessHistory && todaySalesCount === 0) {
     items.push({

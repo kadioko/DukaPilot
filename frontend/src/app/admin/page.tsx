@@ -30,7 +30,20 @@ interface AdminOverview {
     products: number;
     sales: number;
     orders: number;
+    debts: number;
+    expenses: number;
+    paidShops: number;
     auditLogs: number;
+  };
+  launchAnalytics?: {
+    registrations: number;
+    merchantShops: number;
+    firstProductProgress: number;
+    firstSaleProgress: number;
+    firstDebtProgress: number;
+    expenseTrackingProgress: number;
+    paidShops: number;
+    paymentsConfirmed7d: number;
   };
 }
 
@@ -81,7 +94,8 @@ interface Subscription {
   isActive: boolean;
   computedStatus: string;
   daysLeft: number | null;
-  onboardingStatus: "NEW" | "CONTACTED" | "SETUP_DONE" | "ACTIVATED" | "CONVERTED" | "CHURN_RISK";
+  reminderStage?: string | null;
+  onboardingStatus: "NEW" | "CONTACTED" | "NEEDS_HELP" | "SETUP_DONE" | "ACTIVATED" | "PAID" | "CONVERTED" | "CHURN_RISK";
   lastContactedAt?: string | null;
   followUpNotes?: string | null;
   activation: {
@@ -110,6 +124,15 @@ interface Supplier {
   verifiedAt?: string | null;
   adminNotes?: string | null;
   _count?: { products: number; orders: number };
+}
+
+interface SyncShopSummary {
+  shop: { id: string; name: string; user?: { name: string; phone: string } | null };
+  queued: number;
+  synced: number;
+  failed: number;
+  removed: number;
+  lastEventAt: string | null;
 }
 
 type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers";
@@ -145,6 +168,7 @@ export default function AdminPage() {
   const [updatingReport, setUpdatingReport] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [syncSummaries, setSyncSummaries] = useState<SyncShopSummary[]>([]);
   const [subFilter, setSubFilter] = useState("ALL");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
@@ -170,14 +194,16 @@ export default function AdminPage() {
       api.get<{ reports: Report[] }>("/reports/admin?limit=200"),
       api.get<{ shops: Subscription[] }>("/subscription/admin"),
       api.get<{ suppliers: Supplier[] }>("/suppliers"),
+      api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"),
     ])
-      .then(([ov, u, al, rp, sub, supplierData]) => {
+      .then(([ov, u, al, rp, sub, supplierData, syncData]) => {
         setOverview(ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
         setReports(rp.reports);
         setSubscriptions(sub.shops);
         setSuppliers(supplierData.suppliers);
+        setSyncSummaries(syncData.shops);
         setFollowUpDrafts(Object.fromEntries(sub.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
         setSupplierNotes(Object.fromEntries(supplierData.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
       })
@@ -383,6 +409,9 @@ export default function AdminPage() {
   ).length;
   const openReports = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS");
   const urgentReports = openReports.filter((report) => report.priority === "HIGH" || report.priority === "URGENT");
+  const failedLogins = auditLogs.filter((log) => log.path.includes("/auth/login") && log.action.toLowerCase().includes("failed")).length;
+  const failedSyncShops = syncSummaries.filter((shop) => shop.failed > 0).length;
+  const failedSyncEvents = syncSummaries.reduce((sum, shop) => sum + shop.failed, 0);
   const stalledTrials = subscriptions.filter((shop) => !shop.activation?.activated && shop.computedStatus === "trial").length;
   const suppliersNeedingReview = suppliers.filter((supplier) => supplier.verificationStatus !== "VERIFIED").length;
   const verifiedSuppliers = suppliers.filter((supplier) => supplier.verificationStatus === "VERIFIED").length;
@@ -391,6 +420,7 @@ export default function AdminPage() {
       shop.computedStatus === "expired" ||
       shop.computedStatus === "suspended" ||
       shop.onboardingStatus === "CHURN_RISK" ||
+      shop.onboardingStatus === "NEEDS_HELP" ||
       (shop.computedStatus === "trial" && shop.daysLeft !== null && shop.daysLeft <= 3) ||
       (!shop.activation?.activated && shop.computedStatus === "trial")
     )
@@ -400,6 +430,7 @@ export default function AdminPage() {
   function supportPriority(shop: Subscription) {
     if (shop.computedStatus === "suspended") return 100;
     if (shop.computedStatus === "expired") return 90;
+    if (shop.onboardingStatus === "NEEDS_HELP") return 85;
     if (shop.onboardingStatus === "CHURN_RISK") return 80;
     if (shop.computedStatus === "trial" && shop.daysLeft !== null && shop.daysLeft <= 1) return 70;
     if (shop.computedStatus === "trial" && shop.daysLeft !== null && shop.daysLeft <= 3) return 60;
@@ -410,6 +441,7 @@ export default function AdminPage() {
   function supportReason(shop: Subscription) {
     if (shop.computedStatus === "suspended") return "Suspended shop";
     if (shop.computedStatus === "expired") return "Unpaid or expired";
+    if (shop.onboardingStatus === "NEEDS_HELP") return "Needs help";
     if (shop.onboardingStatus === "CHURN_RISK") return "Churn risk";
     if (shop.computedStatus === "trial" && shop.daysLeft !== null && shop.daysLeft <= 3) return `Trial ends in ${shop.daysLeft}d`;
     if (!shop.activation?.activated) return "Needs activation help";
@@ -479,8 +511,29 @@ export default function AdminPage() {
                 <MiniMetric label="Support issues" value={supportIssues} tone="border-blue-200 bg-blue-50 text-blue-800" />
                 <MiniMetric label="Billing requests" value={billingIssues} tone="border-purple-200 bg-purple-50 text-purple-800" />
                 <MiniMetric label="Suspicious errors" value={suspiciousErrors} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                <MiniMetric label="Failed logins" value={failedLogins} tone="border-red-200 bg-red-50 text-red-800" />
+                <MiniMetric label="Failed sync shops" value={failedSyncShops} tone="border-red-200 bg-red-50 text-red-800" />
                 <MiniMetric label="Suppliers review" value={suppliersNeedingReview} tone="border-orange-200 bg-orange-50 text-orange-800" />
                 <MiniMetric label="Verified suppliers" value={verifiedSuppliers} tone="border-green-200 bg-green-50 text-green-800" />
+              </div>
+            </section>
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Launch Analytics</h2>
+                  <p className="text-xs text-gray-500">Core activation signals to watch while DukaPilot is live.</p>
+                </div>
+                <span className="text-xs text-gray-400">Derived from app data</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                <MiniMetric label="Registrations" value={overview.launchAnalytics?.registrations || 0} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                <MiniMetric label="Shops created" value={overview.launchAnalytics?.merchantShops || 0} tone="border-brand-200 bg-brand-50 text-brand-800" />
+                <MiniMetric label="Products added" value={overview.launchAnalytics?.firstProductProgress || 0} tone="border-green-200 bg-green-50 text-green-800" />
+                <MiniMetric label="Sales recorded" value={overview.launchAnalytics?.firstSaleProgress || 0} tone="border-sky-200 bg-sky-50 text-sky-800" />
+                <MiniMetric label="Debts tracked" value={overview.launchAnalytics?.firstDebtProgress || 0} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                <MiniMetric label="Expenses tracked" value={overview.launchAnalytics?.expenseTrackingProgress || 0} tone="border-orange-200 bg-orange-50 text-orange-800" />
+                <MiniMetric label="Paid shops" value={overview.launchAnalytics?.paidShops || 0} tone="border-purple-200 bg-purple-50 text-purple-800" />
+                <MiniMetric label="Payments 7d" value={overview.launchAnalytics?.paymentsConfirmed7d || 0} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
               </div>
             </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
@@ -544,9 +597,34 @@ export default function AdminPage() {
                   <MiniMetric label="Stalled trials" value={stalledTrials} tone="border-orange-200 bg-orange-50 text-orange-800" />
                   <MiniMetric label="Needs billing action" value={billingIssues + unpaidShops + suspendedShops} tone="border-purple-200 bg-purple-50 text-purple-800" />
                   <MiniMetric label="Suppliers to verify" value={suppliersNeedingReview} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                  <MiniMetric label="Failed sync events" value={failedSyncEvents} tone="border-red-200 bg-red-50 text-red-800" />
                 </div>
               </div>
             </section>
+            {syncSummaries.some((item) => item.failed > 0) && (
+              <section className="rounded-xl border border-red-200 bg-red-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-red-950">Offline Sync Watchlist</h2>
+                    <p className="text-xs text-red-700">Shops with failed browser sync events in the last 7 days.</p>
+                  </div>
+                </div>
+                <div className="grid gap-2 lg:grid-cols-2">
+                  {syncSummaries.filter((item) => item.failed > 0).slice(0, 6).map((item) => (
+                    <div key={item.shop.id} className="rounded-lg bg-white p-3 text-sm shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-gray-950">{item.shop.name}</p>
+                          <p className="text-xs text-gray-500">{item.shop.user?.name || "Owner"} · {item.shop.user?.phone || "No phone"}</p>
+                        </div>
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{item.failed} failed</span>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">Queued {item.queued} · Synced {item.synced} · Last {item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : "-"}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -882,7 +960,16 @@ export default function AdminPage() {
                           "bg-gray-100 text-gray-600"
                         }`}>{shop.computedStatus}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs">{shop.daysLeft !== null ? `${shop.daysLeft}d` : "-"}</td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">
+                        <div className="space-y-1">
+                          <p>{shop.daysLeft !== null ? `${shop.daysLeft}d` : "-"}</p>
+                          {shop.reminderStage && (
+                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                              {shop.reminderStage.replaceAll("_", " ")}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5 text-xs">
                         <div className="space-y-1.5">
                           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
@@ -914,8 +1001,10 @@ export default function AdminPage() {
                           >
                             <option value="NEW">NEW</option>
                             <option value="CONTACTED">CONTACTED</option>
+                            <option value="NEEDS_HELP">NEEDS HELP</option>
                             <option value="SETUP_DONE">SETUP DONE</option>
                             <option value="ACTIVATED">ACTIVATED</option>
+                            <option value="PAID">PAID</option>
                             <option value="CONVERTED">CONVERTED</option>
                             <option value="CHURN_RISK">CHURN RISK</option>
                           </select>

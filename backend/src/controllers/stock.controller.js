@@ -13,6 +13,9 @@ const adjust = asyncHandler(async (req, res) => {
   if (!product) return res.status(404).json({ error: "Product not found" });
 
   const qty = Number(quantity);
+  if (!Number.isFinite(qty) || qty < 0) {
+    return res.status(400).json({ error: "Quantity must be 0 or greater" });
+  }
   let newStock = product.currentStock;
 
   if (type.toUpperCase() === "IN") {

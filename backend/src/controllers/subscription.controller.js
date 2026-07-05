@@ -5,6 +5,16 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+function reminderStage(status, daysLeft) {
+  if (status === "expired") return "EXPIRED";
+  if (status === "suspended") return "SUSPENDED";
+  if (daysLeft === null || daysLeft === undefined) return null;
+  if (daysLeft <= 1) return "DUE_1_DAY";
+  if (daysLeft <= 3) return "DUE_3_DAYS";
+  if (daysLeft <= 7) return "DUE_7_DAYS";
+  return null;
+}
+
 // Get current shop's subscription status
 const getStatus = asyncHandler(async (req, res) => {
   const userId = req.user.userId;
@@ -21,6 +31,7 @@ const getStatus = asyncHandler(async (req, res) => {
     ? Math.max(0, Math.ceil((shop.trialEndsAt - now) / (1000 * 60 * 60 * 24)))
     : null;
 
+  const status = !shop.isActive ? "suspended" : trialActive ? "trial" : subActive ? "active" : "expired";
   res.json({
     plan: shop.plan,
     isActive: shop.isActive,
@@ -29,7 +40,8 @@ const getStatus = asyncHandler(async (req, res) => {
     trialActive,
     subActive,
     daysLeft,
-    status: !shop.isActive ? "suspended" : trialActive ? "trial" : subActive ? "active" : "expired",
+    status,
+    reminderStage: reminderStage(status, daysLeft),
   });
 });
 
@@ -94,7 +106,7 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
       secondDayReturn,
       activated: s._count.products >= 10 && s._count.sales >= 10 && secondDayReturn,
     };
-    return { ...s, computedStatus, daysLeft, lastPayment: s.subscriptionPayments[0] || null, activation };
+    return { ...s, computedStatus, daysLeft, reminderStage: reminderStage(computedStatus, daysLeft), lastPayment: s.subscriptionPayments[0] || null, activation };
   });
 
   // Filter
@@ -117,7 +129,7 @@ const adminUpdateSubscription = asyncHandler(async (req, res) => {
   if (isActive !== undefined) updateData.isActive = Boolean(isActive);
   if (onboardingStatus !== undefined) {
     const nextStatus = String(onboardingStatus).toUpperCase();
-    if (!["NEW", "CONTACTED", "SETUP_DONE", "ACTIVATED", "CONVERTED", "CHURN_RISK"].includes(nextStatus)) {
+    if (!["NEW", "CONTACTED", "NEEDS_HELP", "SETUP_DONE", "ACTIVATED", "PAID", "CONVERTED", "CHURN_RISK"].includes(nextStatus)) {
       return res.status(400).json({ error: "Invalid onboarding status" });
     }
     updateData.onboardingStatus = nextStatus;

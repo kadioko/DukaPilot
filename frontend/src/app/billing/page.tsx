@@ -16,6 +16,7 @@ interface SubscriptionStatus {
   daysLeft: number | null;
   trialEndsAt?: string | null;
   subscriptionEndsAt?: string | null;
+  reminderStage?: string | null;
 }
 
 const plans = [
@@ -68,6 +69,13 @@ export default function BillingPage() {
   }
 
   const waText = encodeURIComponent(`DukaPilot payment\nPlan: ${plan}\nAmount: ${formatTZS(selectedPlan.amount)}\nReference: ${reference || "(nitaweka baada ya kulipa)"}`);
+  const reminderCopy: Record<string, string> = {
+    DUE_7_DAYS: lang === "sw" ? "Plan yako inaisha ndani ya siku 7. Lipa mapema ili huduma isiingiliwe." : "Your plan ends in 7 days. Pay early to avoid interruption.",
+    DUE_3_DAYS: lang === "sw" ? "Plan yako inaisha ndani ya siku 3. Tuma malipo na reference." : "Your plan ends in 3 days. Send payment and submit the reference.",
+    DUE_1_DAY: lang === "sw" ? "Plan yako inaisha kesho au leo. Lipa sasa ili duka lisizuiwe." : "Your plan ends today or tomorrow. Pay now to keep the shop active.",
+    EXPIRED: lang === "sw" ? "Subscription imeisha. Admin akithibitisha malipo, duka litarudi active." : "Subscription expired. Once admin verifies payment, the shop becomes active again.",
+    SUSPENDED: lang === "sw" ? "Duka limesimamishwa. Wasiliana na support ili kulirudisha." : "Shop is suspended. Contact support to reactivate it.",
+  };
 
   return (
     <AppShell>
@@ -102,6 +110,12 @@ export default function BillingPage() {
             </a>
           </div>
         </section>
+
+        {status?.reminderStage && (
+          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+            <strong>{lang === "sw" ? "Kumbusho:" : "Reminder:"}</strong> {reminderCopy[status.reminderStage] || status.reminderStage}
+          </section>
+        )}
 
         <section className="grid gap-3 md:grid-cols-3">
           {[

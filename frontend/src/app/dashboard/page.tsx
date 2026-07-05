@@ -29,6 +29,9 @@ interface DashboardData {
   summary: {
     totalSales: number;
     totalProfit: number;
+    totalExpenses: number;
+    netProfit: number;
+    expenseCount: number;
     salesCount: number;
     pendingOrders: number;
     totalProducts: number;
@@ -38,6 +41,9 @@ interface DashboardData {
   allTimeSummary: {
     totalSales: number;
     totalProfit: number;
+    totalExpenses: number;
+    netProfit: number;
+    expenseCount: number;
     salesCount: number;
     firstSaleAt: string | null;
   };
@@ -177,7 +183,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <KpiCard
             label={t("dashboard.sales", lang)}
             value={formatTZS(s?.totalSales || 0)}
@@ -185,11 +191,18 @@ export default function DashboardPage() {
             color="blue"
           />
           <KpiCard
-            label={t("dashboard.profit", lang)}
+            label={lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit"}
             value={formatTZS(s?.totalProfit || 0)}
             icon={<TrendingUp className="w-5 h-5 text-green-600" />}
             color="green"
             sub={s && s.totalSales > 0 ? `${((s.totalProfit / s.totalSales) * 100).toFixed(0)}% ${t("dashboard.margin", lang)}` : undefined}
+          />
+          <KpiCard
+            label={lang === "sw" ? "Faida halisi" : "Net profit"}
+            value={formatTZS(s?.netProfit || 0)}
+            icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
+            color="green"
+            sub={`${formatTZS(s?.totalExpenses || 0)} ${lang === "sw" ? "matumizi" : "expenses"}`}
           />
           <KpiCard
             label={t("dashboard.salesCount", lang)}
@@ -205,7 +218,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="mb-6 grid gap-3 lg:grid-cols-4">
+        <div className="mb-6 grid gap-3 lg:grid-cols-5">
           <KpiCard
             label={t("dashboard.allTime", lang)}
             value={formatTZS(allTime?.totalSales || 0)}
@@ -213,10 +226,17 @@ export default function DashboardPage() {
             color="blue"
           />
           <KpiCard
-            label={t("dashboard.allTimePerformance", lang)}
+            label={lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit"}
             value={formatTZS(allTime?.totalProfit || 0)}
             icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
             color="green"
+          />
+          <KpiCard
+            label={lang === "sw" ? "Faida halisi" : "Net profit"}
+            value={formatTZS(allTime?.netProfit || 0)}
+            icon={<TrendingUp className="w-5 h-5 text-green-600" />}
+            color="green"
+            sub={`${formatTZS(allTime?.totalExpenses || 0)} ${lang === "sw" ? "matumizi" : "expenses"}`}
           />
           <KpiCard
             label={t("dashboard.salesCount", lang)}

@@ -6,7 +6,7 @@ function asyncHandler(fn) {
 }
 
 const overview = asyncHandler(async (req, res) => {
-  const [users, merchants, suppliers, admins, shops, products, sales, orders, auditLogs] = await Promise.all([
+  const [users, merchants, suppliers, admins, shops, products, sales, orders, debts, expenses, paidShops, auditLogs, recentPayments] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: "MERCHANT" } }),
     prisma.user.count({ where: { role: "SUPPLIER" } }),
@@ -15,11 +15,25 @@ const overview = asyncHandler(async (req, res) => {
     prisma.product.count({ where: { isActive: true } }),
     prisma.sale.count(),
     prisma.order.count(),
+    prisma.debt.count(),
+    prisma.expense.count(),
+    prisma.shop.count({ where: { plan: { in: ["BASIC", "PRO"] }, isActive: true } }),
     prisma.auditLog.count(),
+    prisma.subscriptionPayment.count({ where: { paidAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
   ]);
 
   res.json({
-    summary: { users, merchants, suppliers, admins, shops, products, sales, orders, auditLogs },
+    summary: { users, merchants, suppliers, admins, shops, products, sales, orders, debts, expenses, paidShops, auditLogs },
+    launchAnalytics: {
+      registrations: users,
+      merchantShops: shops,
+      firstProductProgress: products,
+      firstSaleProgress: sales,
+      firstDebtProgress: debts,
+      expenseTrackingProgress: expenses,
+      paidShops,
+      paymentsConfirmed7d: recentPayments,
+    },
   });
 });
 

@@ -1,0 +1,71 @@
+const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
+
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+function normalizeStatus(value) {
+  const status = String(value || "").toUpperCase();
+  return ["QUEUED", "SYNCED", "FAILED", "REMOVED"].includes(status) ? status : "FAILED";
+}
+
+const createEvent = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const event = await prisma.offlineSyncEvent.create({
+    data: {
+      shopId,
+      deviceId: String(req.body.deviceId || "").trim() || null,
+      status: normalizeStatus(req.body.status),
+      total: req.body.total == null ? null : Number(req.body.total),
+      message: String(req.body.message || "").trim() || null,
+      attempts: Math.max(0, Number(req.body.attempts) || 0),
+      localId: String(req.body.localId || "").trim() || null,
+    },
+  });
+  req.audit = { action: "offlineSync.event", resourceType: "offline_sync", resourceId: event.id, metadata: { status: event.status } };
+  res.status(201).json({ event });
+});
+
+const myEvents = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const limit = Math.min(Number(req.query.limit) || 30, 100);
+  const events = await prisma.offlineSyncEvent.findMany({
+    where: { shopId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+  res.json({ events });
+});
+
+const adminSummary = asyncHandler(async (req, res) => {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const rows = await prisma.offlineSyncEvent.groupBy({
+    by: ["shopId", "status"],
+    where: { createdAt: { gte: since } },
+    _count: { id: true },
+    _max: { createdAt: true },
+  });
+  const shops = await prisma.shop.findMany({
+    where: { id: { in: [...new Set(rows.map((row) => row.shopId))] } },
+    select: { id: true, name: true, user: { select: { name: true, phone: true } } },
+  });
+  const shopMap = new Map(shops.map((shop) => [shop.id, shop]));
+  const summaryByShop = new Map();
+  for (const row of rows) {
+    const current = summaryByShop.get(row.shopId) || {
+      shop: shopMap.get(row.shopId),
+      queued: 0,
+      synced: 0,
+      failed: 0,
+      removed: 0,
+      lastEventAt: null,
+    };
+    current[row.status.toLowerCase()] = row._count.id;
+    if (!current.lastEventAt || row._max.createdAt > current.lastEventAt) current.lastEventAt = row._max.createdAt;
+    summaryByShop.set(row.shopId, current);
+  }
+  res.json({ shops: [...summaryByShop.values()].filter((item) => item.shop).sort((a, b) => b.failed - a.failed || new Date(b.lastEventAt) - new Date(a.lastEventAt)) });
+});
+
+module.exports = { createEvent, myEvents, adminSummary };

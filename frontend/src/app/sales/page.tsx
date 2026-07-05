@@ -68,6 +68,7 @@ const PAYMENT_METHODS = [
 
 const PENDING_SALES_KEY = "dukapilot_pending_sales";
 const SYNC_HISTORY_KEY = "dukapilot_sales_sync_history";
+const SYNC_DEVICE_KEY = "dukapilot_sync_device_id";
 
 function readPendingSales(): PendingSale[] {
   if (typeof window === "undefined") return [];
@@ -100,6 +101,19 @@ function newLocalId() {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getSyncDeviceId() {
+  if (typeof window === "undefined") return "server";
+  const existing = window.localStorage.getItem(SYNC_DEVICE_KEY);
+  if (existing) return existing;
+  const next = newLocalId();
+  window.localStorage.setItem(SYNC_DEVICE_KEY, next);
+  return next;
+}
+
+function reportSyncEvent(event: { status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED"; total?: number; message?: string; attempts?: number; localId?: string }) {
+  api.post("/sync/events", { ...event, deviceId: getSyncDeviceId() }).catch(() => {});
 }
 
 function formatSyncTime(value: string | null) {
@@ -159,6 +173,7 @@ export default function SalesPage() {
             total: sale.total,
             message: lang === "sw" ? "Sale synced successfully" : "Sale synced successfully",
           });
+          reportSyncEvent({ status: "SYNCED", total: sale.total, message: "Sale synced successfully", attempts: sale.attempts || 0, localId: sale.id });
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : t("common.error", lang);
           const nextSale = { ...sale, attempts: (sale.attempts || 0) + 1, lastError: message };
@@ -172,6 +187,7 @@ export default function SalesPage() {
               ? (lang === "sw" ? "Stock imebadilika kabla ya sync. Kagua cart na inventory." : "Stock changed before sync. Review cart and inventory.")
               : message,
           });
+          reportSyncEvent({ status: "FAILED", total: sale.total, message, attempts: nextSale.attempts, localId: sale.id });
         }
       }
       writePendingSales(remaining);
@@ -217,6 +233,7 @@ export default function SalesPage() {
     const nextPending = pendingSales.filter((item) => item.id !== id);
     writePendingSales(nextPending);
     setPendingSales(nextPending);
+    reportSyncEvent({ status: "REMOVED", total: sale.total, message: sale.lastError, attempts: sale.attempts || 0, localId: sale.id });
     toast(lang === "sw" ? "Sale ya offline imeondolewa." : "Offline sale removed.", "success");
   }
 
@@ -328,6 +345,7 @@ export default function SalesPage() {
         const nextHistory = [queuedEvent, ...readSyncHistory()];
         writePendingSales(queued);
         writeSyncHistory(nextHistory);
+        reportSyncEvent({ status: "QUEUED", total, message: queuedEvent.message, attempts: 0, localId: queued[queued.length - 1].id });
         setPendingSales(queued);
         setSyncHistory(nextHistory.slice(0, 10));
         setCart([]);
