@@ -15,6 +15,27 @@ function reminderStage(status, daysLeft) {
   return null;
 }
 
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function subscriptionSnapshot(shop, now = new Date()) {
+  const trialActive = shop.plan === "FREE_TRIAL" && shop.trialEndsAt && shop.trialEndsAt > now;
+  const subActive = shop.subscriptionEndsAt && shop.subscriptionEndsAt > now;
+  const status = !shop.isActive ? "suspended" : trialActive ? "trial" : subActive ? "active" : "expired";
+  const validUntil = status === "trial" ? shop.trialEndsAt : status === "active" ? shop.subscriptionEndsAt : shop.subscriptionEndsAt || shop.trialEndsAt || null;
+  const daysLeft = validUntil ? Math.max(0, Math.ceil((validUntil - now) / (1000 * 60 * 60 * 24))) : null;
+  return {
+    trialActive,
+    subActive,
+    status,
+    computedStatus: status,
+    validUntil,
+    daysLeft,
+    reminderStage: reminderStage(status, daysLeft),
+  };
+}
+
 // Get current shop's subscription status
 const getStatus = asyncHandler(async (req, res) => {
   const userId = req.user.userId;
@@ -24,24 +45,19 @@ const getStatus = asyncHandler(async (req, res) => {
   });
   if (!shop) return res.status(404).json({ error: "Shop not found" });
 
-  const now = new Date();
-  const trialActive = shop.plan === "FREE_TRIAL" && shop.trialEndsAt && shop.trialEndsAt > now;
-  const subActive = shop.subscriptionEndsAt && shop.subscriptionEndsAt > now;
-  const daysLeft = shop.trialEndsAt
-    ? Math.max(0, Math.ceil((shop.trialEndsAt - now) / (1000 * 60 * 60 * 24)))
-    : null;
+  const snapshot = subscriptionSnapshot(shop);
 
-  const status = !shop.isActive ? "suspended" : trialActive ? "trial" : subActive ? "active" : "expired";
   res.json({
     plan: shop.plan,
     isActive: shop.isActive,
     trialEndsAt: shop.trialEndsAt,
     subscriptionEndsAt: shop.subscriptionEndsAt,
-    trialActive,
-    subActive,
-    daysLeft,
-    status,
-    reminderStage: reminderStage(status, daysLeft),
+    trialActive: snapshot.trialActive,
+    subActive: snapshot.subActive,
+    validUntil: snapshot.validUntil,
+    daysLeft: snapshot.daysLeft,
+    status: snapshot.status,
+    reminderStage: snapshot.reminderStage,
   });
 });
 
@@ -91,10 +107,7 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
 
   // Compute status for each
   const enriched = shops.map((s) => {
-    const trialActive = s.plan === "FREE_TRIAL" && s.trialEndsAt && s.trialEndsAt > now;
-    const subActive = s.subscriptionEndsAt && s.subscriptionEndsAt > now;
-    const computedStatus = !s.isActive ? "suspended" : trialActive ? "trial" : subActive ? "active" : "expired";
-    const daysLeft = s.trialEndsAt ? Math.max(0, Math.ceil((s.trialEndsAt - now) / (1000 * 60 * 60 * 24))) : null;
+    const snapshot = subscriptionSnapshot(s, now);
     const saleSpan = saleSpanByShop.get(s.id);
     const firstSaleAt = saleSpan?._min.createdAt || null;
     const lastSaleAt = saleSpan?._max.createdAt || null;
@@ -106,7 +119,7 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
       secondDayReturn,
       activated: s._count.products >= 10 && s._count.sales >= 10 && secondDayReturn,
     };
-    return { ...s, computedStatus, daysLeft, reminderStage: reminderStage(computedStatus, daysLeft), lastPayment: s.subscriptionPayments[0] || null, activation };
+    return { ...s, ...snapshot, lastPayment: s.subscriptionPayments[0] || null, activation };
   });
 
   // Filter
@@ -172,7 +185,7 @@ const adminExtendTrial = asyncHandler(async (req, res) => {
   if (!shop) return res.status(404).json({ error: "Shop not found" });
 
   const base = shop.trialEndsAt && shop.trialEndsAt > new Date() ? shop.trialEndsAt : new Date();
-  const newDate = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+  const newDate = addDays(base, days);
 
   const updated = await prisma.shop.update({
     where: { id: shopId },
@@ -181,6 +194,40 @@ const adminExtendTrial = asyncHandler(async (req, res) => {
   });
 
   res.json({ shop: updated, message: `Trial extended by ${days} days` });
+});
+
+const adminExtendSubscription = asyncHandler(async (req, res) => {
+  const { shopId } = req.params;
+  const days = Math.max(1, Math.min(730, Number(req.body.days) || 30));
+  const plan = req.body.plan ? String(req.body.plan).toUpperCase() : undefined;
+
+  if (plan && !["BASIC", "PRO"].includes(plan)) return res.status(400).json({ error: "Plan must be BASIC or PRO" });
+
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: { id: true, name: true, plan: true, subscriptionEndsAt: true },
+  });
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const now = new Date();
+  const base = shop.subscriptionEndsAt && shop.subscriptionEndsAt > now ? shop.subscriptionEndsAt : now;
+  const subscriptionEndsAt = addDays(base, days);
+  const nextPlan = plan || (shop.plan === "PRO" ? "PRO" : "BASIC");
+
+  const updated = await prisma.shop.update({
+    where: { id: shopId },
+    data: { plan: nextPlan, subscriptionEndsAt, isActive: true },
+    select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+  });
+
+  req.audit = {
+    action: "admin.subscription.extended",
+    resourceType: "shop",
+    resourceId: shopId,
+    metadata: { adminId: req.user.userId, days, previousEndsAt: shop.subscriptionEndsAt, subscriptionEndsAt, plan: nextPlan },
+  };
+
+  res.json({ shop: updated, active: isSubscriptionActive(updated), message: `Subscription extended by ${days} days` });
 });
 
 const adminRecordPayment = asyncHandler(async (req, res) => {
@@ -198,7 +245,8 @@ const adminRecordPayment = asyncHandler(async (req, res) => {
   const existing = await prisma.shop.findUnique({ where: { id: shopId }, select: { subscriptionEndsAt: true } });
   if (!existing) return res.status(404).json({ error: "Shop not found" });
 
-  const base = existing.subscriptionEndsAt && existing.subscriptionEndsAt > new Date() ? existing.subscriptionEndsAt : new Date();
+  const now = new Date();
+  const base = existing.subscriptionEndsAt && existing.subscriptionEndsAt > now ? existing.subscriptionEndsAt : now;
   const subscriptionEndsAt = new Date(base);
   subscriptionEndsAt.setMonth(subscriptionEndsAt.getMonth() + months);
 
@@ -217,10 +265,10 @@ const adminRecordPayment = asyncHandler(async (req, res) => {
     action: "admin.subscription.paymentRecorded",
     resourceType: "shop",
     resourceId: shopId,
-    metadata: { adminId: req.user.userId, paymentId: payment.id, plan, amount, months, method },
+    metadata: { adminId: req.user.userId, paymentId: payment.id, plan, amount, months, method, previousEndsAt: existing.subscriptionEndsAt, subscriptionEndsAt },
   };
 
-  res.status(201).json({ payment, shop, active: isSubscriptionActive(shop) });
+  res.status(201).json({ payment, shop, active: isSubscriptionActive(shop), previousEndsAt: existing.subscriptionEndsAt, subscriptionEndsAt });
 });
 
-module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial, adminRecordPayment };
+module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial, adminExtendSubscription, adminRecordPayment };

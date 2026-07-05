@@ -92,6 +92,7 @@ interface Subscription {
   plan: string;
   trialEndsAt?: string;
   subscriptionEndsAt?: string;
+  validUntil?: string | null;
   isActive: boolean;
   computedStatus: string;
   daysLeft: number | null;
@@ -293,6 +294,21 @@ export default function AdminPage() {
     }
   }
 
+  async function handleExtendSubscription(shop: Subscription, days: number) {
+    setUpdatingSub(shop.id);
+    try {
+      await api.post(`/subscription/admin/${shop.id}/extend-subscription`, {
+        days,
+        plan: shop.plan === "PRO" ? "PRO" : "BASIC",
+      });
+      await refreshSubscriptions();
+    } catch (err) {
+      console.error("Failed to extend subscription:", err);
+    } finally {
+      setUpdatingSub(null);
+    }
+  }
+
   async function refreshSubscriptions() {
     const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
     setSubscriptions(data.shops);
@@ -318,6 +334,18 @@ export default function AdminPage() {
 
   function billingDraftFor(shop: Subscription) {
     return billingDrafts[shop.id] || defaultBillingDraft(shop.plan === "PRO" ? "PRO" : "BASIC");
+  }
+
+  function formatDate(value?: string | null) {
+    if (!value) return "-";
+    return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  function validityLabel(shop: Subscription) {
+    if (!shop.isActive) return "Suspended";
+    if (shop.computedStatus === "trial") return `Trial until ${formatDate(shop.validUntil || shop.trialEndsAt)}`;
+    if (shop.computedStatus === "active") return `Active until ${formatDate(shop.validUntil || shop.subscriptionEndsAt)}`;
+    return shop.subscriptionEndsAt ? `Expired ${formatDate(shop.subscriptionEndsAt)}` : "No paid subscription";
   }
 
   function updateBillingDraft(shop: Subscription, patch: Partial<BillingDraft>) {
@@ -1045,6 +1073,20 @@ export default function AdminPage() {
                           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">{shop.plan}</span>
                         </div>
                       </div>
+                      <div className="mt-3 grid gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 text-xs text-gray-600 sm:grid-cols-3">
+                        <div>
+                          <p className="font-semibold text-gray-900">{validityLabel(shop)}</p>
+                          <p>{shop.daysLeft !== null ? `${shop.daysLeft} day(s) left` : "No expiry date set"}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">Paid subscription</p>
+                          <p>{shop.subscriptionEndsAt ? `Until ${formatDate(shop.subscriptionEndsAt)}` : "Not active yet"}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">Trial</p>
+                          <p>{shop.trialEndsAt ? `Until ${formatDate(shop.trialEndsAt)}` : "No trial date"}</p>
+                        </div>
+                      </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-6">
                         <select
                           value={draft.plan}
@@ -1113,12 +1155,15 @@ export default function AdminPage() {
                         <button onClick={() => handleExtendTrial(shop.id, 14)} disabled={updatingSub === shop.id} className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50">
                           +14d trial
                         </button>
+                        <button onClick={() => handleExtendSubscription(shop, 30)} disabled={updatingSub === shop.id} className="rounded bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 disabled:opacity-50">
+                          +30d paid
+                        </button>
                         <button onClick={() => handleToggleShopActive(shop)} disabled={updatingSub === shop.id} className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-50 ${shop.isActive ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-green-100 text-green-700 hover:bg-green-200"}`}>
                           {shop.isActive ? "Suspend" : "Activate shop"}
                         </button>
                       </div>
                       <p className="mt-2 text-xs text-gray-500">
-                        Last payment: {shop.lastPayment ? `${formatTZS(shop.lastPayment.amount)} ${shop.lastPayment.method}` : "None"}
+                        Last payment: {shop.lastPayment ? `${formatTZS(shop.lastPayment.amount)} ${shop.lastPayment.method} on ${formatDate(shop.lastPayment.paidAt)}` : "None"}
                       </p>
                     </div>
                   );
@@ -1133,7 +1178,7 @@ export default function AdminPage() {
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Owner</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Plan</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Status</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Days Left</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Valid Until</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Activation</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Follow-up</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Last Payment</th>
@@ -1162,7 +1207,11 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">
                         <div className="space-y-1">
-                          <p>{shop.daysLeft !== null ? `${shop.daysLeft}d` : "-"}</p>
+                          <p className="font-semibold text-gray-800">{formatDate(shop.validUntil || shop.subscriptionEndsAt || shop.trialEndsAt)}</p>
+                          <p>{shop.daysLeft !== null ? `${shop.daysLeft}d left` : "-"}</p>
+                          {shop.subscriptionEndsAt && (
+                            <p className="text-gray-400">Paid: {formatDate(shop.subscriptionEndsAt)}</p>
+                          )}
                           {shop.reminderStage && (
                             <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                               {shop.reminderStage.replaceAll("_", " ")}
@@ -1244,7 +1293,13 @@ export default function AdminPage() {
                         </div>
                       </td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">
-                        {shop.lastPayment ? `${formatTZS(shop.lastPayment.amount)} ${shop.lastPayment.method}` : "None"}
+                        {shop.lastPayment ? (
+                          <div>
+                            <p className="font-semibold text-gray-800">{formatTZS(shop.lastPayment.amount)} {shop.lastPayment.method}</p>
+                            <p className="text-gray-400">{formatDate(shop.lastPayment.paidAt)}</p>
+                            {shop.lastPayment.reference && <p className="font-mono text-[10px] text-gray-400">{shop.lastPayment.reference}</p>}
+                          </div>
+                        ) : "None"}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1.5">
@@ -1268,6 +1323,13 @@ export default function AdminPage() {
                             className="px-2 py-1 bg-brand-100 text-brand-700 rounded text-xs font-medium hover:bg-brand-200 disabled:opacity-50"
                           >
                             +14d trial
+                          </button>
+                          <button
+                            onClick={() => handleExtendSubscription(shop, 30)}
+                            disabled={updatingSub === shop.id}
+                            className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-medium hover:bg-emerald-200 disabled:opacity-50"
+                          >
+                            +30d paid
                           </button>
                           <button
                             onClick={() => handleToggleShopActive(shop)}
