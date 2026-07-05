@@ -135,6 +135,15 @@ interface SyncShopSummary {
   lastEventAt: string | null;
 }
 
+interface BillingDraft {
+  plan: "BASIC" | "PRO";
+  months: string;
+  amount: string;
+  method: string;
+  reference: string;
+  note: string;
+}
+
 type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers";
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
@@ -173,6 +182,7 @@ export default function AdminPage() {
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
+  const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
   const [supplierNotes, setSupplierNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -294,18 +304,45 @@ export default function AdminPage() {
     setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
   }
 
-  async function handleRecordPayment(shop: Subscription, plan: "BASIC" | "PRO") {
+  function defaultBillingDraft(plan: "BASIC" | "PRO" = "BASIC"): BillingDraft {
+    return {
+      plan,
+      months: "1",
+      amount: plan === "PRO" ? "35000" : "15000",
+      method: "MPESA",
+      reference: "",
+      note: "",
+    };
+  }
+
+  function billingDraftFor(shop: Subscription) {
+    return billingDrafts[shop.id] || defaultBillingDraft(shop.plan === "PRO" ? "PRO" : "BASIC");
+  }
+
+  function updateBillingDraft(shop: Subscription, patch: Partial<BillingDraft>) {
+    setBillingDrafts((prev) => {
+      const current = prev[shop.id] || defaultBillingDraft(shop.plan === "PRO" ? "PRO" : "BASIC");
+      const next = { ...current, ...patch };
+      if (patch.plan && !patch.amount) next.amount = patch.plan === "PRO" ? "35000" : "15000";
+      return { ...prev, [shop.id]: next };
+    });
+  }
+
+  async function handleRecordPayment(shop: Subscription, plan?: "BASIC" | "PRO", customDraft?: BillingDraft) {
+    const draft = customDraft || (plan ? defaultBillingDraft(plan) : billingDraftFor(shop));
+    const selectedPlan = plan || draft.plan;
     setUpdatingSub(shop.id);
     try {
       await api.post(`/subscription/admin/${shop.id}/payments`, {
-        plan,
-        months: 1,
-        amount: plan === "PRO" ? 35000 : 15000,
-        method: "MPESA",
-        reference: `MANUAL-${Date.now().toString().slice(-6)}`,
-        note: "Marked paid by admin",
+        plan: selectedPlan,
+        months: Number(draft.months) || 1,
+        amount: Number(draft.amount) || (selectedPlan === "PRO" ? 35000 : 15000),
+        method: draft.method || "MPESA",
+        reference: draft.reference.trim() || `MANUAL-${Date.now().toString().slice(-6)}`,
+        note: draft.note.trim() || "Marked paid by admin",
       });
       await refreshSubscriptions();
+      setBillingDrafts((prev) => ({ ...prev, [shop.id]: defaultBillingDraft(selectedPlan) }));
     } catch (err) {
       console.error("Failed to record subscription payment:", err);
     } finally {
@@ -447,6 +484,9 @@ export default function AdminPage() {
     if (!shop.activation?.activated) return "Needs activation help";
     return "Follow up";
   }
+  const filteredSubscriptions = subFilter === "ALL"
+    ? subscriptions
+    : subscriptions.filter((shop) => shop.computedStatus === subFilter);
 
   if (loading) {
     return (
@@ -925,6 +965,116 @@ export default function AdminPage() {
                 </button>
               ))}
             </div>
+            <section className="mb-4 rounded-xl border border-brand-200 bg-brand-50 p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-brand-950">Plan & renewal controls</h2>
+                  <p className="text-xs text-brand-800">Set a shop plan, record M-Pesa/manual payment, and renew for 1-24 months.</p>
+                </div>
+                <span className="text-xs font-semibold text-brand-700">{filteredSubscriptions.length} shops shown</span>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-2">
+                {filteredSubscriptions.length === 0 ? (
+                  <div className="rounded-lg bg-white p-4 text-sm text-gray-500">No shops match this filter.</div>
+                ) : filteredSubscriptions.map((shop) => {
+                  const draft = billingDraftFor(shop);
+                  return (
+                    <div key={shop.id} className="rounded-lg border border-brand-100 bg-white p-3 shadow-sm">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-950">{shop.name}</p>
+                          <p className="text-xs text-gray-500">{shop.user?.name || "Owner"} · {shop.user?.phone || "No phone"}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            shop.computedStatus === "active" ? "bg-green-100 text-green-700" :
+                            shop.computedStatus === "trial" ? "bg-yellow-100 text-yellow-700" :
+                            shop.computedStatus === "expired" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-700"
+                          }`}>{shop.computedStatus}</span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">{shop.plan}</span>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-6">
+                        <select
+                          value={draft.plan}
+                          onChange={(e) => updateBillingDraft(shop, { plan: e.target.value as "BASIC" | "PRO" })}
+                          className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold sm:col-span-1"
+                        >
+                          <option value="BASIC">Basic</option>
+                          <option value="PRO">Pro</option>
+                        </select>
+                        <input
+                          value={draft.months}
+                          onChange={(e) => updateBillingDraft(shop, { months: e.target.value })}
+                          type="number"
+                          min="1"
+                          max="24"
+                          inputMode="numeric"
+                          placeholder="Months"
+                          className="rounded-lg border border-gray-300 px-2 py-2 text-xs sm:col-span-1"
+                        />
+                        <input
+                          value={draft.amount}
+                          onChange={(e) => updateBillingDraft(shop, { amount: e.target.value })}
+                          type="number"
+                          min="1"
+                          inputMode="numeric"
+                          placeholder="Amount"
+                          className="rounded-lg border border-gray-300 px-2 py-2 text-xs sm:col-span-1"
+                        />
+                        <select
+                          value={draft.method}
+                          onChange={(e) => updateBillingDraft(shop, { method: e.target.value })}
+                          className="rounded-lg border border-gray-300 px-2 py-2 text-xs sm:col-span-1"
+                        >
+                          <option value="MPESA">M-Pesa</option>
+                          <option value="MANUAL">Manual</option>
+                          <option value="BANK">Bank</option>
+                          <option value="CASH">Cash</option>
+                        </select>
+                        <input
+                          value={draft.reference}
+                          onChange={(e) => updateBillingDraft(shop, { reference: e.target.value })}
+                          placeholder="Reference"
+                          className="rounded-lg border border-gray-300 px-2 py-2 text-xs sm:col-span-2"
+                        />
+                        <input
+                          value={draft.note}
+                          onChange={(e) => updateBillingDraft(shop, { note: e.target.value })}
+                          placeholder="Admin note"
+                          className="rounded-lg border border-gray-300 px-2 py-2 text-xs sm:col-span-4"
+                        />
+                        <button
+                          onClick={() => handleRecordPayment(shop, undefined, draft)}
+                          disabled={updatingSub === shop.id}
+                          className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-800 disabled:opacity-50 sm:col-span-2"
+                        >
+                          {updatingSub === shop.id ? "Saving..." : "Activate / Renew"}
+                        </button>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <button onClick={() => handleRecordPayment(shop, "BASIC")} disabled={updatingSub === shop.id} className="rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-200 disabled:opacity-50">
+                          Quick Basic 1mo
+                        </button>
+                        <button onClick={() => handleRecordPayment(shop, "PRO")} disabled={updatingSub === shop.id} className="rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-200 disabled:opacity-50">
+                          Quick Pro 1mo
+                        </button>
+                        <button onClick={() => handleExtendTrial(shop.id, 14)} disabled={updatingSub === shop.id} className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50">
+                          +14d trial
+                        </button>
+                        <button onClick={() => handleToggleShopActive(shop)} disabled={updatingSub === shop.id} className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-50 ${shop.isActive ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-green-100 text-green-700 hover:bg-green-200"}`}>
+                          {shop.isActive ? "Suspend" : "Activate shop"}
+                        </button>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Last payment: {shop.lastPayment ? `${formatTZS(shop.lastPayment.amount)} ${shop.lastPayment.method}` : "None"}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
@@ -941,7 +1091,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(subFilter === "ALL" ? subscriptions : subscriptions.filter((x) => x.computedStatus === subFilter)).map((shop) => (
+                  {filteredSubscriptions.map((shop) => (
                     <tr key={shop.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-4 py-2.5 font-medium text-gray-900">{shop.name}</td>
                       <td className="px-4 py-2.5 text-gray-600 text-xs">{shop.user?.name}<br />{shop.user?.phone}</td>
