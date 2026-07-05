@@ -18,6 +18,7 @@ import {
   CheckCircle,
   XCircle,
   MessageCircle,
+  Trash2,
 } from "lucide-react";
 
 interface AdminOverview {
@@ -389,6 +390,46 @@ export default function AdminPage() {
     }
   }
 
+  async function handleDeleteUser(user: AdminUser) {
+    const relationship = user.shop?.name
+      ? `\n\nThis will also remove shop data for ${user.shop.name}.`
+      : user.supplier?.name
+        ? `\n\nThis removes the supplier login for ${user.supplier.name}. The supplier profile stays available for product/order history.`
+        : "";
+    const confirmed = window.confirm(`Remove ${user.name} (${user.phone}) from DukaPilot?${relationship}\n\nThis action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/admin/users/${user.id}`);
+      setUsers((prev) => prev.filter((item) => item.id !== user.id));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to remove user");
+    }
+  }
+
+  async function handleDeleteSupplier(supplier: Supplier) {
+    const orderCount = supplier._count?.orders || 0;
+    const productCount = supplier._count?.products || 0;
+    if (orderCount > 0) {
+      window.alert("This supplier has order history, so DukaPilot will not delete it. Reject the supplier instead to keep order records safe.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Remove supplier ${supplier.name} (${supplier.phone})?\n\n${productCount} product(s) will be detached from this supplier. Any linked supplier login will also be removed.\n\nThis action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setUpdatingSupplier(supplier.id);
+    try {
+      await api.delete(`/suppliers/${supplier.id}`);
+      await refreshSuppliers();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to remove supplier");
+    } finally {
+      setUpdatingSupplier(null);
+    }
+  }
+
   async function handleToggleShopActive(shop: Subscription) {
     setUpdatingSub(shop.id);
     try {
@@ -683,6 +724,7 @@ export default function AdminPage() {
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Role</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Shop / Supplier</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Joined</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -704,6 +746,14 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">
                         {new Date(u.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          onClick={() => handleDeleteUser(u)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remove
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1290,6 +1340,13 @@ export default function AdminPage() {
                           {status === "VERIFIED" ? "Verify" : status === "REJECTED" ? "Reject" : "Needs review"}
                         </button>
                       ))}
+                      <button
+                        onClick={() => handleDeleteSupplier(supplier)}
+                        disabled={updatingSupplier === supplier.id}
+                        className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Remove
+                      </button>
                     </div>
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">

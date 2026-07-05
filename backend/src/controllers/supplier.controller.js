@@ -65,6 +65,54 @@ const update = asyncHandler(async (req, res) => {
   res.json({ supplier });
 });
 
+const remove = asyncHandler(async (req, res) => {
+  const supplier = await prisma.supplier.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      userId: true,
+      _count: { select: { products: true, orders: true } },
+    },
+  });
+  if (!supplier) return res.status(404).json({ error: "Supplier not found" });
+
+  if (supplier._count.orders > 0) {
+    return res.status(400).json({
+      error: "This supplier has order history. Reject or archive the supplier instead of deleting it.",
+    });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.product.updateMany({
+      where: { supplierId: supplier.id },
+      data: { supplierId: null },
+    });
+    await tx.supplier.delete({ where: { id: supplier.id } });
+    if (supplier.userId) {
+      await tx.user.delete({ where: { id: supplier.userId } });
+    }
+  });
+
+  req.audit = {
+    action: "admin.supplier.delete",
+    resourceType: "supplier",
+    resourceId: supplier.id,
+    metadata: {
+      adminId: req.user.userId,
+      supplier: {
+        name: supplier.name,
+        phone: supplier.phone,
+        productsDetached: supplier._count.products,
+        linkedUserDeleted: Boolean(supplier.userId),
+      },
+    },
+  };
+
+  res.json({ message: "Supplier removed", deletedSupplier: supplier });
+});
+
 // Supplier portal: orders assigned to this supplier
 const myOrders = asyncHandler(async (req, res) => {
   const supplierRecord = await prisma.supplier.findUnique({
@@ -165,4 +213,4 @@ const supplierDashboard = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, get, create, update, myOrders, updateOrderStatus, supplierDashboard };
+module.exports = { list, get, create, update, remove, myOrders, updateOrderStatus, supplierDashboard };

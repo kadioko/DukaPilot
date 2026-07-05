@@ -16,5 +16,6 @@ router.get("/", ctrl.list);
 router.get("/:id", ctrl.get);
 router.post("/", requireRole("MERCHANT", "ADMIN"), requirePermission("canManageStock"), requireActiveSubscription, supplierCreateValidation, ctrl.create);
 router.patch("/:id", requireRole("MERCHANT", "ADMIN"), requirePermission("canManageStock"), requireActiveSubscription, supplierUpdateValidation, ctrl.update);
+router.delete("/:id", requireRole("ADMIN"), ctrl.remove);
 
 module.exports = router;

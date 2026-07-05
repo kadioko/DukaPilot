@@ -77,6 +77,53 @@ const listAuditLogs = asyncHandler(async (req, res) => {
   res.json({ logs });
 });
 
+const deleteUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  if (userId === req.user.userId) {
+    return res.status(400).json({ error: "You cannot delete your own admin account" });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      phone: true,
+      name: true,
+      role: true,
+      shop: { select: { id: true, name: true } },
+      supplier: { select: { id: true, name: true } },
+    },
+  });
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  if (user.role === "ADMIN") {
+    const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: "You cannot delete the last admin account" });
+    }
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+
+  req.audit = {
+    action: "admin.user.delete",
+    resourceType: "user",
+    resourceId: userId,
+    metadata: {
+      adminId: req.user.userId,
+      deletedUser: {
+        phone: user.phone,
+        role: user.role,
+        shopId: user.shop?.id || null,
+        supplierId: user.supplier?.id || null,
+      },
+    },
+  };
+
+  res.json({ message: "User removed", deletedUser: user });
+});
+
 // Admin: reset a user's PIN (requires new PIN in body)
 const resetUserPin = asyncHandler(async (req, res) => {
   const { userId } = req.params;
@@ -170,4 +217,4 @@ const findStaffByPhone = asyncHandler(async (req, res) => {
   res.json({ staff });
 });
 
-module.exports = { overview, listUsers, listAuditLogs, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone };
+module.exports = { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone };

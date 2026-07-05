@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { overview, listUsers, listAuditLogs, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone } = require("../controllers/admin.controller");
+const { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone } = require("../controllers/admin.controller");
 const { authenticate, requireRole } = require("../middleware/auth");
 
 router.use(authenticate);
@@ -9,6 +9,7 @@ router.get("/overview", overview);
 router.get("/users", listUsers);
 router.get("/users/search", findUserByPhone);
 router.get("/staff/search", findStaffByPhone);
+router.delete("/users/:userId", deleteUser);
 router.post("/users/:userId/reset-pin", resetUserPin);
 router.post("/staff/:staffId/reset-pin", resetStaffPin);
 router.get("/audit-logs", listAuditLogs);
