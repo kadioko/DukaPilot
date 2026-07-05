@@ -1171,7 +1171,8 @@ export default function AdminPage() {
               </div>
             </section>
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
+              <div className="max-w-full overflow-x-auto">
+              <table className="min-w-[1280px] w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Shop</th>
@@ -1346,6 +1347,7 @@ export default function AdminPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         )}
