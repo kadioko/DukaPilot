@@ -12,20 +12,21 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const pin1234 = await bcrypt.hash("1234", 10);
-  const adminPin4467 = await bcrypt.hash("4467", 10);
+  const adminSeedPin = process.env.SEED_ADMIN_PIN || process.env.ADMIN_PIN || "1234";
+  const adminPinHash = await bcrypt.hash(adminSeedPin, 10);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // ADMIN
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   await prisma.user.upsert({
     where: { phone: "+255743910580" },
-    update: { pin: adminPin4467, role: "ADMIN", name: "Admin DukaPilot" },
-    create: { phone: "+255743910580", pin: adminPin4467, name: "Admin DukaPilot", role: "ADMIN", language: "sw" },
+    update: { pin: adminPinHash, role: "ADMIN", name: "Admin DukaPilot" },
+    create: { phone: "+255743910580", pin: adminPinHash, name: "Admin DukaPilot", role: "ADMIN", language: "sw" },
   });
   await prisma.user.upsert({
     where: { phone: "+255713712057" },
-    update: { pin: adminPin4467, role: "ADMIN", name: "Admin DukaPilot 2" },
-    create: { phone: "+255713712057", pin: adminPin4467, name: "Admin DukaPilot 2", role: "ADMIN", language: "sw" },
+    update: { pin: adminPinHash, role: "ADMIN", name: "Admin DukaPilot 2" },
+    create: { phone: "+255713712057", pin: adminPinHash, name: "Admin DukaPilot 2", role: "ADMIN", language: "sw" },
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -630,8 +631,7 @@ async function main() {
   console.log("+------------------------------------------------------------------+");
   console.log("|                   TEST LOGIN CREDENTIALS                        |");
   console.log("+------------------------------------------------------------------+");
-  console.log("| ADMIN      +255743910580  PIN: 4467                              |");
-  console.log("| ADMIN      +255713712057  PIN: 4467                              |");
+  console.log("| ADMIN      credentials are intentionally not printed.             |");
   console.log("|                                                                  |");
   console.log("| MERCHANT   +255700000002  PIN: 1234   *** FEATURED MERCHANT ***  |");
   console.log("|  Duka la Amina (grocery, Temeke/Mbagala)                        |");

@@ -14,11 +14,10 @@
 
 ## Test Accounts
 
-All PINs: `1234`
+Merchant and supplier demo PINs: `1234`. Admin credentials are intentionally not documented here.
 
 | Role | Phone | Name / Shop | Key purpose |
 | --- | --- | --- | --- |
-| Admin | +255743910580 | Admin DukaPilot | System admin, audit log, PIN reset |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED — every scenario (see below)** |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders in Jumla supplier portal |
 | Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, wholesale sales, bar category |
@@ -144,7 +143,7 @@ The supplier portal allows Jumla to:
 14. Confirm the supplier portal loads — confirm 7 orders from 2 merchants are visible.
 15. Confirm PENDING → CONFIRMED status update works.
 16. Log out.
-17. Log in with `+255743910580` / `1234` (Admin).
+17. Log in with the secure admin credentials.
 18. Navigate to `/admin` — confirm overview stats, users list, audit log all load.
 19. Log out.
 
@@ -257,7 +256,7 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 
 ### Subscription and payment admin
 
-1. Log in as Admin (`+255743910580` / `1234`) and open `/admin`.
+1. Log in with the secure admin credentials and open `/admin`.
 2. Open Subscriptions and confirm active/trial/expired/suspended filters work.
 3. Use `Paid Basic` or `Paid Pro` on a test shop and confirm the plan, status, and last payment update.
 4. Suspend a test shop and confirm write actions return a subscription-required message while read-only views still load.
@@ -310,7 +309,7 @@ Visit `https://dukapilotproduction.up.railway.app/status`. Expected:
 
 ### Admin dashboard
 
-1. Log in with `+255743910580` / `1234`.
+1. Log in with the secure admin credentials.
 2. Navigate to `/admin`.
 3. Overview tab — confirm user/sale/order counts are non-zero.
 4. Users tab — confirm 8 users (1 admin + 4 merchants + 3 suppliers) appear.

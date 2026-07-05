@@ -395,11 +395,10 @@ npm run dev         # runs on :3000
 
 ## Demo Accounts (after seeding)
 
-All PINs: `1234`
+Merchant and supplier demo PINs: `1234`. Admin credentials are not published in the repository.
 
 | Role | Phone | Name / Shop | Key scenarios |
 | --- | --- | --- | --- |
-| Admin | +255743910580 | Admin DukaPilot | Overview stats, user list, PIN reset, audit log |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED** — 12 products (all stock/expiry states), 10 sales (all payment methods + wholesale + online), 5 supplier order statuses, 6 customer order statuses, stock movements IN/OUT/ADJUSTMENT |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders from Jumla Traders visible in supplier portal |
 | Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, Buguruni (Ilala) — wholesale sales + Rafiki Beverages orders |

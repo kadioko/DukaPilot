@@ -11,7 +11,6 @@ const accounts = [
   ["Merchant", "+255700000002", "Duka la Amina"],
   ["Cashier", "+255700000003", "Cashier demo"],
   ["Supplier", "+255700000001", "Jumla Traders"],
-  ["Admin", "+255743910580", "Admin DukaPilot"],
 ];
 
 export default function DemoPage() {

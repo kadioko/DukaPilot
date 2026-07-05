@@ -23,7 +23,10 @@ async function main() {
     );
     console.log("Existing admins:", existing.rows);
 
-    const adminPin = "4467";
+    const adminPin = String(process.env.ADMIN_PIN || "").trim();
+    if (!/^\d{4,8}$/.test(adminPin)) {
+      throw new Error("ADMIN_PIN env var must be set to a 4-8 digit PIN");
+    }
     const pin = await bcrypt.hash(adminPin, 10);
     const admins = [
       { phone: "+255743910580", name: "Admin DukaPilot" },
@@ -58,7 +61,7 @@ async function main() {
     console.log("Admins upserted:", upserted);
     console.log("");
     console.log("=== SUCCESS ===");
-    console.log("Login PIN for both admins =", adminPin);
+    console.log("Admin PINs updated from ADMIN_PIN env var.");
   } finally {
     await pool.end();
   }
