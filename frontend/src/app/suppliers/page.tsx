@@ -3,14 +3,21 @@ import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
-import { Plus, Phone, MapPin, Package, X, Edit2, Truck } from "lucide-react";
+import { Plus, Phone, MapPin, Package, X, Edit2, Truck, CheckCircle, ShieldCheck } from "lucide-react";
 
 interface Supplier {
   id: string;
   name: string;
   phone: string;
   address?: string;
+  verificationStatus?: "UNVERIFIED" | "NEEDS_REVIEW" | "VERIFIED" | "REJECTED";
+  verifiedAt?: string | null;
+  adminNotes?: string | null;
   _count?: { products: number; orders: number };
+}
+
+interface CurrentUser {
+  role: string;
 }
 
 export default function SuppliersPage() {
@@ -22,6 +29,7 @@ export default function SuppliersPage() {
   const [form, setForm] = useState({ name: "", phone: "", address: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [user, setUser] = useState<CurrentUser | null>(null);
 
   function fetchSuppliers() {
     setLoading(true);
@@ -30,7 +38,10 @@ export default function SuppliersPage() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchSuppliers(); }, []);
+  useEffect(() => {
+    fetchSuppliers();
+    api.get<{ user: CurrentUser }>("/auth/me").then((data) => setUser(data.user)).catch(() => null);
+  }, []);
 
   function openAdd() {
     setEditSupplier(null);
@@ -72,6 +83,7 @@ export default function SuppliersPage() {
     { labelKey: "suppliers.phoneNumber", key: "phone", placeholder: "+255 7XX XXX XXX", type: "tel" },
     { labelKey: "suppliers.address", key: "address", placeholder: "Kariakoo, Dar es Salaam", type: "text" },
   ] as const;
+  const isAdmin = user?.role === "ADMIN";
 
   return (
     <AppShell>
@@ -100,6 +112,21 @@ export default function SuppliersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
                     <p className="font-semibold text-gray-900">{s.name}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        s.verificationStatus === "VERIFIED" ? "bg-green-100 text-green-700" :
+                        s.verificationStatus === "REJECTED" ? "bg-red-100 text-red-700" :
+                        "bg-amber-100 text-amber-700"
+                      }`}>
+                        {s.verificationStatus === "VERIFIED" ? <CheckCircle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+                        {s.verificationStatus === "VERIFIED"
+                          ? (lang === "sw" ? "Imethibitishwa" : "Verified")
+                          : s.verificationStatus === "REJECTED"
+                            ? (lang === "sw" ? "Haijapitishwa" : "Rejected")
+                            : (lang === "sw" ? "Inahitaji ukaguzi" : "Needs review")}
+                      </span>
+                      {s.verifiedAt && <span className="text-xs text-gray-400">{new Date(s.verifiedAt).toLocaleDateString()}</span>}
+                    </div>
                     <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-500">
                       <Phone className="w-3.5 h-3.5" />
                       <a href={`tel:${s.phone}`} className="hover:text-brand-600">{s.phone}</a>
@@ -122,6 +149,9 @@ export default function SuppliersPage() {
                         </div>
                       </div>
                     )}
+                    {isAdmin && s.adminNotes && (
+                      <p className="mt-2 rounded-lg bg-gray-50 px-2 py-1.5 text-xs text-gray-600">{s.adminNotes}</p>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <a href={`https://wa.me/${s.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
@@ -134,6 +164,26 @@ export default function SuppliersPage() {
                     </button>
                   </div>
                 </div>
+                {isAdmin && (
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+                    {(["VERIFIED", "NEEDS_REVIEW", "REJECTED"] as const).map((status) => (
+                      <button
+                        key={status}
+                        onClick={async () => {
+                          await api.patch(`/suppliers/${s.id}`, { verificationStatus: status });
+                          fetchSuppliers();
+                        }}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                          status === "VERIFIED" ? "bg-green-100 text-green-700 hover:bg-green-200" :
+                          status === "REJECTED" ? "bg-red-100 text-red-700 hover:bg-red-200" :
+                          "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                        }`}
+                      >
+                        {status === "VERIFIED" ? "Verify" : status === "REJECTED" ? "Reject" : "Needs review"}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

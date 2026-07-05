@@ -12,6 +12,9 @@ const list = asyncHandler(async (req, res) => {
       name: true,
       phone: true,
       address: true,
+      verificationStatus: true,
+      verifiedAt: true,
+      adminNotes: true,
       _count: { select: { products: true, orders: true } },
     },
     orderBy: { name: "asc" },
@@ -35,18 +38,28 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const { name, phone, address } = req.body;
-  const supplier = await prisma.supplier.create({ data: { name, phone, address } });
+  const supplier = await prisma.supplier.create({ data: { name, phone, address, verificationStatus: "NEEDS_REVIEW" } });
   res.status(201).json({ supplier });
 });
 
 const update = asyncHandler(async (req, res) => {
-  const { name, phone, address } = req.body;
+  const { name, phone, address, verificationStatus, adminNotes } = req.body;
+  const adminVerificationPatch = {};
+  if (req.user.role === "ADMIN") {
+    const nextStatus = verificationStatus ? String(verificationStatus).toUpperCase() : undefined;
+    if (nextStatus) {
+      adminVerificationPatch.verificationStatus = nextStatus;
+      adminVerificationPatch.verifiedAt = nextStatus === "VERIFIED" ? new Date() : null;
+    }
+    if (adminNotes !== undefined) adminVerificationPatch.adminNotes = String(adminNotes || "").trim() || null;
+  }
   const supplier = await prisma.supplier.update({
     where: { id: req.params.id },
     data: {
       ...(name && { name }),
       ...(phone && { phone }),
       ...(address !== undefined && { address }),
+      ...adminVerificationPatch,
     },
   });
   res.json({ supplier });

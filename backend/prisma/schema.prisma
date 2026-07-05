@@ -150,6 +150,9 @@ model Supplier {
   name        String
   phone       String
   address     String?
+  verificationStatus String @default("UNVERIFIED")
+  verifiedAt  DateTime?
+  adminNotes  String?
   userId      String?   @unique
   user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   products    Product[]

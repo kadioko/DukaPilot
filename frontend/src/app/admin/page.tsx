@@ -69,7 +69,7 @@ interface Report {
   adminNotes?: string;
   resolvedAt?: string;
   createdAt: string;
-  user?: { id: string; name: string; phone: string; role: string } | null;
+  user?: { id: string; name: string; phone: string; role: string; shop?: { id: string; name: string } | null } | null;
 }
 
 interface Subscription {
@@ -101,7 +101,18 @@ interface AdminMetric {
   tone: string;
 }
 
-type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions";
+interface Supplier {
+  id: string;
+  name: string;
+  phone: string;
+  address?: string | null;
+  verificationStatus?: "UNVERIFIED" | "NEEDS_REVIEW" | "VERIFIED" | "REJECTED";
+  verifiedAt?: string | null;
+  adminNotes?: string | null;
+  _count?: { products: number; orders: number };
+}
+
+type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers";
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
   return (
@@ -133,9 +144,12 @@ export default function AdminPage() {
   const [reportFilter, setReportFilter] = useState("OPEN");
   const [updatingReport, setUpdatingReport] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [subFilter, setSubFilter] = useState("ALL");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
+  const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
+  const [supplierNotes, setSupplierNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   // User search / PIN reset
@@ -155,14 +169,17 @@ export default function AdminPage() {
       api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"),
       api.get<{ reports: Report[] }>("/reports/admin?limit=200"),
       api.get<{ shops: Subscription[] }>("/subscription/admin"),
+      api.get<{ suppliers: Supplier[] }>("/suppliers"),
     ])
-      .then(([ov, u, al, rp, sub]) => {
+      .then(([ov, u, al, rp, sub, supplierData]) => {
         setOverview(ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
         setReports(rp.reports);
         setSubscriptions(sub.shops);
+        setSuppliers(supplierData.suppliers);
         setFollowUpDrafts(Object.fromEntries(sub.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
+        setSupplierNotes(Object.fromEntries(supplierData.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -245,6 +262,12 @@ export default function AdminPage() {
     setFollowUpDrafts(Object.fromEntries(data.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
   }
 
+  async function refreshSuppliers() {
+    const data = await api.get<{ suppliers: Supplier[] }>("/suppliers");
+    setSuppliers(data.suppliers);
+    setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
+  }
+
   async function handleRecordPayment(shop: Subscription, plan: "BASIC" | "PRO") {
     setUpdatingSub(shop.id);
     try {
@@ -261,6 +284,45 @@ export default function AdminPage() {
       console.error("Failed to record subscription payment:", err);
     } finally {
       setUpdatingSub(null);
+    }
+  }
+
+  async function handleVerifyBillingReport(report: Report, plan: "BASIC" | "PRO") {
+    const shopId = report.user?.shop?.id;
+    if (!shopId) return;
+    setUpdatingReport(report.id);
+    try {
+      const referenceMatch = report.description.match(/Reference:\s*([^\n]+)/i);
+      await api.post(`/subscription/admin/${shopId}/payments`, {
+        plan,
+        months: 1,
+        amount: plan === "PRO" ? 35000 : 15000,
+        method: "MPESA",
+        reference: referenceMatch?.[1]?.trim() || `REPORT-${report.id.slice(-6)}`,
+        note: `Verified from billing report ${report.id}`,
+      });
+      const data = await api.patch<{ report: Report }>(`/reports/admin/${report.id}`, {
+        status: "RESOLVED",
+        adminNotes: `Payment verified. Activated ${plan}.`,
+      });
+      setReports((prev) => prev.map((r) => (r.id === report.id ? data.report : r)));
+      await refreshSubscriptions();
+    } catch (err) {
+      console.error("Failed to verify billing report:", err);
+    } finally {
+      setUpdatingReport(null);
+    }
+  }
+
+  async function handleUpdateSupplier(supplier: Supplier, patch: Partial<Pick<Supplier, "verificationStatus" | "adminNotes">>) {
+    setUpdatingSupplier(supplier.id);
+    try {
+      await api.patch(`/suppliers/${supplier.id}`, patch);
+      await refreshSuppliers();
+    } catch (err) {
+      console.error("Failed to update supplier:", err);
+    } finally {
+      setUpdatingSupplier(null);
     }
   }
 
@@ -304,6 +366,7 @@ export default function AdminPage() {
     { id: "audit", label: "Audit Log" },
     { id: "reports", label: "Reports" },
     { id: "subscriptions", label: "Subscriptions" },
+    { id: "suppliers", label: "Suppliers" },
   ];
   const activeShops = subscriptions.filter((shop) => shop.computedStatus === "active").length;
   const trialShops = subscriptions.filter((shop) => shop.computedStatus === "trial").length;
@@ -321,6 +384,8 @@ export default function AdminPage() {
   const openReports = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS");
   const urgentReports = openReports.filter((report) => report.priority === "HIGH" || report.priority === "URGENT");
   const stalledTrials = subscriptions.filter((shop) => !shop.activation?.activated && shop.computedStatus === "trial").length;
+  const suppliersNeedingReview = suppliers.filter((supplier) => supplier.verificationStatus !== "VERIFIED").length;
+  const verifiedSuppliers = suppliers.filter((supplier) => supplier.verificationStatus === "VERIFIED").length;
   const shopsNeedingFollowUp = subscriptions
     .filter((shop) =>
       shop.computedStatus === "expired" ||
@@ -372,7 +437,7 @@ export default function AdminPage() {
         </div>
 
         {/* Tab nav */}
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6 w-fit">
+        <div className="mb-6 flex w-full gap-1 overflow-x-auto rounded-lg bg-gray-100 p-1 sm:w-fit">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -414,6 +479,8 @@ export default function AdminPage() {
                 <MiniMetric label="Support issues" value={supportIssues} tone="border-blue-200 bg-blue-50 text-blue-800" />
                 <MiniMetric label="Billing requests" value={billingIssues} tone="border-purple-200 bg-purple-50 text-purple-800" />
                 <MiniMetric label="Suspicious errors" value={suspiciousErrors} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                <MiniMetric label="Suppliers review" value={suppliersNeedingReview} tone="border-orange-200 bg-orange-50 text-orange-800" />
+                <MiniMetric label="Verified suppliers" value={verifiedSuppliers} tone="border-green-200 bg-green-50 text-green-800" />
               </div>
             </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
@@ -428,6 +495,9 @@ export default function AdminPage() {
                   </button>
                   <button onClick={() => setTab("reports")} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
                     Open reports
+                  </button>
+                  <button onClick={() => setTab("suppliers")} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                    Verify suppliers
                   </button>
                 </div>
               </div>
@@ -473,6 +543,7 @@ export default function AdminPage() {
                   <MiniMetric label="Open reports" value={openReports.length} tone="border-blue-200 bg-blue-50 text-blue-800" />
                   <MiniMetric label="Stalled trials" value={stalledTrials} tone="border-orange-200 bg-orange-50 text-orange-800" />
                   <MiniMetric label="Needs billing action" value={billingIssues + unpaidShops + suspendedShops} tone="border-purple-200 bg-purple-50 text-purple-800" />
+                  <MiniMetric label="Suppliers to verify" value={suppliersNeedingReview} tone="border-amber-200 bg-amber-50 text-amber-800" />
                 </div>
               </div>
             </section>
@@ -695,7 +766,10 @@ export default function AdminPage() {
                         <h3 className="font-semibold text-gray-900 text-sm">{report.title}</h3>
                         <p className="text-xs text-gray-600 mt-1">{report.description}</p>
                         {report.user && (
-                          <p className="text-xs text-gray-500 mt-1">From: {report.user.name} ({report.user.phone}) — {report.user.role}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            From: {report.user.name} ({report.user.phone}) — {report.user.role}
+                            {report.user.shop?.name ? ` · ${report.user.shop.name}` : ""}
+                          </p>
                         )}
                         <p className="text-xs text-gray-400 mt-1">{new Date(report.createdAt).toLocaleString()}</p>
                       </div>
@@ -715,6 +789,24 @@ export default function AdminPage() {
                           >
                             Mark In Progress
                           </button>
+                        )}
+                        {report.type === "BILLING" && report.user?.shop?.id && (
+                          <>
+                            <button
+                              onClick={() => handleVerifyBillingReport(report, "BASIC")}
+                              disabled={updatingReport === report.id}
+                              className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200 disabled:opacity-50"
+                            >
+                              Verify Basic
+                            </button>
+                            <button
+                              onClick={() => handleVerifyBillingReport(report, "PRO")}
+                              disabled={updatingReport === report.id}
+                              className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium hover:bg-purple-200 disabled:opacity-50"
+                            >
+                              Verify Pro
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={() => handleUpdateReport(report.id, "RESOLVED")}
@@ -904,6 +996,81 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* SUPPLIERS */}
+        {tab === "suppliers" && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <MiniMetric label="Total suppliers" value={suppliers.length} tone="border-gray-200 bg-gray-50 text-gray-800" />
+              <MiniMetric label="Verified" value={verifiedSuppliers} tone="border-green-200 bg-green-50 text-green-800" />
+              <MiniMetric label="Needs review" value={suppliers.filter((s) => s.verificationStatus === "NEEDS_REVIEW" || s.verificationStatus === "UNVERIFIED").length} tone="border-amber-200 bg-amber-50 text-amber-800" />
+              <MiniMetric label="Rejected" value={suppliers.filter((s) => s.verificationStatus === "REJECTED").length} tone="border-red-200 bg-red-50 text-red-800" />
+            </div>
+            {suppliers.length === 0 ? (
+              <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+                No suppliers have been added yet.
+              </div>
+            ) : (
+              suppliers.map((supplier) => (
+                <div key={supplier.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-gray-950">{supplier.name}</h3>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          supplier.verificationStatus === "VERIFIED" ? "bg-green-100 text-green-700" :
+                          supplier.verificationStatus === "REJECTED" ? "bg-red-100 text-red-700" :
+                          "bg-amber-100 text-amber-700"
+                        }`}>
+                          {supplier.verificationStatus || "UNVERIFIED"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-500">{supplier.phone} {supplier.address ? `· ${supplier.address}` : ""}</p>
+                      <p className="mt-1 text-xs text-gray-400">
+                        Products {supplier._count?.products || 0} · Orders {supplier._count?.orders || 0}
+                        {supplier.verifiedAt ? ` · Verified ${new Date(supplier.verifiedAt).toLocaleDateString()}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <a href={`https://wa.me/${supplier.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-200">
+                        <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                      </a>
+                      {(["VERIFIED", "NEEDS_REVIEW", "REJECTED"] as const).map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => handleUpdateSupplier(supplier, { verificationStatus: status })}
+                          disabled={updatingSupplier === supplier.id}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
+                            status === "VERIFIED" ? "bg-green-100 text-green-700 hover:bg-green-200" :
+                            status === "REJECTED" ? "bg-red-100 text-red-700 hover:bg-red-200" :
+                            "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                          }`}
+                        >
+                          {status === "VERIFIED" ? "Verify" : status === "REJECTED" ? "Reject" : "Needs review"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <textarea
+                      value={supplierNotes[supplier.id] || ""}
+                      onChange={(e) => setSupplierNotes((prev) => ({ ...prev, [supplier.id]: e.target.value }))}
+                      placeholder="Supplier notes: areas served, delivery terms, owner contact, issue history..."
+                      className="min-h-16 resize-none rounded-lg border border-gray-200 px-3 py-2 text-xs"
+                    />
+                    <button
+                      onClick={() => handleUpdateSupplier(supplier, { adminNotes: supplierNotes[supplier.id] || "" })}
+                      disabled={updatingSupplier === supplier.id}
+                      className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      Save notes
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

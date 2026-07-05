@@ -5,7 +5,7 @@ import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { ArrowRight, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 
 interface DashboardData {
   summary: { totalSales: number; totalProfit: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
@@ -79,6 +79,20 @@ export default function AssistantPage() {
               <p className="mt-1 text-sm text-gray-500">
                 {lang === "sw" ? "DukaPilot inapanga hatua muhimu kwanza." : "DukaPilot ranks the most useful next action first."}
               </p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-lg bg-red-50 px-3 py-2 text-red-800">
+                  <p className="font-bold">{recommendations.filter((item) => item.rank >= 80).length}</p>
+                  <p>{lang === "sw" ? "Haraka" : "Urgent"}</p>
+                </div>
+                <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
+                  <p className="font-bold">{recommendations.filter((item) => item.rank >= 60 && item.rank < 80).length}</p>
+                  <p>{lang === "sw" ? "Leo" : "Today"}</p>
+                </div>
+                <div className="rounded-lg bg-green-50 px-3 py-2 text-green-800">
+                  <p className="font-bold">{recommendations.length}</p>
+                  <p>{lang === "sw" ? "Hatua" : "Actions"}</p>
+                </div>
+              </div>
             </div>
             <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600 sm:max-w-xs">
               <span className="font-semibold text-gray-800">WhatsApp:</span> {ownerSummary}
@@ -105,10 +119,15 @@ export default function AssistantPage() {
                     <p className="mt-1 text-xs leading-5 text-gray-500">
                       <span className="font-semibold text-gray-700">{lang === "sw" ? "Matokeo:" : "Expected impact:"}</span> {item.impact}
                     </p>
-                    <Link href={item.href} className="mt-3 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-                      {item.action}
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold uppercase tracking-wide text-gray-500">
+                        {lang === "sw" ? "Fanya sasa" : "Do this now"}
+                      </span>
+                      <Link href={item.href} className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+                        {item.action}
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -149,6 +168,29 @@ function buildRecommendations({
   const items: Recommendation[] = [];
   const lowStock = dashboard?.lowStockAlerts || [];
   const mostUrgentStock = lowStock[0];
+  const todaySalesCount = dashboard?.summary.salesCount || 0;
+  const hasBusinessHistory = Boolean((allTime?.summary.salesCount || 0) > 0 || (allTime?.summary.totalSales || 0) > 0);
+
+  if (hasBusinessHistory && todaySalesCount === 0) {
+    items.push({
+      id: "quiet-sales",
+      rank: 85,
+      icon: TrendingDown,
+      tone: "bg-red-50 text-red-700",
+      title: lang === "sw" ? "Hakuna sale iliyorekodiwa leo" : "No sale recorded today yet",
+      body: lang === "sw"
+        ? "Angalia kama mauzo hayajaingizwa au tumia bidhaa inayouza sana kuvutia wateja."
+        : "Check whether sales were missed or use a proven product to pull customers in.",
+      action: lang === "sw" ? "Rekodi sale ya kwanza" : "Record first sale",
+      href: "/sales",
+      why: lang === "sw"
+        ? "Duka likikaa bila sale, ni vigumu kujua kama tatizo ni wateja, stock, au kurekodi."
+        : "A quiet sales day makes it hard to know whether the issue is demand, stock, or missing records.",
+      impact: lang === "sw"
+        ? "Kuanza siku kwa data sahihi ili mapendekezo yawe makali zaidi."
+        : "Start the day with clean data so recommendations become sharper.",
+    });
+  }
 
   if (mostUrgentStock) {
     items.push({

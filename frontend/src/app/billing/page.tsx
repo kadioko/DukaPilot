@@ -19,9 +19,17 @@ interface SubscriptionStatus {
 }
 
 const plans = [
-  { id: "BASIC", amount: 15000, label: "Basic" },
-  { id: "PRO", amount: 35000, label: "Pro" },
+  { id: "BASIC", amount: 15000, label: "Basic", includes: "Sales, stock, debts, expenses, catalog" },
+  { id: "PRO", amount: 35000, label: "Pro", includes: "Everything in Basic plus staff, reports, AI priority workflows" },
 ];
+
+interface BillingReport {
+  id: string;
+  title: string;
+  status: string;
+  adminNotes?: string | null;
+  createdAt: string;
+}
 
 export default function BillingPage() {
   const lang = useLang();
@@ -30,11 +38,13 @@ export default function BillingPage() {
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+  const [reports, setReports] = useState<BillingReport[]>([]);
   const selectedPlan = plans.find((item) => item.id === plan) || plans[0];
   const subscriptionActive = Boolean(status?.isActive && (status?.trialActive || status?.subActive || status?.status === "active"));
 
   useEffect(() => {
     api.get<SubscriptionStatus>("/subscription/status", lang).then(setStatus).catch(() => null);
+    api.get<{ reports: BillingReport[] }>("/reports?type=BILLING&limit=5", lang).then((data) => setReports(data.reports)).catch(() => null);
   }, [lang]);
 
   async function submitReference(e: React.FormEvent) {
@@ -52,6 +62,8 @@ export default function BillingPage() {
     }, lang);
     setReference("");
     setNote("");
+    const latest = await api.get<{ reports: BillingReport[] }>("/reports?type=BILLING&limit=5", lang).catch(() => null);
+    if (latest) setReports(latest.reports);
     setMessage(lang === "sw" ? "Tumepokea reference. Admin atahakiki na kuactivate mpango." : "Reference received. Admin will verify and activate the plan.");
   }
 
@@ -91,6 +103,19 @@ export default function BillingPage() {
           </div>
         </section>
 
+        <section className="grid gap-3 md:grid-cols-3">
+          {[
+            [lang === "sw" ? "1. Lipa M-Pesa" : "1. Pay by M-Pesa", lang === "sw" ? "Tuma kiasi cha plan uliyochagua." : "Send the amount for the selected plan."],
+            [lang === "sw" ? "2. Weka reference" : "2. Submit reference", lang === "sw" ? "Weka namba ya muamala ili admin ahakiki." : "Enter the transaction reference for admin review."],
+            [lang === "sw" ? "3. Admin anaactivate" : "3. Admin activates", lang === "sw" ? "Baada ya kuthibitisha, plan yako inaanza." : "After verification, your plan becomes active."],
+          ].map(([title, body]) => (
+            <div key={title} className="rounded-lg border border-gray-200 bg-white p-4">
+              <p className="text-sm font-semibold text-gray-950">{title}</p>
+              <p className="mt-1 text-xs leading-5 text-gray-500">{body}</p>
+            </div>
+          ))}
+        </section>
+
         <section className="rounded-lg border border-gray-200 bg-white p-5">
           <div className="flex items-start gap-3">
             <Smartphone className="mt-0.5 h-5 w-5 text-brand-700" />
@@ -111,6 +136,7 @@ export default function BillingPage() {
                   >
                     <span className="font-bold text-gray-950">{item.label}</span>
                     <span className="ml-2 text-gray-600">{formatTZS(item.amount)}/month</span>
+                    <span className="mt-1 block text-xs leading-5 text-gray-500">{item.includes}</span>
                   </button>
                 ))}
               </div>
@@ -146,6 +172,28 @@ export default function BillingPage() {
             {lang === "sw" ? "Tuma kwa admin" : "Send to admin"}
           </button>
         </form>
+
+        {reports.length > 0 && (
+          <section className="rounded-lg border border-gray-200 bg-white p-5">
+            <h2 className="font-semibold text-gray-950">{lang === "sw" ? "Maombi ya malipo" : "Payment requests"}</h2>
+            <div className="mt-3 grid gap-2">
+              {reports.map((report) => (
+                <div key={report.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-gray-900">{report.title}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      report.status === "RESOLVED" ? "bg-green-100 text-green-700" :
+                      report.status === "REJECTED" ? "bg-red-100 text-red-700" :
+                      "bg-amber-100 text-amber-700"
+                    }`}>{report.status}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">{new Date(report.createdAt).toLocaleString()}</p>
+                  {report.adminNotes && <p className="mt-1 text-xs text-gray-600">{report.adminNotes}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
           <div className="flex gap-2">

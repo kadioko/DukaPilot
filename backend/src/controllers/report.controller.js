@@ -22,7 +22,7 @@ const createReport = asyncHandler(async (req, res) => {
       priority: priority || "MEDIUM",
     },
     include: {
-      user: { select: { id: true, name: true, phone: true, role: true } },
+      user: { select: { id: true, name: true, phone: true, role: true, shop: { select: { id: true, name: true } } } },
     },
   });
 
@@ -49,7 +49,7 @@ const getMyReports = asyncHandler(async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: Math.min(Number(limit) || 50, 200),
     include: {
-      user: { select: { id: true, name: true, phone: true, role: true } },
+      user: { select: { id: true, name: true, phone: true, role: true, shop: { select: { id: true, name: true } } } },
     },
   });
 
@@ -70,7 +70,7 @@ const getAllReports = asyncHandler(async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: Math.min(Number(limit) || 100, 500),
     include: {
-      user: { select: { id: true, name: true, phone: true, role: true } },
+      user: { select: { id: true, name: true, phone: true, role: true, shop: { select: { id: true, name: true } } } },
     },
   });
 
@@ -96,7 +96,7 @@ const updateReport = asyncHandler(async (req, res) => {
     where: { id: reportId },
     data: updateData,
     include: {
-      user: { select: { id: true, name: true, phone: true, role: true } },
+      user: { select: { id: true, name: true, phone: true, role: true, shop: { select: { id: true, name: true } } } },
     },
   });
 

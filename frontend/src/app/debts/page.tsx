@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
+import { MessageCircle } from "lucide-react";
 
 interface Debt {
   id: string;
@@ -21,6 +22,7 @@ export default function DebtsPage() {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [summary, setSummary] = useState({ openCount: 0, totalOwed: 0 });
   const [form, setForm] = useState({ customerName: "", customerPhone: "", amount: "", dueDate: "", note: "" });
+  const [paymentDrafts, setPaymentDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -45,14 +47,16 @@ export default function DebtsPage() {
     await load();
   }
 
-  async function markPaid(debt: Debt) {
-    await api.post(`/debts/${debt.id}/payments`, { amount: debt.amount - debt.amountPaid }, lang);
+  async function recordPayment(debt: Debt, amount: number) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    await api.post(`/debts/${debt.id}/payments`, { amount }, lang);
+    setPaymentDrafts((prev) => ({ ...prev, [debt.id]: "" }));
     await load();
   }
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6 pb-24 lg:pb-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "Ufuatiliaji wa Madeni" : "Debt Tracking"}</h1>
@@ -65,10 +69,10 @@ export default function DebtsPage() {
           </div>
         </div>
 
-        <form onSubmit={addDebt} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-5">
+        <form onSubmit={addDebt} className="grid gap-3 rounded-lg border border-gray-200 bg-white p-4 md:grid-cols-5">
           <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm md:col-span-1" placeholder={lang === "sw" ? "Jina la mteja" : "Customer name"} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
           <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm md:col-span-1" required placeholder={lang === "sw" ? "Simu" : "Phone"} value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required type="number" min="1" placeholder={lang === "sw" ? "Kiasi" : "Amount"} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required type="number" min="1" inputMode="numeric" placeholder={lang === "sw" ? "Kiasi" : "Amount"} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
           <button className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             {lang === "sw" ? "Ongeza" : "Add"}
@@ -83,19 +87,48 @@ export default function DebtsPage() {
           ) : debts.map((debt) => {
             const balance = debt.amount - debt.amountPaid;
             return (
-              <div key={debt.id} className="grid gap-3 border-b border-gray-100 p-4 last:border-b-0 md:grid-cols-[1fr_auto_auto] md:items-center">
+              <div key={debt.id} className="grid gap-3 border-b border-gray-100 p-4 last:border-b-0 lg:grid-cols-[1fr_auto_auto] lg:items-center">
                 <div>
                   <p className="font-semibold text-gray-950">{debt.customerName || debt.customerPhone}</p>
                   <p className="text-sm text-gray-500">{debt.customerPhone} · {debt.status}</p>
+                  {debt.dueDate && (
+                    <p className="mt-1 text-xs text-amber-700">
+                      {lang === "sw" ? "Mwisho" : "Due"} {new Date(debt.dueDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}
+                    </p>
+                  )}
                 </div>
-                <div className="text-sm md:text-right">
+                <div className="text-sm lg:text-right">
                   <p className="font-semibold text-gray-950">{formatTZS(balance)}</p>
                   <p className="text-gray-500">{formatTZS(debt.amountPaid)} {lang === "sw" ? "imelipwa" : "paid"}</p>
                 </div>
                 {balance > 0 && debt.status !== "CANCELLED" && (
-                  <button onClick={() => markPaid(debt)} className="rounded-lg border border-brand-600 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50">
-                    {lang === "sw" ? "Lipa yote" : "Mark paid"}
-                  </button>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                    <input
+                      value={paymentDrafts[debt.id] || ""}
+                      onChange={(e) => setPaymentDrafts((prev) => ({ ...prev, [debt.id]: e.target.value }))}
+                      type="number"
+                      min="1"
+                      max={balance}
+                      inputMode="numeric"
+                      placeholder={lang === "sw" ? "Kiasi kilicholipwa" : "Amount paid"}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <button onClick={() => recordPayment(debt, Number(paymentDrafts[debt.id] || 0))} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+                      {lang === "sw" ? "Rekodi" : "Record"}
+                    </button>
+                    <button onClick={() => recordPayment(debt, balance)} className="rounded-lg border border-brand-600 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50">
+                      {lang === "sw" ? "Lipa yote" : "All paid"}
+                    </button>
+                    <a
+                      href={`https://wa.me/${debt.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(lang === "sw" ? `Habari, kumbusho la deni lako ${formatTZS(balance)}.` : `Hello, reminder for your outstanding balance ${formatTZS(balance)}.`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-1 rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-200 sm:col-span-3"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      WhatsApp
+                    </a>
+                  </div>
                 )}
               </div>
             );

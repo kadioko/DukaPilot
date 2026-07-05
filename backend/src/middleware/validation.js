@@ -123,6 +123,8 @@ const supplierUpdateValidation = [
   body("name").optional().trim().notEmpty().withMessage("Supplier name cannot be empty"),
   body("phone").optional().trim().notEmpty().withMessage("Supplier phone cannot be empty").bail().isLength({ max: 30 }).withMessage("Supplier phone must be 30 characters or less"),
   body("address").optional({ nullable: true, values: "falsy" }).trim().isLength({ max: 255 }).withMessage("Address must be 255 characters or less"),
+  body("verificationStatus").optional().custom((value) => ["UNVERIFIED", "NEEDS_REVIEW", "VERIFIED", "REJECTED"].includes(String(value).toUpperCase())).withMessage("Invalid supplier verification status"),
+  body("adminNotes").optional({ nullable: true, values: "falsy" }).trim().isLength({ max: 500 }).withMessage("Admin notes must be 500 characters or less"),
   handleValidationErrors,
 ];
 
