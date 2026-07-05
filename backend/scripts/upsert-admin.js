@@ -1,5 +1,5 @@
 /**
- * One-shot script: upsert admin user with new phone number.
+ * One-shot script: upsert DukaPilot admin users.
  * Run via: railway run --service DukaPilot node scripts/upsert-admin.js
  * Uses DATABASE_MIGRATE_URL (public proxy) if set, else DATABASE_URL.
  */
@@ -23,8 +23,12 @@ async function main() {
     );
     console.log("Existing admins:", existing.rows);
 
-    const newPhone = "+255743910580";
-    const pin = await bcrypt.hash("1234", 10);
+    const adminPin = "4467";
+    const pin = await bcrypt.hash(adminPin, 10);
+    const admins = [
+      { phone: "+255743910580", name: "Admin DukaPilot" },
+      { phone: "+255713712057", name: "Admin DukaPilot 2" },
+    ];
     const { randomUUID } = require("crypto");
 
     // Delete old placeholder admin if it exists
@@ -36,21 +40,25 @@ async function main() {
       console.log("Deleted old admin:", del.rows[0].phone);
     }
 
-    // Upsert new admin
+    // Upsert admins
     const now = new Date().toISOString();
-    const result = await pool.query(
-      `INSERT INTO users (id, phone, pin, name, role, language, "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, 'ADMIN', 'sw', $5, $5)
-       ON CONFLICT (phone) DO UPDATE
-         SET pin = EXCLUDED.pin, name = EXCLUDED.name, "updatedAt" = $5
-       RETURNING id, phone, name, role`,
-      [randomUUID(), newPhone, pin, "Admin DukaPilot", now]
-    );
+    const upserted = [];
+    for (const admin of admins) {
+      const result = await pool.query(
+        `INSERT INTO users (id, phone, pin, name, role, language, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, 'ADMIN', 'sw', $5, $5)
+         ON CONFLICT (phone) DO UPDATE
+           SET pin = EXCLUDED.pin, name = EXCLUDED.name, role = 'ADMIN', "updatedAt" = $5
+         RETURNING id, phone, name, role`,
+        [randomUUID(), admin.phone, pin, admin.name, now]
+      );
+      upserted.push(result.rows[0]);
+    }
 
-    console.log("Admin upserted:", result.rows[0]);
+    console.log("Admins upserted:", upserted);
     console.log("");
     console.log("=== SUCCESS ===");
-    console.log("Login: phone =", newPhone, "| PIN = 1234");
+    console.log("Login PIN for both admins =", adminPin);
   } finally {
     await pool.end();
   }
