@@ -309,6 +309,23 @@ export default function AdminPage() {
     }
   }
 
+  async function handleRemoveSubscription(shop: Subscription) {
+    const confirmed = window.confirm(
+      `Remove the paid subscription for ${shop.name}?\n\nThis will clear the active paid plan and paid valid-until date. The shop, customer account, products, sales, and payment history will stay in DukaPilot.\n\nUse this only for reversals, mistakes, or support cases.`
+    );
+    if (!confirmed) return;
+
+    setUpdatingSub(shop.id);
+    try {
+      await api.delete(`/subscription/admin/${shop.id}`);
+      await refreshSubscriptions();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to remove subscription");
+    } finally {
+      setUpdatingSub(null);
+    }
+  }
+
   async function refreshSubscriptions() {
     const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
     setSubscriptions(data.shops);
@@ -1161,6 +1178,9 @@ export default function AdminPage() {
                         <button onClick={() => handleToggleShopActive(shop)} disabled={updatingSub === shop.id} className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-50 ${shop.isActive ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-green-100 text-green-700 hover:bg-green-200"}`}>
                           {shop.isActive ? "Suspend" : "Activate shop"}
                         </button>
+                        <button onClick={() => handleRemoveSubscription(shop)} disabled={updatingSub === shop.id || !shop.subscriptionEndsAt} className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-200 disabled:opacity-50">
+                          Remove paid plan
+                        </button>
                       </div>
                       <p className="mt-2 text-xs text-gray-500">
                         Last payment: {shop.lastPayment ? `${formatTZS(shop.lastPayment.amount)} ${shop.lastPayment.method} on ${formatDate(shop.lastPayment.paidAt)}` : "None"}
@@ -1340,6 +1360,13 @@ export default function AdminPage() {
                             }`}
                           >
                             {shop.isActive ? "Suspend" : "Activate"}
+                          </button>
+                          <button
+                            onClick={() => handleRemoveSubscription(shop)}
+                            disabled={updatingSub === shop.id || !shop.subscriptionEndsAt}
+                            className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200 disabled:opacity-50"
+                          >
+                            Remove paid plan
                           </button>
                         </div>
                       </td>

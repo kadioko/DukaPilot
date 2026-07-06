@@ -230,6 +230,41 @@ const adminExtendSubscription = asyncHandler(async (req, res) => {
   res.json({ shop: updated, active: isSubscriptionActive(updated), message: `Subscription extended by ${days} days` });
 });
 
+const adminRemoveSubscription = asyncHandler(async (req, res) => {
+  const { shopId } = req.params;
+  const reason = String(req.body?.reason || "").trim() || null;
+
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+  });
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const updated = await prisma.shop.update({
+    where: { id: shopId },
+    data: {
+      plan: "FREE_TRIAL",
+      subscriptionEndsAt: null,
+      isActive: true,
+    },
+    select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+  });
+
+  req.audit = {
+    action: "admin.subscription.removed",
+    resourceType: "shop",
+    resourceId: shopId,
+    metadata: {
+      adminId: req.user.userId,
+      reason,
+      previousPlan: shop.plan,
+      previousEndsAt: shop.subscriptionEndsAt,
+    },
+  };
+
+  res.json({ shop: updated, active: isSubscriptionActive(updated), message: "Paid subscription removed" });
+});
+
 const adminRecordPayment = asyncHandler(async (req, res) => {
   const { shopId } = req.params;
   const plan = String(req.body.plan || "BASIC").toUpperCase();
@@ -271,4 +306,4 @@ const adminRecordPayment = asyncHandler(async (req, res) => {
   res.status(201).json({ payment, shop, active: isSubscriptionActive(shop), previousEndsAt: existing.subscriptionEndsAt, subscriptionEndsAt });
 });
 
-module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial, adminExtendSubscription, adminRecordPayment };
+module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial, adminExtendSubscription, adminRemoveSubscription, adminRecordPayment };
