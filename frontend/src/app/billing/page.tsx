@@ -24,6 +24,27 @@ const plans = [
   { id: "PRO", amount: 35000, label: "Pro", includes: "Everything in Basic plus staff, reports, AI priority workflows" },
 ];
 
+const paymentOptions = [
+  {
+    id: "MPESA_LIPA",
+    title: "M-Pesa Lipa Number",
+    value: "52806296",
+    name: "Necuva Group Limited",
+  },
+  {
+    id: "MIX_YAS_LIPA",
+    title: "Mix by Yas Lipa Number",
+    value: "18214626",
+    name: "Necuva",
+  },
+  {
+    id: "SEND_MONEY",
+    title: "Send Money",
+    value: "0743910580",
+    name: "DukaPilot support",
+  },
+];
+
 interface BillingReport {
   id: string;
   title: string;
@@ -36,6 +57,7 @@ export default function BillingPage() {
   const lang = useLang();
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [plan, setPlan] = useState("BASIC");
+  const [paymentOption, setPaymentOption] = useState(paymentOptions[0].id);
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
@@ -52,14 +74,15 @@ export default function BillingPage() {
     e.preventDefault();
     setMessage("");
     if (!reference.trim()) {
-      setMessage(lang === "sw" ? "Weka namba ya muamala wa M-Pesa." : "Enter the M-Pesa transaction reference.");
+      setMessage(lang === "sw" ? "Weka reference au namba ya muamala." : "Enter the payment reference or transaction number.");
       return;
     }
+    const selectedPaymentOption = paymentOptions.find((item) => item.id === paymentOption) || paymentOptions[0];
     await api.post("/reports", {
       type: "BILLING",
       priority: "HIGH",
       title: `Subscription payment ${plan} ${reference.trim()}`,
-      description: `Plan: ${plan}\nAmount: ${formatTZS(selectedPlan.amount)}\nReference: ${reference.trim()}\nNote: ${note.trim() || "-"}`,
+      description: `Plan: ${plan}\nAmount: ${formatTZS(selectedPlan.amount)}\nPayment option: ${selectedPaymentOption.title} ${selectedPaymentOption.value} (${selectedPaymentOption.name})\nReference: ${reference.trim()}\nNote: ${note.trim() || "-"}`,
     }, lang);
     setReference("");
     setNote("");
@@ -68,7 +91,8 @@ export default function BillingPage() {
     setMessage(lang === "sw" ? "Tumepokea reference. Admin atahakiki na kuactivate mpango." : "Reference received. Admin will verify and activate the plan.");
   }
 
-  const waText = encodeURIComponent(`DukaPilot payment\nPlan: ${plan}\nAmount: ${formatTZS(selectedPlan.amount)}\nReference: ${reference || "(nitaweka baada ya kulipa)"}`);
+  const selectedPaymentOption = paymentOptions.find((item) => item.id === paymentOption) || paymentOptions[0];
+  const waText = encodeURIComponent(`DukaPilot payment\nPlan: ${plan}\nAmount: ${formatTZS(selectedPlan.amount)}\nPaid via: ${selectedPaymentOption.title} ${selectedPaymentOption.value}\nReference: ${reference || "(nitaweka baada ya kulipa)"}`);
   const reminderCopy: Record<string, string> = {
     DUE_7_DAYS: lang === "sw" ? "Plan yako inaisha ndani ya siku 7. Lipa mapema ili huduma isiingiliwe." : "Your plan ends in 7 days. Pay early to avoid interruption.",
     DUE_3_DAYS: lang === "sw" ? "Plan yako inaisha ndani ya siku 3. Tuma malipo na reference." : "Your plan ends in 3 days. Send payment and submit the reference.",
@@ -84,8 +108,8 @@ export default function BillingPage() {
           <h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "Malipo na usajili" : "Billing and subscription"}</h1>
           <p className="mt-1 text-sm leading-6 text-gray-600">
             {lang === "sw"
-              ? "Lipia kwa M-Pesa, weka reference, kisha admin atahakiki na kuactivate mpango wako."
-              : "Pay by M-Pesa, submit the reference, and an admin will verify and activate your plan."}
+              ? "Lipia kwa Lipa Number au tuma pesa, weka reference, kisha admin atahakiki na kuactivate mpango wako."
+              : "Pay by Lipa Number or send money, submit the reference, and an admin will verify and activate your plan."}
           </p>
         </div>
 
@@ -119,8 +143,8 @@ export default function BillingPage() {
 
         <section className="grid gap-3 md:grid-cols-3">
           {[
-            [lang === "sw" ? "1. Lipa M-Pesa" : "1. Pay by M-Pesa", lang === "sw" ? "Tuma kiasi cha plan uliyochagua." : "Send the amount for the selected plan."],
-            [lang === "sw" ? "2. Weka reference" : "2. Submit reference", lang === "sw" ? "Weka namba ya muamala ili admin ahakiki." : "Enter the transaction reference for admin review."],
+            [lang === "sw" ? "1. Chagua njia ya kulipa" : "1. Choose payment option", lang === "sw" ? "Tumia M-Pesa Lipa, Mix by Yas Lipa, au tuma pesa." : "Use M-Pesa Lipa, Mix by Yas Lipa, or send money."],
+            [lang === "sw" ? "2. Weka reference" : "2. Submit reference", lang === "sw" ? "Weka namba ya muamala au tuma screenshot WhatsApp." : "Enter the transaction reference or send a screenshot on WhatsApp."],
             [lang === "sw" ? "3. Admin anaactivate" : "3. Admin activates", lang === "sw" ? "Baada ya kuthibitisha, plan yako inaanza." : "After verification, your plan becomes active."],
           ].map(([title, body]) => (
             <div key={title} className="rounded-lg border border-gray-200 bg-white p-4">
@@ -134,12 +158,27 @@ export default function BillingPage() {
           <div className="flex items-start gap-3">
             <Smartphone className="mt-0.5 h-5 w-5 text-brand-700" />
             <div>
-              <h2 className="font-semibold text-gray-950">{lang === "sw" ? "Maelekezo ya M-Pesa" : "M-Pesa instructions"}</h2>
+              <h2 className="font-semibold text-gray-950">{lang === "sw" ? "Njia rasmi za kulipa" : "Official payment options"}</h2>
               <p className="mt-2 text-sm leading-6 text-gray-600">
                 {lang === "sw"
-                  ? "Tuma malipo kwa +255 743 910 580, jina DukaPilot. Baada ya kutuma, weka namba ya muamala hapa chini au tuma WhatsApp."
-                  : "Send payment to +255 743 910 580, name DukaPilot. After paying, enter the transaction reference below or send it on WhatsApp."}
+                  ? "Tumia njia hizi kwa mpangilio huu. Baada ya kulipa, weka reference hapa chini au tuma screenshot/ujumbe WhatsApp kwenda 0743910580."
+                  : "Use these options in this order. After paying, submit the reference below or send a screenshot/message on WhatsApp to 0743910580."}
               </p>
+              <div className="mt-3 grid gap-2">
+                {paymentOptions.map((option, index) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setPaymentOption(option.id)}
+                    className={`rounded-lg border p-3 text-left text-sm ${paymentOption === option.id ? "border-green-500 bg-green-50" : "border-gray-200 bg-white"}`}
+                  >
+                    <span className="text-xs font-bold uppercase tracking-wide text-gray-400">{index + 1}</span>
+                    <span className="ml-2 font-bold text-gray-950">{option.title}</span>
+                    <span className="mt-1 block text-lg font-black text-gray-950">{option.value}</span>
+                    <span className="block text-xs leading-5 text-gray-500">{lang === "sw" ? "Jina" : "Name"}: {option.name}</span>
+                  </button>
+                ))}
+              </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {plans.map((item) => (
                   <button
@@ -162,6 +201,9 @@ export default function BillingPage() {
           <div className="flex items-center gap-2">
             <ReceiptText className="h-5 w-5 text-brand-700" />
             <h2 className="font-semibold text-gray-950">{lang === "sw" ? "Weka payment reference" : "Submit payment reference"}</h2>
+          </div>
+          <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-950">
+            <strong>{lang === "sw" ? "Ulichagua" : "Selected"}:</strong> {selectedPaymentOption.title} {selectedPaymentOption.value} - {selectedPaymentOption.name}
           </div>
           <input
             value={reference}

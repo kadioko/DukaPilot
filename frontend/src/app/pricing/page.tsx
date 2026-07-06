@@ -108,7 +108,7 @@ const faqs = [
   },
   {
     q: { sw: "Malipo yanafanywa vipi?", en: "How do I pay?" },
-    a: { sw: "M-Pesa, Tigo Pesa, Airtel Money, au benki.", en: "M-Pesa, Tigo Pesa, Airtel Money, or bank transfer." },
+    a: { sw: "Kwanza tumia M-Pesa Lipa Number 52806296 jina Necuva Group Limited. Pili tumia Mix by Yas Lipa Number 18214626 jina Necuva. Au tuma pesa 0743910580, kisha weka reference au tuma WhatsApp.", en: "First use M-Pesa Lipa Number 52806296, name Necuva Group Limited. Second use Mix by Yas Lipa Number 18214626, name Necuva. Or send money to 0743910580, then submit the reference or WhatsApp proof." },
   },
   {
     q: { sw: "Ninaweza kubadilisha mpango?", en: "Can I upgrade or downgrade?" },
@@ -339,9 +339,23 @@ export default function PricingPage() {
             <h2 className="text-base font-bold text-gray-900 mb-2">{lang === "sw" ? "Jinsi ya kulipa" : "How payment works"}</h2>
             <p className="text-sm leading-6 text-gray-600">
               {lang === "sw"
-                ? "Tuma M-Pesa kwenda +255 743 910 580, weka reference kwenye Billing au tuma WhatsApp. Admin atahakiki na kuactivate mpango wako."
-                : "Send M-Pesa to +255 743 910 580, submit the reference in Billing or WhatsApp, and an admin verifies and activates your plan."}
+                ? "Chagua plan, lipa kwa Lipa Number rasmi, kisha weka reference kwenye Billing au tuma screenshot WhatsApp. Admin atahakiki na kuactivate mpango wako."
+                : "Choose a plan, pay through an official Lipa Number, then submit the reference in Billing or send a WhatsApp screenshot. Admin verifies and activates your plan."}
             </p>
+            <div className="mt-4 grid gap-2 text-sm">
+              <div className="rounded-xl border border-green-100 bg-green-50 p-3">
+                <p className="font-bold text-gray-950">1. M-Pesa Lipa Number: 52806296</p>
+                <p className="text-gray-600">{lang === "sw" ? "Jina" : "Name"}: Necuva Group Limited</p>
+              </div>
+              <div className="rounded-xl border border-green-100 bg-green-50 p-3">
+                <p className="font-bold text-gray-950">2. Mix by Yas Lipa Number: 18214626</p>
+                <p className="text-gray-600">{lang === "sw" ? "Jina" : "Name"}: Necuva</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <p className="font-bold text-gray-950">3. {lang === "sw" ? "Tuma pesa" : "Send money"}: 0743910580</p>
+                <p className="text-gray-600">{lang === "sw" ? "Weka reference au tuma ujumbe WhatsApp 0743910580." : "Submit the reference or send a WhatsApp message to 0743910580."}</p>
+              </div>
+            </div>
             <Link href="/billing" className="mt-4 inline-flex rounded-xl bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700">
               {lang === "sw" ? "Weka payment reference" : "Submit payment reference"}
             </Link>

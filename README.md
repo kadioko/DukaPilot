@@ -44,7 +44,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Debt tracking** | Credit sales automatically create receivables; merchants can add, track, and mark debts paid |
 | **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
 | **Staff roles** | Add staff members and manage role permissions for selling, stock, staff, and reports |
-| **Billing page** | Merchants can see plan status, M-Pesa instructions, submit payment references, and contact WhatsApp support |
+| **Billing page** | Merchants can see plan status, official M-Pesa/Mix by Yas payment options, submit references, and contact WhatsApp support |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
