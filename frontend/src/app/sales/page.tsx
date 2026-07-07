@@ -141,6 +141,8 @@ export default function SalesPage() {
   const [syncHistory, setSyncHistory] = useState<SyncEvent[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [assistantIntent, setAssistantIntent] = useState("");
 
   useEffect(() => {
     api.get<{ products: Product[] }>("/products")
@@ -213,10 +215,40 @@ export default function SalesPage() {
   useEffect(() => {
     setPendingSales(readPendingSales());
     setSyncHistory(readSyncHistory());
+    setIsOnline(typeof navigator === "undefined" ? true : navigator.onLine);
     syncPendingSales().catch(() => {});
-    window.addEventListener("online", syncPendingSales);
-    return () => window.removeEventListener("online", syncPendingSales);
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncPendingSales().catch(() => {});
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, [syncPendingSales]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const intent = params.get("intent") || "";
+    const method = params.get("method");
+    const phone = params.get("customerPhone") || params.get("phone");
+    const name = params.get("customer") || params.get("customerName");
+    const productSearch = params.get("search");
+    if (intent) {
+      setAssistantIntent(intent);
+      setView("pos");
+    }
+    if (productSearch) setSearch(productSearch);
+    if (method && PAYMENT_METHODS.some((item) => item.value === method)) setPaymentMethod(method);
+    if (phone) {
+      setCustomerPhone(phone);
+      setPaymentMethod("CREDIT");
+    }
+    if (name) setCustomerName(name);
+  }, []);
 
   function clearSyncHistory() {
     writeSyncHistory([]);
@@ -431,10 +463,10 @@ export default function SalesPage() {
                     : (lang === "sw" ? "Hakuna sale inayosubiri sync." : "No sales are waiting to sync.")}
                 </p>
                 <p className="mt-1 text-[11px] text-amber-700">
-                  {typeof navigator !== "undefined" && navigator.onLine
+                  {isOnline
                     ? (lang === "sw" ? "Mtandao upo" : "Online")
                     : (lang === "sw" ? "Mtandao haupo" : "Offline")}
-                  {" · "}
+                  {" - "}
                   {lang === "sw" ? "Jaribio la mwisho" : "Last check"} {formatSyncTime(lastSyncAt)}
                 </p>
               </div>
@@ -468,11 +500,11 @@ export default function SalesPage() {
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="font-semibold text-amber-950">
-                          {formatTZS(sale.total)} · {sale.payload.items.length} {lang === "sw" ? "bidhaa" : "item(s)"}
+                          {formatTZS(sale.total)} - {sale.payload.items.length} {lang === "sw" ? "bidhaa" : "item(s)"}
                         </p>
                         <p className="mt-0.5 text-gray-500">
                           {new Date(sale.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                          {" · "}
+                          {" - "}
                           {lang === "sw" ? "Majaribio" : "Attempts"} {sale.attempts || 0}
                         </p>
                         {sale.lastError && <p className="mt-1 font-medium text-red-700">{sale.lastError}</p>}
@@ -513,18 +545,30 @@ export default function SalesPage() {
           <div className="lg:grid lg:grid-cols-2 lg:gap-6">
             {/* Product picker */}
             <div>
+              {assistantIntent && (
+                <div className="mb-3 rounded-xl border border-brand-100 bg-brand-50 p-3 text-sm text-brand-900">
+                  <p className="font-semibold">
+                    {assistantIntent === "first-sale"
+                      ? (lang === "sw" ? "DukaPilot imekufungua kwenye sale ya kwanza ya leo." : "DukaPilot opened your first sale flow for today.")
+                      : (lang === "sw" ? "DukaPilot imekufungua kwenye POS." : "DukaPilot opened the POS for this action.")}
+                  </p>
+                  <p className="mt-1 text-xs text-brand-700">
+                    {lang === "sw" ? "Chagua bidhaa, hakiki malipo, kisha bonyeza kamilisha." : "Pick products, confirm payment, then complete the sale."}
+                  </p>
+                </div>
+              )}
               <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)}
                   placeholder={t("inventory.search", lang)}
-                  className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
-              <div className="grid grid-cols-2 gap-2 max-h-[50vh] lg:max-h-[60vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pb-2 sm:grid-cols-3 lg:max-h-[60vh] lg:grid-cols-2">
                 {filtered.map((p) => {
                   const inCart = cart.find((i) => i.product.id === p.id);
                   return (
                     <button key={p.id} onClick={() => addToCart(p)}
-                      className={`text-left p-3 rounded-xl border transition-all ${inCart ? "border-brand-400 bg-brand-50" : "border-gray-200 bg-white hover:border-brand-300"}`}>
+                      className={`min-h-28 text-left p-3 rounded-xl border transition-all ${inCart ? "border-brand-400 bg-brand-50" : "border-gray-200 bg-white hover:border-brand-300"}`}>
                       <p className="text-sm font-medium text-gray-800 leading-tight">{p.name}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{p.currentStock} {p.unit} {t("dashboard.remaining", lang)}</p>
                       <p className="text-sm font-bold text-brand-700 mt-1">{formatTZS(defaultPriceFor(p))}</p>
@@ -560,7 +604,7 @@ export default function SalesPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="space-y-3 mb-4 max-h-48 overflow-y-auto">
+                    <div className="space-y-3 mb-4 max-h-56 overflow-y-auto">
                       {cart.map((item) => (
                         <div key={item.product.id} className="flex items-center gap-2">
                           <div className="flex-1 min-w-0">
@@ -573,11 +617,11 @@ export default function SalesPage() {
                             />
                           </div>
                           <div className="flex items-center gap-1">
-                            <button onClick={() => updateQty(item.product.id, -1)} className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center min-h-0">
+                            <button onClick={() => updateQty(item.product.id, -1)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center min-h-0">
                               <Minus className="w-3 h-3" />
                             </button>
-                            <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
-                            <button onClick={() => updateQty(item.product.id, 1)} className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0">
+                            <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                            <button onClick={() => updateQty(item.product.id, 1)} className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0">
                               <Plus className="w-3 h-3" />
                             </button>
                           </div>
@@ -604,10 +648,10 @@ export default function SalesPage() {
 
                     <div className="mb-3">
                       <p className="text-xs font-medium text-gray-600 mb-2">{t("sales.payment", lang)}</p>
-                      <div className="grid grid-cols-3 gap-1.5">
+                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                         {PAYMENT_METHODS.map((m) => (
                           <button key={m.value} onClick={() => setPaymentMethod(m.value)}
-                            className={`py-1.5 rounded-lg text-xs font-medium border transition-colors min-h-0 ${paymentMethod === m.value ? "bg-brand-600 text-white border-brand-600" : "bg-white text-gray-600 border-gray-200"}`}>
+                            className={`py-2.5 rounded-lg text-xs font-medium border transition-colors min-h-0 ${paymentMethod === m.value ? "bg-brand-600 text-white border-brand-600" : "bg-white text-gray-600 border-gray-200"}`}>
                             {t(m.labelKey, lang)}
                           </button>
                         ))}
@@ -641,7 +685,7 @@ export default function SalesPage() {
                     <button onClick={completeSale} disabled={completing || cart.length === 0}
                       className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
                       <Check className="w-4 h-4" />
-                      {completing ? t("sales.saving", lang) : `${t("sales.complete", lang)} • ${formatTZS(total)}`}
+                      {completing ? t("sales.saving", lang) : `${t("sales.complete", lang)} - ${formatTZS(total)}`}
                     </button>
                   </>
                 )}
@@ -680,7 +724,7 @@ export default function SalesPage() {
                     <div className="divide-y divide-gray-50">
                       {sale.items.map((item, i) => (
                         <p key={i} className="text-xs text-gray-500 py-0.5">
-                          {item.product.name} × {item.quantity} @ {formatTZS(item.unitPrice)}
+                          {item.product.name} x {item.quantity} @ {formatTZS(item.unitPrice)}
                         </p>
                       ))}
                     </div>

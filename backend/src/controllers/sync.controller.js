@@ -46,6 +46,21 @@ const adminSummary = asyncHandler(async (req, res) => {
     _count: { id: true },
     _max: { createdAt: true },
   });
+  const recentFailures = await prisma.offlineSyncEvent.findMany({
+    where: { createdAt: { gte: since }, status: "FAILED" },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      shopId: true,
+      deviceId: true,
+      total: true,
+      message: true,
+      attempts: true,
+      localId: true,
+      createdAt: true,
+    },
+  });
   const shops = await prisma.shop.findMany({
     where: { id: { in: [...new Set(rows.map((row) => row.shopId))] } },
     select: { id: true, name: true, user: { select: { name: true, phone: true } } },
@@ -60,10 +75,16 @@ const adminSummary = asyncHandler(async (req, res) => {
       failed: 0,
       removed: 0,
       lastEventAt: null,
+      recentFailures: [],
     };
     current[row.status.toLowerCase()] = row._count.id;
     if (!current.lastEventAt || row._max.createdAt > current.lastEventAt) current.lastEventAt = row._max.createdAt;
     summaryByShop.set(row.shopId, current);
+  }
+  for (const event of recentFailures) {
+    const current = summaryByShop.get(event.shopId);
+    if (!current) continue;
+    current.recentFailures.push(event);
   }
   res.json({ shops: [...summaryByShop.values()].filter((item) => item.shop).sort((a, b) => b.failed - a.failed || new Date(b.lastEventAt) - new Date(a.lastEventAt)) });
 });

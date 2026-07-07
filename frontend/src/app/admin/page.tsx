@@ -139,6 +139,15 @@ interface SyncShopSummary {
   failed: number;
   removed: number;
   lastEventAt: string | null;
+  recentFailures?: Array<{
+    id: string;
+    deviceId?: string | null;
+    total?: number | null;
+    message?: string | null;
+    attempts: number;
+    localId?: string | null;
+    createdAt: string;
+  }>;
 }
 
 interface BillingDraft {
@@ -597,6 +606,15 @@ export default function AdminPage() {
     )
     .sort((a, b) => supportPriority(b) - supportPriority(a))
     .slice(0, 5);
+  const paymentReviewQueue = reports
+    .filter((report) => report.type === "BILLING" && report.status !== "RESOLVED" && report.status !== "REJECTED")
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 4);
+  const latestAdminAction = auditLogs.find((log) => log.user?.role === "ADMIN") || auditLogs[0];
+  const recentShopNotes = subscriptions
+    .filter((shop) => shop.followUpNotes || shop.lastContactedAt)
+    .sort((a, b) => new Date(b.lastContactedAt || b.validUntil || b.trialEndsAt || 0).getTime() - new Date(a.lastContactedAt || a.validUntil || a.trialEndsAt || 0).getTime())
+    .slice(0, 4);
 
   function supportPriority(shop: Subscription) {
     if (shop.computedStatus === "suspended") return 100;
@@ -758,6 +776,95 @@ export default function AdminPage() {
                 />
               </div>
             </section>
+            <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-xl border border-purple-200 bg-white p-4">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-900">Payment Review Queue</h2>
+                    <p className="text-xs text-gray-500">Billing reports waiting for admin confirmation and plan activation.</p>
+                  </div>
+                  <button onClick={() => setTab("reports")} className="rounded-lg bg-purple-100 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-200">
+                    Open reports
+                  </button>
+                </div>
+                {paymentReviewQueue.length === 0 ? (
+                  <div className="rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">No payment reports need review right now.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {paymentReviewQueue.map((report) => (
+                      <div key={report.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-950">{report.user?.shop?.name || report.title}</p>
+                            <p className="text-xs text-gray-500">{report.user?.name || "Merchant"} - {report.user?.phone || "No phone"}</p>
+                            <p className="mt-1 line-clamp-2 text-xs text-gray-600">{report.description}</p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-purple-700">{report.status}</span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          <button
+                            onClick={() => handleVerifyBillingReport(report, "BASIC")}
+                            disabled={updatingReport === report.id || !report.user?.shop?.id}
+                            className="rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-200 disabled:opacity-50"
+                          >
+                            Confirm Basic
+                          </button>
+                          <button
+                            onClick={() => handleVerifyBillingReport(report, "PRO")}
+                            disabled={updatingReport === report.id || !report.user?.shop?.id}
+                            className="rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-200 disabled:opacity-50"
+                          >
+                            Confirm Pro
+                          </button>
+                          <button
+                            onClick={() => handleUpdateReport(report.id, "IN_PROGRESS")}
+                            disabled={updatingReport === report.id}
+                            className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                          >
+                            Mark contacted
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <h2 className="text-sm font-semibold text-gray-900">Last Admin Action</h2>
+                  {latestAdminAction ? (
+                    <div className="mt-3 rounded-lg bg-gray-50 p-3 text-xs">
+                      <p className="font-mono font-semibold text-gray-900">{latestAdminAction.action}</p>
+                      <p className="mt-1 font-mono text-gray-500">{latestAdminAction.method} {latestAdminAction.path}</p>
+                      <p className="mt-1 text-gray-500">
+                        {latestAdminAction.user ? `${latestAdminAction.user.name} (${latestAdminAction.user.phone})` : "System"} - {new Date(latestAdminAction.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">No admin actions recorded yet.</p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <h2 className="text-sm font-semibold text-gray-900">Notes History</h2>
+                  {recentShopNotes.length === 0 ? (
+                    <p className="mt-3 rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">No saved shop notes yet.</p>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {recentShopNotes.map((shop) => (
+                        <div key={shop.id} className="rounded-lg bg-gray-50 p-3 text-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-gray-950">{shop.name}</p>
+                            <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-gray-600">{shop.onboardingStatus}</span>
+                          </div>
+                          <p className="mt-1 text-gray-600">{shop.followUpNotes || "Contact logged without notes."}</p>
+                          <p className="mt-1 text-gray-400">Last contact: {shop.lastContactedAt ? new Date(shop.lastContactedAt).toLocaleDateString() : "not set"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
@@ -861,6 +968,19 @@ export default function AdminPage() {
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{item.failed} failed</span>
                       </div>
                       <p className="mt-2 text-xs text-gray-500">Queued {item.queued} - Synced {item.synced} - Last {item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : "-"}</p>
+                      {item.recentFailures?.[0] && (
+                        <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-2 py-1.5 text-xs text-red-800">
+                          <p className="font-semibold">Last failure: {item.recentFailures[0].message || "No message recorded"}</p>
+                          <p className="mt-0.5 text-red-700">
+                            Attempts {item.recentFailures[0].attempts} - {item.recentFailures[0].total ? formatTZS(item.recentFailures[0].total) : "No total"} - {new Date(item.recentFailures[0].createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                      {item.shop.user?.phone && (
+                        <a href={`https://wa.me/${item.shop.user.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 rounded-lg bg-green-100 px-2 py-1 text-xs font-semibold text-green-700 hover:bg-green-200">
+                          <MessageCircle className="h-3 w-3" /> Contact owner
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>

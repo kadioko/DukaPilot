@@ -219,7 +219,7 @@ function buildRecommendations({
         ? `Faida halisi ni ${formatTZS(dashboard?.summary.netProfit || 0)} baada ya matumizi ya ${formatTZS(dashboard?.summary.totalExpenses || 0)}.`
         : `Net profit is ${formatTZS(dashboard?.summary.netProfit || 0)} after ${formatTZS(dashboard?.summary.totalExpenses || 0)} in expenses.`,
       action: lang === "sw" ? "Kagua matumizi" : "Review expenses",
-      href: "/expenses",
+      href: "/expenses?focus=profit",
       why: lang === "sw"
         ? "Duka linaweza kuuza lakini bado lisipate faida kama gharama zimepanda."
         : "A shop can sell well and still lose money when costs rise.",
@@ -240,7 +240,7 @@ function buildRecommendations({
         ? "Angalia kama mauzo hayajaingizwa au tumia bidhaa inayouza sana kuvutia wateja."
         : "Check whether sales were missed or use a proven product to pull customers in.",
       action: lang === "sw" ? "Rekodi sale ya kwanza" : "Record first sale",
-      href: "/sales",
+      href: "/sales?intent=first-sale",
       why: lang === "sw"
         ? "Duka likikaa bila sale, ni vigumu kujua kama tatizo ni wateja, stock, au kurekodi."
         : "A quiet sales day makes it hard to know whether the issue is demand, stock, or missing records.",
@@ -263,7 +263,7 @@ function buildRecommendations({
         ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`
         : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`,
       action: lang === "sw" ? "Fungua inventory na agiza tena" : "Open inventory and reorder",
-      href: `/inventory?search=${encodeURIComponent(mostUrgentStock.name)}`,
+      href: `/inventory?search=${encodeURIComponent(mostUrgentStock.name)}&action=restock`,
       why: lang === "sw"
         ? "Stock ikiisha, mauzo husimama na mteja huenda kwa duka lingine."
         : "When stock runs out, sales stop and customers move to another shop.",
@@ -276,6 +276,11 @@ function buildRecommendations({
   if (debts?.summary.totalOwed) {
     const openDebt = debts.debts?.find((debt) => debt.status === "OPEN" || debt.status === "PARTIAL");
     const customer = openDebt?.customerName || openDebt?.customerPhone;
+    const debtBalance = openDebt ? Math.max(0, openDebt.amount - openDebt.amountPaid) : debts.summary.totalOwed;
+    const debtParams = new URLSearchParams();
+    if (openDebt?.customerName) debtParams.set("customer", openDebt.customerName);
+    if (openDebt?.customerPhone) debtParams.set("phone", openDebt.customerPhone);
+    if (debtBalance) debtParams.set("amount", String(debtBalance));
     items.push({
       id: "debt",
       rank: 90,
@@ -288,7 +293,7 @@ function buildRecommendations({
         ? customer ? `Anza na ${customer}. Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.` : `Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.`
         : customer ? `Start with ${customer}. ${debts.summary.openCount} debt records are still open.` : `${debts.summary.openCount} debt records are still open.`,
       action: lang === "sw" ? "Fungua madeni na rekodi malipo" : "Open debts and record payment",
-      href: "/debts",
+      href: `/debts${debtParams.toString() ? `?${debtParams.toString()}` : ""}`,
       why: lang === "sw"
         ? "Madeni yakikaa muda mrefu hupunguza cash ya kununua stock mpya."
         : "Old debts reduce the cash available to buy new stock.",
@@ -314,7 +319,7 @@ function buildRecommendations({
         ? `Matumizi ya siku 7 zilizopita ni ${formatTZS(expenseTrend.current)}. Linganisha na faida ili ujue gharama zinazokula margin.`
         : `Last 7 days expenses are ${formatTZS(expenseTrend.current)}. Compare them against profit to find costs eating margin.`,
       action: lang === "sw" ? "Fungua matumizi" : "Open expenses",
-      href: "/expenses",
+      href: "/expenses?focus=weekly-review",
       why: lang === "sw"
         ? "Gharama ndogo ndogo zikikua bila kufuatiliwa zinaweza kula faida ya duka."
         : "Small costs can quietly eat shop profit when they are not tracked.",
@@ -338,7 +343,7 @@ function buildRecommendations({
         ? `Bidhaa hii imeleta ${formatTZS(topProduct.totalRevenue)} kwenye mauzo. Iweke mbele kwenye duka na catalog.`
         : `This product has generated ${formatTZS(topProduct.totalRevenue)} in sales. Feature it in the shop and catalog.`,
       action: lang === "sw" ? "Tumia kama bidhaa ya kuvutia wateja" : "Use it as a customer magnet",
-      href: `/inventory?search=${encodeURIComponent(topProduct.product.name)}`,
+      href: `/inventory?search=${encodeURIComponent(topProduct.product.name)}&action=promote`,
       why: lang === "sw"
         ? "Bidhaa inayouza vizuri inaweza kuvuta wateja wanunue bidhaa nyingine pia."
         : "A strong seller can bring customers in and lift other basket items too.",
@@ -361,7 +366,7 @@ function buildRecommendations({
         ? "Maagizo yanapochelewa, wateja hupoteza imani. Thibitisha, tuma au futa yaliyozeeka."
         : "Delayed orders reduce customer trust. Confirm, dispatch, or cancel stale orders.",
       action: lang === "sw" ? "Fungua maagizo" : "Open orders",
-      href: "/orders/customers",
+      href: "/orders/customers?filter=pending",
       why: lang === "sw"
         ? "Order ikichelewa hupunguza uaminifu na inaweza kupoteza mauzo ya kesho."
         : "Slow orders reduce trust and can cost tomorrow's sales.",

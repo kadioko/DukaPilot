@@ -63,6 +63,10 @@ export default function InventoryPage() {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("search") || "";
   });
+  const [assistantAction] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("action") || "";
+  });
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -203,6 +207,21 @@ export default function InventoryPage() {
           </button>
         </div>
 
+        {assistantAction && (
+          <div className="mb-4 rounded-xl border border-brand-100 bg-brand-50 p-3 text-sm text-brand-900">
+            <p className="font-semibold">
+              {assistantAction === "restock"
+                ? (lang === "sw" ? "DukaPilot imekufungua kwenye bidhaa ya kuagiza tena." : "DukaPilot opened the product that needs restocking.")
+                : (lang === "sw" ? "DukaPilot imekufungua kwenye bidhaa ya kupromote." : "DukaPilot opened the product to promote.")}
+            </p>
+            <p className="mt-1 text-xs text-brand-700">
+              {assistantAction === "restock"
+                ? (lang === "sw" ? "Tumia kuongeza stock, kuunganisha supplier, au kurekebisha minimum stock." : "Use adjust stock, link a supplier, or update minimum stock.")
+                : (lang === "sw" ? "Hakiki bei, margin, na stock kabla ya kuiweka mbele kwa wateja." : "Check price, margin, and stock before featuring it for customers.")}
+            </p>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="flex gap-2 mb-4">
           <div className="relative flex-1">
@@ -321,7 +340,7 @@ export default function InventoryPage() {
                           setAdjustForm({ type: "IN", quantity: "", note: "" });
                         }}
                         aria-label={`${t("inventory.adjustStock", lang)} ${p.name}`}
-                        className="p-2 text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors min-h-0"
+                        className="p-2.5 text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors min-h-0 sm:p-2"
                         title={t("inventory.adjustStock", lang)}
                       >
                         <ArrowUp className="w-4 h-4" />
@@ -329,7 +348,7 @@ export default function InventoryPage() {
                       <button
                         onClick={() => openEdit(p)}
                         aria-label={`${t("inventory.editTitle", lang)} ${p.name}`}
-                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0"
+                        className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0 sm:p-2"
                         title={t("common.edit", lang)}
                       >
                         <Edit2 className="w-4 h-4" />
@@ -338,7 +357,7 @@ export default function InventoryPage() {
                         onClick={() => setDeleteProduct(p)}
                         disabled={saving}
                         aria-label={`${t("inventory.deleteProduct", lang)} ${p.name}`}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 min-h-0"
+                        className="p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 min-h-0 sm:p-2"
                         title={t("inventory.deleteProduct", lang)}
                       >
                         <Trash2 className="w-4 h-4" />

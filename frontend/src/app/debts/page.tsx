@@ -17,12 +17,15 @@ interface Debt {
   note: string | null;
 }
 
+const INPUT = "rounded-xl border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm";
+
 export default function DebtsPage() {
   const lang = useLang();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [summary, setSummary] = useState({ openCount: 0, totalOwed: 0 });
   const [form, setForm] = useState({ customerName: "", customerPhone: "", amount: "", dueDate: "", note: "" });
   const [paymentDrafts, setPaymentDrafts] = useState<Record<string, string>>({});
+  const [assistantPrefill, setAssistantPrefill] = useState(false);
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -40,10 +43,28 @@ export default function DebtsPage() {
     load().catch(console.error);
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const customerName = params.get("customer") || "";
+    const customerPhone = params.get("phone") || "";
+    const amount = params.get("amount") || "";
+    const note = params.get("note") || "";
+    if (!customerName && !customerPhone && !amount && !note) return;
+    setAssistantPrefill(true);
+    setForm((prev) => ({
+      ...prev,
+      customerName: customerName || prev.customerName,
+      customerPhone: customerPhone || prev.customerPhone,
+      amount: amount || prev.amount,
+      note: note || prev.note,
+    }));
+  }, []);
+
   async function addDebt(event: React.FormEvent) {
     event.preventDefault();
     await api.post("/debts", { ...form, amount: Number(form.amount) }, lang);
     setForm({ customerName: "", customerPhone: "", amount: "", dueDate: "", note: "" });
+    setAssistantPrefill(false);
     await load();
   }
 
@@ -65,21 +86,33 @@ export default function DebtsPage() {
             </p>
           </div>
           <div className="rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-900">
-            <strong>{formatTZS(summary.totalOwed)}</strong> {lang === "sw" ? "bado kulipwa" : "still owed"} · {summary.openCount}
+            <strong>{formatTZS(summary.totalOwed)}</strong> {lang === "sw" ? "bado kulipwa" : "still owed"} - {summary.openCount}
           </div>
         </div>
 
-        <form onSubmit={addDebt} className="grid gap-3 rounded-lg border border-gray-200 bg-white p-4 md:grid-cols-5">
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm md:col-span-1" placeholder={lang === "sw" ? "Jina la mteja" : "Customer name"} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm md:col-span-1" required placeholder={lang === "sw" ? "Simu" : "Phone"} value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required type="number" min="1" inputMode="numeric" placeholder={lang === "sw" ? "Kiasi" : "Amount"} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
-          <button className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+        {assistantPrefill && (
+          <div className="rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-900">
+            <p className="font-semibold">
+              {lang === "sw" ? "DukaPilot imejaza deni hili kwa ajili ya ufuatiliaji." : "DukaPilot prefilled this debt follow-up."}
+            </p>
+            <p className="mt-1 text-xs text-brand-700">
+              {lang === "sw" ? "Hakiki taarifa, rekodi malipo, au tuma WhatsApp kwa mteja." : "Review the details, record a payment, or WhatsApp the customer."}
+            </p>
+          </div>
+        )}
+
+        <form onSubmit={addDebt} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-6">
+          <input className={`${INPUT} md:col-span-2`} placeholder={lang === "sw" ? "Jina la mteja" : "Customer name"} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
+          <input className={`${INPUT} md:col-span-2`} required placeholder={lang === "sw" ? "Simu" : "Phone"} value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} />
+          <input className={INPUT} required type="number" min="1" inputMode="numeric" placeholder={lang === "sw" ? "Kiasi" : "Amount"} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+          <input className={INPUT} type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+          <input className={`${INPUT} md:col-span-4`} placeholder={lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+          <button className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 md:col-span-2">
             {lang === "sw" ? "Ongeza" : "Add"}
           </button>
         </form>
 
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           {loading ? (
             <div className="p-6 text-sm text-gray-500">{lang === "sw" ? "Inapakia..." : "Loading..."}</div>
           ) : debts.length === 0 ? (
@@ -90,7 +123,8 @@ export default function DebtsPage() {
               <div key={debt.id} className="grid gap-3 border-b border-gray-100 p-4 last:border-b-0 lg:grid-cols-[1fr_auto_auto] lg:items-center">
                 <div>
                   <p className="font-semibold text-gray-950">{debt.customerName || debt.customerPhone}</p>
-                  <p className="text-sm text-gray-500">{debt.customerPhone} · {debt.status}</p>
+                  <p className="text-sm text-gray-500">{debt.customerPhone} - {debt.status}</p>
+                  {debt.note && <p className="mt-1 text-xs text-gray-500">{debt.note}</p>}
                   {debt.dueDate && (
                     <p className="mt-1 text-xs text-amber-700">
                       {lang === "sw" ? "Mwisho" : "Due"} {new Date(debt.dueDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}
@@ -111,19 +145,19 @@ export default function DebtsPage() {
                       max={balance}
                       inputMode="numeric"
                       placeholder={lang === "sw" ? "Kiasi kilicholipwa" : "Amount paid"}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      className={INPUT}
                     />
-                    <button onClick={() => recordPayment(debt, Number(paymentDrafts[debt.id] || 0))} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+                    <button onClick={() => recordPayment(debt, Number(paymentDrafts[debt.id] || 0))} className="rounded-xl bg-brand-600 px-3 py-3 text-sm font-semibold text-white hover:bg-brand-700">
                       {lang === "sw" ? "Rekodi" : "Record"}
                     </button>
-                    <button onClick={() => recordPayment(debt, balance)} className="rounded-lg border border-brand-600 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50">
+                    <button onClick={() => recordPayment(debt, balance)} className="rounded-xl border border-brand-600 px-3 py-3 text-sm font-semibold text-brand-700 hover:bg-brand-50">
                       {lang === "sw" ? "Lipa yote" : "All paid"}
                     </button>
                     <a
                       href={`https://wa.me/${debt.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(lang === "sw" ? `Habari, kumbusho la deni lako ${formatTZS(balance)}.` : `Hello, reminder for your outstanding balance ${formatTZS(balance)}.`)}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center justify-center gap-1 rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-200 sm:col-span-3"
+                      className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-100 px-3 py-3 text-sm font-semibold text-green-700 hover:bg-green-200 sm:col-span-3"
                     >
                       <MessageCircle className="h-4 w-4" />
                       WhatsApp
