@@ -27,6 +27,24 @@ export default function HelpPage() {
     [lang === "sw" ? "Mauzo" : "Sales", lang === "sw" ? "Rekodi cash, M-Pesa, bank, au credit sale kwa simu." : "Record cash, M-Pesa, bank, or credit sales from the phone."],
     [lang === "sw" ? "Hatua za AI" : "AI actions", lang === "sw" ? "Fungua Assistant kuona cha kufanya leo." : "Open Assistant to see what to do today."],
   ];
+  const aiThinking = [
+    [
+      lang === "sw" ? "1. Inasoma data" : "1. Reads shop data",
+      lang === "sw" ? "Mauzo, stock, madeni, matumizi, order na staff activity." : "Sales, stock, debts, expenses, orders, and staff activity.",
+    ],
+    [
+      lang === "sw" ? "2. Inatafuta hatari" : "2. Finds risk",
+      lang === "sw" ? "Bidhaa kuisha, deni kukaa muda mrefu, matumizi kupanda, au siku bila mauzo." : "Low stock, old debts, rising expenses, or quiet sales days.",
+    ],
+    [
+      lang === "sw" ? "3. Inapanga kipaumbele" : "3. Ranks priority",
+      lang === "sw" ? "Kinachoweza kuathiri cash, faida au uaminifu wa mteja huja kwanza." : "Anything affecting cash, profit, or customer trust comes first.",
+    ],
+    [
+      lang === "sw" ? "4. Inapendekeza hatua" : "4. Suggests action",
+      lang === "sw" ? "Fuatilia deni, agiza bidhaa, punguza gharama au shughulikia order." : "Collect debt, restock, reduce costs, or handle pending orders.",
+    ],
+  ];
 
   return (
     <PublicPageShell>
@@ -87,6 +105,37 @@ export default function HelpPage() {
                 <p className="mt-2 text-xs leading-5 text-gray-600">{body}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">
+          <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="bg-brand-900 p-6 text-white sm:p-8">
+              <Sparkles className="h-6 w-6 text-brand-100" />
+              <h2 className="mt-4 text-2xl font-black tracking-tight">
+                <TextReveal
+                  text={lang === "sw" ? "Jinsi DukaPilot AI inavyofikiri" : "How DukaPilot AI thinks"}
+                  fontSize="inherit"
+                  hoverColor="#bbf7d0"
+                />
+              </h2>
+              <p className="mt-4 text-sm leading-6 text-brand-100">
+                {lang === "sw"
+                  ? "Lengo si kukuonyesha ripoti tu. Lengo ni kukuambia hatua inayofuata ili duka lisikwame."
+                  : "The goal is not just to show reports. The goal is to tell you the next action before the shop gets stuck."}
+              </p>
+              <Link href="/assistant" className="mt-6 inline-flex rounded-xl bg-white px-5 py-3 text-sm font-bold text-brand-800 hover:bg-brand-50">
+                {lang === "sw" ? "Fungua AI Assistant" : "Open AI Assistant"}
+              </Link>
+            </div>
+            <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">
+              {aiThinking.map(([title, body]) => (
+                <div key={title} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  <h3 className="text-sm font-bold text-gray-950">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-gray-600">{body}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
