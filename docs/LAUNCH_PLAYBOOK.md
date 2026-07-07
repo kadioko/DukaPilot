@@ -189,7 +189,7 @@ Week 4: Conversion
 
 - Call every trial shop before day 10.
 - Convert the most active shops to Basic.
-- Offer Pro only when staff, SMS, or multi-branch need is clear.
+- Offer Pro only when staff permissions, deeper reports/export, priority WhatsApp support, or daily AI workflows are clearly valuable.
 - Publish first testimonial or case story.
 
 ## Metrics
@@ -229,4 +229,3 @@ Highest impact for acquisition:
 3. WhatsApp lead CTA that pre-fills shop type and location.
 4. Admin export or simple CRM notes for trial follow-up.
 5. Public case-study/testimonial section once real merchants are onboarded.
-
