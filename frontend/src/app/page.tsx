@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import clsx from "clsx";
 
@@ -321,7 +322,9 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           <div className="hidden items-center gap-3 lg:flex">
             <LogoMark className="h-12 w-12 rounded-2xl bg-white shadow-lg" />
             <div>
-              <p className="text-2xl font-bold tracking-tight">DukaPilot</p>
+              <p className="text-2xl font-bold tracking-tight">
+                <TextReveal text="DukaPilot" hoverColor="#dcfce7" staggerDelay={18} />
+              </p>
               <p className="text-sm font-medium text-brand-100">Merchant OS - Tanzania</p>
             </div>
           </div>
