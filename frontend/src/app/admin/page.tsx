@@ -331,10 +331,10 @@ export default function AdminPage() {
       api.get<{ suppliers: Supplier[] }>("/suppliers"),
       api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"),
       api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"),
-      api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"),
+      api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics").catch(() => null),
     ])
       .then(([ov, u, al, rp, sub, supplierData, syncData, syncEventsData, assistantAnalytics]) => {
-        setOverview({ ...ov, assistantAnalytics });
+        setOverview(assistantAnalytics ? { ...ov, assistantAnalytics } : ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
         setReports(rp.reports);

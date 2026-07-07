@@ -1,3 +1,4 @@
+const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
