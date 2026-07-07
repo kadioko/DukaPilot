@@ -219,6 +219,20 @@ export default function PricingPage() {
           <p className="text-gray-500 text-sm">{copy.subtitle[lang]}</p>
         </div>
 
+        <section className="mb-8 grid gap-3 rounded-2xl border border-green-200 bg-white p-4 shadow-sm md:grid-cols-3">
+          {[
+            ["M-Pesa Lipa", "52806296", "Necuva Group Limited"],
+            ["Mix by Yas", "18214626", "Necuva"],
+            [lang === "sw" ? "Tuma pesa / WhatsApp" : "Send money / WhatsApp", "0743910580", lang === "sw" ? "Tuma reference kwa admin" : "Send reference to admin"],
+          ].map(([label, value, note], index) => (
+            <div key={label} className="rounded-xl border border-green-100 bg-green-50 p-3 text-left">
+              <p className="text-xs font-bold uppercase tracking-wide text-green-700">{index + 1}. {label}</p>
+              <p className="mt-1 text-2xl font-black text-gray-950">{value}</p>
+              <p className="mt-1 text-xs leading-5 text-gray-600">{note}</p>
+            </div>
+          ))}
+        </section>
+
         <div className="mb-12">
           <ProductProofSection />
         </div>

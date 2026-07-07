@@ -5,7 +5,7 @@ import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { ArrowRight, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCopy, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 
 interface DashboardData {
   summary: { totalSales: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
@@ -42,6 +42,7 @@ export default function AssistantPage() {
   const [allTime, setAllTime] = useState<DashboardData | null>(null);
   const [debts, setDebts] = useState<DebtSummary | null>(null);
   const [expenses, setExpenses] = useState<ExpenseSummary | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -54,21 +55,54 @@ export default function AssistantPage() {
 
   const recommendations = buildRecommendations({ dashboard, allTime, debts, expenses, lang });
   const ownerSummary = buildOwnerSummary(recommendations, lang);
+  const urgentCount = recommendations.filter((item) => item.rank >= 80).length;
+  const actionCount = recommendations.length;
+
+  async function copyOwnerSummary() {
+    const message = lang === "sw"
+      ? `DukaPilot leo: ${ownerSummary}`
+      : `DukaPilot today: ${ownerSummary}`;
+    await navigator.clipboard?.writeText(message);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2200);
+  }
 
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex items-start gap-4">
-          <div className="rounded-lg bg-brand-600 p-3 text-white">
-            <Sparkles className="h-6 w-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "DukaPilot AI Assistant" : "DukaPilot AI Assistant"}</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
-              {lang === "sw"
-                ? "Mwelekeo wa DukaPilot ni kuwa msaidizi wa AI anayesoma mauzo, bidhaa, madeni na matumizi ili kukupa hatua za kufanya."
-                : "DukaPilot is positioned as an AI assistant that reads sales, inventory, debts, and expenses and turns them into practical next steps."}
-            </p>
+        <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-xl bg-brand-600 p-3 text-white shadow-sm">
+                <Sparkles className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-950">DukaPilot AI Assistant</h1>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
+                  {lang === "sw"
+                    ? "Kila siku inachambua mauzo, bidhaa, madeni na matumizi kisha inapanga hatua za kufanya kwanza."
+                    : "Every day it reads sales, inventory, debts, and expenses, then ranks what to do first."}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 md:min-w-80">
+              <div className="rounded-xl bg-white p-3 shadow-sm">
+                <p className="text-xs text-gray-500">{lang === "sw" ? "Haraka" : "Urgent"}</p>
+                <p className="text-xl font-black text-red-700">{urgentCount}</p>
+              </div>
+              <div className="rounded-xl bg-white p-3 shadow-sm">
+                <p className="text-xs text-gray-500">{lang === "sw" ? "Hatua" : "Actions"}</p>
+                <p className="text-xl font-black text-brand-700">{actionCount}</p>
+              </div>
+              <button
+                type="button"
+                onClick={copyOwnerSummary}
+                className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-gray-950 px-3 py-3 text-xs font-bold text-white sm:col-span-1"
+              >
+                {copied ? <CheckCircle2 className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
+                {copied ? (lang === "sw" ? "Imecopy" : "Copied") : "WhatsApp"}
+              </button>
+            </div>
           </div>
         </div>
 

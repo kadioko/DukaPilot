@@ -16,9 +16,13 @@ import {
   X,
   Clock,
   CheckCircle,
-  XCircle,
   MessageCircle,
   Trash2,
+  ArrowRight,
+  BadgeCheck,
+  BellRing,
+  CreditCard,
+  RefreshCw,
 } from "lucide-react";
 
 interface AdminOverview {
@@ -166,6 +170,49 @@ function MiniMetric({ label, value, tone }: AdminMetric) {
       <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
       <p className="mt-1 text-xl font-bold">{value.toLocaleString()}</p>
     </div>
+  );
+}
+
+function ActionCard({
+  icon,
+  title,
+  detail,
+  value,
+  tone,
+  action,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  value: number;
+  tone: string;
+  action: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${tone}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/80">
+            {icon}
+          </div>
+          <div>
+            <p className="text-sm font-bold">{title}</p>
+            <p className="mt-1 text-xs leading-5 opacity-80">{detail}</p>
+          </div>
+        </div>
+        <span className="text-2xl font-black">{value}</span>
+      </div>
+      <div className="mt-3 inline-flex items-center gap-1 text-xs font-bold">
+        {action}
+        <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+      </div>
+    </button>
   );
 }
 
@@ -645,6 +692,73 @@ export default function AdminPage() {
               </div>
             </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Shops Needing Action Today</h2>
+                  <p className="text-xs text-gray-500">A quick support command center for launch operations.</p>
+                </div>
+                <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
+                  {billingIssues + unpaidShops + suspendedShops + stalledTrials + failedSyncShops + suppliersNeedingReview + suspiciousErrors} signals
+                </span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <ActionCard
+                  icon={<CreditCard className="h-5 w-5 text-purple-700" />}
+                  title="Payment follow-up"
+                  detail="Billing requests, unpaid shops, and suspended accounts that need confirmation or renewal."
+                  value={billingIssues + unpaidShops + suspendedShops}
+                  tone="border-purple-200 bg-purple-50 text-purple-900"
+                  action="Open subscriptions"
+                  onClick={() => setTab("subscriptions")}
+                />
+                <ActionCard
+                  icon={<BellRing className="h-5 w-5 text-orange-700" />}
+                  title="Trial activation"
+                  detail="Trials ending soon or shops that still need product/sale setup help."
+                  value={expiringTrials + stalledTrials}
+                  tone="border-orange-200 bg-orange-50 text-orange-900"
+                  action="Contact shops"
+                  onClick={() => setTab("subscriptions")}
+                />
+                <ActionCard
+                  icon={<BadgeCheck className="h-5 w-5 text-green-700" />}
+                  title="Supplier verification"
+                  detail="Suppliers waiting for admin review before they become trusted in the ecosystem."
+                  value={suppliersNeedingReview}
+                  tone="border-green-200 bg-green-50 text-green-900"
+                  action="Verify suppliers"
+                  onClick={() => setTab("suppliers")}
+                />
+                <ActionCard
+                  icon={<RefreshCw className="h-5 w-5 text-red-700" />}
+                  title="Offline sync watch"
+                  detail="Shops with failed browser sync events that may need support before data feels stale."
+                  value={failedSyncShops}
+                  tone="border-red-200 bg-red-50 text-red-900"
+                  action="Review sync issues"
+                  onClick={() => setTab("overview")}
+                />
+                <ActionCard
+                  icon={<AlertTriangle className="h-5 w-5 text-amber-700" />}
+                  title="Suspicious errors"
+                  detail="Recent failed login or error-looking audit events from the admin audit sample."
+                  value={suspiciousErrors}
+                  tone="border-amber-200 bg-amber-50 text-amber-900"
+                  action="Open audit logs"
+                  onClick={() => setTab("audit")}
+                />
+                <ActionCard
+                  icon={<ClipboardList className="h-5 w-5 text-blue-700" />}
+                  title="Open support reports"
+                  detail="Merchant messages, billing reports, and issues that still need an admin decision."
+                  value={openReports.length}
+                  tone="border-blue-200 bg-blue-50 text-blue-900"
+                  action="Open reports"
+                  onClick={() => setTab("reports")}
+                />
+              </div>
+            </section>
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">Launch Analytics</h2>
@@ -696,7 +810,7 @@ export default function AdminPage() {
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                               <p className="text-sm font-semibold text-gray-900">{shop.name}</p>
-                              <p className="text-xs text-gray-500">{shop.user?.name || "Owner"} · {shop.user?.phone || "No phone"}</p>
+                              <p className="text-xs text-gray-500">{shop.user?.name || "Owner"} - {shop.user?.phone || "No phone"}</p>
                               <p className="mt-1 text-xs font-semibold text-amber-700">{supportReason(shop)}</p>
                             </div>
                             <div className="flex flex-wrap gap-1.5">
@@ -742,11 +856,11 @@ export default function AdminPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-gray-950">{item.shop.name}</p>
-                          <p className="text-xs text-gray-500">{item.shop.user?.name || "Owner"} · {item.shop.user?.phone || "No phone"}</p>
+                          <p className="text-xs text-gray-500">{item.shop.user?.name || "Owner"} - {item.shop.user?.phone || "No phone"}</p>
                         </div>
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{item.failed} failed</span>
                       </div>
-                      <p className="mt-2 text-xs text-gray-500">Queued {item.queued} · Synced {item.synced} · Last {item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : "-"}</p>
+                      <p className="mt-2 text-xs text-gray-500">Queued {item.queued} - Synced {item.synced} - Last {item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : "-"}</p>
                     </div>
                   ))}
                 </div>
@@ -770,7 +884,7 @@ export default function AdminPage() {
                         <p className="font-mono text-xs font-semibold text-gray-900">{log.action}</p>
                         <p className="font-mono text-[11px] text-gray-500">{log.method} {log.path}</p>
                         <p className="text-xs text-gray-500">
-                          {log.user ? `${log.user.name} (${log.user.phone})` : "Unknown user"} · {new Date(log.createdAt).toLocaleString()}
+                          {log.user ? `${log.user.name} (${log.user.phone})` : "Unknown user"} - {new Date(log.createdAt).toLocaleString()}
                         </p>
                       </div>
                     </div>
@@ -814,7 +928,7 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">
-                        {u.shop?.name || u.supplier?.name || "—"}
+                        {u.shop?.name || u.supplier?.name || "-"}
                       </td>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">
                         {new Date(u.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
@@ -941,7 +1055,7 @@ export default function AdminPage() {
                         <span className="font-mono text-xs text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{log.action}</span>
                       </td>
                       <td className="px-4 py-2.5 text-xs text-gray-600">
-                        {log.user ? `${log.user.name} (${log.user.phone})` : "—"}
+                        {log.user ? `${log.user.name} (${log.user.phone})` : "-"}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">
                         {log.method} {log.path}
@@ -1007,8 +1121,8 @@ export default function AdminPage() {
                         <p className="text-xs text-gray-600 mt-1">{report.description}</p>
                         {report.user && (
                           <p className="text-xs text-gray-500 mt-1">
-                            From: {report.user.name} ({report.user.phone}) — {report.user.role}
-                            {report.user.shop?.name ? ` · ${report.user.shop.name}` : ""}
+                            From: {report.user.name} ({report.user.phone}) - {report.user.role}
+                            {report.user.shop?.name ? ` - ${report.user.shop.name}` : ""}
                           </p>
                         )}
                         <p className="text-xs text-gray-400 mt-1">{new Date(report.createdAt).toLocaleString()}</p>
@@ -1105,7 +1219,7 @@ export default function AdminPage() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <p className="text-sm font-semibold text-gray-950">{shop.name}</p>
-                          <p className="text-xs text-gray-500">{shop.user?.name || "Owner"} · {shop.user?.phone || "No phone"}</p>
+                          <p className="text-xs text-gray-500">{shop.user?.name || "Owner"} - {shop.user?.phone || "No phone"}</p>
                         </div>
                         <div className="flex flex-wrap gap-1">
                           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1218,10 +1332,14 @@ export default function AdminPage() {
               </div>
             </section>
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50 px-4 py-2">
+                <p className="text-xs font-semibold text-gray-700">Subscription detail table</p>
+                <p className="text-xs text-gray-500">Scroll right to see validity, notes, payment and actions</p>
+              </div>
               <div className="max-w-full overflow-x-auto">
               <table className="min-w-[1280px] w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
+                  <tr className="border-b border-gray-100 bg-white">
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Shop</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Owner</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Plan</th>
@@ -1434,10 +1552,10 @@ export default function AdminPage() {
                           {supplier.verificationStatus || "UNVERIFIED"}
                         </span>
                       </div>
-                      <p className="mt-1 text-sm text-gray-500">{supplier.phone} {supplier.address ? `· ${supplier.address}` : ""}</p>
+                      <p className="mt-1 text-sm text-gray-500">{supplier.phone} {supplier.address ? `- ${supplier.address}` : ""}</p>
                       <p className="mt-1 text-xs text-gray-400">
-                        Products {supplier._count?.products || 0} · Orders {supplier._count?.orders || 0}
-                        {supplier.verifiedAt ? ` · Verified ${new Date(supplier.verifiedAt).toLocaleDateString()}` : ""}
+                        Products {supplier._count?.products || 0} - Orders {supplier._count?.orders || 0}
+                        {supplier.verifiedAt ? ` - Verified ${new Date(supplier.verifiedAt).toLocaleDateString()}` : ""}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">

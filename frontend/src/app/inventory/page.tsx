@@ -68,6 +68,7 @@ export default function InventoryPage() {
   const [showForm, setShowForm] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [form, setForm] = useState({
     name: "", sku: "", unit: "pcs", buyingPrice: "", sellingPrice: "",
     wholesalePrice: "", wholesaleMinQty: "",
@@ -168,18 +169,13 @@ export default function InventoryPage() {
     }
   }
 
-  async function handleDeleteProduct(product: Product) {
-    const confirmed = window.confirm(
-      lang === "sw"
-        ? `Futa/fiche bidhaa "${product.name}"?\n\nHaitaonekana tena kwenye inventory au mauzo mapya. Historia ya mauzo ya zamani itabaki salama.`
-        : `Delete/hide "${product.name}"?\n\nIt will no longer appear in inventory or new sales. Existing sales history will stay safe.`
-    );
-    if (!confirmed) return;
-
+  async function handleDeleteProduct() {
+    if (!deleteProduct) return;
     setSaving(true);
     try {
-      await api.delete(`/products/${product.id}`, lang);
-      setProducts((prev) => prev.filter((p) => p.id !== product.id));
+      await api.delete(`/products/${deleteProduct.id}`, lang);
+      setProducts((prev) => prev.filter((p) => p.id !== deleteProduct.id));
+      setDeleteProduct(null);
       toast(t("inventory.deleted", lang), "success");
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : t("common.error", lang), "error");
@@ -339,7 +335,7 @@ export default function InventoryPage() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteProduct(p)}
+                        onClick={() => setDeleteProduct(p)}
                         disabled={saving}
                         aria-label={`${t("inventory.deleteProduct", lang)} ${p.name}`}
                         className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 min-h-0"
@@ -456,6 +452,46 @@ export default function InventoryPage() {
               </button>
               <button aria-label={t("common.save", lang)} onClick={handleSave} disabled={saving} className="flex-1 bg-brand-600 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
                 {saving ? t("inventory.saving", lang) : t("common.save", lang)}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Delete Product Confirmation */}
+      {deleteProduct && (
+        <Modal title={t("inventory.deleteProduct", lang)} onClose={() => setDeleteProduct(null)}>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+              <div className="flex gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white text-red-600">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-red-950">
+                    {lang === "sw" ? `Futa/fiche ${deleteProduct.name}?` : `Delete/hide ${deleteProduct.name}?`}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-red-800">
+                    {lang === "sw"
+                      ? "Haitaonekana tena kwenye inventory au mauzo mapya. Historia ya mauzo ya zamani itabaki salama."
+                      : "It will no longer appear in inventory or new sales. Existing sales history will stay safe."}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteProduct(null)}
+                className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-600"
+              >
+                {t("common.cancel", lang)}
+              </button>
+              <button
+                onClick={handleDeleteProduct}
+                disabled={saving}
+                className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {saving ? t("inventory.saving", lang) : t("inventory.deleteProduct", lang)}
               </button>
             </div>
           </div>
