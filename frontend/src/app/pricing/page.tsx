@@ -5,6 +5,7 @@ import { Check, Star, Zap, Shield, Phone } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 
 type LocalizedText = Record<Lang, string>;
@@ -215,7 +216,12 @@ export default function PricingPage() {
             <Zap className="w-3 h-3" />
             {copy.freeBadge[lang]}
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">{copy.title[lang]}</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            <TextReveal text={lang === "sw" ? "Bei Rahisi" : "Simple Pricing"} fontSize="inherit" hoverColor="#15803d" />
+            <span className="block sm:inline">
+              {lang === "sw" ? " kwa Biashara ya Tanzania" : " for Tanzanian Businesses"}
+            </span>
+          </h1>
           <p className="text-gray-500 text-sm">{copy.subtitle[lang]}</p>
         </div>
 
@@ -397,7 +403,9 @@ export default function PricingPage() {
         </div>
 
         <div className="bg-brand-600 rounded-2xl p-8 text-center text-white">
-          <h2 className="text-xl font-bold mb-2">{copy.ctaTitle[lang]}</h2>
+          <h2 className="text-xl font-bold mb-2">
+            <TextReveal text={copy.ctaTitle[lang]} fontSize="inherit" hoverColor="#dcfce7" />
+          </h2>
           <p className="text-brand-200 text-sm mb-6">{copy.ctaSubtitle[lang]}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link

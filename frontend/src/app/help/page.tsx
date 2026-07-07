@@ -5,6 +5,8 @@ import { BookOpen, CheckCircle2, MessageCircle, Search, Sparkles } from "lucide-
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import { TextReveal } from "@/components/ui/cascade-text";
+import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
 
 export default function HelpPage() {
@@ -29,6 +31,19 @@ export default function HelpPage() {
   return (
     <PublicPageShell>
       <div className="space-y-8">
+        <TheInfiniteGrid
+          lang={lang}
+          headline={lang === "sw" ? "Pata msaada wa kuendesha duka vizuri" : "Get help running your shop better"}
+          body={lang === "sw"
+            ? "Majibu ya haraka kwa setup, catalog, staff, offline sales, malipo na AI assistant. Ukikwama, WhatsApp support ipo karibu."
+            : "Quick answers for setup, catalog links, staff, offline sales, payments, and the AI assistant. If you get stuck, WhatsApp support is close."}
+          primaryCta={{ href: "/contact", label: lang === "sw" ? "Ongea na support" : "Talk to support" }}
+          secondaryCta={{
+            href: "https://wa.me/255743910580?text=Nahitaji%20msaada%20wa%20DukaPilot",
+            label: "WhatsApp support",
+          }}
+          features={walkthrough.map(([title, body]) => ({ title, description: body }))}
+        />
         <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
             <div>
@@ -36,7 +51,7 @@ export default function HelpPage() {
                 <BookOpen className="h-6 w-6" />
               </div>
               <h1 className="mt-5 max-w-2xl text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
-                {lang === "sw" ? "Msaada wa kuendesha duka lako vizuri." : "Help for running your shop better."}
+                <TextReveal text={lang === "sw" ? "Msaada" : "Help"} hoverColor="#15803d" />
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
                 {lang === "sw" ? "Majibu ya haraka kwa setup, catalog, staff, offline sales, malipo na AI assistant." : "Quick answers for setup, catalog links, staff, offline sales, payments, and the AI assistant."}

@@ -5,6 +5,8 @@ import { ArrowRight } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import { TextReveal } from "@/components/ui/cascade-text";
+import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
 
 const accounts = [
@@ -19,13 +21,28 @@ export default function DemoPage() {
   return (
     <PublicPageShell>
       <div className="space-y-8">
+        <TheInfiniteGrid
+          lang={lang}
+          headline={lang === "sw" ? "Jaribu demo kabla ya kuanza" : "Try the demo before you start"}
+          body={lang === "sw"
+            ? "Tumia akaunti za demo kuona mauzo, stock, maagizo, madeni, matumizi, staff, billing na AI Assistant. PIN zote ni 1234."
+            : "Use demo accounts to see sales, stock, orders, debts, expenses, staff, billing, and the AI Assistant. All PINs are 1234."}
+          primaryCta={{ href: "/", label: lang === "sw" ? "Fungua login" : "Open login" }}
+          secondaryCta={{
+            href: "https://wa.me/255743910580?text=Nataka%20setup%20baada%20ya%20demo%20ya%20DukaPilot",
+            label: lang === "sw" ? "Nataka setup" : "I want setup",
+          }}
+          features={[
+            { title: "Merchant", description: lang === "sw" ? "Angalia duka kamili, dashboard, bidhaa na mauzo." : "Explore the full shop, dashboard, products, and sales." },
+            { title: "Cashier", description: lang === "sw" ? "Jaribu role ya kuuza bila kubadilisha stock/settings." : "Try a sales role without stock/settings access." },
+            { title: "Supplier", description: lang === "sw" ? "Ona upande wa supplier na bidhaa za jumla." : "See the supplier side and wholesale products." },
+            { title: "AI Assistant", description: lang === "sw" ? "Fungua mapendekezo ya hatua za leo." : "Open the recommended actions for today." },
+          ]}
+        />
         <div>
-          <h1 className="text-3xl font-bold text-gray-950">{lang === "sw" ? "Jaribu Demo ya DukaPilot" : "Try the DukaPilot Demo"}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">
-            {lang === "sw"
-              ? "Tumia akaunti hizi kuona mauzo, stock, maagizo, madeni, matumizi, staff, billing na AI Assistant. PIN zote ni 1234."
-              : "Use these accounts to see sales, stock, orders, debts, expenses, staff, billing, and the AI Assistant. All PINs are 1234."}
-          </p>
+          <h1 className="text-3xl font-bold text-gray-950">
+            <TextReveal text={lang === "sw" ? "Demo ya DukaPilot" : "DukaPilot Demo"} hoverColor="#15803d" />
+          </h1>
         </div>
         <section className="rounded-xl border border-brand-200 bg-brand-50 p-5">
           <h2 className="font-semibold text-brand-950">{lang === "sw" ? "Demo flows za kujaribu" : "Demo flows to try"}</h2>

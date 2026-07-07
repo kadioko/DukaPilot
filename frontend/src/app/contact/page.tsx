@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Clock, Mail, MessageCircle, Phone, ShieldCheck } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import { TextReveal } from "@/components/ui/cascade-text";
+import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
 
 export default function ContactPage() {
@@ -40,10 +42,31 @@ export default function ContactPage() {
   return (
     <PublicPageShell>
       <div className="space-y-8">
+        <TheInfiniteGrid
+          lang={lang}
+          headline={lang === "sw" ? "Support ya DukaPilot ipo karibu" : "DukaPilot support is close"}
+          body={lang === "sw"
+            ? "Tuma swali, screenshot, payment reference au ombi la setup. Tutakusaidia bidhaa, mauzo, staff, catalog, billing na AI assistant."
+            : "Send a question, screenshot, payment reference, or setup request. We help with products, sales, staff, catalog, billing, and the AI assistant."}
+          primaryCta={{
+            href: whatsappSetupHref,
+            label: lang === "sw" ? "Tuma WhatsApp" : "Send WhatsApp",
+          }}
+          secondaryCta={{
+            href: "mailto:support@dukapilot.com",
+            label: "Email support",
+          }}
+          features={channels.map(({ title, value, detail }) => ({
+            title,
+            description: `${value} - ${detail}`,
+          }))}
+        />
         <section className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
           <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="p-6 sm:p-8 lg:p-10">
-              <p className="text-sm font-semibold text-brand-700">DukaPilot support</p>
+              <p className="text-sm font-semibold text-brand-700">
+                <TextReveal text="DukaPilot support" fontSize="inherit" hoverColor="#15803d" />
+              </p>
               <h1 className="mt-3 max-w-2xl text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
                 {lang === "sw" ? "Wasiliana na watu wanaoelewa duka lako." : "Talk to people who understand your shop."}
               </h1>

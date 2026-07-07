@@ -2,6 +2,7 @@
 
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import { TextReveal } from "@/components/ui/cascade-text";
 import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
 
@@ -36,7 +37,9 @@ export default function AboutPage() {
         </div>
 
         <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-700">DukaPilot</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-700">
+            <TextReveal text="DukaPilot" fontSize="inherit" hoverColor="#15803d" />
+          </p>
           <h2 className="mt-3 text-2xl font-bold tracking-normal text-gray-950">
             {lang === "sw" ? "Rubani wa duka lako la kila siku" : "The daily pilot for your shop"}
           </h2>

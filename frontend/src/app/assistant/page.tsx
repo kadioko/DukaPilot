@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
+import { TextReveal } from "@/components/ui/cascade-text";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { ArrowRight, CheckCircle2, ClipboardCopy, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
@@ -77,7 +78,9 @@ export default function AssistantPage() {
                 <Sparkles className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-950">DukaPilot AI Assistant</h1>
+                <h1 className="text-xl font-bold text-gray-950">
+                  <TextReveal text="DukaPilot AI Assistant" fontSize="inherit" hoverColor="#15803d" />
+                </h1>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
                   {lang === "sw"
                     ? "Kila siku inachambua mauzo, bidhaa, madeni na matumizi kisha inapanga hatua za kufanya kwanza."
