@@ -13,6 +13,7 @@ import {
   ArrowUp,
   ArrowDown,
   CalendarClock,
+  Trash2,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
@@ -167,6 +168,26 @@ export default function InventoryPage() {
     }
   }
 
+  async function handleDeleteProduct(product: Product) {
+    const confirmed = window.confirm(
+      lang === "sw"
+        ? `Futa/fiche bidhaa "${product.name}"?\n\nHaitaonekana tena kwenye inventory au mauzo mapya. Historia ya mauzo ya zamani itabaki salama.`
+        : `Delete/hide "${product.name}"?\n\nIt will no longer appear in inventory or new sales. Existing sales history will stay safe.`
+    );
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      await api.delete(`/products/${product.id}`, lang);
+      setProducts((prev) => prev.filter((p) => p.id !== product.id));
+      toast(t("inventory.deleted", lang), "success");
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : t("common.error", lang), "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const margin = (p: Product) =>
     p.sellingPrice > 0 ? (((p.sellingPrice - p.buyingPrice) / p.sellingPrice) * 100).toFixed(0) : "0";
 
@@ -313,8 +334,18 @@ export default function InventoryPage() {
                         onClick={() => openEdit(p)}
                         aria-label={`${t("inventory.editTitle", lang)} ${p.name}`}
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0"
+                        title={t("common.edit", lang)}
                       >
                         <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProduct(p)}
+                        disabled={saving}
+                        aria-label={`${t("inventory.deleteProduct", lang)} ${p.name}`}
+                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 min-h-0"
+                        title={t("inventory.deleteProduct", lang)}
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>

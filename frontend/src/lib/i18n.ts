@@ -99,6 +99,8 @@ const translations: Record<string, Record<Lang, string>> = {
   "inventory.expiryDateLabel": { sw: "Tarehe ya Kuisha Muda", en: "Expiry Date" },
   "inventory.noExpiry": { sw: "Haiishi muda", en: "Does not expire" },
   "inventory.expired": { sw: "Imekwisha muda", en: "Expired" },
+  "inventory.deleteProduct": { sw: "Futa bidhaa", en: "Delete product" },
+  "inventory.deleted": { sw: "Bidhaa imefichwa kwenye inventory.", en: "Product hidden from inventory." },
 
   "sales.title": { sw: "Rekodi ya Mauzo", en: "Record Sale" },
   "sales.history": { sw: "Historia ya Mauzo", en: "Sales History" },
@@ -208,7 +210,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "billing.subscriptionRequired": { sw: "Jaribio au usajili umeisha. Wasiliana WhatsApp +255743910580 ili kuendelea kutumia DukaPilot.", en: "Your trial or subscription has expired. Contact WhatsApp +255743910580 to continue using DukaPilot." },
 
   "common.save": { sw: "Hifadhi", en: "Save" },
-  "common.cancel": { sw: "Futa", en: "Cancel" },
+  "common.cancel": { sw: "Ghairi", en: "Cancel" },
   "common.edit": { sw: "Hariri", en: "Edit" },
   "common.delete": { sw: "Futa", en: "Delete" },
   "common.loading": { sw: "Inapakia...", en: "Loading..." },
