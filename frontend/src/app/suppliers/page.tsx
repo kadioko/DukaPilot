@@ -13,7 +13,7 @@ interface Supplier {
   verificationStatus?: "UNVERIFIED" | "NEEDS_REVIEW" | "VERIFIED" | "REJECTED";
   verifiedAt?: string | null;
   adminNotes?: string | null;
-  _count?: { products: number; orders: number };
+  _count?: { products: number; orders: number; catalogProducts?: number };
 }
 
 interface CurrentUser {
@@ -146,6 +146,10 @@ export default function SuppliersPage() {
                         <div className="flex items-center gap-1 text-xs text-gray-400">
                           <Truck className="w-3 h-3" />
                           <span>{s._count.orders} {t("suppliers.ordersCount", lang)}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <Package className="w-3 h-3" />
+                          <span>{s._count.catalogProducts || 0} catalog</span>
                         </div>
                       </div>
                     )}

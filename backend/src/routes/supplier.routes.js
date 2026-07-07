@@ -10,6 +10,10 @@ router.use(authenticate);
 router.get("/portal/orders", requireRole("SUPPLIER", "ADMIN"), supplierOrdersValidation, ctrl.myOrders);
 router.get("/portal/dashboard", requireRole("SUPPLIER", "ADMIN"), ctrl.supplierDashboard);
 router.patch("/portal/orders/:orderId/status", requireRole("SUPPLIER", "ADMIN"), supplierOrderStatusValidation, ctrl.updateOrderStatus);
+router.get("/portal/products", requireRole("SUPPLIER", "ADMIN"), ctrl.listPortalProducts);
+router.post("/portal/products", requireRole("SUPPLIER", "ADMIN"), ctrl.createPortalProduct);
+router.patch("/portal/products/:productId", requireRole("SUPPLIER", "ADMIN"), ctrl.updatePortalProduct);
+router.delete("/portal/products/:productId", requireRole("SUPPLIER", "ADMIN"), ctrl.removePortalProduct);
 
 // Merchant-facing supplier directory (read-only is fine for any role)
 router.get("/", ctrl.list);
