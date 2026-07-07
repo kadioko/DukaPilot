@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { api } from "@/lib/api";
-import { AlertTriangle, Send, CheckCircle, Clock, XCircle } from "lucide-react";
+import { api, downloadFile } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
+import { AlertTriangle, Send, CheckCircle, Clock, XCircle, Download } from "lucide-react";
 
 const reportTypes = [
   { value: "BUG", label: "Bug/Error", labelSw: "Hitilafu/Doa" },
@@ -39,9 +40,11 @@ interface Report {
 }
 
 export default function ReportsPage() {
+  const lang = useLang();
   const [tab, setTab] = useState<"new" | "my">("new");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
   const [myReports, setMyReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -87,6 +90,16 @@ export default function ReportsPage() {
     }
   }
 
+  async function handleExport(path: string, filename: string) {
+    setExportMessage("");
+    try {
+      await downloadFile(path, filename, lang);
+      setExportMessage(lang === "sw" ? "Export imeanza kupakuliwa." : "Export download started.");
+    } catch (err) {
+      setExportMessage(err instanceof Error ? err.message : "Export failed");
+    }
+  }
+
   if (tab === "my" && myReports.length === 0 && !loading) {
     loadMyReports();
   }
@@ -98,6 +111,36 @@ export default function ReportsPage() {
           <AlertTriangle className="w-5 h-5 text-brand-600" />
           <h1 className="text-xl font-bold text-gray-900">Report an Issue</h1>
         </div>
+
+        <section className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-950">{lang === "sw" ? "Data exports" : "Data exports"}</h2>
+              <p className="mt-1 text-xs leading-5 text-gray-500">
+                {lang === "sw"
+                  ? "Pakua mauzo au inventory kama CSV kwa records, hesabu au accountant."
+                  : "Download sales or inventory as CSV for records, reconciliation, or your accountant."}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleExport("/exports/sales.csv", "dukapilot-sales.csv")}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white hover:bg-brand-700"
+              >
+                <Download className="h-4 w-4" /> {lang === "sw" ? "Sales CSV" : "Sales CSV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport("/exports/inventory.csv", "dukapilot-inventory.csv")}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:border-brand-300 hover:text-brand-700"
+              >
+                <Download className="h-4 w-4" /> {lang === "sw" ? "Inventory CSV" : "Inventory CSV"}
+              </button>
+            </div>
+          </div>
+          {exportMessage && <p className="mt-3 text-xs font-medium text-gray-600">{exportMessage}</p>}
+        </section>
 
         {/* Tab navigation */}
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6 w-fit">

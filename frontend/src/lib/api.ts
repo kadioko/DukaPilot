@@ -159,6 +159,28 @@ export const api = {
   delete: <T>(path: string, lang?: Lang) => request<T>(path, { method: "DELETE" }, lang),
 };
 
+export async function downloadFile(path: string, filename: string, lang: Lang = "en") {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${getBaseUrl()}${path}`, { headers, credentials: "include" });
+  if (!res.ok) {
+    const payload = await res.text();
+    throw new Error(getFriendlyErrorMessage(payload || `Request failed with status ${res.status}`, lang));
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.removeItem(LEGACY_TOKEN_KEY);

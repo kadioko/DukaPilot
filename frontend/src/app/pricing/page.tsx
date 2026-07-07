@@ -50,8 +50,8 @@ const plans: Plan[] = [
     features: [
       { sw: "Kila kitu katika Jaribio", en: "Everything in Trial" },
       { sw: "Bidhaa zisizo na kikomo", en: "Unlimited products" },
-      { sw: "Ripoti za kina", en: "Detailed reports" },
-      { sw: "Usafirishaji wa data (CSV/PDF)", en: "Data export (CSV/PDF)" },
+      { sw: "Dashboard ya faida, mauzo na malipo", en: "Profit, sales, and payment dashboard" },
+      { sw: "Export ya mauzo na inventory (CSV)", en: "Sales and inventory export (CSV)" },
       { sw: "Msaada wa WhatsApp", en: "WhatsApp support" },
     ],
     bestFor: { sw: "Duka moja lenye bidhaa, mauzo, madeni na matumizi ya kila siku.", en: "One shop tracking products, sales, debts, and daily expenses." },
