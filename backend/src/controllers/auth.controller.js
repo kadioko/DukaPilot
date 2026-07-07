@@ -375,7 +375,7 @@ const verifyOtpAndResetPin = asyncHandler(async (req, res) => {
 });
 
 async function getProfile(userId) {
-  return prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       id: true,
@@ -388,6 +388,19 @@ async function getProfile(userId) {
       createdAt: true,
     },
   });
+  if (!user || user.supplier || user.role !== "ADMIN") return user;
+
+  const userDigits = String(user.phone || "").replace(/\D/g, "");
+  const suppliers = await prisma.supplier.findMany({
+    select: { id: true, name: true, phone: true, address: true },
+    take: 500,
+  });
+  const supplier = suppliers.find((item) => {
+    const supplierDigits = String(item.phone || "").replace(/\D/g, "");
+    return supplierDigits && (supplierDigits === userDigits || supplierDigits.endsWith(userDigits.slice(-9)) || userDigits.endsWith(supplierDigits.slice(-9)));
+  });
+
+  return supplier ? { ...user, supplier } : user;
 }
 
 async function getStaffProfile(staffId) {

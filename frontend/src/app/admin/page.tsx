@@ -525,11 +525,12 @@ export default function AdminPage() {
   const activatedTrials = subscriptions.filter((shop) => shop.activation?.activated).length;
   const supportIssues = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS").length;
   const billingIssues = reports.filter((report) => report.type === "BILLING" && report.status !== "RESOLVED").length;
-  const suspiciousErrors = auditLogs.filter((log) =>
+  const suspiciousAuditLogs = auditLogs.filter((log) =>
     log.action.toLowerCase().includes("failed") ||
     log.action.toLowerCase().includes("error") ||
     log.path.includes("/auth/login")
-  ).length;
+  );
+  const suspiciousErrors = suspiciousAuditLogs.length;
   const openReports = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS");
   const urgentReports = openReports.filter((report) => report.priority === "HIGH" || report.priority === "URGENT");
   const failedLogins = auditLogs.filter((log) => log.path.includes("/auth/login") && log.action.toLowerCase().includes("failed")).length;
@@ -746,6 +747,32 @@ export default function AdminPage() {
                         <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{item.failed} failed</span>
                       </div>
                       <p className="mt-2 text-xs text-gray-500">Queued {item.queued} · Synced {item.synced} · Last {item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : "-"}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {suspiciousAuditLogs.length > 0 && (
+              <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-amber-950">Suspicious / Error Watchlist</h2>
+                    <p className="text-xs text-amber-800">Recent login, failed, or error-looking audit events from the last audit sample.</p>
+                  </div>
+                  <button onClick={() => setTab("audit")} className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200">
+                    Open audit logs
+                  </button>
+                </div>
+                <div className="grid gap-2 lg:grid-cols-2">
+                  {suspiciousAuditLogs.slice(0, 6).map((log) => (
+                    <div key={log.id} className="rounded-lg bg-white p-3 text-sm shadow-sm">
+                      <div className="flex flex-col gap-1">
+                        <p className="font-mono text-xs font-semibold text-gray-900">{log.action}</p>
+                        <p className="font-mono text-[11px] text-gray-500">{log.method} {log.path}</p>
+                        <p className="text-xs text-gray-500">
+                          {log.user ? `${log.user.name} (${log.user.phone})` : "Unknown user"} · {new Date(log.createdAt).toLocaleString()}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>

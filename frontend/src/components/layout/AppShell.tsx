@@ -123,7 +123,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   const nav = user?.role === "ADMIN"
-    ? adminNav
+    ? [
+        ...adminNav,
+        ...(user?.supplier ? [{ href: "/supplier", label: "Supplier Portal", icon: ClipboardList }] : []),
+      ]
     : merchantNav.filter((item) => !user?.staff || !item.permission || user.staff.permissions[item.permission]);
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
 

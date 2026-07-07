@@ -4,6 +4,19 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+async function getPortalSupplier(user) {
+  const linked = await prisma.supplier.findUnique({ where: { userId: user.userId } });
+  if (linked) return linked;
+  if (user.role !== "ADMIN" || !user.phone) return null;
+
+  const userDigits = String(user.phone || "").replace(/\D/g, "");
+  const suppliers = await prisma.supplier.findMany({ take: 500 });
+  return suppliers.find((supplier) => {
+    const supplierDigits = String(supplier.phone || "").replace(/\D/g, "");
+    return supplierDigits && (supplierDigits === userDigits || supplierDigits.endsWith(userDigits.slice(-9)) || userDigits.endsWith(supplierDigits.slice(-9)));
+  }) || null;
+}
+
 // Merchant: manage their supplier relationships
 const list = asyncHandler(async (req, res) => {
   const suppliers = await prisma.supplier.findMany({
@@ -115,9 +128,7 @@ const remove = asyncHandler(async (req, res) => {
 
 // Supplier portal: orders assigned to this supplier
 const myOrders = asyncHandler(async (req, res) => {
-  const supplierRecord = await prisma.supplier.findUnique({
-    where: { userId: req.user.userId },
-  });
+  const supplierRecord = await getPortalSupplier(req.user);
   if (!supplierRecord) return res.status(404).json({ error: "Supplier profile not found" });
 
   const { status, limit = 100, offset = 0 } = req.query;
@@ -144,9 +155,7 @@ const myOrders = asyncHandler(async (req, res) => {
 });
 
 const updateOrderStatus = asyncHandler(async (req, res) => {
-  const supplierRecord = await prisma.supplier.findUnique({
-    where: { userId: req.user.userId },
-  });
+  const supplierRecord = await getPortalSupplier(req.user);
   if (!supplierRecord) return res.status(404).json({ error: "Supplier profile not found" });
 
   const { status } = req.body;
@@ -177,9 +186,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
 // Supplier dashboard: sales/demand data for their customers
 const supplierDashboard = asyncHandler(async (req, res) => {
-  const supplierRecord = await prisma.supplier.findUnique({
-    where: { userId: req.user.userId },
-  });
+  const supplierRecord = await getPortalSupplier(req.user);
   if (!supplierRecord) return res.status(404).json({ error: "Supplier profile not found" });
 
   const [orderStats, pendingOrders, topMerchants] = await Promise.all([
