@@ -452,7 +452,11 @@ Current sprint checks:
 - Admin `/admin` overview shows Business Operations metrics: active shops, trials, expiring trials, unpaid, suspended, support issues, billing requests, and suspicious errors.
 - Admin can review `BILLING` reports, then use Subscriptions to mark Paid Basic/Pro and confirm Last Payment updates.
 - `/assistant` shows a daily command list, why-it-matters notes, expected impact, direct action buttons, and a WhatsApp-style owner summary.
+- `/assistant/history` shows merchant AI actions and their opened/completed/dismissed status.
+- Admin `/admin` shows assistant analytics without blanking the dashboard if an optional analytics endpoint fails.
 - Offline sales show queued/synced/failed sync history. Stock conflicts should leave the sale pending with a visible retry error.
+- Admin sync support shows failed syncs by shop/device, allows device labels, and supports Open/Contacted/Resolved resolution status.
+- Concurrent sale attempts for the last stock units should never leave product stock below zero.
 - `/onboarding` includes Settings, Inventory, Staff, Sales, Catalog, and Pricing/Billing actions, with checklist progress saved locally.
 - `/pricing`, `/contact`, `/help`, and `/demo` explain payment/support clearly and keep WhatsApp `+255743910580` visible.
 

@@ -124,12 +124,16 @@ const create = asyncHandler(async (req, res) => {
       },
     });
 
-    // Deduct stock and record movements
+    // Deduct stock with an in-transaction guard so concurrent sales cannot push stock negative.
     for (const item of items) {
-      await tx.product.update({
-        where: { id: item.productId },
+      const product = productMap[item.productId];
+      const updated = await tx.product.updateMany({
+        where: { id: item.productId, shopId, isActive: true, currentStock: { gte: item.quantity } },
         data: { currentStock: { decrement: item.quantity } },
       });
+      if (updated.count !== 1) {
+        throw new Error(`Insufficient stock for ${product.name}. Available stock changed before checkout.`);
+      }
       await tx.stockMovement.create({
         data: {
           type: "OUT",

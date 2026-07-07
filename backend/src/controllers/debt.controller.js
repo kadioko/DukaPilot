@@ -48,14 +48,15 @@ const create = asyncHandler(async (req, res) => {
   if (!customerPhone || !Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ error: "Customer phone and a positive amount are required" });
   }
+  const clampedAmountPaid = Math.min(amount, Math.max(0, amountPaid));
 
   const debt = await prisma.debt.create({
     data: {
       customerName: String(req.body.customerName || "").trim() || null,
       customerPhone,
       amount,
-      amountPaid: Math.max(0, amountPaid),
-      status: nextStatus(amount, amountPaid),
+      amountPaid: clampedAmountPaid,
+      status: nextStatus(amount, clampedAmountPaid),
       dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null,
       note: String(req.body.note || "").trim() || null,
       shopId,

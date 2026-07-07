@@ -1,6 +1,6 @@
 # DukaPilot Launch Playbook
 
-Last updated: 2026-06-29
+Last updated: 2026-07-08
 
 This is the working plan for turning the live DukaPilot product into active merchants, paid shops, and supplier relationships.
 
@@ -18,6 +18,8 @@ What is strong:
 - The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog, supplier orders, AI assistant, Swahili/English, and WhatsApp support.
 - Pricing is understandable for Tanzania: free trial, TZS 15,000/month Basic, TZS 35,000/month Pro.
 - The product has a natural sales motion: WhatsApp support plus M-Pesa payment reference verification.
+- Admin support now has subscription controls, supplier verification, assistant action analytics, and offline sync resolution by shop/device.
+- The assistant direction is stronger: DukaPilot should be sold as the app that tells a shop owner what to do next, not only as POS/inventory.
 
 What should improve before scaling ads:
 
@@ -26,6 +28,7 @@ What should improve before scaling ads:
 - SEO metadata is too short. Expand page titles/descriptions around "POS Tanzania", "inventory app Tanzania", "duka stock management", and "mfumo wa duka".
 - Add a stronger WhatsApp CTA for people who are not ready to register: "Tuma WhatsApp tupange setup ya duka lako."
 - Add social proof as soon as the first 3-5 real merchants are onboarded.
+- Watch production support signals daily: failed logins, unpaid/expiring shops, unresolved sync failures, billing reports, and assistant actions that are opened but not completed.
 
 ## Positioning
 

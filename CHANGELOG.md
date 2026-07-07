@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.1] - 2026-07-08 - Launch Operations Hardening
+
+### Added
+
+- Added merchant AI action history at `/assistant/history`.
+- Added admin assistant analytics for tracked, opened, completed, and dismissed recommendation actions.
+- Added admin sync support tools for per-shop/per-device sync history, device labels, resolution status, and resolution notes.
+- Added subscription support controls for active-until visibility, extending plans from the existing paid-through date, removing subscriptions, and recording manual payment references.
+- Added supplier verification/admin notes plus admin removal tools.
+
+### Fixed
+
+- Hardened the admin dashboard initial load so optional widgets cannot blank the whole admin area if one support endpoint fails.
+- Guarded sale stock deduction inside the transaction to prevent negative stock during concurrent checkouts.
+- Clamped manually created debt payments so a new debt cannot start with `amountPaid` above the total debt amount.
+
+---
+
 ## [1.2.0] — 2026-06-08 — DukaPilot Rebrand & Operations
 
 ### Added

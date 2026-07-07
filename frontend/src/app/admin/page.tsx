@@ -222,6 +222,15 @@ interface BillingDraft {
 
 type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers" | "sync";
 
+async function optionalAdminLoad<T>(label: string, request: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    console.warn(`Admin optional load failed: ${label}`, error);
+    return fallback;
+  }
+}
+
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
   return (
     <div className={`bg-white rounded-xl border border-gray-200 p-4`}>
@@ -323,18 +332,18 @@ export default function AdminPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get<AdminOverview>("/admin/overview"),
-      api.get<{ users: AdminUser[] }>("/admin/users"),
-      api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"),
-      api.get<{ reports: Report[] }>("/reports/admin?limit=200"),
-      api.get<{ shops: Subscription[] }>("/subscription/admin"),
-      api.get<{ suppliers: Supplier[] }>("/suppliers"),
-      api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"),
-      api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"),
-      api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics").catch(() => null),
+      optionalAdminLoad<AdminOverview | null>("overview", api.get<AdminOverview>("/admin/overview"), null),
+      optionalAdminLoad("users", api.get<{ users: AdminUser[] }>("/admin/users"), { users: [] }),
+      optionalAdminLoad("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }),
+      optionalAdminLoad("reports", api.get<{ reports: Report[] }>("/reports/admin?limit=200"), { reports: [] }),
+      optionalAdminLoad("subscriptions", api.get<{ shops: Subscription[] }>("/subscription/admin"), { shops: [] }),
+      optionalAdminLoad("suppliers", api.get<{ suppliers: Supplier[] }>("/suppliers"), { suppliers: [] }),
+      optionalAdminLoad("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }),
+      optionalAdminLoad("sync events", api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"), { events: [], devices: [] }),
+      optionalAdminLoad<NonNullable<AdminOverview["assistantAnalytics"]> | null>("assistant analytics", api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"), null),
     ])
       .then(([ov, u, al, rp, sub, supplierData, syncData, syncEventsData, assistantAnalytics]) => {
-        setOverview(assistantAnalytics ? { ...ov, assistantAnalytics } : ov);
+        setOverview(ov && assistantAnalytics ? { ...ov, assistantAnalytics } : ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
         setReports(rp.reports);

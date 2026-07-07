@@ -56,6 +56,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
 | **DukaPilot AI Assistant** | Daily command list with ranked recommendations, why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
+| **AI action history** | Merchants can review opened, completed, and dismissed AI actions from `/assistant/history` |
 | **Offline sales queue** | Sales entered during connection loss are saved locally, show sync history/errors, and retry when the browser comes back online |
 | **PIN recovery** | "Forgot PIN?" sends a 6-digit OTP via SMS (Africa's Talking) |
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
@@ -79,6 +80,10 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **System overview** | User, shop, product, sale, order, active shop, trial, unpaid, suspended, billing, support, and suspicious-error counts |
 | **User management** | List all users; look up any user by phone |
 | **PIN reset** | Reset any user's PIN (all resets are audit-logged) |
+| **Subscription desk** | Mark Basic/Pro payments, extend active plans from the current end date, remove subscriptions, and see valid-until dates |
+| **Supplier verification** | Review suppliers, set verification status, add admin notes, and remove suppliers when needed |
+| **AI analytics** | Track assistant actions, opened/completed/dismissed rates, and top action types |
+| **Sync support** | View offline sync failures by shop/device, rename devices, and mark issues Open, Contacted, or Resolved |
 | **Audit log viewer** | Searchable log of all significant actions |
 
 ---
@@ -370,6 +375,7 @@ npm run dev         # runs on :3000
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
+- **Latest launch migrations:** `20260707002000_assistant_actions` and `20260708001000_sync_resolution_and_device_labels`
 
 ### Deployment Checklist
 
@@ -387,9 +393,11 @@ npm run dev         # runs on :3000
 ### Launch Notes
 
 - Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, staff, and reports access for staff sessions.
-- Offline support includes the cached app shell, `/offline.html` fallback, and a browser-local pending sales queue with visible sync history/errors that retries when the connection returns. Broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled yet.
+- Offline support includes the cached app shell, `/offline.html` fallback, a browser-local pending sales queue, merchant sync history, and admin sync failure resolution by shop/device. Broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled yet.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired or suspended shops can still view data and contact support, but operational mutations such as new sales, stock edits, expenses, staff changes, and orders require an active trial or subscription.
+- Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
+- Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.
 
 ---
 

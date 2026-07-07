@@ -78,8 +78,9 @@ test("sale create calculates total and profit before persisting transaction", as
       },
     },
     product: {
-      update: async () => {
+      updateMany: async () => {
         stockUpdates += 1;
+        return { count: 1 };
       },
     },
     stockMovement: {
