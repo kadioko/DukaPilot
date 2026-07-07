@@ -38,6 +38,37 @@ const myEvents = asyncHandler(async (req, res) => {
   res.json({ events });
 });
 
+const adminEvents = asyncHandler(async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const shopId = String(req.query.shopId || "").trim();
+  const deviceId = String(req.query.deviceId || "").trim();
+  const status = String(req.query.status || "").trim().toUpperCase();
+  const where = {};
+  if (shopId) where.shopId = shopId;
+  if (deviceId) where.deviceId = deviceId;
+  if (["QUEUED", "SYNCED", "FAILED", "REMOVED"].includes(status)) where.status = status;
+
+  const events = await prisma.offlineSyncEvent.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } },
+    },
+  });
+
+  const devices = await prisma.offlineSyncEvent.groupBy({
+    by: ["shopId", "deviceId", "status"],
+    where,
+    _count: { id: true },
+    _max: { createdAt: true },
+    orderBy: { _max: { createdAt: "desc" } },
+    take: 200,
+  });
+
+  res.json({ events, devices });
+});
+
 const adminSummary = asyncHandler(async (req, res) => {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const rows = await prisma.offlineSyncEvent.groupBy({
@@ -89,4 +120,4 @@ const adminSummary = asyncHandler(async (req, res) => {
   res.json({ shops: [...summaryByShop.values()].filter((item) => item.shop).sort((a, b) => b.failed - a.failed || new Date(b.lastEventAt) - new Date(a.lastEventAt)) });
 });
 
-module.exports = { createEvent, myEvents, adminSummary };
+module.exports = { createEvent, myEvents, adminEvents, adminSummary };

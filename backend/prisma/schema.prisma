@@ -117,6 +117,7 @@ model Shop {
   staffMembers    StaffMember[]
   subscriptionPayments SubscriptionPayment[]
   offlineSyncEvents OfflineSyncEvent[]
+  assistantActions AssistantAction[]
   // Subscription / trial
   plan            String    @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
   trialEndsAt     DateTime?
@@ -163,6 +164,27 @@ model OfflineSyncEvent {
   @@index([shopId, createdAt])
   @@index([status, createdAt])
   @@map("offline_sync_events")
+}
+
+model AssistantAction {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  actionKey   String
+  title       String
+  href        String
+  status      String   @default("OPEN")
+  source      String   @default("ASSISTANT")
+  completedAt DateTime?
+  dismissedAt DateTime?
+  openedAt    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([shopId, actionKey])
+  @@index([shopId, status])
+  @@index([createdAt])
+  @@map("assistant_actions")
 }
 
 model Supplier {

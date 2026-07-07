@@ -50,6 +50,22 @@ interface AdminOverview {
     paidShops: number;
     paymentsConfirmed7d: number;
   };
+  onboardingAnalytics?: {
+    totalShops: number;
+    new: number;
+    contacted: number;
+    needsHelp: number;
+    setupDone: number;
+    activated: number;
+    paid: number;
+    converted: number;
+    churnRisk: number;
+    contactedShops: number;
+    shopsWithNotes: number;
+    recentlyContactedShops: number;
+    followUpCoverage: number;
+    noteCoverage: number;
+  };
 }
 
 interface AdminUser {
@@ -150,6 +166,27 @@ interface SyncShopSummary {
   }>;
 }
 
+interface AdminSyncEvent {
+  id: string;
+  shopId: string;
+  deviceId?: string | null;
+  status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED";
+  total?: number | null;
+  message?: string | null;
+  attempts: number;
+  localId?: string | null;
+  createdAt: string;
+  shop?: { id: string; name: string; user?: { name: string; phone: string } | null };
+}
+
+interface AdminSyncDeviceRow {
+  shopId: string;
+  deviceId?: string | null;
+  status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED";
+  _count: { id: number };
+  _max: { createdAt: string | null };
+}
+
 interface BillingDraft {
   plan: "BASIC" | "PRO";
   months: string;
@@ -159,7 +196,7 @@ interface BillingDraft {
   note: string;
 }
 
-type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers";
+type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers" | "sync";
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
   return (
@@ -236,6 +273,12 @@ export default function AdminPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [syncSummaries, setSyncSummaries] = useState<SyncShopSummary[]>([]);
+  const [syncEvents, setSyncEvents] = useState<AdminSyncEvent[]>([]);
+  const [syncDevices, setSyncDevices] = useState<AdminSyncDeviceRow[]>([]);
+  const [syncShopFilter, setSyncShopFilter] = useState("");
+  const [syncDeviceFilter, setSyncDeviceFilter] = useState("");
+  const [syncStatusFilter, setSyncStatusFilter] = useState("");
+  const [loadingSyncEvents, setLoadingSyncEvents] = useState(false);
   const [subFilter, setSubFilter] = useState("ALL");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
@@ -263,8 +306,9 @@ export default function AdminPage() {
       api.get<{ shops: Subscription[] }>("/subscription/admin"),
       api.get<{ suppliers: Supplier[] }>("/suppliers"),
       api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"),
+      api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"),
     ])
-      .then(([ov, u, al, rp, sub, supplierData, syncData]) => {
+      .then(([ov, u, al, rp, sub, supplierData, syncData, syncEventsData]) => {
         setOverview(ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
@@ -272,6 +316,8 @@ export default function AdminPage() {
         setSubscriptions(sub.shops);
         setSuppliers(supplierData.suppliers);
         setSyncSummaries(syncData.shops);
+        setSyncEvents(syncEventsData.events);
+        setSyncDevices(syncEventsData.devices);
         setFollowUpDrafts(Object.fromEntries(sub.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
         setSupplierNotes(Object.fromEntries(supplierData.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
       })
@@ -392,6 +438,34 @@ export default function AdminPage() {
     const data = await api.get<{ suppliers: Supplier[] }>("/suppliers");
     setSuppliers(data.suppliers);
     setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
+  }
+
+  async function refreshSyncEvents(patch?: { shopId?: string; deviceId?: string; status?: string }) {
+    const nextShopId = patch?.shopId ?? syncShopFilter;
+    const nextDeviceId = patch?.deviceId ?? syncDeviceFilter;
+    const nextStatus = patch?.status ?? syncStatusFilter;
+    setLoadingSyncEvents(true);
+    try {
+      const params = new URLSearchParams({ limit: "150" });
+      if (nextShopId) params.set("shopId", nextShopId);
+      if (nextDeviceId) params.set("deviceId", nextDeviceId);
+      if (nextStatus) params.set("status", nextStatus);
+      const data = await api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>(`/sync/admin/events?${params.toString()}`);
+      setSyncEvents(data.events);
+      setSyncDevices(data.devices);
+    } finally {
+      setLoadingSyncEvents(false);
+    }
+  }
+
+  function openSyncHistory(shopId?: string, deviceId?: string) {
+    const nextShop = shopId || "";
+    const nextDevice = deviceId || "";
+    setSyncShopFilter(nextShop);
+    setSyncDeviceFilter(nextDevice);
+    setSyncStatusFilter("");
+    setTab("sync");
+    refreshSyncEvents({ shopId: nextShop, deviceId: nextDevice, status: "" }).catch(console.error);
   }
 
   function defaultBillingDraft(plan: "BASIC" | "PRO" = "BASIC"): BillingDraft {
@@ -572,6 +646,7 @@ export default function AdminPage() {
     { id: "reports", label: "Reports" },
     { id: "subscriptions", label: "Subscriptions" },
     { id: "suppliers", label: "Suppliers" },
+    { id: "sync", label: "Sync History" },
   ];
   const activeShops = subscriptions.filter((shop) => shop.computedStatus === "active").length;
   const trialShops = subscriptions.filter((shop) => shop.computedStatus === "trial").length;
@@ -885,6 +960,39 @@ export default function AdminPage() {
               </div>
             </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Onboarding Follow-up Analytics</h2>
+                  <p className="text-xs text-gray-500">Shows whether admin follow-up is moving shops toward setup, payment, and conversion.</p>
+                </div>
+                <button onClick={() => setTab("subscriptions")} className="rounded-lg bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-200">
+                  Manage follow-up
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+                <MiniMetric label="New shops" value={overview.onboardingAnalytics?.new || 0} tone="border-gray-200 bg-gray-50 text-gray-800" />
+                <MiniMetric label="Contacted" value={overview.onboardingAnalytics?.contacted || 0} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                <MiniMetric label="Needs help" value={overview.onboardingAnalytics?.needsHelp || 0} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                <MiniMetric label="Setup done" value={overview.onboardingAnalytics?.setupDone || 0} tone="border-green-200 bg-green-50 text-green-800" />
+                <MiniMetric label="Activated" value={overview.onboardingAnalytics?.activated || 0} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
+                <MiniMetric label="Paid" value={overview.onboardingAnalytics?.paid || 0} tone="border-purple-200 bg-purple-50 text-purple-800" />
+                <MiniMetric label="Converted" value={overview.onboardingAnalytics?.converted || 0} tone="border-brand-200 bg-brand-50 text-brand-800" />
+                <MiniMetric label="Churn risk" value={overview.onboardingAnalytics?.churnRisk || 0} tone="border-red-200 bg-red-50 text-red-800" />
+                <MiniMetric label="Contact 7d" value={overview.onboardingAnalytics?.recentlyContactedShops || 0} tone="border-sky-200 bg-sky-50 text-sky-800" />
+                <MiniMetric label="Notes saved" value={overview.onboardingAnalytics?.shopsWithNotes || 0} tone="border-indigo-200 bg-indigo-50 text-indigo-800" />
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  <p className="font-semibold text-gray-900">Follow-up coverage</p>
+                  <p className="mt-1">{overview.onboardingAnalytics?.followUpCoverage || 0}% of shops have been contacted at least once.</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  <p className="font-semibold text-gray-900">Notes coverage</p>
+                  <p className="mt-1">{overview.onboardingAnalytics?.noteCoverage || 0}% of shops have saved support notes.</p>
+                </div>
+              </div>
+            </section>
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">Support Queue</h2>
@@ -981,6 +1089,12 @@ export default function AdminPage() {
                           <MessageCircle className="h-3 w-3" /> Contact owner
                         </a>
                       )}
+                      <button
+                        onClick={() => openSyncHistory(item.shop.id)}
+                        className="ml-2 mt-2 inline-flex items-center gap-1 rounded-lg bg-red-100 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-200"
+                      >
+                        View history
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1641,6 +1755,167 @@ export default function AdminPage() {
               </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* SYNC HISTORY */}
+        {tab === "sync" && (
+          <div className="space-y-4">
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Offline Sync History</h2>
+                  <p className="text-xs text-gray-500">Drill into queued, synced, failed, and removed offline sales by shop and device.</p>
+                </div>
+                <button
+                  onClick={() => refreshSyncEvents().catch(console.error)}
+                  disabled={loadingSyncEvents}
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingSyncEvents ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+              </div>
+              <div className="grid gap-2 md:grid-cols-4">
+                <select
+                  value={syncShopFilter}
+                  onChange={(e) => {
+                    setSyncShopFilter(e.target.value);
+                    refreshSyncEvents({ shopId: e.target.value }).catch(console.error);
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">All shops</option>
+                  {subscriptions.map((shop) => (
+                    <option key={shop.id} value={shop.id}>{shop.name}</option>
+                  ))}
+                </select>
+                <input
+                  value={syncDeviceFilter}
+                  onChange={(e) => setSyncDeviceFilter(e.target.value)}
+                  onBlur={() => refreshSyncEvents().catch(console.error)}
+                  placeholder="Device ID"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <select
+                  value={syncStatusFilter}
+                  onChange={(e) => {
+                    setSyncStatusFilter(e.target.value);
+                    refreshSyncEvents({ status: e.target.value }).catch(console.error);
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">All statuses</option>
+                  <option value="QUEUED">Queued</option>
+                  <option value="SYNCED">Synced</option>
+                  <option value="FAILED">Failed</option>
+                  <option value="REMOVED">Removed</option>
+                </select>
+                <button
+                  onClick={() => {
+                    setSyncShopFilter("");
+                    setSyncDeviceFilter("");
+                    setSyncStatusFilter("");
+                    refreshSyncEvents({ shopId: "", deviceId: "", status: "" }).catch(console.error);
+                  }}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Clear filters
+                </button>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-gray-900">Device Rollup</h2>
+                <span className="text-xs text-gray-400">{syncDevices.length} rows</span>
+              </div>
+              {syncDevices.length === 0 ? (
+                <p className="rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">No sync device events found for this filter.</p>
+              ) : (
+                <div className="max-w-full overflow-x-auto">
+                  <table className="min-w-[760px] w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Shop</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Device</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Status</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Events</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Last seen</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {syncDevices.map((device, index) => {
+                        const shop = subscriptions.find((item) => item.id === device.shopId);
+                        return (
+                          <tr key={`${device.shopId}-${device.deviceId || "unknown"}-${device.status}-${index}`} className="border-b border-gray-50">
+                            <td className="px-3 py-2 font-medium text-gray-900">{shop?.name || device.shopId}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-gray-500">{device.deviceId || "unknown"}</td>
+                            <td className="px-3 py-2">
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                device.status === "FAILED" ? "bg-red-100 text-red-700" :
+                                device.status === "SYNCED" ? "bg-green-100 text-green-700" :
+                                device.status === "QUEUED" ? "bg-amber-100 text-amber-700" :
+                                "bg-gray-100 text-gray-700"
+                              }`}>{device.status}</span>
+                            </td>
+                            <td className="px-3 py-2 text-gray-600">{device._count.id}</td>
+                            <td className="px-3 py-2 text-xs text-gray-500">{device._max.createdAt ? new Date(device._max.createdAt).toLocaleString() : "-"}</td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                onClick={() => openSyncHistory(device.shopId, device.deviceId || "")}
+                                className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200"
+                              >
+                                Filter
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                <h2 className="text-sm font-semibold text-gray-900">Event Timeline</h2>
+                <span className="text-xs text-gray-400">{syncEvents.length} events</span>
+              </div>
+              {syncEvents.length === 0 ? (
+                <p className="p-6 text-sm text-gray-500">No sync events found for this filter.</p>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {syncEvents.map((event) => (
+                    <div key={event.id} className="grid gap-3 p-4 lg:grid-cols-[1fr_auto] lg:items-start">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-gray-950">{event.shop?.name || event.shopId}</p>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            event.status === "FAILED" ? "bg-red-100 text-red-700" :
+                            event.status === "SYNCED" ? "bg-green-100 text-green-700" :
+                            event.status === "QUEUED" ? "bg-amber-100 text-amber-700" :
+                            "bg-gray-100 text-gray-700"
+                          }`}>{event.status}</span>
+                          <span className="font-mono text-xs text-gray-400">{event.deviceId || "unknown device"}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">{event.message || "No message recorded"}</p>
+                        <p className="mt-1 text-xs text-gray-400">
+                          Owner: {event.shop?.user?.name || "Unknown"} {event.shop?.user?.phone ? `- ${event.shop.user.phone}` : ""} - Local sale: {event.localId || "-"}
+                        </p>
+                      </div>
+                      <div className="text-xs text-gray-500 lg:text-right">
+                        <p className="font-semibold text-gray-800">{event.total ? formatTZS(event.total) : "No total"}</p>
+                        <p>Attempts {event.attempts}</p>
+                        <p>{new Date(event.createdAt).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         )}
 

@@ -6,7 +6,25 @@ function asyncHandler(fn) {
 }
 
 const overview = asyncHandler(async (req, res) => {
-  const [users, merchants, suppliers, admins, shops, products, sales, orders, debts, expenses, paidShops, auditLogs, recentPayments] = await Promise.all([
+  const [
+    users,
+    merchants,
+    suppliers,
+    admins,
+    shops,
+    products,
+    sales,
+    orders,
+    debts,
+    expenses,
+    paidShops,
+    auditLogs,
+    recentPayments,
+    onboardingRows,
+    contactedShops,
+    shopsWithNotes,
+    recentlyContactedShops,
+  ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: "MERCHANT" } }),
     prisma.user.count({ where: { role: "SUPPLIER" } }),
@@ -20,7 +38,12 @@ const overview = asyncHandler(async (req, res) => {
     prisma.shop.count({ where: { plan: { in: ["BASIC", "PRO"] }, isActive: true } }),
     prisma.auditLog.count(),
     prisma.subscriptionPayment.count({ where: { paidAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
+    prisma.shop.groupBy({ by: ["onboardingStatus"], _count: { id: true } }),
+    prisma.shop.count({ where: { lastContactedAt: { not: null } } }),
+    prisma.shop.count({ where: { followUpNotes: { not: null } } }),
+    prisma.shop.count({ where: { lastContactedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
   ]);
+  const onboardingByStatus = Object.fromEntries(onboardingRows.map((row) => [row.onboardingStatus, row._count.id]));
 
   res.json({
     summary: { users, merchants, suppliers, admins, shops, products, sales, orders, debts, expenses, paidShops, auditLogs },
@@ -33,6 +56,22 @@ const overview = asyncHandler(async (req, res) => {
       expenseTrackingProgress: expenses,
       paidShops,
       paymentsConfirmed7d: recentPayments,
+    },
+    onboardingAnalytics: {
+      totalShops: shops,
+      new: onboardingByStatus.NEW || 0,
+      contacted: onboardingByStatus.CONTACTED || 0,
+      needsHelp: onboardingByStatus.NEEDS_HELP || 0,
+      setupDone: onboardingByStatus.SETUP_DONE || 0,
+      activated: onboardingByStatus.ACTIVATED || 0,
+      paid: onboardingByStatus.PAID || 0,
+      converted: onboardingByStatus.CONVERTED || 0,
+      churnRisk: onboardingByStatus.CHURN_RISK || 0,
+      contactedShops,
+      shopsWithNotes,
+      recentlyContactedShops,
+      followUpCoverage: shops ? Math.round((contactedShops / shops) * 100) : 0,
+      noteCoverage: shops ? Math.round((shopsWithNotes / shops) * 100) : 0,
     },
   });
 });

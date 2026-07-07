@@ -37,12 +37,25 @@ interface Recommendation {
   impact: string;
 }
 
+interface AssistantAction {
+  id: string;
+  actionKey: string;
+  title: string;
+  href: string;
+  status: "OPEN" | "OPENED" | "COMPLETED" | "DISMISSED";
+  openedAt?: string | null;
+  completedAt?: string | null;
+  dismissedAt?: string | null;
+  updatedAt: string;
+}
+
 export default function AssistantPage() {
   const lang = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [allTime, setAllTime] = useState<DashboardData | null>(null);
   const [debts, setDebts] = useState<DebtSummary | null>(null);
   const [expenses, setExpenses] = useState<ExpenseSummary | null>(null);
+  const [actions, setActions] = useState<AssistantAction[]>([]);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -51,6 +64,7 @@ export default function AssistantPage() {
       api.get<DashboardData>("/dashboard?period=all", lang).then(setAllTime).catch(() => null),
       api.get<DebtSummary>("/debts", lang).then(setDebts).catch(() => null),
       api.get<ExpenseSummary>("/expenses", lang).then(setExpenses).catch(() => null),
+      api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang).then((data) => setActions(data.actions)).catch(() => null),
     ]).catch(console.error);
   }, []);
 
@@ -66,6 +80,23 @@ export default function AssistantPage() {
     await navigator.clipboard?.writeText(message);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2200);
+  }
+
+  function actionStatus(item: Recommendation) {
+    return actions.find((action) => action.actionKey === item.id);
+  }
+
+  async function trackRecommendation(item: Recommendation, status: AssistantAction["status"]) {
+    const data = await api.post<{ action: AssistantAction }>("/assistant/actions", {
+      actionKey: item.id,
+      title: item.title,
+      href: item.href,
+      status,
+    }, lang);
+    setActions((prev) => {
+      const next = prev.filter((action) => action.actionKey !== item.id);
+      return [data.action, ...next];
+    });
   }
 
   return (
@@ -138,16 +169,33 @@ export default function AssistantPage() {
           <div className="mt-4 grid gap-3">
             {recommendations.length === 0 ? (
               <p className="text-sm text-gray-500">{lang === "sw" ? "Ongeza mauzo, bidhaa, madeni au matumizi ili msaidizi aanze kutoa mapendekezo." : "Add sales, inventory, debts, or expenses so the assistant can start producing recommendations."}</p>
-            ) : recommendations.map((item, index) => (
-              <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            ) : recommendations.map((item, index) => {
+              const status = actionStatus(item);
+              return (
+              <div key={item.id} className={`rounded-xl border bg-white p-4 shadow-sm ${status?.status === "COMPLETED" ? "border-green-200" : status?.status === "DISMISSED" ? "border-gray-200 opacity-75" : "border-gray-200"}`}>
                 <div className="flex items-start gap-3">
                   <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${item.tone}`}>
                     <item.icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">
-                      {lang === "sw" ? `Kipaumbele ${index + 1}` : `Priority ${index + 1}`}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">
+                        {lang === "sw" ? `Kipaumbele ${index + 1}` : `Priority ${index + 1}`}
+                      </p>
+                      {status && (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          status.status === "COMPLETED" ? "bg-green-100 text-green-700" :
+                          status.status === "OPENED" ? "bg-blue-100 text-blue-700" :
+                          status.status === "DISMISSED" ? "bg-gray-100 text-gray-500" :
+                          "bg-amber-100 text-amber-700"
+                        }`}>
+                          {status.status === "COMPLETED" ? (lang === "sw" ? "Imefanyika" : "Done") :
+                            status.status === "OPENED" ? (lang === "sw" ? "Imefunguliwa" : "Opened") :
+                              status.status === "DISMISSED" ? (lang === "sw" ? "Imeachwa" : "Dismissed") :
+                                (lang === "sw" ? "Wazi" : "Open")}
+                        </span>
+                      )}
+                    </div>
                     <h3 className="mt-1 font-semibold text-gray-950">{item.title}</h3>
                     <p className="mt-1 text-sm leading-6 text-gray-600">{item.body}</p>
                     <p className="mt-2 text-xs leading-5 text-gray-500">
@@ -160,15 +208,36 @@ export default function AssistantPage() {
                       <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold uppercase tracking-wide text-gray-500">
                         {lang === "sw" ? "Fanya sasa" : "Do this now"}
                       </span>
-                      <Link href={item.href} className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+                      <Link
+                        href={item.href}
+                        onClick={() => {
+                          trackRecommendation(item, "OPENED").catch(console.error);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+                      >
                         {item.action}
                         <ArrowRight className="h-4 w-4" />
                       </Link>
+                      <button
+                        type="button"
+                        onClick={() => trackRecommendation(item, "COMPLETED").catch(console.error)}
+                        className="rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-200"
+                      >
+                        {lang === "sw" ? "Nimefanya" : "Mark done"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => trackRecommendation(item, "DISMISSED").catch(console.error)}
+                        className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200"
+                      >
+                        {lang === "sw" ? "Acha" : "Dismiss"}
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </section>
 

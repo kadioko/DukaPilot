@@ -23,6 +23,7 @@ const debtRoutes = require("./routes/debt.routes");
 const expenseRoutes = require("./routes/expense.routes");
 const staffRoutes = require("./routes/staff.routes");
 const syncRoutes = require("./routes/sync.routes");
+const assistantRoutes = require("./routes/assistant.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
@@ -121,6 +122,7 @@ app.use("/api/debts", debtRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/sync", syncRoutes);
+app.use("/api/assistant", assistantRoutes);
 
 if (Sentry.setupExpressErrorHandler) Sentry.setupExpressErrorHandler(app);
 
