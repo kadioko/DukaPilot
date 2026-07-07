@@ -69,6 +69,7 @@ const PAYMENT_METHODS = [
 const PENDING_SALES_KEY = "dukapilot_pending_sales";
 const SYNC_HISTORY_KEY = "dukapilot_sales_sync_history";
 const SYNC_DEVICE_KEY = "dukapilot_sync_device_id";
+const SYNC_DEVICE_LABEL_KEY = "dukapilot_sync_device_label";
 
 function readPendingSales(): PendingSale[] {
   if (typeof window === "undefined") return [];
@@ -112,8 +113,18 @@ function getSyncDeviceId() {
   return next;
 }
 
+function getSyncDeviceLabel() {
+  if (typeof window === "undefined") return "Server device";
+  const existing = window.localStorage.getItem(SYNC_DEVICE_LABEL_KEY);
+  if (existing) return existing;
+  const deviceId = getSyncDeviceId();
+  const next = `Shop phone ${deviceId.slice(0, 4)}`;
+  window.localStorage.setItem(SYNC_DEVICE_LABEL_KEY, next);
+  return next;
+}
+
 function reportSyncEvent(event: { status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED"; total?: number; message?: string; attempts?: number; localId?: string }) {
-  api.post("/sync/events", { ...event, deviceId: getSyncDeviceId() }).catch(() => {});
+  api.post("/sync/events", { ...event, deviceId: getSyncDeviceId(), deviceLabel: getSyncDeviceLabel() }).catch(() => {});
 }
 
 function formatSyncTime(value: string | null) {

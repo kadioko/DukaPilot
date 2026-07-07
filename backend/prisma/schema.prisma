@@ -154,15 +154,21 @@ model OfflineSyncEvent {
   shopId    String
   shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   deviceId  String?
+  deviceLabel String?
   status    String
   total     Float?
   message   String?
   attempts  Int      @default(0)
   localId   String?
+  resolutionStatus String @default("OPEN")
+  resolutionNote   String?
+  contactedAt DateTime?
+  resolvedAt  DateTime?
   createdAt DateTime @default(now())
 
   @@index([shopId, createdAt])
   @@index([status, createdAt])
+  @@index([resolutionStatus, createdAt])
   @@map("offline_sync_events")
 }
 

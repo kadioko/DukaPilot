@@ -66,6 +66,19 @@ interface AdminOverview {
     followUpCoverage: number;
     noteCoverage: number;
   };
+  assistantAnalytics?: {
+    summary: {
+      total: number;
+      open: number;
+      opened: number;
+      completed: number;
+      dismissed: number;
+      completedRate: number;
+      dismissedRate: number;
+      openedRate: number;
+    };
+    topActions: Array<{ actionKey: string; count: number; title: string; href: string }>;
+  };
 }
 
 interface AdminUser {
@@ -158,10 +171,15 @@ interface SyncShopSummary {
   recentFailures?: Array<{
     id: string;
     deviceId?: string | null;
+    deviceLabel?: string | null;
     total?: number | null;
     message?: string | null;
     attempts: number;
     localId?: string | null;
+    resolutionStatus?: "OPEN" | "CONTACTED" | "RESOLVED";
+    resolutionNote?: string | null;
+    contactedAt?: string | null;
+    resolvedAt?: string | null;
     createdAt: string;
   }>;
 }
@@ -170,11 +188,16 @@ interface AdminSyncEvent {
   id: string;
   shopId: string;
   deviceId?: string | null;
+  deviceLabel?: string | null;
   status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED";
   total?: number | null;
   message?: string | null;
   attempts: number;
   localId?: string | null;
+  resolutionStatus?: "OPEN" | "CONTACTED" | "RESOLVED";
+  resolutionNote?: string | null;
+  contactedAt?: string | null;
+  resolvedAt?: string | null;
   createdAt: string;
   shop?: { id: string; name: string; user?: { name: string; phone: string } | null };
 }
@@ -182,6 +205,7 @@ interface AdminSyncEvent {
 interface AdminSyncDeviceRow {
   shopId: string;
   deviceId?: string | null;
+  deviceLabel?: string | null;
   status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED";
   _count: { id: number };
   _max: { createdAt: string | null };
@@ -307,9 +331,10 @@ export default function AdminPage() {
       api.get<{ suppliers: Supplier[] }>("/suppliers"),
       api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"),
       api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"),
+      api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"),
     ])
-      .then(([ov, u, al, rp, sub, supplierData, syncData, syncEventsData]) => {
-        setOverview(ov);
+      .then(([ov, u, al, rp, sub, supplierData, syncData, syncEventsData, assistantAnalytics]) => {
+        setOverview({ ...ov, assistantAnalytics });
         setUsers(u.users);
         setAuditLogs(al.logs);
         setReports(rp.reports);
@@ -466,6 +491,32 @@ export default function AdminPage() {
     setSyncStatusFilter("");
     setTab("sync");
     refreshSyncEvents({ shopId: nextShop, deviceId: nextDevice, status: "" }).catch(console.error);
+  }
+
+  function displayDeviceLabel(deviceId?: string | null, label?: string | null, ownerName?: string | null) {
+    if (label) return label;
+    if (ownerName) return `${ownerName.split(" ")[0]} phone`;
+    if (!deviceId) return "Unknown device";
+    return `Device ${deviceId.slice(0, 6)}`;
+  }
+
+  async function handleUpdateSyncEvent(event: AdminSyncEvent, patch: { resolutionStatus?: "OPEN" | "CONTACTED" | "RESOLVED"; resolutionNote?: string }) {
+    const data = await api.patch<{ event: AdminSyncEvent }>(`/sync/admin/events/${event.id}`, patch);
+    setSyncEvents((prev) => prev.map((item) => (item.id === event.id ? data.event : item)));
+    const summary = await api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary");
+    setSyncSummaries(summary.shops);
+  }
+
+  async function handleSaveDeviceLabel(device: AdminSyncDeviceRow, label: string) {
+    if (!device.deviceId || !label.trim()) return;
+    await api.patch("/sync/admin/device-label", {
+      shopId: device.shopId,
+      deviceId: device.deviceId,
+      deviceLabel: label.trim(),
+    });
+    await refreshSyncEvents();
+    const summary = await api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary");
+    setSyncSummaries(summary.shops);
   }
 
   function defaultBillingDraft(plan: "BASIC" | "PRO" = "BASIC"): BillingDraft {
@@ -993,6 +1044,39 @@ export default function AdminPage() {
               </div>
             </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Assistant Action Analytics</h2>
+                  <p className="text-xs text-gray-500">Tracks whether AI recommendations are opened, completed, or dismissed.</p>
+                </div>
+                <span className="text-xs text-gray-400">Last 30 days</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                <MiniMetric label="Tracked actions" value={overview.assistantAnalytics?.summary.total || 0} tone="border-brand-200 bg-brand-50 text-brand-800" />
+                <MiniMetric label="Opened rate" value={overview.assistantAnalytics?.summary.openedRate || 0} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                <MiniMetric label="Completed rate" value={overview.assistantAnalytics?.summary.completedRate || 0} tone="border-green-200 bg-green-50 text-green-800" />
+                <MiniMetric label="Dismissed rate" value={overview.assistantAnalytics?.summary.dismissedRate || 0} tone="border-gray-200 bg-gray-50 text-gray-800" />
+              </div>
+              <div className="mt-3 rounded-lg bg-gray-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Top action types</p>
+                {(overview.assistantAnalytics?.topActions || []).length === 0 ? (
+                  <p className="mt-2 text-sm text-gray-500">No assistant actions tracked yet.</p>
+                ) : (
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    {overview.assistantAnalytics?.topActions.slice(0, 6).map((action) => (
+                      <div key={action.actionKey} className="rounded-lg bg-white px-3 py-2 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-semibold text-gray-900">{action.title}</p>
+                          <span className="rounded-full bg-brand-100 px-2 py-0.5 font-bold text-brand-700">{action.count}</span>
+                        </div>
+                        <p className="mt-1 font-mono text-[11px] text-gray-400">{action.actionKey}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">Support Queue</h2>
@@ -1080,7 +1164,7 @@ export default function AdminPage() {
                         <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-2 py-1.5 text-xs text-red-800">
                           <p className="font-semibold">Last failure: {item.recentFailures[0].message || "No message recorded"}</p>
                           <p className="mt-0.5 text-red-700">
-                            Attempts {item.recentFailures[0].attempts} - {item.recentFailures[0].total ? formatTZS(item.recentFailures[0].total) : "No total"} - {new Date(item.recentFailures[0].createdAt).toLocaleString()}
+                            {displayDeviceLabel(item.recentFailures[0].deviceId, item.recentFailures[0].deviceLabel, item.shop.user?.name)} - {item.recentFailures[0].resolutionStatus || "OPEN"} - Attempts {item.recentFailures[0].attempts} - {item.recentFailures[0].total ? formatTZS(item.recentFailures[0].total) : "No total"} - {new Date(item.recentFailures[0].createdAt).toLocaleString()}
                           </p>
                         </div>
                       )}
@@ -1848,10 +1932,14 @@ export default function AdminPage() {
                     <tbody>
                       {syncDevices.map((device, index) => {
                         const shop = subscriptions.find((item) => item.id === device.shopId);
+                        const deviceLabel = displayDeviceLabel(device.deviceId, device.deviceLabel, shop?.user?.name);
                         return (
                           <tr key={`${device.shopId}-${device.deviceId || "unknown"}-${device.status}-${index}`} className="border-b border-gray-50">
                             <td className="px-3 py-2 font-medium text-gray-900">{shop?.name || device.shopId}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-gray-500">{device.deviceId || "unknown"}</td>
+                            <td className="px-3 py-2">
+                              <p className="text-xs font-semibold text-gray-800">{deviceLabel}</p>
+                              <p className="font-mono text-[11px] text-gray-400">{device.deviceId || "unknown"}</p>
+                            </td>
                             <td className="px-3 py-2">
                               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                                 device.status === "FAILED" ? "bg-red-100 text-red-700" :
@@ -1863,12 +1951,24 @@ export default function AdminPage() {
                             <td className="px-3 py-2 text-gray-600">{device._count.id}</td>
                             <td className="px-3 py-2 text-xs text-gray-500">{device._max.createdAt ? new Date(device._max.createdAt).toLocaleString() : "-"}</td>
                             <td className="px-3 py-2 text-right">
-                              <button
-                                onClick={() => openSyncHistory(device.shopId, device.deviceId || "")}
-                                className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200"
-                              >
-                                Filter
-                              </button>
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  onClick={() => openSyncHistory(device.shopId, device.deviceId || "")}
+                                  className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200"
+                                >
+                                  Filter
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const nextLabel = window.prompt("Device label", deviceLabel);
+                                    if (nextLabel) handleSaveDeviceLabel(device, nextLabel).catch(console.error);
+                                  }}
+                                  disabled={!device.deviceId}
+                                  className="rounded-lg bg-brand-100 px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-200 disabled:opacity-50"
+                                >
+                                  Label
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1896,15 +1996,48 @@ export default function AdminPage() {
                           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                             event.status === "FAILED" ? "bg-red-100 text-red-700" :
                             event.status === "SYNCED" ? "bg-green-100 text-green-700" :
-                            event.status === "QUEUED" ? "bg-amber-100 text-amber-700" :
+                              event.status === "QUEUED" ? "bg-amber-100 text-amber-700" :
                             "bg-gray-100 text-gray-700"
                           }`}>{event.status}</span>
-                          <span className="font-mono text-xs text-gray-400">{event.deviceId || "unknown device"}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            event.resolutionStatus === "RESOLVED" ? "bg-green-100 text-green-700" :
+                            event.resolutionStatus === "CONTACTED" ? "bg-blue-100 text-blue-700" :
+                            "bg-red-100 text-red-700"
+                          }`}>{event.resolutionStatus || "OPEN"}</span>
+                          <span className="text-xs font-semibold text-gray-500">
+                            {displayDeviceLabel(event.deviceId, event.deviceLabel, event.shop?.user?.name)}
+                          </span>
+                          <span className="font-mono text-[11px] text-gray-400">{event.deviceId || "unknown device"}</span>
                         </div>
                         <p className="mt-1 text-sm text-gray-600">{event.message || "No message recorded"}</p>
                         <p className="mt-1 text-xs text-gray-400">
                           Owner: {event.shop?.user?.name || "Unknown"} {event.shop?.user?.phone ? `- ${event.shop.user.phone}` : ""} - Local sale: {event.localId || "-"}
                         </p>
+                        {event.resolutionNote && <p className="mt-1 rounded-lg bg-gray-50 px-2 py-1 text-xs text-gray-600">Note: {event.resolutionNote}</p>}
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {(["OPEN", "CONTACTED", "RESOLVED"] as const).map((status) => (
+                            <button
+                              key={status}
+                              onClick={() => handleUpdateSyncEvent(event, { resolutionStatus: status }).catch(console.error)}
+                              className={`rounded px-2 py-1 text-xs font-semibold ${
+                                status === "RESOLVED" ? "bg-green-100 text-green-700 hover:bg-green-200" :
+                                status === "CONTACTED" ? "bg-blue-100 text-blue-700 hover:bg-blue-200" :
+                                "bg-red-100 text-red-700 hover:bg-red-200"
+                              }`}
+                            >
+                              {status === "CONTACTED" ? "Contacted" : status === "RESOLVED" ? "Resolved" : "Open"}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => {
+                              const note = window.prompt("Sync support note", event.resolutionNote || "");
+                              if (note !== null) handleUpdateSyncEvent(event, { resolutionNote: note }).catch(console.error);
+                            }}
+                            className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200"
+                          >
+                            Note
+                          </button>
+                        </div>
                       </div>
                       <div className="text-xs text-gray-500 lg:text-right">
                         <p className="font-semibold text-gray-800">{event.total ? formatTZS(event.total) : "No total"}</p>

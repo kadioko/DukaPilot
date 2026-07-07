@@ -136,6 +136,10 @@ export default function AssistantPage() {
                 {copied ? <CheckCircle2 className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
                 {copied ? (lang === "sw" ? "Imecopy" : "Copied") : "WhatsApp"}
               </button>
+              <Link href="/assistant/history" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-3 text-xs font-bold text-brand-700 hover:bg-brand-50 sm:col-span-3">
+                {lang === "sw" ? "Historia ya hatua za AI" : "AI action history"}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
           </div>
         </div>

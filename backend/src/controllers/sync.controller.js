@@ -16,6 +16,7 @@ const createEvent = asyncHandler(async (req, res) => {
     data: {
       shopId,
       deviceId: String(req.body.deviceId || "").trim() || null,
+      deviceLabel: String(req.body.deviceLabel || "").trim() || null,
       status: normalizeStatus(req.body.status),
       total: req.body.total == null ? null : Number(req.body.total),
       message: String(req.body.message || "").trim() || null,
@@ -58,7 +59,7 @@ const adminEvents = asyncHandler(async (req, res) => {
   });
 
   const devices = await prisma.offlineSyncEvent.groupBy({
-    by: ["shopId", "deviceId", "status"],
+    by: ["shopId", "deviceId", "deviceLabel", "status"],
     where,
     _count: { id: true },
     _max: { createdAt: true },
@@ -67,6 +68,72 @@ const adminEvents = asyncHandler(async (req, res) => {
   });
 
   res.json({ events, devices });
+});
+
+function normalizeResolutionStatus(value) {
+  const status = String(value || "").toUpperCase();
+  return ["OPEN", "CONTACTED", "RESOLVED"].includes(status) ? status : null;
+}
+
+const adminUpdateEvent = asyncHandler(async (req, res) => {
+  const { eventId } = req.params;
+  const resolutionStatus = normalizeResolutionStatus(req.body.resolutionStatus);
+  const resolutionNote = req.body.resolutionNote === undefined ? undefined : String(req.body.resolutionNote || "").trim() || null;
+
+  if (!resolutionStatus && resolutionNote === undefined) {
+    return res.status(400).json({ error: "resolutionStatus or resolutionNote is required" });
+  }
+
+  const updateData = {};
+  if (resolutionStatus) {
+    updateData.resolutionStatus = resolutionStatus;
+    if (resolutionStatus === "CONTACTED") updateData.contactedAt = new Date();
+    if (resolutionStatus === "RESOLVED") updateData.resolvedAt = new Date();
+    if (resolutionStatus === "OPEN") {
+      updateData.contactedAt = null;
+      updateData.resolvedAt = null;
+    }
+  }
+  if (resolutionNote !== undefined) updateData.resolutionNote = resolutionNote;
+
+  const event = await prisma.offlineSyncEvent.update({
+    where: { id: eventId },
+    data: updateData,
+    include: { shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } } },
+  });
+
+  req.audit = {
+    action: "offlineSync.resolution.updated",
+    resourceType: "offline_sync",
+    resourceId: event.id,
+    metadata: { adminId: req.user.userId, resolutionStatus, resolutionNote },
+  };
+
+  res.json({ event });
+});
+
+const adminUpdateDeviceLabel = asyncHandler(async (req, res) => {
+  const shopId = String(req.body.shopId || "").trim();
+  const deviceId = String(req.body.deviceId || "").trim();
+  const deviceLabel = String(req.body.deviceLabel || "").trim();
+
+  if (!shopId || !deviceId || !deviceLabel) {
+    return res.status(400).json({ error: "shopId, deviceId, and deviceLabel are required" });
+  }
+
+  const result = await prisma.offlineSyncEvent.updateMany({
+    where: { shopId, deviceId },
+    data: { deviceLabel },
+  });
+
+  req.audit = {
+    action: "offlineSync.deviceLabel.updated",
+    resourceType: "offline_sync_device",
+    resourceId: deviceId,
+    metadata: { adminId: req.user.userId, shopId, deviceId, deviceLabel, count: result.count },
+  };
+
+  res.json({ message: "Device label updated", count: result.count, shopId, deviceId, deviceLabel });
 });
 
 const adminSummary = asyncHandler(async (req, res) => {
@@ -89,6 +156,11 @@ const adminSummary = asyncHandler(async (req, res) => {
       message: true,
       attempts: true,
       localId: true,
+      deviceLabel: true,
+      resolutionStatus: true,
+      resolutionNote: true,
+      contactedAt: true,
+      resolvedAt: true,
       createdAt: true,
     },
   });
@@ -120,4 +192,4 @@ const adminSummary = asyncHandler(async (req, res) => {
   res.json({ shops: [...summaryByShop.values()].filter((item) => item.shop).sort((a, b) => b.failed - a.failed || new Date(b.lastEventAt) - new Date(a.lastEventAt)) });
 });
 
-module.exports = { createEvent, myEvents, adminEvents, adminSummary };
+module.exports = { createEvent, myEvents, adminEvents, adminUpdateEvent, adminUpdateDeviceLabel, adminSummary };
