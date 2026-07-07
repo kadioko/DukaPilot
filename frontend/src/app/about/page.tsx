@@ -2,6 +2,7 @@
 
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
 
 export default function AboutPage() {
@@ -10,20 +11,7 @@ export default function AboutPage() {
   return (
     <PublicPageShell>
       <div className="space-y-8">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-700">DukaPilot</p>
-          <h1 className="mt-3 text-3xl font-bold tracking-normal text-gray-950">
-            {lang === "sw" ? "Rubani wa duka lako la kila siku" : "The daily pilot for your shop"}
-          </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
-            {lang === "sw"
-              ? "DukaPilot husaidia wafanyabiashara Tanzania kufuatilia bidhaa, mauzo, madeni, matumizi, maagizo na wafanyakazi kwa lugha wanayoitumia kazini."
-              : "DukaPilot helps Tanzanian merchants track inventory, sales, debts, expenses, orders, and staff in the language they use at work."}
-          </p>
-          <div className="mt-6">
-            <WhatsAppCTA intent="about" label={lang === "sw" ? "Uliza kama inafaa duka langu" : "Ask if it fits my shop"} />
-          </div>
-        </div>
+        <TheInfiniteGrid lang={lang} />
 
         <div className="grid gap-6 md:grid-cols-3">
           {[
@@ -46,6 +34,21 @@ export default function AboutPage() {
             </section>
           ))}
         </div>
+
+        <section className="rounded-lg border border-gray-200 bg-white p-6">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-700">DukaPilot</p>
+          <h2 className="mt-3 text-2xl font-bold tracking-normal text-gray-950">
+            {lang === "sw" ? "Rubani wa duka lako la kila siku" : "The daily pilot for your shop"}
+          </h2>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
+            {lang === "sw"
+              ? "DukaPilot husaidia wafanyabiashara Tanzania kufuatilia bidhaa, mauzo, madeni, matumizi, maagizo na wafanyakazi kwa lugha wanayoitumia kazini."
+              : "DukaPilot helps Tanzanian merchants track inventory, sales, debts, expenses, orders, and staff in the language they use at work."}
+          </p>
+          <div className="mt-6">
+            <WhatsAppCTA intent="about" label={lang === "sw" ? "Uliza kama inafaa duka langu" : "Ask if it fits my shop"} />
+          </div>
+        </section>
       </div>
     </PublicPageShell>
   );
