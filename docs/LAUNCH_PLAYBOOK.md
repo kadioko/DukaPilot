@@ -81,6 +81,15 @@ Founder-led close:
 
 Start with channels where trust is already high.
 
+## SEO Launch Checklist
+
+- Confirm `https://www.dukapilot.com/robots.txt` allows public pages and points to `https://www.dukapilot.com/sitemap.xml`.
+- Submit `https://www.dukapilot.com/sitemap.xml` in Google Search Console after each major public-page release.
+- Request indexing for the homepage, `/pricing`, `/about`, `/help`, `/contact`, `/catalog`, and `/demo`.
+- Keep private app pages out of the sitemap; focus crawlers on public, useful pages.
+- Build branded backlinks from Instagram, WhatsApp business profile, field-sales materials, partner/supplier pages, and local business directories.
+- Use the same entity details everywhere: DukaPilot, Necuva Group Limited, `support@dukapilot.com`, `+255743910580`, and `https://www.dukapilot.com`.
+
 ### 1. Direct Field Sales
 
 Target: 100 shops in 30 days.
