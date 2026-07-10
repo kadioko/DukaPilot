@@ -5,6 +5,8 @@ const { buildCustomerOrderMessage, sendWhatsAppMessage } = require("../services/
 function activeShopWhere(now = new Date()) {
   return {
     isActive: true,
+    isCatalogPublished: true,
+    isDemo: false,
     OR: [
       { plan: "FREE_TRIAL", trialEndsAt: { gt: now } },
       { subscriptionEndsAt: { gt: now } },
@@ -25,14 +27,14 @@ router.get("/shops", async (req, res, next) => {
   try {
     const now = new Date();
     const shops = await prisma.shop.findMany({
-      where: { ...activeShopWhere(now), products: { some: { isActive: true } } },
+      where: { ...activeShopWhere(now), products: { some: { isActive: true, currentStock: { gt: 0 } } } },
       select: {
         id: true,
         name: true,
         location: true,
         district: true,
         category: true,
-        _count: { select: { products: { where: { isActive: true } } } },
+        _count: { select: { products: { where: { isActive: true, currentStock: { gt: 0 } } } } },
       },
       orderBy: { name: "asc" },
     });
@@ -55,12 +57,14 @@ router.get("/shops", async (req, res, next) => {
 // GET /api/public/products?shopId=&search= -> browse active products
 router.get("/products", async (req, res, next) => {
   try {
-    const { shopId, search, limit = 100 } = req.query;
+    const { shopId, search, limit = 60, offset = 0 } = req.query;
     const where = { isActive: true, currentStock: { gt: 0 }, shop: activeShopWhere() };
     if (shopId) where.shopId = String(shopId);
     if (search) where.name = { contains: String(search), mode: "insensitive" };
 
-    const products = await prisma.product.findMany({
+    const take = Math.min(Math.max(Number(limit) || 60, 1), 100);
+    const skip = Math.max(Number(offset) || 0, 0);
+    const [products, total] = await Promise.all([prisma.product.findMany({
       where,
       select: {
         id: true,
@@ -73,10 +77,11 @@ router.get("/products", async (req, res, next) => {
         shop: { select: { id: true, name: true, location: true, category: true } },
       },
       orderBy: [{ shop: { name: "asc" } }, { name: "asc" }],
-      take: Math.min(Number(limit) || 100, 200),
-    });
+      take,
+      skip,
+    }), prisma.product.count({ where })]);
 
-    res.json({ products });
+    res.json({ products, pagination: { total, limit: take, offset: skip, hasMore: skip + products.length < total } });
   } catch (err) {
     next(err);
   }
@@ -97,12 +102,14 @@ router.get("/shops/:id", async (req, res, next) => {
         trialEndsAt: true,
         subscriptionEndsAt: true,
         isActive: true,
+        isCatalogPublished: true,
+        isDemo: true,
         user: { select: { phone: true } },
         _count: { select: { products: { where: { isActive: true, currentStock: { gt: 0 } } } } },
       },
     });
     if (!shop) return res.status(404).json({ error: "Shop not found" });
-    if (!isPublicShopActive(shop)) return res.status(404).json({ error: "Shop not available" });
+    if (!shop.isCatalogPublished || shop.isDemo || !isPublicShopActive(shop)) return res.status(404).json({ error: "Shop not available" });
 
     const products = await prisma.product.findMany({
       where: { shopId: req.params.id, isActive: true, currentStock: { gt: 0 } },
@@ -149,7 +156,7 @@ router.post("/orders", async (req, res, next) => {
       include: { user: { select: { phone: true } } },
     });
     if (!shop) return res.status(404).json({ error: "Shop not found" });
-    if (!isPublicShopActive(shop)) {
+    if (!shop.isCatalogPublished || shop.isDemo || !isPublicShopActive(shop)) {
       return res.status(402).json({ error: "This shop is not currently accepting catalog orders" });
     }
 
@@ -158,8 +165,8 @@ router.post("/orders", async (req, res, next) => {
       quantity: Number(item.quantity),
       pricingTier: item.pricingTier,
     }));
-    if (normalizedItems.some((item) => !item.productId || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
-      return res.status(400).json({ error: "Each item must include a productId and quantity greater than 0" });
+    if (normalizedItems.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
+      return res.status(400).json({ error: "Each item must include a productId and a whole-number quantity greater than 0" });
     }
 
     const productIds = normalizedItems.map((i) => i.productId);

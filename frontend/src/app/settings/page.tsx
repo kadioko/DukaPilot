@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS } from "@/lib/api";
+import { api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import { Store, User, Lock, Globe, Check, ChevronDown } from "lucide-react";
 
@@ -11,12 +11,14 @@ interface UserSettings {
   name: string;
   role: string;
   language: string;
+  isStaff?: boolean;
   shop?: {
     id: string;
     name: string;
     location: string;
     district?: string | null;
     category: string;
+    isCatalogPublished: boolean;
   };
 }
 
@@ -62,6 +64,7 @@ export default function SettingsPage() {
   const [shopLocation, setShopLocation] = useState("");
   const [shopDistrict, setShopDistrict] = useState("");
   const [shopCategory, setShopCategory] = useState("general");
+  const [catalogPublished, setCatalogPublished] = useState(true);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopMsg, setShopMsg] = useState("");
   const [shopError, setShopError] = useState("");
@@ -91,6 +94,7 @@ export default function SettingsPage() {
           setShopLocation(s.shop.location);
           setShopDistrict(s.shop.district || "");
           setShopCategory(s.shop.category);
+          setCatalogPublished(s.shop.isCatalogPublished !== false);
         }
       })
       .catch(console.error)
@@ -112,11 +116,12 @@ export default function SettingsPage() {
         location: shopLocation.trim(),
         district: shopDistrict.trim() || null,
         category: shopCategory,
+        isCatalogPublished: catalogPublished,
       });
       setShopMsg(t("settings.saved", lang));
       setSettings((prev) => prev ? {
         ...prev,
-        shop: prev.shop ? { ...prev.shop, name: shopName.trim(), location: shopLocation.trim(), district: shopDistrict.trim() || null, category: shopCategory } : prev.shop,
+        shop: prev.shop ? { ...prev.shop, name: shopName.trim(), location: shopLocation.trim(), district: shopDistrict.trim() || null, category: shopCategory, isCatalogPublished: catalogPublished } : prev.shop,
       } : prev);
       setTimeout(() => setShopMsg(""), 3000);
     } catch (err: unknown) {
@@ -235,7 +240,7 @@ export default function SettingsPage() {
         </SectionCard>
 
         {/* Shop Details — merchant only */}
-        {settings?.role === "MERCHANT" && settings.shop && (
+        {settings?.role === "MERCHANT" && !settings.isStaff && settings.shop && (
           <SectionCard title={t("settings.shopSection", lang)} icon={<Store className="w-4 h-4" />}>
             <form onSubmit={saveShop} className="space-y-3">
               <div>
@@ -248,6 +253,22 @@ export default function SettingsPage() {
                   required
                 />
               </div>
+              <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <input
+                  type="checkbox"
+                  checked={catalogPublished}
+                  onChange={(event) => setCatalogPublished(event.target.checked)}
+                  className="mt-0.5 h-5 w-5 rounded border-gray-300 text-brand-600"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-gray-800">
+                    {lang === "sw" ? "Onyesha duka kwenye catalog ya umma" : "Publish shop in the public catalog"}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-5 text-gray-500">
+                    {lang === "sw" ? "Zima hii wakati unasafisha bidhaa au bei kabla ya kushare link." : "Turn this off while cleaning products or prices before sharing your shop link."}
+                  </span>
+                </span>
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{t("settings.location", lang)}</label>

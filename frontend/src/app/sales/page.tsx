@@ -136,6 +136,7 @@ export default function SalesPage() {
   const lang = useLang();
   const { toast } = useToast();
   const syncingRef = useRef(false);
+  const cartPanelRef = useRef<HTMLDivElement>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
@@ -601,7 +602,7 @@ export default function SalesPage() {
             </div>
 
             {/* Cart */}
-            <div className="mt-4 lg:mt-0">
+            <div ref={cartPanelRef} className="mt-4 scroll-mt-20 lg:mt-0">
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <ShoppingCart className="w-4 h-4 text-gray-500" />
@@ -628,18 +629,18 @@ export default function SalesPage() {
                             />
                           </div>
                           <div className="flex items-center gap-1">
-                            <button onClick={() => updateQty(item.product.id, -1)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center min-h-0">
+                            <button aria-label={`${t("common.remove", lang)} ${item.product.name}`} onClick={() => updateQty(item.product.id, -1)} className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center min-h-0 sm:h-9 sm:w-9">
                               <Minus className="w-3 h-3" />
                             </button>
                             <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                            <button onClick={() => updateQty(item.product.id, 1)} className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0">
+                            <button aria-label={`${t("common.add", lang)} ${item.product.name}`} onClick={() => updateQty(item.product.id, 1)} className="w-11 h-11 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0 sm:h-9 sm:w-9">
                               <Plus className="w-3 h-3" />
                             </button>
                           </div>
                           <span className="text-xs font-bold text-gray-800 w-16 text-right">
                             {formatTZS(item.quantity * item.unitPrice)}
                           </span>
-                          <button onClick={() => removeFromCart(item.product.id)} className="text-gray-300 hover:text-red-400 min-h-0">
+                          <button aria-label={`${t("common.remove", lang)} ${item.product.name}`} onClick={() => removeFromCart(item.product.id)} className="flex h-11 w-11 items-center justify-center text-gray-400 hover:text-red-500 min-h-0 sm:h-9 sm:w-9">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -744,6 +745,15 @@ export default function SalesPage() {
               </div>
             )}
           </div>
+        )}
+        {view === "pos" && cart.length > 0 && (
+          <button
+            onClick={() => cartPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="fixed bottom-3 left-4 right-4 z-20 flex min-h-14 items-center justify-between rounded-xl bg-gray-950 px-4 text-white shadow-xl lg:hidden"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold"><ShoppingCart className="h-4 w-4" />{cart.reduce((sum, item) => sum + item.quantity, 0)} {lang === "sw" ? "bidhaa" : "items"}</span>
+            <span className="text-sm font-bold">{formatTZS(total)} · {lang === "sw" ? "Fungua cart" : "View cart"}</span>
+          </button>
         )}
       </div>
     </AppShell>

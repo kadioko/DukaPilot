@@ -10,6 +10,11 @@ function getClientKey(req) {
   return ipKeyGenerator(req.ip || req.socket?.remoteAddress || "unknown");
 }
 
+function getAuthenticationKey(req) {
+  const phone = String(req.body?.phone || "no-phone").replace(/\D/g, "").slice(-12) || "no-phone";
+  return `${getClientKey(req)}:${phone}`;
+}
+
 const sharedOptions = {
   standardHeaders: true,
   legacyHeaders: false,
@@ -28,6 +33,7 @@ const authRateLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 15 * 60 * 1000,
   max: 10,
+  keyGenerator: getAuthenticationKey,
   message: { error: "Too many authentication attempts. Please wait 15 minutes and try again." },
 });
 

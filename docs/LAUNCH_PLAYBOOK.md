@@ -1,6 +1,6 @@
 # DukaPilot Launch Playbook
 
-Last updated: 2026-07-08
+Last updated: 2026-07-10
 
 This is the working plan for turning the live DukaPilot product into active merchants, paid shops, and supplier relationships.
 
@@ -25,7 +25,7 @@ What should improve before scaling ads:
 
 - The homepage is currently login-first. That is good for returning users, but cold visitors need a clearer promise before the form: "Track stock, sales, debts, and supplier orders in Kiswahili from your phone."
 - Public pages should show screenshots or short videos of dashboard, sales, inventory, catalog, and AI Assistant.
-- SEO metadata is too short. Expand page titles/descriptions around "POS Tanzania", "inventory app Tanzania", "duka stock management", and "mfumo wa duka".
+- Keep Search Console verified, submit the sitemap after public-page changes, and build trustworthy local backlinks; technical metadata and structured data are already in place.
 - Add a stronger WhatsApp CTA for people who are not ready to register: "Tuma WhatsApp tupange setup ya duka lako."
 - Add social proof as soon as the first 3-5 real merchants are onboarded.
 - Watch production support signals daily: failed logins, unpaid/expiring shops, unresolved sync failures, billing reports, and assistant actions that are opened but not completed.
@@ -231,6 +231,21 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Merchants forget to return after first setup. Fix with day-1, day-3, and day-7 WhatsApp follow-up.
 - Payment friction. Keep M-Pesa reference flow simple and respond fast.
 - Feature overload. In demos, show only the workflow that fits the shop.
+- Deployment order. Railway must complete pending migrations before Vercel users reach frontend features that depend on new columns.
+- Catalog trust. Keep demo/QA shops unpublished and review wholesale prices before sharing a merchant catalog.
+- Plan leakage. Test Basic and Pro entitlements after every billing or authorization change.
+- Shared mobile IPs. Avoid repeated production login tests; use local unit/browser tests and one controlled production monitor.
+
+## Release Gate - 1.3.0
+
+- Railway migration: `20260710001000_launch_hardening`.
+- Production monitor passes once after Railway and Vercel deploy.
+- Basic account cannot use staff or AI routes; Pro and active trial can.
+- Duplicate payment reference returns the existing confirmation without extending time again.
+- Customer orders follow `PENDING -> CONFIRMED -> OUT_FOR_DELIVERY -> DELIVERED`.
+- Mobile Orders has no horizontal page overflow; Sales shows the sticky cart summary.
+- Public catalog contains only published, non-demo shops and supports pagination.
+- Android `1.0.2` / version code `3` is signed with the existing upload key before Play Console upload.
 
 ## Immediate Next Product Improvements
 

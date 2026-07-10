@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const prisma = require("../lib/prisma");
 
 function readCookieToken(req) {
   const cookieHeader = req.headers.cookie;
@@ -18,19 +19,49 @@ function readCookieToken(req) {
   return cookies.dukapilot_token || cookies.dukaos_token || null;
 }
 
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const header = req.headers.authorization;
   const bearerToken = header && header.startsWith("Bearer ") ? header.slice(7) : null;
   const token = bearerToken || readCookieToken(req);
   if (!token) {
     return res.status(401).json({ error: "Unauthorized" });
   }
+  let payload;
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload;
-    next();
+    payload = jwt.verify(token, process.env.JWT_SECRET);
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  try {
+    if (payload.staffId) {
+      const staff = await prisma.staffMember.findFirst({
+        where: { id: payload.staffId, isActive: true },
+        select: {
+          id: true,
+          shopId: true,
+          canSell: true,
+          canManageStock: true,
+          canManageStaff: true,
+          canViewReports: true,
+          shop: { select: { userId: true } },
+        },
+      });
+      if (!staff || staff.shop.userId !== payload.userId) {
+        return res.status(401).json({ error: "Staff access expired" });
+      }
+      payload.shopId = staff.shopId;
+      payload.permissions = {
+        canSell: staff.canSell,
+        canManageStock: staff.canManageStock,
+        canManageStaff: staff.canManageStaff,
+        canViewReports: staff.canViewReports,
+      };
+    }
+    req.user = payload;
+    next();
+  } catch (error) {
+    next(error);
   }
 }
 

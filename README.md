@@ -43,7 +43,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Debt tracking** | Credit sales automatically create receivables; merchants can add, track, and mark debts paid |
 | **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
-| **Staff roles** | Add staff members and manage role permissions for selling, stock, staff, and reports |
+| **Staff roles (Pro)** | Add uniquely identified staff members; live permissions and deactivation are enforced on every request |
 | **Billing page** | Merchants can see plan status, official M-Pesa/Mix by Yas payment options, submit references, and contact WhatsApp support |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
@@ -55,11 +55,13 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
-| **DukaPilot AI Assistant** | Daily command list with ranked recommendations, why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
+| **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations, why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
 | **AI action history** | Merchants can review opened, completed, and dismissed AI actions from `/assistant/history` |
 | **Offline sales queue** | Sales entered during connection loss are saved locally, show sync history/errors, and retry when the browser comes back online |
 | **PIN recovery** | "Forgot PIN?" sends a 6-digit OTP via SMS (Africa's Talking) |
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
+| **Operational alerts** | Actionable low-stock, debt, customer-order, offline-sync, and subscription notifications |
+| **Catalog publishing** | Owners can publish or temporarily hide their public shop while cleaning products and prices |
 | **CSV export** | Download sales history or full inventory as a CSV file |
 | **Legal pages** | Public About, Terms, and Privacy pages with English/Swahili switching |
 | **Onboarding + trust pages** | Contact, Help/FAQ, Demo accounts, and a guided five-step merchant onboarding checklist |
@@ -148,12 +150,15 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - **Admin PIN reset:** admin can reset any user's PIN via `/admin` (audit-logged)
 - **Registration:** collects phone, PIN, name, role (MERCHANT / SUPPLIER), shop city, district, and category
 - **Merchant trial:** new merchant shops receive a 14-day free trial on registration; existing missing trial dates are backfilled by migration.
+- **Plan access:** a valid trial includes all features; Basic includes core shop operations and CSV exports; Pro adds staff accounts and AI workflows.
 
 ### Security Notes
 
-- Rate limiting is applied on all `/api/*` routes (100 req / 15 min) and tighter on `/api/auth/*` and `/api/public/*`.
+- Rate limiting is applied on all `/api/*` routes (200 requests / 15 min). Authentication limits are scoped by client and phone number so unrelated mobile-network users do not lock each other out.
+- Staff permissions are reloaded from the database on every authenticated request; disabling a staff account invalidates access immediately.
 - Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
 - OTP codes expire after 10 minutes and are single-use.
+- Africa's Talking credentials must be verified separately in production; the production monitor does not send a real OTP.
 
 ---
 

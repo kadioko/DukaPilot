@@ -65,6 +65,11 @@ const create = asyncHandler(async (req, res) => {
   if (!Number.isFinite(initialStock) || initialStock < 0) {
     return res.status(400).json({ error: "Current stock must be 0 or greater" });
   }
+  const retailPrice = Number(sellingPrice);
+  const parsedWholesalePrice = wholesalePrice != null && wholesalePrice !== "" ? Number(wholesalePrice) : null;
+  if (parsedWholesalePrice != null && parsedWholesalePrice > retailPrice) {
+    return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
+  }
 
   const product = await prisma.product.create({
     data: {
@@ -72,8 +77,8 @@ const create = asyncHandler(async (req, res) => {
       sku,
       unit: unit || "pcs",
       buyingPrice: Number(buyingPrice),
-      sellingPrice: Number(sellingPrice),
-      wholesalePrice: wholesalePrice != null && wholesalePrice !== "" ? Number(wholesalePrice) : null,
+      sellingPrice: retailPrice,
+      wholesalePrice: parsedWholesalePrice,
       wholesaleMinQty: wholesaleMinQty != null && wholesaleMinQty !== "" ? Number(wholesaleMinQty) : null,
       currentStock: initialStock,
       minimumStock: Number(minimumStock) || 5,
@@ -106,6 +111,13 @@ const update = asyncHandler(async (req, res) => {
   if (!existing) return res.status(404).json({ error: "Product not found" });
 
   const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire } = req.body;
+  const nextSellingPrice = sellingPrice === undefined ? existing.sellingPrice : Number(sellingPrice);
+  const nextWholesalePrice = wholesalePrice === undefined
+    ? existing.wholesalePrice
+    : wholesalePrice === null || wholesalePrice === "" ? null : Number(wholesalePrice);
+  if (nextWholesalePrice != null && nextWholesalePrice > nextSellingPrice) {
+    return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
+  }
 
   const product = await prisma.product.update({
     where: { id: req.params.id },
@@ -114,8 +126,8 @@ const update = asyncHandler(async (req, res) => {
       ...(sku !== undefined && { sku }),
       ...(unit !== undefined && { unit }),
       ...(buyingPrice !== undefined && { buyingPrice: Number(buyingPrice) }),
-      ...(sellingPrice !== undefined && { sellingPrice: Number(sellingPrice) }),
-      ...(wholesalePrice !== undefined && { wholesalePrice: wholesalePrice === null || wholesalePrice === "" ? null : Number(wholesalePrice) }),
+      ...(sellingPrice !== undefined && { sellingPrice: nextSellingPrice }),
+      ...(wholesalePrice !== undefined && { wholesalePrice: nextWholesalePrice }),
       ...(wholesaleMinQty !== undefined && { wholesaleMinQty: wholesaleMinQty === null || wholesaleMinQty === "" ? null : Number(wholesaleMinQty) }),
       ...(minimumStock !== undefined && { minimumStock: Number(minimumStock) }),
       ...(supplierId !== undefined && { supplierId }),

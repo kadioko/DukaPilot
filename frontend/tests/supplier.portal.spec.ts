@@ -33,6 +33,18 @@ test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }
     window.localStorage.setItem("dukapilot_token", "playwright-supplier-token");
   });
 
+  await page.route("**/api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: { name: "Jumla Traders", role: "SUPPLIER", language: "sw", supplier: { name: "Jumla Traders" } } }),
+    });
+  });
+
+  await page.route("**/api/suppliers/portal/products", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
+  });
+
   await page.route("**/api/suppliers/portal/dashboard", async (route) => {
     await route.fulfill({
       status: 200,
@@ -79,11 +91,11 @@ test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }
   await page.getByRole("button", { name: /zilizothibitishwa/i }).click();
   await expect(page.getByText("Duka la Amina")).toBeVisible();
   await expect(page.getByText("Duka la Rehema")).toBeVisible();
-  await expect(page.locator("div.bg-white.rounded-xl.border").filter({ hasText: "Duka la Amina" }).getByText(/imethibitishwa/i)).toBeVisible();
-  await page.getByRole("button", { name: /safirishwa/i }).first().click();
+  await expect(page.locator("div.bg-white.rounded-xl.border").filter({ hasText: "Duka la Amina" }).getByText(/zilizothibitishwa/i)).toBeVisible();
+  await page.getByRole("button", { name: /safirishwa duka la amina/i }).click();
   await page.getByRole("button", { name: /zinakwenda/i }).click();
   await expect(page.getByText("Duka la Amina")).toBeVisible();
-  await expect(page.getByText(/imesafirishwa/i)).toBeVisible();
+  await expect(page.locator("div.bg-white.rounded-xl.border").filter({ hasText: "Duka la Amina" }).locator("span").filter({ hasText: "Zinakwenda" })).toBeVisible();
   await expect(page.getByText(/inasubiri uthibitisho wa mpokeaji/i)).toBeVisible();
 
   await page.getByRole("button", { name: /zinazosubiri/i }).click();

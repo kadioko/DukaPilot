@@ -33,7 +33,7 @@ def twaManifest = [
     navigationDividerColor: '#166534', // The navbar divider color.
     navigationDividerColorDark: '#166534', // The dark navbar divider color.
     backgroundColor: '#166534', // The color used for the splash screen background.
-    enableNotifications: true, // Set to true to enable notification delegation.
+    enableNotifications: false, // Re-enable when delegated push notifications are implemented.
     // Every shortcut must include the following fields:
     // - name: String that will show up in the shortcut.
     // - short_name: Shorter string used if |name| is too long.
@@ -62,8 +62,8 @@ android {
         applicationId "com.dukapilot.app"
         minSdkVersion 23
         targetSdkVersion 35
-        versionCode 2
-        versionName "1.0.1"
+        versionCode 3
+        versionName "1.0.2"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name

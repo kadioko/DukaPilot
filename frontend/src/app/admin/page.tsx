@@ -331,7 +331,11 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    Promise.all([
+    let cancelled = false;
+    api.get<{ user: { role: string } }>("/auth/me")
+      .then(({ user }) => {
+        if (user.role !== "ADMIN") throw new Error("Admin access required");
+        return Promise.all([
       optionalAdminLoad<AdminOverview | null>("overview", api.get<AdminOverview>("/admin/overview"), null),
       optionalAdminLoad("users", api.get<{ users: AdminUser[] }>("/admin/users"), { users: [] }),
       optionalAdminLoad("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }),
@@ -341,8 +345,10 @@ export default function AdminPage() {
       optionalAdminLoad("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }),
       optionalAdminLoad("sync events", api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"), { events: [], devices: [] }),
       optionalAdminLoad<NonNullable<AdminOverview["assistantAnalytics"]> | null>("assistant analytics", api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"), null),
-    ])
+        ]);
+      })
       .then(([ov, u, al, rp, sub, supplierData, syncData, syncEventsData, assistantAnalytics]) => {
+        if (cancelled) return;
         setOverview(ov && assistantAnalytics ? { ...ov, assistantAnalytics } : ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
@@ -355,8 +361,13 @@ export default function AdminPage() {
         setFollowUpDrafts(Object.fromEntries(sub.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
         setSupplierNotes(Object.fromEntries(supplierData.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch((error) => {
+        if (!cancelled && error instanceof Error && !error.message.includes("Session expired")) console.error(error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   async function handleSearch(e: React.FormEvent) {
@@ -567,6 +578,11 @@ export default function AdminPage() {
   async function handleRecordPayment(shop: Subscription, plan?: "BASIC" | "PRO", customDraft?: BillingDraft) {
     const draft = customDraft || (plan ? defaultBillingDraft(plan) : billingDraftFor(shop));
     const selectedPlan = plan || draft.plan;
+    let reference = draft.reference.trim();
+    if (!reference) {
+      reference = window.prompt("Enter the M-Pesa, Mix by Yas, or transfer reference before confirming payment:")?.trim() || "";
+    }
+    if (!reference) return;
     setUpdatingSub(shop.id);
     try {
       await api.post(`/subscription/admin/${shop.id}/payments`, {
@@ -574,7 +590,7 @@ export default function AdminPage() {
         months: Number(draft.months) || 1,
         amount: Number(draft.amount) || (selectedPlan === "PRO" ? 35000 : 15000),
         method: draft.method || "MPESA",
-        reference: draft.reference.trim() || `MANUAL-${Date.now().toString().slice(-6)}`,
+        reference,
         note: draft.note.trim() || "Marked paid by admin",
       });
       await refreshSubscriptions();
@@ -599,6 +615,7 @@ export default function AdminPage() {
         method: "MPESA",
         reference: referenceMatch?.[1]?.trim() || `REPORT-${report.id.slice(-6)}`,
         note: `Verified from billing report ${report.id}`,
+        sourceReportId: report.id,
       });
       const data = await api.patch<{ report: Report }>(`/reports/admin/${report.id}`, {
         status: "RESOLVED",

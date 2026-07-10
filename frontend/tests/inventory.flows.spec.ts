@@ -46,6 +46,14 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
+  await page.route("**/api/subscription/status", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
+  });
+
+  await page.route("**/api/notifications", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) });
+  });
+
   await page.route("**/api/suppliers", async (route) => {
     await route.fulfill({
       status: 200,
@@ -160,4 +168,8 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
   await expect(page.getByText(/25 pcs/)).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(hasHorizontalOverflow).toBe(false);
 });

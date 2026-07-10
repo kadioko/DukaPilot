@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { isSubscriptionActive } = require("../middleware/subscription");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -17,6 +18,27 @@ function reminderStage(status, daysLeft) {
 
 function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function addMonthsClamped(date, months) {
+  const result = new Date(date);
+  const day = result.getUTCDate();
+  result.setUTCDate(1);
+  result.setUTCMonth(result.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  result.setUTCDate(Math.min(day, lastDay));
+  return result;
+}
+
+function parseOptionalDate(value, field) {
+  if (value === null || value === "") return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw Object.assign(new Error(`${field} must be a valid date`), { status: 400 });
+  return date;
+}
+
+function normalizePaymentReference(value) {
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
 function subscriptionSnapshot(shop, now = new Date()) {
@@ -38,9 +60,9 @@ function subscriptionSnapshot(shop, now = new Date()) {
 
 // Get current shop's subscription status
 const getStatus = asyncHandler(async (req, res) => {
-  const userId = req.user.userId;
+  const shopId = await getShopIdForUser(req.user);
   const shop = await prisma.shop.findUnique({
-    where: { userId },
+    where: { id: shopId },
     select: { id: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true, createdAt: true },
   });
   if (!shop) return res.status(404).json({ error: "Shop not found" });
@@ -136,9 +158,13 @@ const adminUpdateSubscription = asyncHandler(async (req, res) => {
   const { plan, trialEndsAt, subscriptionEndsAt, isActive, onboardingStatus, lastContactedAt, followUpNotes } = req.body;
 
   const updateData = {};
-  if (plan) updateData.plan = String(plan);
-  if (trialEndsAt !== undefined) updateData.trialEndsAt = trialEndsAt ? new Date(trialEndsAt) : null;
-  if (subscriptionEndsAt !== undefined) updateData.subscriptionEndsAt = subscriptionEndsAt ? new Date(subscriptionEndsAt) : null;
+  if (plan) {
+    const nextPlan = String(plan).toUpperCase();
+    if (!["FREE_TRIAL", "BASIC", "PRO"].includes(nextPlan)) return res.status(400).json({ error: "Invalid subscription plan" });
+    updateData.plan = nextPlan;
+  }
+  if (trialEndsAt !== undefined) updateData.trialEndsAt = parseOptionalDate(trialEndsAt, "trialEndsAt");
+  if (subscriptionEndsAt !== undefined) updateData.subscriptionEndsAt = parseOptionalDate(subscriptionEndsAt, "subscriptionEndsAt");
   if (isActive !== undefined) updateData.isActive = Boolean(isActive);
   if (onboardingStatus !== undefined) {
     const nextStatus = String(onboardingStatus).toUpperCase();
@@ -147,7 +173,7 @@ const adminUpdateSubscription = asyncHandler(async (req, res) => {
     }
     updateData.onboardingStatus = nextStatus;
   }
-  if (lastContactedAt !== undefined) updateData.lastContactedAt = lastContactedAt ? new Date(lastContactedAt) : null;
+  if (lastContactedAt !== undefined) updateData.lastContactedAt = parseOptionalDate(lastContactedAt, "lastContactedAt");
   if (followUpNotes !== undefined) updateData.followUpNotes = String(followUpNotes || "").trim() || null;
 
   const shop = await prisma.shop.update({
@@ -179,7 +205,7 @@ const adminUpdateSubscription = asyncHandler(async (req, res) => {
 // Admin: extend trial by N days
 const adminExtendTrial = asyncHandler(async (req, res) => {
   const { shopId } = req.params;
-  const days = Number(req.body.days) || 7;
+  const days = Math.max(1, Math.min(90, Number(req.body.days) || 7));
 
   const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { trialEndsAt: true } });
   if (!shop) return res.status(404).json({ error: "Shop not found" });
@@ -189,7 +215,7 @@ const adminExtendTrial = asyncHandler(async (req, res) => {
 
   const updated = await prisma.shop.update({
     where: { id: shopId },
-    data: { trialEndsAt: newDate, plan: "FREE_TRIAL" },
+    data: { trialEndsAt: newDate, plan: "FREE_TRIAL", isActive: true },
     select: { id: true, name: true, plan: true, trialEndsAt: true },
   });
 
@@ -244,6 +270,7 @@ const adminRemoveSubscription = asyncHandler(async (req, res) => {
     where: { id: shopId },
     data: {
       plan: "FREE_TRIAL",
+      trialEndsAt: new Date(),
       subscriptionEndsAt: null,
       isActive: true,
     },
@@ -272,29 +299,78 @@ const adminRecordPayment = asyncHandler(async (req, res) => {
   const amount = Number(req.body.amount);
   const method = String(req.body.method || "MANUAL").toUpperCase();
   const reference = String(req.body.reference || "").trim() || null;
+  const normalizedReference = normalizePaymentReference(reference);
   const note = String(req.body.note || "").trim() || null;
+  const proofUrl = String(req.body.proofUrl || "").trim() || null;
+  const sourceReportId = String(req.body.sourceReportId || "").trim() || null;
 
   if (!["BASIC", "PRO"].includes(plan)) return res.status(400).json({ error: "Plan must be BASIC or PRO" });
   if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Payment amount must be positive" });
+  if (!normalizedReference) return res.status(400).json({ error: "Payment reference is required" });
+
+  const duplicate = await prisma.subscriptionPayment.findFirst({
+    where: {
+      OR: [
+        { normalizedReference },
+        ...(sourceReportId ? [{ sourceReportId }] : []),
+      ],
+    },
+  });
+  if (duplicate) {
+    if (duplicate.shopId !== shopId) return res.status(409).json({ error: "This payment reference is already linked to another shop" });
+    const shop = await prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+    });
+    return res.json({ payment: duplicate, shop, active: isSubscriptionActive(shop), reused: true });
+  }
 
   const existing = await prisma.shop.findUnique({ where: { id: shopId }, select: { subscriptionEndsAt: true } });
   if (!existing) return res.status(404).json({ error: "Shop not found" });
 
   const now = new Date();
   const base = existing.subscriptionEndsAt && existing.subscriptionEndsAt > now ? existing.subscriptionEndsAt : now;
-  const subscriptionEndsAt = new Date(base);
-  subscriptionEndsAt.setMonth(subscriptionEndsAt.getMonth() + months);
+  const subscriptionEndsAt = addMonthsClamped(base, months);
 
-  const [payment, shop] = await prisma.$transaction([
-    prisma.subscriptionPayment.create({
-      data: { shopId, plan, amount, months, method, reference, note },
-    }),
-    prisma.shop.update({
+  let payment;
+  let shop;
+  try {
+    [payment, shop] = await prisma.$transaction([
+      prisma.subscriptionPayment.create({
+      data: {
+        shopId,
+        plan,
+        amount,
+        months,
+        method,
+        reference,
+        normalizedReference,
+        note,
+        proofUrl,
+        sourceReportId,
+        status: "CONFIRMED",
+        reviewedBy: req.user.userId,
+        reviewedAt: now,
+      },
+      }),
+      prisma.shop.update({
       where: { id: shopId },
       data: { plan, subscriptionEndsAt, isActive: true },
       select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
-    }),
-  ]);
+      }),
+    ]);
+  } catch (error) {
+    if (error?.code !== "P2002") throw error;
+    const existingPayment = await prisma.subscriptionPayment.findFirst({
+      where: { OR: [{ normalizedReference }, ...(sourceReportId ? [{ sourceReportId }] : [])] },
+    });
+    if (!existingPayment || existingPayment.shopId !== shopId) throw error;
+    const currentShop = await prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+    });
+    return res.json({ payment: existingPayment, shop: currentShop, active: isSubscriptionActive(currentShop), reused: true });
+  }
 
   req.audit = {
     action: "admin.subscription.paymentRecorded",

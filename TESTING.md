@@ -1,5 +1,56 @@
 # DukaPilot Testing Guide
 
+## Safe Automated Commands
+
+Run local unit tests without touching production authentication:
+
+```bash
+cd backend
+npm test
+```
+
+Production checks are deliberately separate because they use a real demo login and consume rate-limit allowance:
+
+```bash
+cd backend
+npm run monitor:prod
+```
+
+Do not run `npm run test:prod-api`, `npm run smoke:prod`, and `npm run monitor:prod` repeatedly in the same 15-minute window.
+
+Frontend verification:
+
+```bash
+cd frontend
+npm run typecheck
+npm run test:mocked
+npm run test:a11y
+npm run build
+```
+
+## Migration Gate
+
+Railway must apply `20260710001000_launch_hardening` before the matching frontend is considered fully deployed. Verify:
+
+- staff phone identities are unique;
+- staff language is stored per staff member;
+- payment references and billing report IDs are idempotent;
+- demo/QA shops are hidden from the public marketplace;
+- catalog publishing can be changed from Settings.
+
+## High-Risk Regression Checks
+
+1. Deactivate a cashier, then confirm the existing session receives `401 Staff access expired` on its next request.
+2. Downgrade a staff permission and confirm it takes effect without waiting for token expiry.
+3. Confirm a customer order cannot move from `PENDING` directly to `DELIVERED`.
+4. Confirm two confirmation attempts cannot reserve stock twice or push stock negative.
+5. Confirm the same payment reference cannot extend a subscription twice.
+6. Confirm Basic hides staff and AI while Pro enables both; an active trial enables both.
+7. Confirm Settings changes a staff member's own name, PIN, and language without changing the owner.
+8. Confirm `/orders`, `/inventory`, and `/sales` have no horizontal page overflow at 390px width.
+9. Confirm the public catalog excludes demo/QA shops and loads additional products with the Load More button.
+10. Confirm Android does not request notification permission in release `1.0.2`.
+
 ## Live URLs
 
 | | URL |

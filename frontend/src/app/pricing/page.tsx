@@ -69,7 +69,7 @@ const plans: Plan[] = [
     features: [
       { sw: "Kila kitu katika Msingi", en: "Everything in Basic" },
       { sw: "Akaunti nyingi za wafanyakazi na permissions", en: "Multiple staff accounts and permissions" },
-      { sw: "Ripoti, export na ufuatiliaji wa biashara", en: "Reports, exports, and business tracking" },
+      { sw: "Ufuatiliaji wa wafanyakazi na historia ya hatua za AI", en: "Staff oversight and AI action history" },
       { sw: "AI priority workflows za kila siku", en: "AI priority workflows for daily actions" },
       { sw: "Msaada wa kipaumbele WhatsApp", en: "Priority WhatsApp support" },
     ],

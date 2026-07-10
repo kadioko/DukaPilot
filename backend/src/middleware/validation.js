@@ -26,8 +26,8 @@ const productCreateValidation = [
   body("sellingPrice").notEmpty().withMessage("Selling price is required").bail().isFloat({ min: 0 }).withMessage("Selling price must be 0 or greater"),
   body("wholesalePrice").optional({ nullable: true, values: "falsy" }).isFloat({ min: 0 }).withMessage("Wholesale price must be 0 or greater"),
   body("wholesaleMinQty").optional({ nullable: true, values: "falsy" }).isInt({ min: 1 }).withMessage("Wholesale minimum quantity must be 1 or greater"),
-  body("currentStock").optional().isFloat({ min: 0 }).withMessage("Current stock must be 0 or greater"),
-  body("minimumStock").optional().isFloat({ min: 0 }).withMessage("Minimum stock must be 0 or greater"),
+  body("currentStock").optional().isInt({ min: 0 }).withMessage("Current stock must be a whole number 0 or greater"),
+  body("minimumStock").optional().isInt({ min: 0 }).withMessage("Minimum stock must be a whole number 0 or greater"),
   body("supplierId").optional({ values: "falsy" }).isString().withMessage("Supplier ID must be a string"),
   body("doesNotExpire").optional().isBoolean().withMessage("doesNotExpire must be true or false"),
   body("expiryDate").optional({ values: "falsy" }).isISO8601().withMessage("Expiry date must be a valid date"),
@@ -42,7 +42,7 @@ const productUpdateValidation = [
   body("sellingPrice").optional().isFloat({ min: 0 }).withMessage("Selling price must be 0 or greater"),
   body("wholesalePrice").optional({ nullable: true, values: "falsy" }).isFloat({ min: 0 }).withMessage("Wholesale price must be 0 or greater"),
   body("wholesaleMinQty").optional({ nullable: true, values: "falsy" }).isInt({ min: 1 }).withMessage("Wholesale minimum quantity must be 1 or greater"),
-  body("minimumStock").optional().isFloat({ min: 0 }).withMessage("Minimum stock must be 0 or greater"),
+  body("minimumStock").optional().isInt({ min: 0 }).withMessage("Minimum stock must be a whole number 0 or greater"),
   body("supplierId").optional({ nullable: true }).isString().withMessage("Supplier ID must be a string"),
   body("isActive").optional().isBoolean().withMessage("isActive must be true or false"),
   body("doesNotExpire").optional().isBoolean().withMessage("doesNotExpire must be true or false"),
@@ -74,7 +74,7 @@ const saleSummaryValidation = [
 const saleCreateValidation = [
   body("items").isArray({ min: 1 }).withMessage("Sale must have at least one item"),
   body("items.*.productId").isString().notEmpty().withMessage("Each sale item must include a productId"),
-  body("items.*.quantity").isFloat({ min: 0.000001 }).withMessage("Each sale item quantity must be greater than 0"),
+  body("items.*.quantity").isInt({ min: 1 }).withMessage("Each sale item quantity must be a whole number greater than 0"),
   body("items.*.unitPrice").optional({ values: "falsy" }).isFloat({ min: 0 }).withMessage("Each sale item unitPrice must be 0 or greater"),
   body("saleMode").optional({ values: "falsy" }).custom((v) => ["RETAIL", "WHOLESALE"].includes(String(v).toUpperCase())).withMessage("saleMode must be RETAIL or WHOLESALE"),
   body("paymentMethod").optional().custom((value) => PAYMENT_METHODS.includes(String(value).toUpperCase())).withMessage("Invalid payment method"),
@@ -93,7 +93,7 @@ const orderCreateValidation = [
   body("supplierId").isString().notEmpty().withMessage("supplierId is required"),
   body("items").isArray({ min: 1 }).withMessage("Order must include at least one item"),
   body("items.*.productId").isString().notEmpty().withMessage("Each order item must include a productId"),
-  body("items.*.quantity").isFloat({ min: 0.000001 }).withMessage("Each order item quantity must be greater than 0"),
+  body("items.*.quantity").isInt({ min: 1 }).withMessage("Each order item quantity must be a whole number greater than 0"),
   body("items.*.unitPrice").optional({ values: "falsy" }).isFloat({ min: 0 }).withMessage("Each order item unitPrice must be 0 or greater"),
   body("note").optional({ values: "falsy" }).trim().isLength({ max: 500 }).withMessage("Note must be 500 characters or less"),
   handleValidationErrors,
@@ -102,7 +102,12 @@ const orderCreateValidation = [
 const stockAdjustValidation = [
   body("productId").isString().notEmpty().withMessage("productId is required"),
   body("type").custom((value) => STOCK_MOVEMENT_TYPES.includes(String(value).toUpperCase())).withMessage("type must be IN, OUT, or ADJUSTMENT"),
-  body("quantity").isFloat({ min: 0.000001 }).withMessage("quantity must be greater than 0"),
+  body("quantity").isInt({ min: 0 }).withMessage("quantity must be a whole number 0 or greater").bail().custom((value, { req }) => {
+    if (String(req.body.type || "").toUpperCase() !== "ADJUSTMENT" && Number(value) === 0) {
+      throw new Error("quantity must be greater than 0 for stock in or out");
+    }
+    return true;
+  }),
   body("note").optional({ values: "falsy" }).trim().isLength({ max: 500 }).withMessage("Note must be 500 characters or less"),
   handleValidationErrors,
 ];

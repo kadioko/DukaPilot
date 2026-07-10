@@ -123,6 +123,8 @@ model Shop {
   trialEndsAt     DateTime?
   subscriptionEndsAt DateTime?
   isActive        Boolean   @default(true)
+  isCatalogPublished Boolean @default(true)
+  isDemo          Boolean   @default(false)
   onboardingStatus OnboardingStatus @default(NEW)
   lastContactedAt DateTime?
   followUpNotes   String?
@@ -141,6 +143,12 @@ model SubscriptionPayment {
   months      Int      @default(1)
   method      String   @default("MANUAL")
   reference   String?
+  normalizedReference String? @unique
+  status      String   @default("CONFIRMED")
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  proofUrl    String?
+  sourceReportId String? @unique
   note        String?
   paidAt      DateTime @default(now())
   createdAt   DateTime @default(now())
@@ -333,8 +341,9 @@ model Expense {
 model StaffMember {
   id           String    @id @default(cuid())
   name         String
-  phone        String?
+  phone        String?   @unique
   pin          String?
+  language     String    @default("sw")
   role         StaffRole @default(CASHIER)
   canSell      Boolean   @default(true)
   canManageStock Boolean @default(false)

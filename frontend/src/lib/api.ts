@@ -55,10 +55,23 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
     return t("billing.subscriptionRequired", lang);
   }
 
+  if (normalized === "Pro plan required" || normalized === "PLAN_UPGRADE_REQUIRED" || normalized.includes("requires DukaPilot Pro")) {
+    return lang === "sw" ? "Sehemu hii inahitaji mpango wa DukaPilot Pro." : "This feature requires the DukaPilot Pro plan.";
+  }
+
   return normalized;
 }
 
 let refreshingPromise: Promise<boolean> | null = null;
+let authFailureHandled = false;
+
+function handleAuthenticationFailure() {
+  clearToken();
+  if (typeof window !== "undefined" && !authFailureHandled) {
+    authFailureHandled = true;
+    window.location.href = "/";
+  }
+}
 
 async function tryRefreshToken(): Promise<boolean> {
   if (refreshingPromise) return refreshingPromise;
@@ -119,14 +132,12 @@ async function request<T>(
     if (refreshed) {
       return request<T>(path, options, lang, true);
     }
-    clearToken();
-    if (typeof window !== "undefined") window.location.href = "/";
+    handleAuthenticationFailure();
     throw new Error("Session expired");
   }
 
   if (res.status === 401) {
-    clearToken();
-    if (typeof window !== "undefined") window.location.href = "/";
+    handleAuthenticationFailure();
     throw new Error("Session expired");
   }
 
@@ -182,6 +193,7 @@ export async function downloadFile(path: string, filename: string, lang: Lang = 
 }
 
 export function setToken(token: string) {
+  authFailureHandled = false;
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.removeItem(LEGACY_TOKEN_KEY);
 }

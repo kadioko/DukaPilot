@@ -18,6 +18,8 @@ import {
   HandCoins,
   Sparkles,
   CreditCard,
+  Settings,
+  ShoppingBag,
 } from "lucide-react";
 import { clearToken, api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -39,6 +41,11 @@ interface User {
       canViewReports: boolean;
     };
   };
+  features?: {
+    staff: boolean;
+    assistant: boolean;
+    exports: boolean;
+  };
 }
 
 interface NavItem {
@@ -47,6 +54,7 @@ interface NavItem {
   label?: string;
   icon: typeof LayoutDashboard;
   permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports";
+  feature?: "staff" | "assistant" | "exports";
 }
 
 const merchantNav: NavItem[] = [
@@ -56,10 +64,12 @@ const merchantNav: NavItem[] = [
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell" },
   { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canViewReports" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock" },
+  { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell" },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock" },
-  { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff" },
-  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports" },
-  { href: "/billing", label: "Billing", icon: CreditCard, permission: "canManageStaff" },
+  { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff", feature: "staff" },
+  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports", feature: "assistant" },
+  { href: "/billing", labelKey: "nav.billing", icon: CreditCard, permission: "canManageStaff" },
+  { href: "/settings", labelKey: "nav.settings", icon: Settings },
   { href: "/reports", label: "Report Issue", icon: AlertTriangle },
 ];
 
@@ -69,14 +79,22 @@ const adminNav: NavItem[] = [
   { href: "/reports", label: "Reports", icon: AlertTriangle },
 ];
 
+const supplierNav: NavItem[] = [
+  { href: "/supplier", labelKey: "nav.supplierPortal", icon: ClipboardList },
+  { href: "/settings", labelKey: "nav.settings", icon: Settings },
+  { href: "/reports", labelKey: "nav.reportIssue", icon: AlertTriangle },
+];
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const lang = useLang();
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
     api.get<{ user: User }>("/auth/me")
@@ -86,7 +104,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           setAppLanguage(d.user.language);
         }
       })
-      .catch(() => router.push("/"));
+      .catch(() => router.push("/"))
+      .finally(() => setAuthLoading(false));
   }, [router]);
 
   useEffect(() => {
@@ -96,6 +115,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         .catch(() => {});
       api.get<{ daysLeft: number | null }>("/subscription/status")
         .then((d) => setTrialDaysLeft(d.daysLeft ?? null))
+        .catch(() => {});
+      api.get<{ unreadCount: number }>("/notifications")
+        .then((d) => setNotificationCount(d.unreadCount || 0))
         .catch(() => {});
     }
   }, [user]);
@@ -127,7 +149,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
         ...adminNav,
         ...(user?.supplier ? [{ href: "/supplier", label: "Supplier Portal", icon: ClipboardList }] : []),
       ]
-    : merchantNav.filter((item) => !user?.staff || !item.permission || user.staff.permissions[item.permission]);
+    : user?.role === "SUPPLIER"
+      ? supplierNav
+      : merchantNav.filter((item) =>
+          (!user?.staff || !item.permission || user.staff.permissions[item.permission]) &&
+          (!item.feature || user?.features?.[item.feature] !== false)
+        );
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
 
   return (
@@ -257,7 +284,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
+      <div className="min-w-0 flex-1 lg:ml-64 flex flex-col min-h-screen">
         {/* Mobile header */}
         <header className="lg:hidden sticky top-0 z-10 bg-white border-b border-gray-200 flex items-center gap-3 px-4 h-14">
           <button
@@ -271,14 +298,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <LogoMark className="h-7 w-7 rounded-lg" />
             <span className="font-semibold text-gray-800 text-sm truncate">{displayName}</span>
           </div>
-          <Link href="/notifications" className="relative text-gray-600">
+          <Link href="/notifications" aria-label={lang === "sw" ? "Taarifa za duka" : "Shop alerts"} className="relative flex h-11 w-11 items-center justify-center text-gray-600">
             <Bell className="w-5 h-5" />
+            {notificationCount > 0 && <span className="absolute right-1.5 top-1.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] font-bold leading-4 text-white">{Math.min(notificationCount, 9)}</span>}
           </Link>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
-          {children}
+        <main className="min-w-0 flex-1 p-4 lg:p-8 overflow-y-auto">
+          {authLoading ? (
+            <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-label="Loading account">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" />
+            </div>
+          ) : user ? children : null}
         </main>
       </div>
     </div>

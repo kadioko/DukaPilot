@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
 const { issueOtp, verifyOtp } = require("../services/otp.service");
+const { activePlan, canUseFeature, featureSnapshot } = require("../lib/entitlements");
 
 const VALID_ROLES = new Set(["MERCHANT", "SUPPLIER"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
@@ -159,8 +160,11 @@ const register = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Invalid role selected" });
   }
 
-  const existing = await prisma.user.findUnique({ where: { phone } });
-  if (existing) {
+  const [existing, existingStaff] = await Promise.all([
+    prisma.user.findUnique({ where: { phone } }),
+    prisma.staffMember.findUnique({ where: { phone } }),
+  ]);
+  if (existing || existingStaff) {
     return res.status(409).json({ error: "Phone number already registered" });
   }
 
@@ -233,13 +237,19 @@ const login = asyncHandler(async (req, res) => {
     const match = await bcrypt.compare(pin, user.pin);
     if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
   } else {
-    staff = await prisma.staffMember.findFirst({
-      where: { phone, isActive: true, pin: { not: null } },
+    staff = await prisma.staffMember.findUnique({
+      where: { phone },
       include: { shop: { include: { user: true } } },
     });
-    if (!staff || !staff.pin) return res.status(401).json({ error: "Invalid phone or PIN" });
+    if (!staff || !staff.isActive || !staff.pin) return res.status(401).json({ error: "Invalid phone or PIN" });
     const match = await bcrypt.compare(pin, staff.pin);
     if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
+    if (!activePlan(staff.shop)) {
+      return res.status(402).json({ error: "Subscription required", code: "SUBSCRIPTION_REQUIRED" });
+    }
+    if (!canUseFeature(staff.shop, "STAFF")) {
+      return res.status(403).json({ error: "Staff login requires DukaPilot Pro", code: "PLAN_UPGRADE_REQUIRED" });
+    }
     accountUser = staff.shop.user;
   }
 
@@ -264,11 +274,12 @@ const updateLanguage = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Language must be 'en' or 'sw'" });
   }
 
-  await prisma.user.update({
-    where: { id: req.user.userId },
-    data: { language },
-  });
-  req.audit = { action: "auth.language.update", resourceType: "user", resourceId: req.user.userId, metadata: { language } };
+  if (req.user.staffId) {
+    await prisma.staffMember.update({ where: { id: req.user.staffId }, data: { language } });
+  } else {
+    await prisma.user.update({ where: { id: req.user.userId }, data: { language } });
+  }
+  req.audit = { action: "auth.language.update", resourceType: req.user.staffId ? "staff" : "user", resourceId: req.user.staffId || req.user.userId, metadata: { language } };
   res.json({ message: "Language updated" });
 });
 
@@ -383,12 +394,14 @@ async function getProfile(userId) {
       name: true,
       role: true,
       language: true,
-      shop: { select: { id: true, name: true, location: true, district: true, category: true } },
+      shop: { select: { id: true, name: true, location: true, district: true, category: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true, isCatalogPublished: true } },
       supplier: { select: { id: true, name: true, phone: true, address: true } },
       createdAt: true,
     },
   });
-  if (!user || user.supplier || user.role !== "ADMIN") return user;
+  if (!user) return user;
+  const withFeatures = user.shop ? { ...user, features: featureSnapshot(user.shop) } : user;
+  if (user.supplier || user.role !== "ADMIN") return withFeatures;
 
   const userDigits = String(user.phone || "").replace(/\D/g, "");
   const suppliers = await prisma.supplier.findMany({
@@ -400,7 +413,7 @@ async function getProfile(userId) {
     return supplierDigits && (supplierDigits === userDigits || supplierDigits.endsWith(userDigits.slice(-9)) || userDigits.endsWith(supplierDigits.slice(-9)));
   });
 
-  return supplier ? { ...user, supplier } : user;
+  return supplier ? { ...withFeatures, supplier } : withFeatures;
 }
 
 async function getStaffProfile(staffId) {
@@ -414,6 +427,11 @@ async function getStaffProfile(staffId) {
           location: true,
           district: true,
           category: true,
+          plan: true,
+          trialEndsAt: true,
+          subscriptionEndsAt: true,
+          isActive: true,
+          isCatalogPublished: true,
           user: { select: { id: true, phone: true, name: true, role: true, language: true, createdAt: true } },
         },
       },
@@ -425,7 +443,7 @@ async function getStaffProfile(staffId) {
     phone: staff.phone || staff.shop.user.phone,
     name: staff.name,
     role: staff.shop.user.role,
-    language: staff.shop.user.language,
+    language: staff.language || staff.shop.user.language,
     shop: {
       id: staff.shop.id,
       name: staff.shop.name,
@@ -439,6 +457,7 @@ async function getStaffProfile(staffId) {
       role: staff.role,
       permissions: staffPermissions(staff),
     },
+    features: featureSnapshot(staff.shop),
     createdAt: staff.shop.user.createdAt,
   };
 }

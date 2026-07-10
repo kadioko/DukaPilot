@@ -1,18 +1,20 @@
 const prisma = require("../lib/prisma");
 const { buildWhatsAppOrderMessage } = require("../services/whatsapp.service");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-async function getShop(userId) {
-  const shop = await prisma.shop.findUnique({ where: { userId } });
+async function getShop(user) {
+  const shopId = await getShopIdForUser(user);
+  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw Object.assign(new Error("Shop not found"), { status: 404 });
   return shop;
 }
 
 const list = asyncHandler(async (req, res) => {
-  const shop = await getShop(req.user.userId);
+  const shop = await getShop(req.user);
   const { status } = req.query;
 
   const where = { shopId: shop.id };
@@ -33,7 +35,7 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const create = asyncHandler(async (req, res) => {
-  const shop = await getShop(req.user.userId);
+  const shop = await getShop(req.user);
   const { supplierId, items, note } = req.body;
 
   if (!supplierId || !items || items.length === 0) {
@@ -49,8 +51,8 @@ const create = asyncHandler(async (req, res) => {
     unitPrice: item.unitPrice,
   }));
 
-  if (normalizedItems.some((item) => !item.productId || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
-    return res.status(400).json({ error: "Each order item must include a productId and quantity greater than 0" });
+  if (normalizedItems.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
+    return res.status(400).json({ error: "Each order item must include a productId and a whole-number quantity greater than 0" });
   }
 
   const productIds = normalizedItems.map((i) => i.productId);
@@ -66,7 +68,7 @@ const create = asyncHandler(async (req, res) => {
   const orderItemsData = normalizedItems.map((item) => {
     const product = productMap[item.productId];
     if (!product) throw Object.assign(new Error(`Product ${item.productId} not found`), { status: 400 });
-    const unitPrice = item.unitPrice || product.buyingPrice;
+    const unitPrice = item.unitPrice ?? product.buyingPrice;
     totalAmount += unitPrice * item.quantity;
     return {
       quantity: item.quantity,
@@ -98,7 +100,7 @@ const create = asyncHandler(async (req, res) => {
 });
 
 const get = asyncHandler(async (req, res) => {
-  const shop = await getShop(req.user.userId);
+  const shop = await getShop(req.user);
   const order = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
     include: {
@@ -115,7 +117,7 @@ const get = asyncHandler(async (req, res) => {
 });
 
 const cancel = asyncHandler(async (req, res) => {
-  const shop = await getShop(req.user.userId);
+  const shop = await getShop(req.user);
   const order = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
   });
@@ -133,7 +135,7 @@ const cancel = asyncHandler(async (req, res) => {
 
 // Confirm received delivery: record stock movements
 const confirmDelivery = asyncHandler(async (req, res) => {
-  const shop = await getShop(req.user.userId);
+  const shop = await getShop(req.user);
   const order = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
     include: { items: true },
@@ -144,6 +146,13 @@ const confirmDelivery = asyncHandler(async (req, res) => {
   }
 
   await prisma.$transaction(async (tx) => {
+    const statusUpdate = await tx.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: { status: "DELIVERED" },
+    });
+    if (statusUpdate.count !== 1) {
+      throw Object.assign(new Error("Order status changed. Refresh and try again."), { status: 409 });
+    }
     for (const item of order.items) {
       await tx.product.update({
         where: { id: item.productId },
@@ -158,10 +167,6 @@ const confirmDelivery = asyncHandler(async (req, res) => {
         },
       });
     }
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: "DELIVERED" },
-    });
   });
 
   res.json({ message: "Delivery confirmed and stock updated" });
@@ -169,7 +174,7 @@ const confirmDelivery = asyncHandler(async (req, res) => {
 
 // One-tap reorder based on previous order
 const reorder = asyncHandler(async (req, res) => {
-  const shop = await getShop(req.user.userId);
+  const shop = await getShop(req.user);
   const previousOrder = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
     include: { items: true },

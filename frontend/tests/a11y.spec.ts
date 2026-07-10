@@ -36,6 +36,14 @@ test("inventory page has no critical accessibility violations with mocked auth",
     });
   });
 
+  await page.route("**/api/subscription/status", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
+  });
+
+  await page.route("**/api/notifications", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) });
+  });
+
   await page.route("**/api/suppliers", async (route) => {
     await route.fulfill({
       status: 200,
@@ -53,6 +61,7 @@ test("inventory page has no critical accessibility violations with mocked auth",
   });
 
   await page.goto("/inventory");
+  await page.getByRole("heading", { name: /inventory|hifadhi ya bidhaa/i }).waitFor();
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const blocking = results.violations.filter((item) => item.impact === "critical");
   test.expect(blocking).toEqual([]);

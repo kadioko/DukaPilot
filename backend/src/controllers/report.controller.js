@@ -1,4 +1,7 @@
 const prisma = require("../lib/prisma");
+const REPORT_TYPES = new Set(["BUG", "FEATURE_REQUEST", "ACCOUNT_ISSUE", "BILLING", "OTHER"]);
+const REPORT_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "URGENT"]);
+const REPORT_STATUSES = new Set(["OPEN", "IN_PROGRESS", "RESOLVED", "REJECTED"]);
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -12,14 +15,19 @@ const createReport = asyncHandler(async (req, res) => {
   if (!title || !description) {
     return res.status(400).json({ error: "Title and description are required" });
   }
+  const normalizedType = String(type || "OTHER").toUpperCase();
+  const normalizedPriority = String(priority || "MEDIUM").toUpperCase();
+  if (!REPORT_TYPES.has(normalizedType) || !REPORT_PRIORITIES.has(normalizedPriority)) {
+    return res.status(400).json({ error: "Invalid report type or priority" });
+  }
 
   const report = await prisma.report.create({
     data: {
       userId,
-      type: type || "OTHER",
+      type: normalizedType,
       title: String(title).trim(),
       description: String(description).trim(),
-      priority: priority || "MEDIUM",
+      priority: normalizedPriority,
     },
     include: {
       user: { select: { id: true, name: true, phone: true, role: true, shop: { select: { id: true, name: true } } } },
@@ -84,8 +92,10 @@ const updateReport = asyncHandler(async (req, res) => {
 
   const updateData = {};
   if (status) {
-    updateData.status = String(status);
-    if (status === "RESOLVED") {
+    const normalizedStatus = String(status).toUpperCase();
+    if (!REPORT_STATUSES.has(normalizedStatus)) return res.status(400).json({ error: "Invalid report status" });
+    updateData.status = normalizedStatus;
+    if (normalizedStatus === "RESOLVED") {
       updateData.resolvedAt = new Date();
       updateData.resolvedBy = resolvedBy || req.user.userId;
     }

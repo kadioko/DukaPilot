@@ -26,6 +26,7 @@ import {
 
 interface DashboardData {
   period: string;
+  features?: { staff: boolean; assistant: boolean; exports: boolean };
   summary: {
     totalSales: number;
     totalProfit: number;
@@ -172,12 +173,21 @@ export default function DashboardPage() {
                   label={t("dashboard.pendingOrders", lang)}
                   value={String(s?.pendingOrders || 0)}
                 />
-                <QuickAction
-                  href="/assistant"
-                  icon={<Sparkles className="h-4 w-4" />}
-                  label={lang === "sw" ? "AI hatua za leo" : "AI next actions"}
-                  value={lang === "sw" ? "Fungua" : "Open"}
-                />
+                {data?.features?.assistant !== false ? (
+                  <QuickAction
+                    href="/assistant"
+                    icon={<Sparkles className="h-4 w-4" />}
+                    label={lang === "sw" ? "AI hatua za leo" : "AI next actions"}
+                    value={lang === "sw" ? "Fungua" : "Open"}
+                  />
+                ) : (
+                  <QuickAction
+                    href="/billing"
+                    icon={<Sparkles className="h-4 w-4" />}
+                    label={lang === "sw" ? "Fungua AI kwa Pro" : "Unlock AI with Pro"}
+                    value="Pro"
+                  />
+                )}
               </div>
             </div>
           </div>

@@ -67,7 +67,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     api.get<SubscriptionStatus>("/subscription/status", lang).then(setStatus).catch(() => null);
-    api.get<{ reports: BillingReport[] }>("/reports?type=BILLING&limit=5", lang).then((data) => setReports(data.reports)).catch(() => null);
+    api.get<{ reports: BillingReport[] }>("/reports/my?type=BILLING&limit=5", lang).then((data) => setReports(data.reports)).catch(() => null);
   }, [lang]);
 
   async function submitReference(e: React.FormEvent) {
@@ -86,7 +86,7 @@ export default function BillingPage() {
     }, lang);
     setReference("");
     setNote("");
-    const latest = await api.get<{ reports: BillingReport[] }>("/reports?type=BILLING&limit=5", lang).catch(() => null);
+    const latest = await api.get<{ reports: BillingReport[] }>("/reports/my?type=BILLING&limit=5", lang).catch(() => null);
     if (latest) setReports(latest.reports);
     setMessage(lang === "sw" ? "Tumepokea reference. Admin atahakiki na kuactivate mpango." : "Reference received. Admin will verify and activate the plan.");
   }

@@ -23,15 +23,6 @@
     package="com.dukapilot.app">
 
     
-        <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    
-
-    
-
-    
-
-    
-
     <application
         android:name="Application"
         android:allowBackup="true"
@@ -191,10 +182,5 @@
             </intent-filter>
         </service>
 
-        
-            <activity android:name="com.google.androidbrowserhelper.trusted.NotificationPermissionRequestActivity" />
-        
-
-        
     </application>
 </manifest>

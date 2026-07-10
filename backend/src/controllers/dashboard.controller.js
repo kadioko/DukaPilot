@@ -1,5 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { startOfTanzaniaDay, startOfTanzaniaMonth, tanzaniaDateKey } = require("../lib/businessTime");
+const { featureSnapshot } = require("../lib/entitlements");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -7,11 +9,11 @@ function asyncHandler(fn) {
 
 function startOf(period) {
   const now = new Date();
-  if (period === "today") return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "today") return startOfTanzaniaDay(now);
   if (period === "week") return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  if (period === "month") return new Date(now.getFullYear(), now.getMonth(), 1);
+  if (period === "month") return startOfTanzaniaMonth(now);
   if (period === "all") return null;
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return startOfTanzaniaDay(now);
 }
 
 const overview = asyncHandler(async (req, res) => {
@@ -21,7 +23,8 @@ const overview = asyncHandler(async (req, res) => {
   const salesWhere = from ? { shopId, createdAt: { gte: from } } : { shopId };
   const activeProductsWhere = { shopId, isActive: true };
 
-  const [salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCount, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
+  const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCount, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
+    prisma.shop.findUnique({ where: { id: shopId }, select: { plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true } }),
     prisma.sale.aggregate({
       where: salesWhere,
       _sum: { totalAmount: true, profit: true },
@@ -66,11 +69,11 @@ const overview = asyncHandler(async (req, res) => {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().split("T")[0];
+    const key = tanzaniaDateKey(d);
     dailyMap[key] = { date: key, sales: 0, profit: 0 };
   }
   for (const s of dailySales) {
-    const key = s.createdAt.toISOString().split("T")[0];
+    const key = tanzaniaDateKey(s.createdAt);
     if (dailyMap[key]) {
       dailyMap[key].sales += s.totalAmount;
       dailyMap[key].profit += s.profit;
@@ -128,6 +131,7 @@ const overview = asyncHandler(async (req, res) => {
 
   res.json({
     period,
+    features: featureSnapshot(shopPlan),
     summary: {
       totalSales: salesAgg._sum.totalAmount || 0,
       totalProfit: grossProfit,

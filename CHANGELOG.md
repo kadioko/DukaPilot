@@ -5,6 +5,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.0] - 2026-07-10 - Live Business Logic Hardening
+
+### Added
+
+- Added live database-backed staff permission checks so role changes and deactivation take effect immediately.
+- Added explicit Basic/Pro entitlements: trials keep full access, Basic keeps core operations and exports, and Pro unlocks staff accounts and the AI command center.
+- Added idempotent subscription payment confirmation using normalized payment references and billing report IDs.
+- Added per-staff language, profile, and PIN settings without mutating the shop owner's account.
+- Added real merchant alerts for low stock, debts, customer orders, sync failures, and subscription action.
+- Added merchant catalog publishing controls, public catalog pagination, and demo/QA exclusion.
+- Added migration `20260710001000_launch_hardening`.
+- Added Android release metadata for version `1.0.2` (`versionCode 3`).
+
+### Fixed
+
+- Enforced forward-only customer-order transitions and guarded stock reservation against concurrent confirmation.
+- Prevented duplicate supplier-delivery confirmation from adding stock twice.
+- Made manual stock adjustments conflict-aware and required whole-number inventory quantities.
+- Calculated daily and monthly dashboard boundaries in Tanzania time (`UTC+3`).
+- Fixed merchant billing history to read from `/reports/my`.
+- Separated local unit tests from production monitors so `npm test` cannot consume live login limits.
+- Scoped authentication rate limits by client and phone number to reduce carrier-NAT lockouts.
+- Fixed mobile AppShell width overflow, exposed Settings and customer orders in navigation, enlarged inventory actions, and added a sticky mobile cart summary.
+- Removed Android notification permission until delegated push notifications are implemented.
+
+---
+
 ## [1.2.1] - 2026-07-08 - Launch Operations Hardening
 
 ### Added

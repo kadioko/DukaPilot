@@ -8,7 +8,7 @@ router.use(authenticate);
 router.get("/", getSettings);
 router.patch("/shop", requirePermission("canManageStaff"), requireActiveSubscription, updateShop);
 router.patch("/language", updateLanguage);
-router.patch("/pin", requirePermission("canManageStaff"), requireActiveSubscription, changePin);
-router.patch("/profile", requirePermission("canManageStaff"), requireActiveSubscription, updateProfile);
+router.patch("/pin", requireActiveSubscription, changePin);
+router.patch("/profile", requireActiveSubscription, updateProfile);
 
 module.exports = router;

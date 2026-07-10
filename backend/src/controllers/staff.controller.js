@@ -40,6 +40,15 @@ function validatePin(pin) {
   return /^\d{4,8}$/.test(String(pin || "").trim());
 }
 
+async function phoneConflict(phone, excludeStaffId = null) {
+  if (!phone) return false;
+  const [user, staff] = await Promise.all([
+    prisma.user.findUnique({ where: { phone }, select: { id: true } }),
+    prisma.staffMember.findUnique({ where: { phone }, select: { id: true } }),
+  ]);
+  return Boolean(user || (staff && staff.id !== excludeStaffId));
+}
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const staff = await prisma.staffMember.findMany({
@@ -59,6 +68,7 @@ const create = asyncHandler(async (req, res) => {
   if (!name) return res.status(400).json({ error: "Staff name is required" });
   if (!ROLES.has(role)) return res.status(400).json({ error: "Invalid staff role" });
   if (pin && (!phone || !validatePin(pin))) return res.status(400).json({ error: "Staff login requires a phone and 4 to 8 digit PIN" });
+  if (await phoneConflict(phone)) return res.status(409).json({ error: "This phone number already belongs to another DukaPilot login" });
 
   const defaults = permissionsFor(role);
   const staff = await prisma.staffMember.create({
@@ -91,6 +101,9 @@ const update = asyncHandler(async (req, res) => {
   const nextPhone = req.body.phone === undefined ? existing.phone : normalizePhone(req.body.phone);
   if (pin !== undefined && pin && (!nextPhone || !validatePin(pin))) {
     return res.status(400).json({ error: "Staff login requires a phone and 4 to 8 digit PIN" });
+  }
+  if (nextPhone && nextPhone !== existing.phone && await phoneConflict(nextPhone, existing.id)) {
+    return res.status(409).json({ error: "This phone number already belongs to another DukaPilot login" });
   }
 
   const staff = await prisma.staffMember.update({

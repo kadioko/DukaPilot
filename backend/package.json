@@ -15,8 +15,8 @@
     "db:push": "prisma db push",
     "smoke:prod": "node scripts/smoke-test.js",
     "monitor:prod": "node scripts/production-monitor.js",
-    "test": "node --test",
-    "test:api": "node --test tests/api.test.js",
+    "test": "node --test tests/order.unit.test.js tests/product.unit.test.js tests/sale.unit.test.js tests/hardening.unit.test.js",
+    "test:prod-api": "node --test tests/api.test.js",
     "db:backup": "node scripts/backup.js",
     "email:dns-check": "node scripts/email-dns-check.js"
   },

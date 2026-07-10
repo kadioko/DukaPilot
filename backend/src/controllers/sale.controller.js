@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTime");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -184,11 +185,11 @@ const summary = asyncHandler(async (req, res) => {
   let from;
   const now = new Date();
   if (period === "today") {
-    from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    from = startOfTanzaniaDay(now);
   } else if (period === "week") {
     from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   } else if (period === "month") {
-    from = new Date(now.getFullYear(), now.getMonth(), 1);
+    from = startOfTanzaniaMonth(now);
   }
 
   const where = { shopId, createdAt: { gte: from } };

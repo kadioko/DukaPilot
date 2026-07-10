@@ -340,7 +340,7 @@ export default function InventoryPage() {
                           setAdjustForm({ type: "IN", quantity: "", note: "" });
                         }}
                         aria-label={`${t("inventory.adjustStock", lang)} ${p.name}`}
-                        className="p-2.5 text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors min-h-0 sm:p-2"
+                        className="flex h-11 w-11 items-center justify-center text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors min-h-0"
                         title={t("inventory.adjustStock", lang)}
                       >
                         <ArrowUp className="w-4 h-4" />
@@ -348,7 +348,7 @@ export default function InventoryPage() {
                       <button
                         onClick={() => openEdit(p)}
                         aria-label={`${t("inventory.editTitle", lang)} ${p.name}`}
-                        className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0 sm:p-2"
+                        className="flex h-11 w-11 items-center justify-center text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0"
                         title={t("common.edit", lang)}
                       >
                         <Edit2 className="w-4 h-4" />
@@ -357,7 +357,7 @@ export default function InventoryPage() {
                         onClick={() => setDeleteProduct(p)}
                         disabled={saving}
                         aria-label={`${t("inventory.deleteProduct", lang)} ${p.name}`}
-                        className="p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 min-h-0 sm:p-2"
+                        className="flex h-11 w-11 items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 min-h-0"
                         title={t("inventory.deleteProduct", lang)}
                       >
                         <Trash2 className="w-4 h-4" />

@@ -33,6 +33,8 @@ export default function CatalogPage() {
   const [shopId, setShopId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
     api.get<{ shops: Shop[] }>("/public/shops").then((d) => setShops(d.shops)).catch(() => {});
@@ -43,13 +45,28 @@ export default function CatalogPage() {
     const params = new URLSearchParams();
     if (shopId) params.set("shopId", shopId);
     if (search) params.set("search", search);
+    params.set("limit", "60");
     const q = params.toString();
     api
-      .get<{ products: CatalogProduct[] }>(`/public/products${q ? `?${q}` : ""}`)
-      .then((d) => setProducts(d.products))
+      .get<{ products: CatalogProduct[]; pagination?: { hasMore: boolean } }>(`/public/products${q ? `?${q}` : ""}`)
+      .then((d) => { setProducts(d.products); setHasMore(Boolean(d.pagination?.hasMore)); })
       .catch(() => setProducts([]))
       .finally(() => setLoading(false));
   }, [shopId, search]);
+
+  async function loadMore() {
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ limit: "60", offset: String(products.length) });
+      if (shopId) params.set("shopId", shopId);
+      if (search) params.set("search", search);
+      const data = await api.get<{ products: CatalogProduct[]; pagination?: { hasMore: boolean } }>(`/public/products?${params}`);
+      setProducts((current) => [...current, ...data.products]);
+      setHasMore(Boolean(data.pagination?.hasMore));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const grouped = useMemo(() => {
     const map: Record<string, { shop: CatalogProduct["shop"]; items: CatalogProduct[] }> = {};
@@ -60,7 +77,7 @@ export default function CatalogPage() {
     return Object.values(map);
   }, [products]);
 
-  const demoLinks = shops.slice(0, 3);
+  const sampleLinks = shops.slice(0, 3);
   const hasNoMarketplace = !loading && shops.length === 0;
 
   return (
@@ -95,6 +112,13 @@ export default function CatalogPage() {
               {t("app.english", lang)}
             </button>
           </div>
+          <button
+            onClick={() => setAppLanguage(lang === "sw" ? "en" : "sw")}
+            aria-label={lang === "sw" ? "Change language to English" : "Badilisha lugha kuwa Kiswahili"}
+            className="flex h-10 min-w-10 items-center justify-center rounded-lg bg-gray-100 px-2 text-xs font-bold text-brand-800 sm:hidden"
+          >
+            {lang === "sw" ? "EN" : "SW"}
+          </button>
           <Link
             href="/"
             className="text-xs sm:text-sm font-semibold text-brand-700 hover:underline whitespace-nowrap"
@@ -168,11 +192,11 @@ export default function CatalogPage() {
                 ))}
               </div>
 
-              {demoLinks.length > 0 && (
+              {sampleLinks.length > 0 && (
                 <div className="mt-6 rounded-xl bg-brand-50 p-4 text-left">
-                  <p className="text-sm font-semibold text-gray-950">{lang === "sw" ? "Jaribu maduka haya" : "Try these demo shops"}</p>
+                  <p className="text-sm font-semibold text-gray-950">{lang === "sw" ? "Angalia maduka haya" : "Browse these shops"}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {demoLinks.map((shop) => (
+                    {sampleLinks.map((shop) => (
                       <Link
                         key={shop.id}
                         href={`/catalog/${shop.id}`}
@@ -241,6 +265,13 @@ export default function CatalogPage() {
                 </div>
               </section>
             ))}
+            {hasMore && (
+              <div className="flex justify-center pt-2">
+                <button onClick={loadMore} disabled={loadingMore} className="min-h-11 rounded-lg border border-brand-300 bg-white px-5 py-2 text-sm font-bold text-brand-800 disabled:opacity-60">
+                  {loadingMore ? t("common.loading", lang) : (lang === "sw" ? "Onyesha bidhaa zaidi" : "Load more products")}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>

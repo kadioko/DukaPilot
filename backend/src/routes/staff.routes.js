@@ -2,11 +2,13 @@ const router = require("express").Router();
 const { list, create, update } = require("../controllers/staff.controller");
 const { authenticate, requireRole, requirePermission } = require("../middleware/auth");
 const { requireActiveSubscription } = require("../middleware/subscription");
+const { requireFeature } = require("../lib/entitlements");
 
 router.use(authenticate);
 router.use(requireRole("MERCHANT", "ADMIN"));
 router.use(requirePermission("canManageStaff"));
 router.use(requireActiveSubscription);
+router.use(requireFeature("STAFF"));
 
 router.get("/", list);
 router.post("/", create);
