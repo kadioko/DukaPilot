@@ -349,6 +349,7 @@ export default function SalesPage() {
       return;
     }
     setCompleting(true);
+    const clientReference = newLocalId();
     const payload = {
       items: cart.map((i) => ({
         productId: i.product.id,
@@ -360,6 +361,7 @@ export default function SalesPage() {
       paymentRef: paymentRef || undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
+      clientReference,
     };
     try {
       await api.post("/sales", payload, lang);
@@ -377,7 +379,7 @@ export default function SalesPage() {
       if (canQueue) {
         const queued = [
           ...readPendingSales(),
-          { id: newLocalId(), createdAt: new Date().toISOString(), total, attempts: 0, payload },
+          { id: clientReference, createdAt: new Date().toISOString(), total, attempts: 0, payload },
         ];
         const queuedEvent = {
           id: newLocalId(),

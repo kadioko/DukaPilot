@@ -48,7 +48,7 @@ const list = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { items, paymentMethod = "CASH", paymentRef, customerName, customerPhone, note, saleMode, channel } = req.body;
+  const { items, paymentMethod = "CASH", paymentRef, customerName, customerPhone, note, saleMode, channel, clientReference } = req.body;
   const normalizedPaymentMethod = String(paymentMethod || "CASH").toUpperCase();
   const pricingTier = String(saleMode || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
   const saleChannel = String(channel || "POS").toUpperCase() === "ONLINE" ? "ONLINE" : "POS";
@@ -57,12 +57,27 @@ const create = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Sale must have at least one item" });
   }
 
+  const normalizedClientReference = String(clientReference || "").trim() || null;
+  if (normalizedClientReference && normalizedClientReference.length > 100) {
+    return res.status(400).json({ error: "Sale reference must be 100 characters or less" });
+  }
+  if (normalizedClientReference) {
+    const existingSale = await prisma.sale.findFirst({
+      where: { shopId, clientReference: normalizedClientReference },
+      include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+    });
+    if (existingSale) return res.json({ sale: existingSale, reused: true });
+  }
+
   if (normalizedPaymentMethod === "CREDIT" && !customerPhone) {
     return res.status(400).json({ error: "Customer phone is required for credit sales" });
   }
 
   // Validate products belong to this shop and have sufficient stock
   const productIds = items.map((i) => i.productId);
+  if (new Set(productIds).size !== productIds.length) {
+    return res.status(400).json({ error: "Each product can appear only once in a sale" });
+  }
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, shopId, isActive: true },
   });
@@ -103,8 +118,10 @@ const create = asyncHandler(async (req, res) => {
     };
   });
 
-  // Create sale and update stock in a transaction
-  const sale = await prisma.$transaction(async (tx) => {
+  // Create sale and update stock in a transaction.
+  let sale;
+  try {
+    sale = await prisma.$transaction(async (tx) => {
     const newSale = await tx.sale.create({
       data: {
         totalAmount,
@@ -115,6 +132,7 @@ const create = asyncHandler(async (req, res) => {
         pricingTier,
         customerPhone,
         note,
+        clientReference: normalizedClientReference,
         shopId,
         items: { create: saleItemsData },
       },
@@ -158,8 +176,19 @@ const create = asyncHandler(async (req, res) => {
       });
     }
 
-    return newSale;
-  });
+      return newSale;
+    });
+  } catch (error) {
+    // If the phone lost the successful response, the retry returns the
+    // committed sale instead of taking stock a second time.
+    if (error?.code !== "P2002" || !normalizedClientReference) throw error;
+    const existingSale = await prisma.sale.findFirst({
+      where: { shopId, clientReference: normalizedClientReference },
+      include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+    });
+    if (!existingSale) throw error;
+    return res.json({ sale: existingSale, reused: true });
+  }
 
   res.status(201).json({ sale });
 });

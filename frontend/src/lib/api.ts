@@ -1,8 +1,7 @@
 import { t, type Lang } from "@/lib/i18n";
 
 const PROD_API_URL = "https://dukapilotproduction.up.railway.app/api";
-const TOKEN_KEY = "dukapilot_token";
-const LEGACY_TOKEN_KEY = "dukaos_token";
+const BROWSER_API_PATH = "/_api";
 const REQUEST_TIMEOUT_MS = 20000;
 
 function normalizeBaseUrl(url: string): string {
@@ -12,20 +11,15 @@ function normalizeBaseUrl(url: string): string {
 }
 
 function getBaseUrl(): string {
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
+    return BROWSER_API_PATH;
+  }
+
   if (process.env.NEXT_PUBLIC_API_URL) {
     return normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
   }
 
-  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-    return normalizeBaseUrl(PROD_API_URL);
-  }
-
   return normalizeBaseUrl("http://localhost:4000/api");
-}
-
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
 }
 
 export function getFriendlyErrorMessage(message: string, lang: Lang): string {
@@ -66,7 +60,6 @@ let refreshingPromise: Promise<boolean> | null = null;
 let authFailureHandled = false;
 
 function handleAuthenticationFailure() {
-  clearToken();
   if (typeof window !== "undefined" && !authFailureHandled) {
     authFailureHandled = true;
     window.location.href = "/";
@@ -85,12 +78,7 @@ async function tryRefreshToken(): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) return false;
-      const data = await res.json();
-      if (data?.token) {
-        setToken(data.token);
-        return true;
-      }
-      return false;
+      return true;
     } catch {
       return false;
     } finally {
@@ -107,13 +95,11 @@ async function request<T>(
   lang: Lang = "en",
   _isRetry = false
 ): Promise<T> {
-  const token = getToken();
   const baseUrl = getBaseUrl();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   let res: Response;
   const controller = new AbortController();
@@ -171,9 +157,7 @@ export const api = {
 };
 
 export async function downloadFile(path: string, filename: string, lang: Lang = "en") {
-  const token = getToken();
   const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${getBaseUrl()}${path}`, { headers, credentials: "include" });
   if (!res.ok) {
@@ -192,15 +176,17 @@ export async function downloadFile(path: string, filename: string, lang: Lang = 
   URL.revokeObjectURL(url);
 }
 
-export function setToken(token: string) {
+export function setToken(_token?: string) {
   authFailureHandled = false;
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  // Kept as a compatibility no-op for older callers. Authentication lives in
+  // Secure, HttpOnly cookies and no access token is stored in browser script.
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("dukapilot_token");
+    localStorage.removeItem("dukaos_token");
+  }
 }
 
 export function formatTZS(amount: number): string {

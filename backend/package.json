@@ -15,16 +15,16 @@
     "db:push": "prisma db push",
     "smoke:prod": "node scripts/smoke-test.js",
     "monitor:prod": "node scripts/production-monitor.js",
-    "test": "node --test tests/order.unit.test.js tests/product.unit.test.js tests/sale.unit.test.js tests/hardening.unit.test.js",
+    "test": "node --test tests/order.unit.test.js tests/product.unit.test.js tests/sale.unit.test.js tests/hardening.unit.test.js tests/financialIntegrity.unit.test.js",
     "test:prod-api": "node --test tests/api.test.js",
     "db:backup": "node scripts/backup.js",
     "email:dns-check": "node scripts/email-dns-check.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1060.0",
+    "@aws-sdk/client-s3": "^3.1085.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "@sentry/node": "^10.54.0",
+    "@sentry/node": "^10.65.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
@@ -34,11 +34,15 @@
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "pg": "^8.21.0"
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
     "prisma": "^7.8.0"
+  },
+  "overrides": {
+    "hono": "4.12.25",
+    "@hono/node-server": "1.19.13"
   },
   "engines": {
     "node": ">=20"

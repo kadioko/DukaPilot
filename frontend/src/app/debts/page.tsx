@@ -15,6 +15,14 @@ interface Debt {
   status: "OPEN" | "PARTIAL" | "PAID" | "CANCELLED";
   dueDate: string | null;
   note: string | null;
+  payments?: Array<{
+    id: string;
+    amount: number;
+    paymentMethod: string;
+    paymentRef?: string | null;
+    note?: string | null;
+    createdAt: string;
+  }>;
 }
 
 const INPUT = "rounded-xl border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm";
@@ -125,6 +133,15 @@ export default function DebtsPage() {
                   <p className="font-semibold text-gray-950">{debt.customerName || debt.customerPhone}</p>
                   <p className="text-sm text-gray-500">{debt.customerPhone} - {debt.status}</p>
                   {debt.note && <p className="mt-1 text-xs text-gray-500">{debt.note}</p>}
+                  {debt.payments && debt.payments.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {debt.payments.slice(0, 3).map((payment) => (
+                        <span key={payment.id} className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-800">
+                          {formatTZS(payment.amount)} {payment.paymentMethod} - {new Date(payment.createdAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {debt.dueDate && (
                     <p className="mt-1 text-xs text-amber-700">
                       {lang === "sw" ? "Mwisho" : "Due"} {new Date(debt.dueDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}

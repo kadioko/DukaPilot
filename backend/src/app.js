@@ -31,6 +31,10 @@ const prisma = require("./lib/prisma");
 
 const app = express();
 
+// Railway terminates the public connection before this process. Trust exactly
+// that proxy hop so req.ip cannot be forged through a client-supplied header.
+app.set("trust proxy", 1);
+
 function normalizeOrigin(origin) {
   return typeof origin === "string" ? origin.trim().replace(/\/$/, "") : "";
 }

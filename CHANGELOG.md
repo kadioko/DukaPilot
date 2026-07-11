@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.0] - 2026-07-11 - Financial Integrity and Secure Mobile Sessions
+
+### Added
+
+- Added idempotent sale references so an offline retry cannot create a second sale or deduct stock twice.
+- Added immutable debt-payment records with payment method, reference, note, timestamp, and guarded concurrent updates.
+- Added supplier ownership controls: merchants can edit only supplier records created by their own shop; admins retain full control.
+- Added supplier catalog import into merchant inventory and the supplier-order workflow, with merchant-set retail price and delivery-based stock receipt.
+- Added a same-origin `/_api` frontend proxy so secure HttpOnly sessions work reliably on mobile browsers.
+
+### Fixed
+
+- Converted all money storage to whole TZS integers, removing floating-point drift from sales, debts, expenses, orders, products, and subscriptions.
+- Replaced direct `X-Forwarded-For` rate-limit parsing with Railway proxy-aware `req.ip` handling.
+- Removed browser-stored access tokens and added Content Security Policy, permissions, referrer, and content-type headers.
+- Rebuilt the mobile homepage navigation as a compact menu drawer and added a visible catalog H1 for accessibility and SEO.
+- Updated compatible production dependencies and resolved reported production `npm audit` advisories.
+
+---
+
 ## [1.3.0] - 2026-07-10 - Live Business Logic Hardening
 
 ### Added

@@ -17,6 +17,7 @@ router.delete("/portal/products/:productId", requireRole("SUPPLIER", "ADMIN"), c
 
 // Merchant-facing supplier directory (read-only is fine for any role)
 router.get("/", ctrl.list);
+router.post("/:id/catalog/:catalogProductId/import", requireRole("MERCHANT"), requirePermission("canManageStock"), requireActiveSubscription, ctrl.importCatalogProduct);
 router.get("/:id", ctrl.get);
 router.post("/", requireRole("MERCHANT", "ADMIN"), requirePermission("canManageStock"), requireActiveSubscription, supplierCreateValidation, ctrl.create);
 router.patch("/:id", requireRole("MERCHANT", "ADMIN"), requirePermission("canManageStock"), requireActiveSubscription, supplierUpdateValidation, ctrl.update);

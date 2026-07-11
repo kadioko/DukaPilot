@@ -41,14 +41,14 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Inventory tracking** | Add products, set buying/selling/wholesale prices, track stock levels |
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
-| **Debt tracking** | Credit sales automatically create receivables; merchants can add, track, and mark debts paid |
+| **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
 | **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
 | **Staff roles (Pro)** | Add uniquely identified staff members; live permissions and deactivation are enforced on every request |
 | **Billing page** | Merchants can see plan status, official M-Pesa/Mix by Yas payment options, submit references, and contact WhatsApp support |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
-| **Supplier ordering** | Create orders from suppliers in one tap |
+| **Supplier ordering** | Browse supplier catalog products, import them into inventory with a chosen retail price, then order and restock them safely |
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
 | **One-tap reorder** | Repeat any previous order with a single button |
 | **Delivery confirmation** | Confirm goods received and auto-restock inventory |
@@ -57,7 +57,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
 | **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations, why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
 | **AI action history** | Merchants can review opened, completed, and dismissed AI actions from `/assistant/history` |
-| **Offline sales queue** | Sales entered during connection loss are saved locally, show sync history/errors, and retry when the browser comes back online |
+| **Offline sales queue** | Sales entered during connection loss are saved locally with an idempotent reference, show sync history/errors, and retry safely when the browser comes back online |
 | **PIN recovery** | "Forgot PIN?" sends a 6-digit OTP via SMS (Africa's Talking) |
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
 | **Operational alerts** | Actionable low-stock, debt, customer-order, offline-sync, and subscription notifications |
@@ -130,7 +130,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 | **Backend** | Node.js 24 · Express 5 · Prisma ORM 7 |
 | **Database** | PostgreSQL |
 | **Frontend** | Next.js 16 · React 19 · TypeScript 6 · Tailwind CSS 4 |
-| **Auth** | JWT (1h access + 30d refresh cookie) · phone + PIN login · OTP PIN recovery |
+| **Auth** | Secure HttpOnly session cookies (1h access + 30d refresh) · phone + PIN login · OTP PIN recovery |
 | **SMS / OTP** | Africa's Talking (sandbox in dev, live in production) |
 | **Error tracking** | Sentry (`@sentry/node` + `@sentry/nextjs`) |
 | **Messaging** | WhatsApp deep links + WhatsApp Cloud API (optional) |
@@ -154,7 +154,9 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 
 ### Security Notes
 
-- Rate limiting is applied on all `/api/*` routes (200 requests / 15 min). Authentication limits are scoped by client and phone number so unrelated mobile-network users do not lock each other out.
+- Rate limiting is applied on all `/api/*` routes (200 requests / 15 min). Authentication limits are scoped by Railway-resolved client IP and phone number so unrelated mobile-network users do not lock each other out or spoof their way around the limit.
+- Browser API calls use the same-origin `/_api` proxy and secure HttpOnly cookies. Access tokens are not stored in `localStorage`.
+- All money values are stored as whole Tanzanian shillings (TZS), not floating-point values.
 - Staff permissions are reloaded from the database on every authenticated request; disabling a staff account invalidates access immediately.
 - Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
 - OTP codes expire after 10 minutes and are single-use.

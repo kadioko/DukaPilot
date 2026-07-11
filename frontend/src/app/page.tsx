@@ -3,7 +3,7 @@ import Image from "next/image";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api, getFriendlyErrorMessage, setToken } from "@/lib/api";
+import { api, getFriendlyErrorMessage } from "@/lib/api";
 import {
   ArrowRight,
   BadgeDollarSign,
@@ -12,6 +12,7 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Menu,
   MapPin,
   MessageCircle,
   PackageCheck,
@@ -19,6 +20,7 @@ import {
   ReceiptText,
   Store,
   TrendingUp,
+  X,
 } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
@@ -126,6 +128,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   const [shopDistrict, setShopDistrict] = useState("");
   const [shopCategory, setShopCategory] = useState("general");
   const [role, setRole] = useState<"MERCHANT" | "SUPPLIER">("MERCHANT");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // PIN recovery fields
   const [forgotPhone, setForgotPhone] = useState("");
@@ -201,7 +204,6 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           : { phone: normalizedPhone, pin: normalizedPin };
 
       const data = await api.post<{
-        token: string;
         user: {
           role: string;
           staff?: {
@@ -214,7 +216,6 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           };
         };
       }>(endpoint, body, lang);
-      setToken(data.token);
 
       if (data.user.role === "SUPPLIER") {
         router.push("/supplier");
@@ -281,7 +282,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
 
   return (
     <div className="min-h-screen bg-[linear-gradient(135deg,#0b5d34_0%,#13763f_44%,#0d342c_100%)] px-4 py-3 lg:px-8 lg:py-4">
-      <header className="sticky top-3 z-20 mx-auto flex w-full max-w-6xl flex-col gap-3 rounded-2xl border border-white/15 bg-[#0d6b3c]/90 p-3 text-white shadow-xl shadow-black/15 backdrop-blur md:flex-row md:items-center md:justify-between">
+      <header className="sticky top-3 z-20 mx-auto flex w-full max-w-6xl items-center justify-between gap-3 rounded-2xl border border-white/15 bg-[#0d6b3c]/90 p-3 text-white shadow-xl shadow-black/15 backdrop-blur">
         <Link href="/" className="flex items-center gap-3">
           <img
             src="/logo/dukapilot-icon-192.png"
@@ -296,8 +297,8 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           </div>
         </Link>
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <nav className="grid grid-cols-3 gap-1 rounded-xl bg-white/10 p-1 text-[13px] font-semibold text-brand-50 sm:text-sm md:flex">
+        <div className="hidden items-center gap-3 md:flex">
+          <nav className="flex rounded-xl bg-white/10 p-1 text-sm font-semibold text-brand-50">
             {publicNav.map((item) => (
               <Link
                 key={item.href}
@@ -341,6 +342,39 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
             </button>
           </div>
         </div>
+        <div className="flex items-center gap-2 md:hidden">
+          <button
+            type="button"
+            onClick={() => setAppLanguage(lang === "sw" ? "en" : "sw")}
+            className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-white/10 px-2 text-xs font-bold text-white hover:bg-white/15"
+            aria-label={lang === "sw" ? "Change language to English" : "Badilisha lugha kuwa Kiswahili"}
+          >
+            {lang === "sw" ? "EN" : "SW"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen((open) => !open)}
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-brand-800 shadow-sm"
+            aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileNavOpen}
+          >
+            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+        {mobileNavOpen && (
+          <div className="absolute left-0 right-0 top-full mt-2 rounded-2xl border border-white/15 bg-[#0d6b3c] p-3 shadow-xl md:hidden">
+            <nav className="grid grid-cols-2 gap-1 text-sm font-semibold text-brand-50">
+              {publicNav.map((item) => (
+                <Link key={item.href} href={item.href} onClick={() => setMobileNavOpen(false)} className="rounded-lg px-3 py-3 hover:bg-white/15">
+                  {lang === "sw" ? item.sw : item.en}
+                </Link>
+              ))}
+            </nav>
+            <button type="button" onClick={() => { setMobileNavOpen(false); switchView("register"); }} className="mt-3 min-h-11 w-full rounded-xl bg-white px-4 py-2 text-sm font-bold text-brand-800">
+              {lang === "sw" ? "Anza bure" : "Start free"}
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="mx-auto grid min-h-[calc(100vh-6rem)] w-full max-w-6xl items-center gap-7 py-6 lg:grid-cols-[1.08fr_420px] lg:gap-8 lg:py-8">

@@ -27,8 +27,8 @@ const create = asyncHandler(async (req, res) => {
   const amount = Number(req.body.amount);
   const category = String(req.body.category || "OTHER").toUpperCase();
 
-  if (!title || !Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ error: "Title and a positive amount are required" });
+  if (!title || !Number.isInteger(amount) || amount <= 0) {
+    return res.status(400).json({ error: "Title and a whole positive TZS amount are required" });
   }
 
   const expense = await prisma.expense.create({
@@ -54,7 +54,7 @@ const update = asyncHandler(async (req, res) => {
 
   const amount = req.body.amount == null ? existing.amount : Number(req.body.amount);
   const category = String(req.body.category || existing.category).toUpperCase();
-  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Amount must be positive" });
+  if (!Number.isInteger(amount) || amount <= 0) return res.status(400).json({ error: "Amount must be a whole positive TZS amount" });
 
   const expense = await prisma.expense.update({
     where: { id: existing.id },

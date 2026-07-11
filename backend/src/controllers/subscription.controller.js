@@ -305,7 +305,7 @@ const adminRecordPayment = asyncHandler(async (req, res) => {
   const sourceReportId = String(req.body.sourceReportId || "").trim() || null;
 
   if (!["BASIC", "PRO"].includes(plan)) return res.status(400).json({ error: "Plan must be BASIC or PRO" });
-  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Payment amount must be positive" });
+  if (!Number.isInteger(amount) || amount <= 0) return res.status(400).json({ error: "Payment amount must be a whole positive TZS amount" });
   if (!normalizedReference) return res.status(400).json({ error: "Payment reference is required" });
 
   const duplicate = await prisma.subscriptionPayment.findFirst({

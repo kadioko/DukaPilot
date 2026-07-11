@@ -13,6 +13,7 @@ interface Supplier {
   verificationStatus?: "UNVERIFIED" | "NEEDS_REVIEW" | "VERIFIED" | "REJECTED";
   verifiedAt?: string | null;
   adminNotes?: string | null;
+  canEdit?: boolean;
   _count?: { products: number; orders: number; catalogProducts?: number };
 }
 
@@ -162,10 +163,14 @@ export default function SuppliersPage() {
                       className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors min-h-0" title="WhatsApp">
                       <Phone className="w-4 h-4" />
                     </a>
-                    <button onClick={() => openEdit(s)}
-                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                    {s.canEdit && (
+                      <button onClick={() => openEdit(s)}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0"
+                        aria-label={lang === "sw" ? "Hariri supplier" : "Edit supplier"}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {isAdmin && (

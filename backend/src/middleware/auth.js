@@ -22,7 +22,8 @@ function readCookieToken(req) {
 async function authenticate(req, res, next) {
   const header = req.headers.authorization;
   const bearerToken = header && header.startsWith("Bearer ") ? header.slice(7) : null;
-  const token = bearerToken || readCookieToken(req);
+  const cookieToken = readCookieToken(req);
+  const token = bearerToken || cookieToken;
   if (!token) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -30,7 +31,14 @@ async function authenticate(req, res, next) {
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET);
   } catch {
-    return res.status(401).json({ error: "Invalid or expired token" });
+    // Supports a smooth move away from browser-stored bearer tokens: if an
+    // older client sends a stale bearer token, its valid HttpOnly cookie wins.
+    if (!bearerToken || !cookieToken) return res.status(401).json({ error: "Invalid or expired token" });
+    try {
+      payload = jwt.verify(cookieToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
   }
 
   try {

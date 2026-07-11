@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -19,6 +20,7 @@ async function getPortalSupplier(user) {
 
 // Merchant: manage their supplier relationships
 const list = asyncHandler(async (req, res) => {
+  const shopId = req.user.role === "MERCHANT" ? await getShopIdForUser(req.user) : null;
   const suppliers = await prisma.supplier.findMany({
     select: {
       id: true,
@@ -28,11 +30,19 @@ const list = asyncHandler(async (req, res) => {
       verificationStatus: true,
       verifiedAt: true,
       adminNotes: true,
+      createdByShopId: true,
       _count: { select: { products: true, orders: true, catalogProducts: true } },
     },
     orderBy: { name: "asc" },
   });
-  res.json({ suppliers });
+  res.json({
+    suppliers: suppliers.map((supplier) => ({
+      ...supplier,
+      // Shared suppliers can be browsed by every merchant, but only an admin
+      // or the shop that created a private entry can change its details.
+      canEdit: req.user.role === "ADMIN" || Boolean(shopId && supplier.createdByShopId === shopId),
+    })),
+  });
 });
 
 const get = asyncHandler(async (req, res) => {
@@ -56,12 +66,26 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const { name, phone, address } = req.body;
-  const supplier = await prisma.supplier.create({ data: { name, phone, address, verificationStatus: "NEEDS_REVIEW" } });
+  const createdByShopId = req.user.role === "MERCHANT" ? await getShopIdForUser(req.user) : null;
+  const supplier = await prisma.supplier.create({
+    data: { name, phone, address, verificationStatus: "NEEDS_REVIEW", createdByShopId },
+  });
+  req.audit = { action: "supplier.create", resourceType: "supplier", resourceId: supplier.id };
   res.status(201).json({ supplier });
 });
 
 const update = asyncHandler(async (req, res) => {
   const { name, phone, address, verificationStatus, adminNotes } = req.body;
+  const existing = await prisma.supplier.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Supplier not found" });
+
+  if (req.user.role !== "ADMIN") {
+    const shopId = await getShopIdForUser(req.user);
+    if (existing.createdByShopId !== shopId) {
+      return res.status(403).json({ error: "Only the shop that added this supplier can edit it" });
+    }
+  }
+
   const adminVerificationPatch = {};
   if (req.user.role === "ADMIN") {
     const nextStatus = verificationStatus ? String(verificationStatus).toUpperCase() : undefined;
@@ -80,7 +104,68 @@ const update = asyncHandler(async (req, res) => {
       ...adminVerificationPatch,
     },
   });
+  req.audit = { action: "supplier.update", resourceType: "supplier", resourceId: supplier.id };
   res.json({ supplier });
+});
+
+const importCatalogProduct = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
+  if (!supplier) return res.status(404).json({ error: "Supplier not found" });
+
+  const isOwnSupplier = supplier.createdByShopId === shopId;
+  if (supplier.verificationStatus !== "VERIFIED" && !isOwnSupplier) {
+    return res.status(403).json({ error: "This supplier must be verified before catalog products can be imported" });
+  }
+
+  const catalogProduct = await prisma.supplierCatalogProduct.findFirst({
+    where: { id: req.params.catalogProductId, supplierId: supplier.id, isAvailable: true },
+  });
+  if (!catalogProduct) return res.status(404).json({ error: "Supplier catalog product not found" });
+
+  const sellingPrice = Number(req.body.sellingPrice);
+  const minimumStock = req.body.minimumStock == null ? 5 : Number(req.body.minimumStock);
+  if (!Number.isInteger(sellingPrice) || sellingPrice < 0) {
+    return res.status(400).json({ error: "Selling price must be a whole TZS amount of 0 or greater" });
+  }
+  if (!Number.isInteger(minimumStock) || minimumStock < 0) {
+    return res.status(400).json({ error: "Minimum stock must be a whole number of 0 or greater" });
+  }
+
+  const existing = await prisma.product.findFirst({
+    where: { shopId, supplierCatalogProductId: catalogProduct.id },
+    include: { supplier: { select: { id: true, name: true, phone: true } } },
+  });
+
+  const product = existing
+    ? await prisma.product.update({
+        where: { id: existing.id },
+        data: { buyingPrice: catalogProduct.price, sellingPrice, minimumStock, supplierId: supplier.id, isActive: true },
+        include: { supplier: { select: { id: true, name: true, phone: true } } },
+      })
+    : await prisma.product.create({
+        data: {
+          name: catalogProduct.name,
+          sku: catalogProduct.sku,
+          unit: catalogProduct.unit,
+          buyingPrice: catalogProduct.price,
+          sellingPrice,
+          minimumStock,
+          currentStock: 0,
+          supplierId: supplier.id,
+          supplierCatalogProductId: catalogProduct.id,
+          shopId,
+        },
+        include: { supplier: { select: { id: true, name: true, phone: true } } },
+      });
+
+  req.audit = {
+    action: existing ? "supplier.catalog.importRefreshed" : "supplier.catalog.imported",
+    resourceType: "product",
+    resourceId: product.id,
+    metadata: { supplierId: supplier.id, catalogProductId: catalogProduct.id },
+  };
+  res.status(existing ? 200 : 201).json({ product, reused: Boolean(existing) });
 });
 
 const remove = asyncHandler(async (req, res) => {
@@ -212,7 +297,7 @@ const createPortalProduct = asyncHandler(async (req, res) => {
   const note = String(req.body.note || "").trim() || null;
 
   if (!name) return res.status(400).json({ error: "Product name is required" });
-  if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Price must be 0 or greater" });
+  if (!Number.isInteger(price) || price < 0) return res.status(400).json({ error: "Price must be a whole TZS amount of 0 or greater" });
 
   const product = await prisma.supplierCatalogProduct.create({
     data: { supplierId: supplierRecord.id, name, sku, unit, price, minOrderQty, note, isAvailable: req.body.isAvailable !== false },
@@ -241,7 +326,7 @@ const updatePortalProduct = asyncHandler(async (req, res) => {
   if (req.body.unit !== undefined) data.unit = String(req.body.unit || "pcs").trim() || "pcs";
   if (req.body.price !== undefined) {
     const price = Number(req.body.price);
-    if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Price must be 0 or greater" });
+    if (!Number.isInteger(price) || price < 0) return res.status(400).json({ error: "Price must be a whole TZS amount of 0 or greater" });
     data.price = price;
   }
   if (req.body.minOrderQty !== undefined) data.minOrderQty = Math.max(1, Number(req.body.minOrderQty) || 1);
@@ -311,4 +396,4 @@ const supplierDashboard = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, get, create, update, remove, myOrders, updateOrderStatus, listPortalProducts, createPortalProduct, updatePortalProduct, removePortalProduct, supplierDashboard };
+module.exports = { list, get, create, update, importCatalogProduct, remove, myOrders, updateOrderStatus, listPortalProducts, createPortalProduct, updatePortalProduct, removePortalProduct, supplierDashboard };

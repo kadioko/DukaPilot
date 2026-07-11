@@ -36,7 +36,7 @@ function getCookieOptions(maxAge) {
   const secure = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
-    sameSite: secure ? "none" : "lax",
+    sameSite: "lax",
     secure,
     path: "/",
     maxAge,
@@ -210,7 +210,7 @@ const register = asyncHandler(async (req, res) => {
   const profile = await getProfile(user.id);
   setAuthCookies(res, accessToken, refreshToken);
   req.audit = { action: "auth.register", resourceType: "user", resourceId: user.id, metadata: { role: user.role } };
-  res.status(201).json({ token: accessToken, user: profile });
+  res.status(201).json({ user: profile });
 });
 
 const login = asyncHandler(async (req, res) => {
@@ -258,7 +258,7 @@ const login = asyncHandler(async (req, res) => {
   const profile = staff ? await getStaffProfile(staff.id) : await getProfile(accountUser.id);
   setAuthCookies(res, accessToken, refreshToken);
   req.audit = { action: "auth.login", resourceType: staff ? "staff" : "user", resourceId: staff?.id || accountUser.id, metadata: { role: accountUser.role, staffRole: staff?.role } };
-  res.json({ token: accessToken, user: profile });
+  res.json({ user: profile });
 });
 
 const me = asyncHandler(async (req, res) => {
@@ -325,7 +325,7 @@ const refresh = asyncHandler(async (req, res) => {
   const newAccessToken = issueAccessToken(user, staff);
   setCookie(res, "dukapilot_token", newAccessToken, 60 * 60 * 1000);
   clearCookie(res, "dukaos_token");
-  res.json({ token: newAccessToken });
+  res.json({ message: "Session refreshed" });
 });
 
 // POST /api/auth/otp/request — send OTP to phone for PIN recovery

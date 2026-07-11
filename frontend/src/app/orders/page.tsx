@@ -3,13 +3,29 @@ import { useState, useEffect, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
-import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp, PackagePlus } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
 interface Supplier {
   id: string;
   name: string;
   phone: string;
+}
+
+interface SupplierCatalogProduct {
+  id: string;
+  name: string;
+  sku?: string | null;
+  unit: string;
+  price: number;
+  minOrderQty: number;
+  note?: string | null;
+}
+
+interface SupplierDetails {
+  id: string;
+  name: string;
+  catalogProducts: SupplierCatalogProduct[];
 }
 
 interface Product {
@@ -20,6 +36,7 @@ interface Product {
   currentStock: number;
   minimumStock: number;
   supplier?: { id: string };
+  supplierCatalogProductId?: string | null;
 }
 
 interface OrderItem {
@@ -56,6 +73,10 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState("");
+  const [supplierCatalog, setSupplierCatalog] = useState<SupplierCatalogProduct[]>([]);
+  const [catalogImport, setCatalogImport] = useState<SupplierCatalogProduct | null>(null);
+  const [retailPriceDraft, setRetailPriceDraft] = useState("");
+  const [minimumStockDraft, setMinimumStockDraft] = useState("5");
   const [orderItems, setOrderItems] = useState<{ productId: string; quantity: number }[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -92,6 +113,49 @@ export default function OrdersPage() {
       if (prev.find((i) => i.productId === productId)) return prev;
       return [...prev, { productId, quantity: 1 }];
     });
+  }
+
+  async function selectSupplier(supplierId: string) {
+    setSelectedSupplier(supplierId);
+    setSupplierCatalog([]);
+    if (!supplierId) return;
+    try {
+      const data = await api.get<{ supplier: SupplierDetails }>(`/suppliers/${supplierId}`);
+      setSupplierCatalog(data.supplier.catalogProducts || []);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+    }
+  }
+
+  function openCatalogImport(product: SupplierCatalogProduct) {
+    setCatalogImport(product);
+    setRetailPriceDraft(String(product.price));
+    setMinimumStockDraft("5");
+  }
+
+  async function importCatalogProduct() {
+    if (!catalogImport || !selectedSupplier) return;
+    const sellingPrice = Number(retailPriceDraft);
+    const minimumStock = Number(minimumStockDraft);
+    if (!Number.isInteger(sellingPrice) || sellingPrice < 0 || !Number.isInteger(minimumStock) || minimumStock < 0) {
+      toast(lang === "sw" ? "Weka bei na kiwango cha stock kwa namba kamili." : "Enter whole-number selling price and minimum stock.", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      const data = await api.post<{ product: Product }>(`/suppliers/${selectedSupplier}/catalog/${catalogImport.id}/import`, { sellingPrice, minimumStock });
+      setProducts((current) => {
+        const withoutCurrent = current.filter((product) => product.id !== data.product.id);
+        return [...withoutCurrent, data.product];
+      });
+      addItem(data.product.id);
+      setCatalogImport(null);
+      toast(lang === "sw" ? "Bidhaa imeongezwa kwenye inventory na order." : "Product added to inventory and this order.", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function updateItemQty(productId: string, qty: number) {
@@ -169,7 +233,7 @@ export default function OrdersPage() {
       <div className="max-w-3xl mx-auto pb-24 lg:pb-6">
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-bold text-gray-900">{t("orders.title", lang)}</h1>
-          <button onClick={() => { setShowForm(true); setOrderItems([]); setNote(""); setSelectedSupplier(""); }}
+          <button onClick={() => { setShowForm(true); setOrderItems([]); setNote(""); setSelectedSupplier(""); setSupplierCatalog([]); }}
             className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">{t("orders.newOrder", lang)}</span>
@@ -270,7 +334,7 @@ export default function OrdersPage() {
             <div className="p-4 space-y-4">
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t("orders.supplierLabel", lang)}</label>
-                <select value={selectedSupplier} onChange={(e) => setSelectedSupplier(e.target.value)}
+                <select value={selectedSupplier} onChange={(e) => selectSupplier(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="">{t("orders.selectSupplier", lang)}</option>
                   {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>)}
@@ -318,6 +382,23 @@ export default function OrdersPage() {
                 )}
               </div>
 
+              {selectedSupplier && supplierCatalog.length > 0 && (
+                <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <PackagePlus className="h-4 w-4 text-brand-700" />
+                    <p className="text-xs font-semibold text-brand-900">{lang === "sw" ? "Bidhaa za catalog ya supplier" : "Supplier catalog products"}</p>
+                  </div>
+                  <div className="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {supplierCatalog.map((product) => (
+                      <button key={product.id} type="button" onClick={() => openCatalogImport(product)} className="rounded-lg border border-brand-100 bg-white p-2 text-left hover:border-brand-400">
+                        <p className="text-xs font-semibold text-gray-900">{product.name}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">{formatTZS(product.price)} / {product.unit} - {product.minOrderQty}+ {lang === "sw" ? "kwa order" : "per order"}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t("orders.noteLabel", lang)}</label>
                 <input value={note} onChange={(e) => setNote(e.target.value)}
@@ -363,6 +444,36 @@ export default function OrdersPage() {
                   </a>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {catalogImport && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b p-4">
+              <div>
+                <h3 className="font-semibold text-gray-950">{catalogImport.name}</h3>
+                <p className="text-xs text-gray-500">{lang === "sw" ? "Gharama ya supplier" : "Supplier cost"}: {formatTZS(catalogImport.price)} / {catalogImport.unit}</p>
+              </div>
+              <button type="button" onClick={() => setCatalogImport(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <label className="block text-sm font-medium text-gray-700">
+                {lang === "sw" ? "Bei yako ya kuuza (TZS)" : "Your retail price (TZS)"}
+                <input value={retailPriceDraft} onChange={(event) => setRetailPriceDraft(event.target.value)} type="number" min="0" step="1" inputMode="numeric" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                {lang === "sw" ? "Kiwango cha tahadhari ya stock" : "Low-stock alert level"}
+                <input value={minimumStockDraft} onChange={(event) => setMinimumStockDraft(event.target.value)} type="number" min="0" step="1" inputMode="numeric" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+              </label>
+              <p className="text-xs leading-5 text-gray-500">{lang === "sw" ? "Bidhaa itaongezwa kwenye inventory yako ikiwa na stock sifuri, kisha itaongezwa kwenye order hii. Stock itaingia ukithibitisha delivery." : "This adds a zero-stock item to your inventory and to this order. Stock is added only when delivery is confirmed."}</p>
+              <button type="button" disabled={saving} onClick={importCatalogProduct} className="min-h-11 w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+                {saving ? "..." : (lang === "sw" ? "Ongeza kwenye inventory na order" : "Add to inventory and order")}
+              </button>
             </div>
           </div>
         </div>

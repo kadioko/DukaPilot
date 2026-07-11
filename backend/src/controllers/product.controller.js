@@ -62,8 +62,8 @@ const create = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
   }
   const initialStock = currentStock === undefined || currentStock === "" ? 0 : Number(currentStock);
-  if (!Number.isFinite(initialStock) || initialStock < 0) {
-    return res.status(400).json({ error: "Current stock must be 0 or greater" });
+  if (!Number.isInteger(initialStock) || initialStock < 0) {
+    return res.status(400).json({ error: "Current stock must be a whole number 0 or greater" });
   }
   const retailPrice = Number(sellingPrice);
   const parsedWholesalePrice = wholesalePrice != null && wholesalePrice !== "" ? Number(wholesalePrice) : null;

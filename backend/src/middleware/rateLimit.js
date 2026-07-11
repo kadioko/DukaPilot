@@ -1,12 +1,9 @@
 const rateLimit = require("express-rate-limit");
 const { ipKeyGenerator } = rateLimit;
 
-// Extract real client IP from x-forwarded-for (set by Railway's proxy)
+// Express resolves req.ip through the single trusted Railway proxy configured
+// in app.js. Reading X-Forwarded-For directly lets callers spoof rate keys.
 function getClientKey(req) {
-  const forwardedFor = req.headers["x-forwarded-for"];
-  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
-    return ipKeyGenerator(forwardedFor.split(",")[0].trim());
-  }
   return ipKeyGenerator(req.ip || req.socket?.remoteAddress || "unknown");
 }
 
@@ -19,7 +16,6 @@ const sharedOptions = {
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getClientKey,
-  validate: { xForwardedForHeader: false },
 };
 
 const apiRateLimiter = rateLimit({

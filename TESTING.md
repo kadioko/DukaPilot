@@ -30,13 +30,17 @@ npm run build
 
 ## Migration Gate
 
-Railway must apply `20260710001000_launch_hardening` before the matching frontend is considered fully deployed. Verify:
+Railway must apply `20260711001000_financial_integrity_and_supplier_catalog` before the matching frontend is considered fully deployed. Verify:
 
 - staff phone identities are unique;
 - staff language is stored per staff member;
 - payment references and billing report IDs are idempotent;
 - demo/QA shops are hidden from the public marketplace;
-- catalog publishing can be changed from Settings.
+- catalog publishing can be changed from Settings;
+- all money columns are integer TZS values;
+- an offline retry with the same client reference returns the original sale;
+- debt payments produce ledger entries and cannot exceed the remaining balance;
+- merchant supplier edits are limited to suppliers created by that merchant's shop.
 
 ## High-Risk Regression Checks
 
@@ -50,6 +54,8 @@ Railway must apply `20260710001000_launch_hardening` before the matching fronten
 8. Confirm `/orders`, `/inventory`, and `/sales` have no horizontal page overflow at 390px width.
 9. Confirm the public catalog excludes demo/QA shops and loads additional products with the Load More button.
 10. Confirm Android does not request notification permission in release `1.0.2`.
+11. Confirm mobile homepage navigation is a compact drawer at 390px width and `/catalog` has a visible H1.
+12. Confirm a supplier catalog product can be imported into inventory, added to an order, and stocked only after delivery confirmation.
 
 ## Live URLs
 

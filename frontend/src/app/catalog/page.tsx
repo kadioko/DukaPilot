@@ -129,6 +129,10 @@ export default function CatalogPage() {
       </header>
 
       <main className="max-w-5xl mx-auto p-4 pb-12">
+        <div className="mb-5">
+          <h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "Bidhaa za maduka" : "Shop products near you"}</h1>
+          <p className="mt-1 text-sm text-gray-600">{lang === "sw" ? "Tafuta bidhaa kutoka maduka yanayotumia DukaPilot." : "Browse products from shops that use DukaPilot."}</p>
+        </div>
         <div className="flex flex-col sm:flex-row gap-2 mb-5">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

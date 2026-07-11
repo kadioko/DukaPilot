@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
@@ -84,95 +84,96 @@ enum OnboardingStatus {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  phone        String    @unique
-  pin          String
-  name         String
-  role         Role      @default(MERCHANT)
-  language     String    @default("sw") // sw = Kiswahili, en = English
-  shop         Shop?
-  supplier     Supplier?
-  auditLogs    AuditLog[]
-  reports      Report[]
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id        String     @id @default(cuid())
+  phone     String     @unique
+  pin       String
+  name      String
+  role      Role       @default(MERCHANT)
+  language  String     @default("sw") // sw = Kiswahili, en = English
+  shop      Shop?
+  supplier  Supplier?
+  auditLogs AuditLog[]
+  reports   Report[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@map("users")
 }
 
 model Shop {
-  id          String    @id @default(cuid())
-  name        String
-  location    String
-  district    String?
-  category    String    @default("general") // grocery, pharmacy, beauty, bar, general
-  userId      String    @unique
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  products        Product[]
-  sales           Sale[]
-  orders          Order[]
-  customerOrders  CustomerOrder[]
-  debts           Debt[]
-  expenses        Expense[]
-  staffMembers    StaffMember[]
+  id                   String                @id @default(cuid())
+  name                 String
+  location             String
+  district             String?
+  category             String                @default("general") // grocery, pharmacy, beauty, bar, general
+  userId               String                @unique
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products             Product[]
+  sales                Sale[]
+  orders               Order[]
+  customerOrders       CustomerOrder[]
+  debts                Debt[]
+  expenses             Expense[]
+  staffMembers         StaffMember[]
   subscriptionPayments SubscriptionPayment[]
-  offlineSyncEvents OfflineSyncEvent[]
-  assistantActions AssistantAction[]
+  offlineSyncEvents    OfflineSyncEvent[]
+  assistantActions     AssistantAction[]
+  createdSuppliers     Supplier[]            @relation("SupplierCreatedByShop")
   // Subscription / trial
-  plan            String    @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
-  trialEndsAt     DateTime?
-  subscriptionEndsAt DateTime?
-  isActive        Boolean   @default(true)
-  isCatalogPublished Boolean @default(true)
-  isDemo          Boolean   @default(false)
-  onboardingStatus OnboardingStatus @default(NEW)
-  lastContactedAt DateTime?
-  followUpNotes   String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  plan                 String                @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
+  trialEndsAt          DateTime?
+  subscriptionEndsAt   DateTime?
+  isActive             Boolean               @default(true)
+  isCatalogPublished   Boolean               @default(true)
+  isDemo               Boolean               @default(false)
+  onboardingStatus     OnboardingStatus      @default(NEW)
+  lastContactedAt      DateTime?
+  followUpNotes        String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@map("shops")
 }
 
 model SubscriptionPayment {
-  id          String   @id @default(cuid())
-  shopId      String
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  plan        String
-  amount      Float
-  months      Int      @default(1)
-  method      String   @default("MANUAL")
-  reference   String?
-  normalizedReference String? @unique
-  status      String   @default("CONFIRMED")
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  proofUrl    String?
-  sourceReportId String? @unique
-  note        String?
-  paidAt      DateTime @default(now())
-  createdAt   DateTime @default(now())
+  id                  String    @id @default(cuid())
+  shopId              String
+  shop                Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  plan                String
+  amount              Int
+  months              Int       @default(1)
+  method              String    @default("MANUAL")
+  reference           String?
+  normalizedReference String?   @unique
+  status              String    @default("CONFIRMED")
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  proofUrl            String?
+  sourceReportId      String?   @unique
+  note                String?
+  paidAt              DateTime  @default(now())
+  createdAt           DateTime  @default(now())
 
   @@index([shopId, paidAt])
   @@map("subscription_payments")
 }
 
 model OfflineSyncEvent {
-  id        String   @id @default(cuid())
-  shopId    String
-  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  deviceId  String?
-  deviceLabel String?
-  status    String
-  total     Float?
-  message   String?
-  attempts  Int      @default(0)
-  localId   String?
-  resolutionStatus String @default("OPEN")
+  id               String    @id @default(cuid())
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  deviceId         String?
+  deviceLabel      String?
+  status           String
+  total            Int?
+  message          String?
+  attempts         Int       @default(0)
+  localId          String?
+  resolutionStatus String    @default("OPEN")
   resolutionNote   String?
-  contactedAt DateTime?
-  resolvedAt  DateTime?
-  createdAt DateTime @default(now())
+  contactedAt      DateTime?
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
 
   @@index([shopId, createdAt])
   @@index([status, createdAt])
@@ -181,19 +182,19 @@ model OfflineSyncEvent {
 }
 
 model AssistantAction {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   shopId      String
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   actionKey   String
   title       String
   href        String
-  status      String   @default("OPEN")
-  source      String   @default("ASSISTANT")
+  status      String    @default("OPEN")
+  source      String    @default("ASSISTANT")
   completedAt DateTime?
   dismissedAt DateTime?
   openedAt    DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([shopId, actionKey])
   @@index([shopId, status])
@@ -202,136 +203,160 @@ model AssistantAction {
 }
 
 model Supplier {
-  id          String    @id @default(cuid())
-  name        String
-  phone       String
-  address     String?
-  verificationStatus String @default("UNVERIFIED")
-  verifiedAt  DateTime?
-  adminNotes  String?
-  userId      String?   @unique
-  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  products    Product[]
-  catalogProducts SupplierCatalogProduct[]
-  orders      Order[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                 String                   @id @default(cuid())
+  name               String
+  phone              String
+  address            String?
+  verificationStatus String                   @default("UNVERIFIED")
+  verifiedAt         DateTime?
+  adminNotes         String?
+  createdByShopId    String?
+  createdByShop      Shop?                    @relation("SupplierCreatedByShop", fields: [createdByShopId], references: [id], onDelete: SetNull)
+  userId             String?                  @unique
+  user               User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  products           Product[]
+  catalogProducts    SupplierCatalogProduct[]
+  orders             Order[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
   @@map("suppliers")
 }
 
 model Product {
-  id             String          @id @default(cuid())
-  name           String
-  sku            String?
-  unit           String          @default("pcs") // pcs, kg, litre, box, crate
-  buyingPrice    Float
-  sellingPrice   Float
-  wholesalePrice  Float?
-  wholesaleMinQty Int?
-  currentStock   Int             @default(0)
-  minimumStock   Int             @default(5) // low-stock threshold
-  expiryDate     DateTime?       // null = not set
-  doesNotExpire  Boolean         @default(false)
-  isActive       Boolean         @default(true)
-  shopId         String
-  shop           Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  supplierId     String?
-  supplier       Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  saleItems           SaleItem[]
-  orderItems          OrderItem[]
-  customerOrderItems  CustomerOrderItem[]
-  stockMovements      StockMovement[]
-  createdAt           DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id                       String                  @id @default(cuid())
+  name                     String
+  sku                      String?
+  unit                     String                  @default("pcs") // pcs, kg, litre, box, crate
+  buyingPrice              Int
+  sellingPrice             Int
+  wholesalePrice           Int?
+  wholesaleMinQty          Int?
+  currentStock             Int                     @default(0)
+  minimumStock             Int                     @default(5) // low-stock threshold
+  expiryDate               DateTime? // null = not set
+  doesNotExpire            Boolean                 @default(false)
+  isActive                 Boolean                 @default(true)
+  shopId                   String
+  shop                     Shop                    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplierId               String?
+  supplier                 Supplier?               @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierCatalogProductId String?
+  supplierCatalogProduct   SupplierCatalogProduct? @relation("SupplierCatalogProductInventoryMapping", fields: [supplierCatalogProductId], references: [id], onDelete: SetNull)
+  saleItems                SaleItem[]
+  orderItems               OrderItem[]
+  customerOrderItems       CustomerOrderItem[]
+  stockMovements           StockMovement[]
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 
+  @@unique([shopId, supplierCatalogProductId])
   @@index([shopId, isActive])
   @@map("products")
 }
 
 model SupplierCatalogProduct {
-  id          String   @id @default(cuid())
-  supplierId  String
-  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  name        String
-  sku         String?
-  unit        String   @default("pcs")
-  price       Float
-  minOrderQty Int      @default(1)
-  note        String?
-  isAvailable Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String    @id @default(cuid())
+  supplierId       String
+  supplier         Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name             String
+  sku              String?
+  unit             String    @default("pcs")
+  price            Int
+  minOrderQty      Int       @default(1)
+  note             String?
+  isAvailable      Boolean   @default(true)
+  merchantProducts Product[] @relation("SupplierCatalogProductInventoryMapping")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([supplierId, isAvailable])
   @@map("supplier_catalog_products")
 }
 
 model StockMovement {
-  id          String            @id @default(cuid())
-  type        StockMovementType
-  quantity    Int
-  note        String?
-  productId   String
-  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdAt   DateTime          @default(now())
+  id        String            @id @default(cuid())
+  type      StockMovementType
+  quantity  Int
+  note      String?
+  productId String
+  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
 
   @@map("stock_movements")
 }
 
 model Sale {
   id              String        @id @default(cuid())
-  totalAmount     Float
-  profit          Float         @default(0)
+  totalAmount     Int
+  profit          Int           @default(0)
   paymentMethod   PaymentMethod @default(CASH)
-  paymentRef      String?       // M-Pesa transaction reference
+  paymentRef      String? // M-Pesa transaction reference
   channel         SaleChannel   @default(POS)
   pricingTier     PricingTier   @default(RETAIL)
   customerPhone   String?
   note            String?
+  clientReference String?
   shopId          String
   shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   items           SaleItem[]
   debt            Debt?
   createdAt       DateTime      @default(now())
 
+  @@unique([shopId, clientReference])
   @@index([shopId, createdAt])
   @@map("sales")
 }
 
 model Debt {
-  id             String     @id @default(cuid())
-  customerName   String?
-  customerPhone  String
-  amount         Float
-  amountPaid     Float      @default(0)
-  dueDate        DateTime?
-  note           String?
-  status         DebtStatus @default(OPEN)
-  shopId         String
-  shop           Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  saleId         String?    @unique
-  sale           Sale?      @relation(fields: [saleId], references: [id], onDelete: SetNull)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id            String        @id @default(cuid())
+  customerName  String?
+  customerPhone String
+  amount        Int
+  amountPaid    Int           @default(0)
+  dueDate       DateTime?
+  note          String?
+  status        DebtStatus    @default(OPEN)
+  shopId        String
+  shop          Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  saleId        String?       @unique
+  sale          Sale?         @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  payments      DebtPayment[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@index([shopId, status])
   @@index([customerPhone])
   @@map("debts")
 }
 
+model DebtPayment {
+  id            String        @id @default(cuid())
+  debtId        String
+  debt          Debt          @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  amount        Int
+  paymentMethod PaymentMethod @default(CASH)
+  paymentRef    String?
+  note          String?
+  recordedBy    String?
+  createdAt     DateTime      @default(now())
+
+  @@index([debtId, createdAt])
+  @@map("debt_payments")
+}
+
 model Expense {
-  id          String          @id @default(cuid())
-  title       String
-  amount      Float
-  category    ExpenseCategory @default(OTHER)
-  vendor      String?
-  note        String?
-  spentAt     DateTime        @default(now())
-  shopId      String
-  shop        Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id        String          @id @default(cuid())
+  title     String
+  amount    Int
+  category  ExpenseCategory @default(OTHER)
+  vendor    String?
+  note      String?
+  spentAt   DateTime        @default(now())
+  shopId    String
+  shop      Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   @@index([shopId, spentAt])
   @@index([shopId, category])
@@ -339,21 +364,21 @@ model Expense {
 }
 
 model StaffMember {
-  id           String    @id @default(cuid())
-  name         String
-  phone        String?   @unique
-  pin          String?
-  language     String    @default("sw")
-  role         StaffRole @default(CASHIER)
-  canSell      Boolean   @default(true)
-  canManageStock Boolean @default(false)
-  canManageStaff Boolean @default(false)
-  canViewReports Boolean @default(false)
-  isActive     Boolean   @default(true)
-  shopId       String
-  shop         Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  name           String
+  phone          String?   @unique
+  pin            String?
+  language       String    @default("sw")
+  role           StaffRole @default(CASHIER)
+  canSell        Boolean   @default(true)
+  canManageStock Boolean   @default(false)
+  canManageStaff Boolean   @default(false)
+  canViewReports Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  shopId         String
+  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([shopId, role])
   @@map("staff_members")
@@ -362,9 +387,9 @@ model StaffMember {
 model SaleItem {
   id          String  @id @default(cuid())
   quantity    Int
-  unitPrice   Float
-  buyingPrice Float
-  totalPrice  Float
+  unitPrice   Int
+  buyingPrice Int
+  totalPrice  Int
   saleId      String
   sale        Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   productId   String
@@ -376,7 +401,7 @@ model SaleItem {
 model Order {
   id          String      @id @default(cuid())
   status      OrderStatus @default(PENDING)
-  totalAmount Float?
+  totalAmount Int?
   note        String?
   shopId      String
   shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
@@ -391,13 +416,13 @@ model Order {
 }
 
 model OrderItem {
-  id          String   @id @default(cuid())
-  quantity    Int
-  unitPrice   Float?
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id])
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  quantity  Int
+  unitPrice Int?
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@map("order_items")
 }
@@ -408,7 +433,7 @@ model CustomerOrder {
   customerPhone String
   note          String?
   status        OrderStatus         @default(PENDING)
-  totalAmount   Float               @default(0)
+  totalAmount   Int                 @default(0)
   shopId        String
   shop          Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
   items         CustomerOrderItem[]
@@ -421,7 +446,7 @@ model CustomerOrder {
 model CustomerOrderItem {
   id          String        @id @default(cuid())
   quantity    Int
-  unitPrice   Float
+  unitPrice   Int
   pricingTier PricingTier   @default(RETAIL)
   productId   String
   product     Product       @relation(fields: [productId], references: [id])
@@ -451,19 +476,19 @@ model AuditLog {
 }
 
 model Report {
-  id          String     @id @default(cuid())
+  id          String       @id @default(cuid())
   userId      String
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        ReportType @default(OTHER)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ReportType   @default(OTHER)
   title       String
   description String
   status      ReportStatus @default(OPEN)
-  priority    Priority   @default(MEDIUM)
+  priority    Priority     @default(MEDIUM)
   adminNotes  String?
   resolvedAt  DateTime?
   resolvedBy  String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([userId])
   @@index([status])
