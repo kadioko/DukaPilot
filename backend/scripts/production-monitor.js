@@ -15,6 +15,13 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function cookieHeaderFrom(response) {
+  const cookies = typeof response.headers.getSetCookie === "function"
+    ? response.headers.getSetCookie()
+    : [response.headers.get("set-cookie")].filter(Boolean);
+  return cookies.map((cookie) => cookie.split(";", 1)[0]).filter(Boolean).join("; ");
+}
+
 async function check(name, fn) {
   const start = Date.now();
   try {
@@ -44,13 +51,16 @@ async function run() {
   });
 
   await check("catalog load", async () => {
-    const [{ response: page }, { response: products, payload }] = await Promise.all([
+    const [{ response: page }, { response: products, payload }, { response: proxiedProducts, payload: proxiedPayload }] = await Promise.all([
       request(`${FRONTEND_URL}/catalog`),
       request(`${API_URL}/api/public/products`),
+      request(`${FRONTEND_URL}/_api/public/products`),
     ]);
     assert(page.ok, `catalog page expected 2xx, got ${page.status}`);
     assert(products.ok, `public products expected 2xx, got ${products.status}`);
     assert(Array.isArray(payload.products), "public products payload missing products array");
+    assert(proxiedProducts.ok, `same-origin catalog proxy expected 2xx, got ${proxiedProducts.status}`);
+    assert(Array.isArray(proxiedPayload.products), "same-origin catalog proxy payload missing products array");
   });
 
   await check("CORS preflight", async () => {
@@ -65,7 +75,7 @@ async function run() {
     assert(response.headers.get("access-control-allow-origin") === FRONTEND_URL, "CORS allow-origin mismatch");
   });
 
-  let token = "";
+  let sessionCookie = "";
   await check("login", async () => {
     const { response, payload } = await request(`${API_URL}/api/auth/login`, {
       method: "POST",
@@ -73,13 +83,13 @@ async function run() {
       body: JSON.stringify({ phone: LOGIN_PHONE, pin: LOGIN_PIN }),
     });
     assert(response.ok, `login expected 2xx, got ${response.status} ${JSON.stringify(payload)}`);
-    assert(payload.token, "login response missing token");
-    token = payload.token;
+    sessionCookie = cookieHeaderFrom(response);
+    assert(sessionCookie.includes("dukapilot_token="), "login response missing secure access cookie");
   });
 
   await check("authenticated dashboard", async () => {
     const { response, payload } = await request(`${API_URL}/api/dashboard?period=today`, {
-      headers: { Authorization: `Bearer ${token}`, Origin: FRONTEND_URL },
+      headers: { Cookie: sessionCookie, Origin: FRONTEND_URL },
     });
     assert(response.ok, `dashboard expected 2xx, got ${response.status}`);
     assert(payload.summary, "dashboard payload missing summary");
