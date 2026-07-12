@@ -235,6 +235,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Catalog trust. Keep demo/QA shops unpublished and review wholesale prices before sharing a merchant catalog.
 - Plan leakage. Test Basic and Pro entitlements after every billing or authorization change.
 - Shared mobile IPs. Avoid repeated production login tests; use local unit/browser tests and one controlled production monitor.
+- Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows without receiving buying costs, margins, shop-wide profit, or AI report data.
 
 ## Release Gate - 1.3.0
 

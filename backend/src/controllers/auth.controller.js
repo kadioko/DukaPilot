@@ -103,6 +103,7 @@ function staffPermissions(staff) {
     canManageStock: Boolean(staff.canManageStock),
     canManageStaff: Boolean(staff.canManageStaff),
     canViewReports: Boolean(staff.canViewReports),
+    canRecordExpenses: Boolean(staff.canRecordExpenses),
   };
 }
 

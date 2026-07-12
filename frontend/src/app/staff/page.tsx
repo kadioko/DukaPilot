@@ -14,6 +14,7 @@ interface StaffMember {
   canManageStock: boolean;
   canManageStaff: boolean;
   canViewReports: boolean;
+  canRecordExpenses: boolean;
   isActive: boolean;
   pin?: string | null;
 }
@@ -41,7 +42,7 @@ export default function StaffPage() {
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "isActive">) {
     await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
     await load();
   }
@@ -51,6 +52,7 @@ export default function StaffPage() {
     canManageStock: lang === "sw" ? "Bidhaa" : "Stock",
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",
+    canRecordExpenses: lang === "sw" ? "Kurekodi matumizi" : "Record expenses",
   };
 
   return (
@@ -91,7 +93,7 @@ export default function StaffPage() {
                   {member.isActive ? (lang === "sw" ? "Hai" : "Active") : (lang === "sw" ? "Imezimwa" : "Inactive")}
                 </button>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
                 {(Object.keys(permissionLabels) as Array<keyof typeof permissionLabels>).map((field) => (
                   <label key={field} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
                     <input type="checkbox" checked={member[field]} onChange={() => togglePermission(member, field)} />

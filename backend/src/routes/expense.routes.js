@@ -5,7 +5,7 @@ const { requireActiveSubscription } = require("../middleware/subscription");
 
 router.use(authenticate);
 router.use(requireRole("MERCHANT", "ADMIN"));
-router.use(requirePermission("canViewReports"));
+router.use(requirePermission("canRecordExpenses"));
 router.use(requireActiveSubscription);
 
 router.get("/", list);

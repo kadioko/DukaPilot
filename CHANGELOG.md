@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.1] - 2026-07-12 - Shop Attendant Privacy Controls
+
+### Added
+
+- Added independent `Record expenses` staff permission so expense entry does not require access to reports.
+- Added shop attendant configuration for selling, stock adjustments, debts, and expense entry without owner financial visibility.
+- Added migration `20260712002000_staff_expense_permissions`; existing owners and managers retain expense access.
+
+### Fixed
+
+- Redacted buying costs, sale profit, and margin details from staff sessions without report permission in backend responses and mobile screens.
+- Updated staff, README, testing, and launch documentation with the attendant permission model.
+
+---
+
 ## [1.4.0] - 2026-07-11 - Financial Integrity and Secure Mobile Sessions
 
 ### Added

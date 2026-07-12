@@ -41,6 +41,8 @@ Railway must apply `20260711001000_financial_integrity_and_supplier_catalog` bef
 - an offline retry with the same client reference returns the original sale;
 - debt payments produce ledger entries and cannot exceed the remaining balance;
 - merchant supplier edits are limited to suppliers created by that merchant's shop.
+- `20260712002000_staff_expense_permissions` is applied; owner/manager expense access is preserved and staff expense access is explicit.
+- A staff session without report permission does not receive buying prices, sale profit, or profit analytics data.
 
 ## High-Risk Regression Checks
 
@@ -306,7 +308,7 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 3. Open `/expenses` — add a test expense with category `OTHER`; confirm the total updates.
 4. Open `/staff` — add a cashier, toggle at least one permission, and confirm the active/inactive button works.
 5. Add a staff phone and PIN, then log out and confirm the staff member can log in with that phone/PIN.
-6. Confirm cashier permissions allow `/sales` but block stock/report/staff routes when those permissions are off.
+6. Create a shop attendant with Sell, Stock, and Record expenses enabled but Reports disabled. Confirm they can sell, adjust stock, add debts, and record expenses, while `/dashboard`, `/profit`, `/assistant`, and report data remain blocked or redacted.
 7. Open `/assistant` — confirm recommendations rank named stock, debt, expense, top-product, or pending-order actions when those records exist.
 8. Click assistant action links and confirm they open the relevant workflow, including inventory search when a product is named.
 9. Switch language between Kiswahili and English and confirm all four pages update their labels.
@@ -496,7 +498,7 @@ Manual post-deploy checks:
 - Language toggle persists after hard refresh
 - Settings page saves correctly
 - Debt, expense, staff, and assistant pages load for merchants
-- Staff permission enforcement blocks restricted staff sessions from stock, reports, staff management, and settings profile changes
+- Staff permission enforcement blocks restricted staff sessions from stock, reports, staff management, and settings profile changes; expense entry is independently controlled from report visibility
 - Subscription payment actions, suspension, and mutation enforcement work from Admin
 - Offline sales queue syncs after connection returns
 - `/contact`, `/help`, `/demo`, and `/onboarding` render without console errors

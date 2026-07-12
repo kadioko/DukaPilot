@@ -84,6 +84,7 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const latestLoad = useRef(0);
   const mutationInFlight = useRef(false);
+  const [canViewFinancials, setCanViewFinancials] = useState(true);
 
   const fetchProducts = useCallback(async () => {
     const requestId = ++latestLoad.current;
@@ -107,6 +108,9 @@ export default function InventoryPage() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => {
+    api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean } } } }>("/auth/me")
+      .then((data) => setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports)))
+      .catch(() => setCanViewFinancials(false));
     api.get<{ suppliers: Supplier[] }>("/suppliers").then((d) => setSuppliers(d.suppliers));
   }, []);
 
@@ -121,7 +125,7 @@ export default function InventoryPage() {
     setEditProduct(p);
     setForm({
       name: p.name, sku: p.sku || "", unit: p.unit,
-      buyingPrice: String(p.buyingPrice), sellingPrice: String(p.sellingPrice),
+      buyingPrice: p.buyingPrice == null ? "" : String(p.buyingPrice), sellingPrice: String(p.sellingPrice),
       wholesalePrice: p.wholesalePrice != null ? String(p.wholesalePrice) : "",
       wholesaleMinQty: p.wholesaleMinQty != null ? String(p.wholesaleMinQty) : "",
       currentStock: String(p.currentStock), minimumStock: String(p.minimumStock),
@@ -136,11 +140,11 @@ export default function InventoryPage() {
   async function handleSave() {
     if (mutationInFlight.current) return;
     setError("");
-    if (!form.name.trim() || form.buyingPrice === "" || form.sellingPrice === "") {
+    if (!form.name.trim() || (canViewFinancials && form.buyingPrice === "") || form.sellingPrice === "") {
       setError(t("inventory.fieldRequired", lang));
       return;
     }
-    const numericFields = [form.buyingPrice, form.sellingPrice, form.currentStock, form.minimumStock];
+    const numericFields = [form.sellingPrice, form.currentStock, form.minimumStock, ...(canViewFinancials ? [form.buyingPrice] : [])];
     if (numericFields.some((value) => !Number.isInteger(Number(value)) || Number(value) < 0)) {
       setError(lang === "sw" ? "Bei na idadi ziwe namba kamili zisizo hasi." : "Prices and quantities must be whole, non-negative numbers.");
       return;
@@ -154,7 +158,7 @@ export default function InventoryPage() {
     try {
       const body = {
         name: form.name, sku: form.sku || undefined, unit: form.unit,
-        buyingPrice: Number(form.buyingPrice), sellingPrice: Number(form.sellingPrice),
+        ...(canViewFinancials ? { buyingPrice: Number(form.buyingPrice) } : {}), sellingPrice: Number(form.sellingPrice),
         wholesalePrice: form.wholesalePrice === "" ? null : Number(form.wholesalePrice),
         wholesaleMinQty: form.wholesaleMinQty === "" ? null : Number(form.wholesaleMinQty),
         currentStock: Number(form.currentStock), minimumStock: Number(form.minimumStock),
@@ -236,14 +240,14 @@ export default function InventoryPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-bold text-gray-900">{t("inventory.title", lang)}</h1>
-          <button
+          {canViewFinancials && <button
             onClick={openAdd}
             aria-label={t("inventory.addProduct", lang)}
             className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span>
-          </button>
+          </button>}
         </div>
 
         {assistantAction && (
@@ -358,18 +362,18 @@ export default function InventoryPage() {
                             {p.currentStock} {p.unit}
                           </p>
                         </div>
-                        <div>
+                        {canViewFinancials && <div>
                           <p className="text-xs text-gray-400">{t("inventory.buyingPrice", lang)}</p>
-                          <p className="text-sm font-medium text-gray-700">{formatTZS(p.buyingPrice)}</p>
-                        </div>
+                          <p className="text-sm font-medium text-gray-700">{p.buyingPrice == null ? "-" : formatTZS(p.buyingPrice)}</p>
+                        </div>}
                         <div>
                           <p className="text-xs text-gray-400">{t("inventory.sellingPrice", lang)}</p>
                           <p className="text-sm font-medium text-brand-700">{formatTZS(p.sellingPrice)}</p>
                         </div>
-                        <div>
+                        {canViewFinancials && <div>
                           <p className="text-xs text-gray-400">{t("inventory.marginLabel", lang)}</p>
                           <p className="text-sm font-medium text-green-600">{margin(p)}%</p>
-                        </div>
+                        </div>}
                       </div>
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
@@ -433,10 +437,10 @@ export default function InventoryPage() {
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label={t("inventory.buyingPriceLabel", lang)}>
+              {canViewFinancials && <Field label={t("inventory.buyingPriceLabel", lang)}>
                 <input aria-label={t("inventory.buyingPriceLabel", lang)} type="number" min="0" step="1" value={form.buyingPrice} onChange={(e) => setForm({ ...form, buyingPrice: e.target.value })}
                   className={INPUT} placeholder="2800" />
-              </Field>
+              </Field>}
               <Field label={t("inventory.sellingPriceLabel", lang)}>
                 <input aria-label={t("inventory.sellingPriceLabel", lang)} type="number" min="0" step="1" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
                   className={INPUT} placeholder="3200" />

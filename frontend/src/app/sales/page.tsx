@@ -11,7 +11,7 @@ interface Product {
   name: string;
   unit: string;
   sellingPrice: number;
-  buyingPrice: number;
+  buyingPrice: number | null;
   wholesalePrice?: number | null;
   wholesaleMinQty?: number | null;
   currentStock: number;
@@ -26,7 +26,7 @@ interface CartItem {
 interface SaleRecord {
   id: string;
   totalAmount: number;
-  profit: number;
+  profit: number | null;
   paymentMethod: string;
   createdAt: string;
   items: Array<{ quantity: number; unitPrice: number; totalPrice: number; product: { name: string; unit: string } }>;
@@ -155,8 +155,12 @@ export default function SalesPage() {
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [assistantIntent, setAssistantIntent] = useState("");
+  const [canViewFinancials, setCanViewFinancials] = useState(true);
 
   useEffect(() => {
+    api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean } } } }>("/auth/me")
+      .then((data) => setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports)))
+      .catch(() => setCanViewFinancials(false));
     api.get<{ products: Product[] }>("/products")
       .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
   }, []);
@@ -340,7 +344,7 @@ export default function SalesPage() {
   }
 
   const total = cart.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-  const profit = cart.reduce((sum, i) => sum + i.quantity * (i.unitPrice - i.product.buyingPrice), 0);
+  const profit = canViewFinancials ? cart.reduce((sum, i) => sum + i.quantity * (i.unitPrice - (i.product.buyingPrice || 0)), 0) : 0;
 
   async function completeSale() {
     if (cart.length === 0) return;
@@ -654,10 +658,10 @@ export default function SalesPage() {
                         <span className="text-gray-500">{t("sales.total", lang)}</span>
                         <span className="font-bold text-gray-900">{formatTZS(total)}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
+                      {canViewFinancials && <div className="flex justify-between text-sm">
                         <span className="text-gray-500">{t("sales.profit", lang)}</span>
                         <span className="font-bold text-green-600">{formatTZS(profit)}</span>
-                      </div>
+                      </div>}
                     </div>
 
                     <div className="mb-3">
@@ -732,7 +736,7 @@ export default function SalesPage() {
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                           {t(PAYMENT_METHODS.find((m) => m.value === sale.paymentMethod)?.labelKey || "sales.cash", lang)}
                         </span>
-                        <p className="text-sm font-bold text-green-600 mt-1">+{formatTZS(sale.profit)}</p>
+                        {canViewFinancials && sale.profit != null && <p className="text-sm font-bold text-green-600 mt-1">+{formatTZS(sale.profit)}</p>}
                       </div>
                     </div>
                     <div className="divide-y divide-gray-50">

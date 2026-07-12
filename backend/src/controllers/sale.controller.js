@@ -6,6 +6,22 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+function canViewFinancials(req) {
+  return req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canViewReports;
+}
+
+function redactSale(sale, req) {
+  if (canViewFinancials(req)) return sale;
+  const safe = { ...sale };
+  delete safe.profit;
+  if (safe.items) safe.items = safe.items.map((item) => {
+    const next = { ...item };
+    delete next.buyingPrice;
+    return next;
+  });
+  return safe;
+}
+
 const VALID_PAYMENT_METHODS = ['CASH', 'MPESA', 'TIGOPESA', 'AIRTEL_MONEY', 'HALOPESA', 'BANK', 'CREDIT'];
 const VALID_CHANNELS = ['POS', 'ONLINE'];
 
@@ -43,7 +59,7 @@ const list = asyncHandler(async (req, res) => {
     prisma.sale.count({ where }),
   ]);
 
-  res.json({ sales, total });
+  res.json({ sales: sales.map((sale) => redactSale(sale, req)), total });
 });
 
 const create = asyncHandler(async (req, res) => {
@@ -66,7 +82,7 @@ const create = asyncHandler(async (req, res) => {
       where: { shopId, clientReference: normalizedClientReference },
       include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
     });
-    if (existingSale) return res.json({ sale: existingSale, reused: true });
+    if (existingSale) return res.json({ sale: redactSale(existingSale, req), reused: true });
   }
 
   if (normalizedPaymentMethod === "CREDIT" && !customerPhone) {
@@ -187,10 +203,10 @@ const create = asyncHandler(async (req, res) => {
       include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
     });
     if (!existingSale) throw error;
-    return res.json({ sale: existingSale, reused: true });
+    return res.json({ sale: redactSale(existingSale, req), reused: true });
   }
 
-  res.status(201).json({ sale });
+  res.status(201).json({ sale: redactSale(sale, req) });
 });
 
 const get = asyncHandler(async (req, res) => {
@@ -204,7 +220,7 @@ const get = asyncHandler(async (req, res) => {
     },
   });
   if (!sale) return res.status(404).json({ error: "Sale not found" });
-  res.json({ sale });
+  res.json({ sale: redactSale(sale, req) });
 });
 
 const summary = asyncHandler(async (req, res) => {
@@ -244,10 +260,10 @@ const summary = asyncHandler(async (req, res) => {
   res.json({
     period,
     totalSales: aggregate._sum.totalAmount || 0,
-    totalProfit: aggregate._sum.profit || 0,
+    totalProfit: canViewFinancials(req) ? (aggregate._sum.profit || 0) : null,
     salesCount: aggregate._count.id,
     byPaymentMethod: byPayment,
-    recentSales: sales.slice(0, 5),
+    recentSales: sales.slice(0, 5).map((sale) => canViewFinancials(req) ? sale : { ...sale, profit: null }),
   });
 });
 

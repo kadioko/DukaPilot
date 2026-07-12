@@ -16,16 +16,17 @@ const SAFE_STAFF_SELECT = {
   canManageStock: true,
   canManageStaff: true,
   canViewReports: true,
+  canRecordExpenses: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
 };
 
 function permissionsFor(role) {
-  if (role === "OWNER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true };
-  if (role === "MANAGER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true };
-  if (role === "STOCK_CLERK") return { canSell: false, canManageStock: true, canManageStaff: false, canViewReports: false };
-  return { canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false };
+  if (role === "OWNER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true };
+  if (role === "MANAGER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true };
+  if (role === "STOCK_CLERK") return { canSell: false, canManageStock: true, canManageStaff: false, canViewReports: false, canRecordExpenses: false };
+  return { canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false };
 }
 
 function boolValue(value, fallback) {
@@ -81,6 +82,7 @@ const create = asyncHandler(async (req, res) => {
       canManageStock: boolValue(req.body.canManageStock, defaults.canManageStock),
       canManageStaff: boolValue(req.body.canManageStaff, defaults.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, defaults.canViewReports),
+      canRecordExpenses: boolValue(req.body.canRecordExpenses, defaults.canRecordExpenses),
       shopId,
     },
     select: SAFE_STAFF_SELECT,
@@ -117,6 +119,7 @@ const update = asyncHandler(async (req, res) => {
       canManageStock: boolValue(req.body.canManageStock, existing.canManageStock),
       canManageStaff: boolValue(req.body.canManageStaff, existing.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, existing.canViewReports),
+      canRecordExpenses: boolValue(req.body.canRecordExpenses, existing.canRecordExpenses),
       isActive: boolValue(req.body.isActive, existing.isActive),
     },
     select: SAFE_STAFF_SELECT,

@@ -374,6 +374,7 @@ model StaffMember {
   canManageStock Boolean   @default(false)
   canManageStaff Boolean   @default(false)
   canViewReports Boolean   @default(false)
+  canRecordExpenses Boolean @default(false)
   isActive       Boolean   @default(true)
   shopId         String
   shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)

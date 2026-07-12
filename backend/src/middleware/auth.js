@@ -52,6 +52,7 @@ async function authenticate(req, res, next) {
           canManageStock: true,
           canManageStaff: true,
           canViewReports: true,
+          canRecordExpenses: true,
           shop: { select: { userId: true } },
         },
       });
@@ -64,6 +65,7 @@ async function authenticate(req, res, next) {
         canManageStock: staff.canManageStock,
         canManageStaff: staff.canManageStaff,
         canViewReports: staff.canViewReports,
+        canRecordExpenses: staff.canRecordExpenses,
       };
     }
     req.user = payload;

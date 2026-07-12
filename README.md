@@ -43,7 +43,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
 | **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
-| **Staff roles (Pro)** | Add uniquely identified staff members; live permissions and deactivation are enforced on every request |
+| **Staff roles (Pro)** | Add uniquely identified staff members; live permissions and deactivation are enforced on every request, including sell, stock, expense-entry, and report visibility |
 | **Billing page** | Merchants can see plan status, official M-Pesa/Mix by Yas payment options, submit references, and contact WhatsApp support |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
@@ -158,6 +158,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - Browser API calls use the same-origin `/_api` proxy and secure HttpOnly cookies. Access tokens are not stored in `localStorage`.
 - All money values are stored as whole Tanzanian shillings (TZS), not floating-point values.
 - Staff permissions are reloaded from the database on every authenticated request; disabling a staff account invalidates access immediately.
+- Staff can be configured as a shop attendant: `canSell`, `canManageStock`, and `canRecordExpenses` may be enabled while `canViewReports` remains off. Staff without report access receive redacted buying-cost and profit fields, while owners/managers keep full financial visibility.
 - Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
 - OTP codes expire after 10 minutes and are single-use.
 - Africa's Talking credentials must be verified separately in production; the production monitor does not send a real OTP.
@@ -399,7 +400,7 @@ npm run dev         # runs on :3000
 
 ### Launch Notes
 
-- Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, staff, and reports access for staff sessions.
+- Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, expense-entry, staff, and reports access for staff sessions. A shop attendant can sell, adjust stock, record debts, and record expenses without seeing shop-wide profit reports or buying costs.
 - Offline support includes the cached app shell, `/offline.html` fallback, a browser-local pending sales queue, merchant sync history, and admin sync failure resolution by shop/device. Broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled yet.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired or suspended shops can still view data and contact support, but operational mutations such as new sales, stock edits, expenses, staff changes, and orders require an active trial or subscription.

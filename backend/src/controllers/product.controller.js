@@ -5,6 +5,14 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+function canViewFinancials(req) {
+  return req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canViewReports;
+}
+
+function redactProduct(product, req) {
+  return canViewFinancials(req) ? product : { ...product, buyingPrice: null };
+}
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const { lowStock, search, page = 1, limit = 50 } = req.query;
@@ -31,7 +39,7 @@ const list = asyncHandler(async (req, res) => {
     : products;
 
   res.json({
-    products: result,
+    products: result.map((product) => redactProduct(product, req)),
     pagination: {
       page: pageNumber,
       limit: limitNumber,
@@ -51,7 +59,7 @@ const get = asyncHandler(async (req, res) => {
     },
   });
   if (!product) return res.status(404).json({ error: "Product not found" });
-  res.json({ product });
+  res.json({ product: redactProduct(product, req) });
 });
 
 const create = asyncHandler(async (req, res) => {
@@ -105,7 +113,7 @@ const create = asyncHandler(async (req, res) => {
     return created;
   });
 
-  res.status(201).json({ product });
+  res.status(201).json({ product: redactProduct(product, req) });
 });
 
 const update = asyncHandler(async (req, res) => {
@@ -142,7 +150,7 @@ const update = asyncHandler(async (req, res) => {
     include: { supplier: { select: { id: true, name: true, phone: true } } },
   });
 
-  res.json({ product });
+  res.json({ product: redactProduct(product, req) });
 });
 
 const remove = asyncHandler(async (req, res) => {
@@ -162,7 +170,7 @@ const getLowStock = asyncHandler(async (req, res) => {
     include: { supplier: { select: { id: true, name: true, phone: true } } },
     orderBy: [{ currentStock: "asc" }, { name: "asc" }],
   });
-  res.json({ products: products.filter((p) => p.currentStock <= p.minimumStock) });
+  res.json({ products: products.filter((p) => p.currentStock <= p.minimumStock).map((product) => redactProduct(product, req)) });
 });
 
 module.exports = { list, get, create, update, remove, getLowStock };
