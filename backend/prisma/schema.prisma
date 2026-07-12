@@ -396,6 +396,8 @@ model SaleItem {
   product     Product @relation(fields: [productId], references: [id])
 
   @@map("sale_items")
+  @@index([saleId])
+  @@index([productId])
 }
 
 model Order {

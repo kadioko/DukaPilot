@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
@@ -82,17 +82,28 @@ export default function InventoryPage() {
   const [adjustForm, setAdjustForm] = useState({ type: "IN", quantity: "", note: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const latestLoad = useRef(0);
+  const mutationInFlight = useRef(false);
 
   const fetchProducts = useCallback(async () => {
+    const requestId = ++latestLoad.current;
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    const data = await api.get<{ products: Product[] }>(`/products?${params}`);
-    let list = data.products;
-    if (lowStockOnly) list = list.filter((p) => p.currentStock <= p.minimumStock);
-    setProducts(list);
-    setLoading(false);
-  }, [search, lowStockOnly]);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      const data = await api.get<{ products: Product[] }>(`/products?${params}`);
+      if (requestId !== latestLoad.current) return;
+      let list = data.products;
+      if (lowStockOnly) list = list.filter((p) => p.currentStock <= p.minimumStock);
+      setProducts(list);
+    } catch (value: unknown) {
+      if (requestId === latestLoad.current) {
+        toast(value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia bidhaa." : "Could not load products."), "error");
+      }
+    } finally {
+      if (requestId === latestLoad.current) setLoading(false);
+    }
+  }, [search, lowStockOnly, toast, lang]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => {
@@ -123,11 +134,22 @@ export default function InventoryPage() {
   }
 
   async function handleSave() {
+    if (mutationInFlight.current) return;
     setError("");
-    if (!form.name || !form.buyingPrice || !form.sellingPrice) {
+    if (!form.name.trim() || form.buyingPrice === "" || form.sellingPrice === "") {
       setError(t("inventory.fieldRequired", lang));
       return;
     }
+    const numericFields = [form.buyingPrice, form.sellingPrice, form.currentStock, form.minimumStock];
+    if (numericFields.some((value) => !Number.isInteger(Number(value)) || Number(value) < 0)) {
+      setError(lang === "sw" ? "Bei na idadi ziwe namba kamili zisizo hasi." : "Prices and quantities must be whole, non-negative numbers.");
+      return;
+    }
+    if (form.wholesalePrice !== "" && (!Number.isInteger(Number(form.wholesalePrice)) || Number(form.wholesalePrice) < 0)) {
+      setError(lang === "sw" ? "Bei ya jumla iwe namba kamili isiyo hasi." : "Wholesale price must be a whole, non-negative number.");
+      return;
+    }
+    mutationInFlight.current = true;
     setSaving(true);
     try {
       const body = {
@@ -140,41 +162,57 @@ export default function InventoryPage() {
         doesNotExpire: form.doesNotExpire,
         expiryDate: form.doesNotExpire ? null : (form.expiryDate || null),
       };
+      const response = editProduct
+        ? await api.patch<{ product: Product }>(`/products/${editProduct.id}`, body)
+        : await api.post<{ product: Product }>("/products", body);
       if (editProduct) {
-        await api.patch(`/products/${editProduct.id}`, body);
+        setProducts((current) => current.map((product) => product.id === editProduct.id ? response.product : product));
       } else {
-        await api.post("/products", body);
+        setProducts((current) => [response.product, ...current]);
       }
       setShowForm(false);
-      fetchProducts();
+      toast(editProduct ? (lang === "sw" ? "Bidhaa imebadilishwa." : "Product updated.") : (lang === "sw" ? "Bidhaa imeongezwa." : "Product added."), "success");
+      await fetchProducts();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t("common.error", lang));
     } finally {
       setSaving(false);
+      mutationInFlight.current = false;
     }
   }
 
   async function handleAdjust() {
-    if (!adjustProduct || !adjustForm.quantity) return;
+    if (mutationInFlight.current) return;
+    if (!adjustProduct || adjustForm.quantity === "") return;
+    if (!Number.isInteger(Number(adjustForm.quantity)) || Number(adjustForm.quantity) < 0 || (adjustForm.type !== "ADJUSTMENT" && Number(adjustForm.quantity) === 0)) {
+      toast(lang === "sw" ? "Weka idadi sahihi ya namba kamili." : "Enter a valid whole quantity.", "error");
+      return;
+    }
+    mutationInFlight.current = true;
     setSaving(true);
     try {
-      await api.post("/stock/adjust", {
+      const response = await api.post<{ product: Product }>("/stock/adjust", {
         productId: adjustProduct.id,
         type: adjustForm.type,
         quantity: Number(adjustForm.quantity),
         note: adjustForm.note || undefined,
       });
+      setProducts((current) => current.map((product) => product.id === response.product.id ? response.product : product));
       setAdjustProduct(null);
-      fetchProducts();
+      toast(lang === "sw" ? "Stock imebadilishwa." : "Stock updated.", "success");
+      await fetchProducts();
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : t("common.error", lang), "error");
     } finally {
       setSaving(false);
+      mutationInFlight.current = false;
     }
   }
 
   async function handleDeleteProduct() {
     if (!deleteProduct) return;
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setSaving(true);
     try {
       await api.delete(`/products/${deleteProduct.id}`, lang);
@@ -185,6 +223,7 @@ export default function InventoryPage() {
       toast(e instanceof Error ? e.message : t("common.error", lang), "error");
     } finally {
       setSaving(false);
+      mutationInFlight.current = false;
     }
   }
 
@@ -395,21 +434,21 @@ export default function InventoryPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t("inventory.buyingPriceLabel", lang)}>
-                <input aria-label={t("inventory.buyingPriceLabel", lang)} type="number" value={form.buyingPrice} onChange={(e) => setForm({ ...form, buyingPrice: e.target.value })}
+                <input aria-label={t("inventory.buyingPriceLabel", lang)} type="number" min="0" step="1" value={form.buyingPrice} onChange={(e) => setForm({ ...form, buyingPrice: e.target.value })}
                   className={INPUT} placeholder="2800" />
               </Field>
               <Field label={t("inventory.sellingPriceLabel", lang)}>
-                <input aria-label={t("inventory.sellingPriceLabel", lang)} type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
+                <input aria-label={t("inventory.sellingPriceLabel", lang)} type="number" min="0" step="1" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
                   className={INPUT} placeholder="3200" />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t("inventory.currentStockLabel", lang)}>
-                <input aria-label={t("inventory.currentStockLabel", lang)} type="number" value={form.currentStock} onChange={(e) => setForm({ ...form, currentStock: e.target.value })}
+                <input aria-label={t("inventory.currentStockLabel", lang)} type="number" min="0" step="1" value={form.currentStock} onChange={(e) => setForm({ ...form, currentStock: e.target.value })}
                   className={INPUT} placeholder="0" />
               </Field>
               <Field label={t("inventory.minimumStockLabel", lang)}>
-                <input aria-label={t("inventory.minimumStockLabel", lang)} type="number" value={form.minimumStock} onChange={(e) => setForm({ ...form, minimumStock: e.target.value })}
+                <input aria-label={t("inventory.minimumStockLabel", lang)} type="number" min="0" step="1" value={form.minimumStock} onChange={(e) => setForm({ ...form, minimumStock: e.target.value })}
                   className={INPUT} placeholder="5" />
               </Field>
             </div>
@@ -418,14 +457,14 @@ export default function InventoryPage() {
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t("inventory.wholesaleSection", lang)}</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t("inventory.wholesalePriceLabel", lang)}>
-                  <input aria-label={t("inventory.wholesalePriceLabel", lang)} type="number" value={form.wholesalePrice}
+                  <input aria-label={t("inventory.wholesalePriceLabel", lang)} type="number" min="0" step="1" value={form.wholesalePrice}
                     onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })}
                     className={INPUT} placeholder="2900" />
                 </Field>
                 <Field label={t("inventory.wholesaleMinQtyLabel", lang)}>
-                  <input aria-label={t("inventory.wholesaleMinQtyLabel", lang)} type="number" value={form.wholesaleMinQty}
+                  <input aria-label={t("inventory.wholesaleMinQtyLabel", lang)} type="number" min="1" step="1" value={form.wholesaleMinQty}
                     onChange={(e) => setForm({ ...form, wholesaleMinQty: e.target.value })}
-                    className={INPUT} placeholder="5" min="1" />
+                    className={INPUT} placeholder="5" />
                 </Field>
               </div>
             </div>
@@ -545,9 +584,9 @@ export default function InventoryPage() {
               ))}
             </div>
             <Field label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)}>
-              <input aria-label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)} type="number" value={adjustForm.quantity}
+              <input aria-label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)} type="number" min="0" step="1" value={adjustForm.quantity}
                 onChange={(e) => setAdjustForm({ ...adjustForm, quantity: e.target.value })}
-                className={INPUT} placeholder="0" min="0" />
+                className={INPUT} placeholder="0" />
             </Field>
             <Field label={t("inventory.adjustNote", lang)}>
               <input aria-label={t("inventory.adjustNote", lang)} value={adjustForm.note}
@@ -558,7 +597,7 @@ export default function InventoryPage() {
               <button onClick={() => setAdjustProduct(null)} className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-lg text-sm font-medium">
                 {t("common.cancel", lang)}
               </button>
-              <button aria-label={t("common.save", lang)} onClick={handleAdjust} disabled={saving || !adjustForm.quantity}
+              <button aria-label={t("common.save", lang)} onClick={handleAdjust} disabled={saving || adjustForm.quantity === ""}
                 className="flex-1 bg-brand-600 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
                 {saving ? "..." : t("common.save", lang)}
               </button>

@@ -98,6 +98,10 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     }
 
     const body = JSON.parse(route.request().postData() || "{}");
+    if (body.name === "Failure Product") {
+      await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Could not save product" }) });
+      return;
+    }
     const productId = route.request().url().split("/").pop();
     const product = products.find((item) => item.id === productId);
     if (product) {
@@ -125,7 +129,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true }),
+      body: JSON.stringify({ product, movement: { id: "move-1" } }),
     });
   });
 
@@ -168,6 +172,12 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
   await expect(page.getByText(/25 pcs/)).toBeVisible();
+
+  await page.getByLabel(/edit product sukari brown|hariri bidhaa sukari brown/i).click();
+  await page.getByLabel(/product name|jina la bidhaa/i).fill("Failure Product");
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText("Could not save product")).toBeVisible();
+  await expect(page.getByText(/edit product|hariri bidhaa/i)).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);

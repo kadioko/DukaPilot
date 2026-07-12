@@ -71,8 +71,9 @@ const create = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
   }
 
-  const product = await prisma.product.create({
-    data: {
+  const product = await prisma.$transaction(async (tx) => {
+    const created = await tx.product.create({
+      data: {
       name,
       sku,
       unit: unit || "pcs",
@@ -81,26 +82,28 @@ const create = asyncHandler(async (req, res) => {
       wholesalePrice: parsedWholesalePrice,
       wholesaleMinQty: wholesaleMinQty != null && wholesaleMinQty !== "" ? Number(wholesaleMinQty) : null,
       currentStock: initialStock,
-      minimumStock: Number(minimumStock) || 5,
+      minimumStock: minimumStock === undefined || minimumStock === "" ? 5 : Number(minimumStock),
       shopId,
       supplierId: supplierId || null,
       doesNotExpire: Boolean(doesNotExpire),
       expiryDate: doesNotExpire ? null : (expiryDate ? new Date(expiryDate) : null),
     },
-    include: { supplier: { select: { id: true, name: true, phone: true } } },
-  });
-
-  // Record initial stock as a stock-in movement
-  if (product.currentStock > 0) {
-    await prisma.stockMovement.create({
-      data: {
-        type: "IN",
-        quantity: product.currentStock,
-        note: "Initial stock",
-        productId: product.id,
-      },
+      include: { supplier: { select: { id: true, name: true, phone: true } } },
     });
-  }
+
+    // The product and its opening balance must commit together.
+    if (created.currentStock > 0) {
+      await tx.stockMovement.create({
+        data: {
+          type: "IN",
+          quantity: created.currentStock,
+          note: "Initial stock",
+          productId: created.id,
+        },
+      });
+    }
+    return created;
+  });
 
   res.status(201).json({ product });
 });

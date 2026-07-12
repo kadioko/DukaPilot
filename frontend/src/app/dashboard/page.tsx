@@ -137,6 +137,13 @@ export default function DashboardPage() {
                   <ShoppingCart className="h-4 w-4" />
                   {t("sales.startSale", lang)}
                 </Link>
+                <Link
+                  href="/profit"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <BarChart2 className="h-4 w-4" />
+                  {lang === "sw" ? "Uchambuzi wa faida" : "Profit analytics"}
+                </Link>
               </div>
 
               <div className="mt-6 flex max-w-full gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1">
@@ -201,7 +208,7 @@ export default function DashboardPage() {
             color="blue"
           />
           <KpiCard
-            label={lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit"}
+            label={period === "today" ? (lang === "sw" ? "Faida Leo" : "Profit Today") : (lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit")}
             value={formatTZS(s?.totalProfit || 0)}
             icon={<TrendingUp className="w-5 h-5 text-green-600" />}
             color="green"

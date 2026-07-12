@@ -22,6 +22,7 @@ function createRes() {
 
 function loadController(prismaMock) {
   delete require.cache[controllerPath];
+  delete require.cache[path.resolve(__dirname, "../src/lib/shopAccess.js")];
   require.cache[prismaPath] = {
     id: prismaPath,
     filename: prismaPath,
@@ -83,4 +84,24 @@ test("getLowStock filters products in JavaScript using minimumStock", async () =
     res.payload.products.map((item) => item.id),
     ["prod-1", "prod-3"],
   );
+});
+
+test("product creation commits opening stock and stock movement together", async () => {
+  const movements = [];
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (work) => work({
+      product: { create: async ({ data }) => ({ id: "prod-1", ...data, supplier: null }) },
+      stockMovement: { create: async ({ data }) => movements.push(data) },
+    }),
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.create({ user: { userId: "user-1" }, body: { name: "Rice", buyingPrice: 2000, sellingPrice: 3000, currentStock: 12, minimumStock: 0 } }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.payload.product.currentStock, 12);
+  assert.equal(res.payload.product.minimumStock, 0);
+  assert.deepEqual(movements, [{ type: "IN", quantity: 12, note: "Initial stock", productId: "prod-1" }]);
 });
