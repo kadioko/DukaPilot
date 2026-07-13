@@ -24,6 +24,7 @@ This folder holds launch and store-listing assets for DukaPilot.
 - `ad-creatives/exports/png/` - Ready-to-share PNG exports.
 - `ad-creatives/exports/jpg/` - Ready-to-share JPG exports.
 - `linkedin-carousel/founder-launch/` - Founder LinkedIn launch carousel SVG sources and PNG/JPG exports.
+- `whatsapp-status/launch-pack/` - Eight 1080x1920 WhatsApp Status creatives with SVG sources and PNG/JPG exports.
 
 ## Core Message
 
