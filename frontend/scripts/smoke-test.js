@@ -18,8 +18,8 @@ async function run() {
   const home = await request("/");
   assert(home.response.ok, `Home page failed: ${home.response.status}`);
   assert(home.html.includes("DukaPilot"), "Home page does not include the DukaPilot heading");
-  assert(home.html.includes("Karibu!") || home.html.includes("Welcome back!"), "Home page does not include the auth welcome copy");
-  console.log("✓ Login page shell passed");
+  assert(home.html.includes("POS Tanzania"), "Home page does not include the public product metadata");
+  console.log("✓ Home page shell passed");
 
   const manifest = await request("/manifest.json");
   assert(manifest.response.ok, `Manifest request failed: ${manifest.response.status}`);

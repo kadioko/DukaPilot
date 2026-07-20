@@ -23,6 +23,7 @@ export const metadata: Metadata = {
     url: "/help",
     siteName: "DukaPilot",
     type: "website",
+    images: [{ url: "/marketing/phone-dashboard.png", width: 1200, height: 630, alt: "DukaPilot help and dashboard" }],
   },
 };
 
