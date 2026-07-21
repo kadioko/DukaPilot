@@ -22,6 +22,42 @@ function isPublicShopActive(shop, now = new Date()) {
   );
 }
 
+function cleanMarketingValue(value) {
+  return typeof value === "string" ? value.trim().slice(0, 120) || null : null;
+}
+
+const MARKETING_EVENTS = new Set(["page_view", "cta_click", "whatsapp_click", "registration_started"]);
+
+router.post("/events", async (req, res, next) => {
+  try {
+    const { eventName, sessionId, source, medium, campaign, content, details } = req.body || {};
+    if (!MARKETING_EVENTS.has(eventName) || typeof sessionId !== "string" || sessionId.length < 8 || sessionId.length > 80) {
+      return res.status(400).json({ error: "Invalid marketing event" });
+    }
+
+    const pagePath = cleanMarketingValue(details?.path);
+    const safeDetails = eventName === "page_view" || eventName === "registration_started" || eventName === "whatsapp_click"
+      ? { placement: cleanMarketingValue(details?.placement), intent: cleanMarketingValue(details?.intent) }
+      : null;
+
+    await prisma.marketingEvent.create({
+      data: {
+        eventName,
+        sessionId,
+        pagePath,
+        source: cleanMarketingValue(source),
+        medium: cleanMarketingValue(medium),
+        campaign: cleanMarketingValue(campaign),
+        content: cleanMarketingValue(content),
+        details: safeDetails,
+      },
+    });
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/public/shops -> list shops that have active products
 router.get("/shops", async (req, res, next) => {
   try {

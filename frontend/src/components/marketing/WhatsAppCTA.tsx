@@ -2,6 +2,7 @@
 
 import { MessageCircle } from "lucide-react";
 import { useLang } from "@/lib/i18n";
+import { getAttribution, trackMarketingEvent } from "@/lib/marketing";
 
 type Intent = "setup" | "pricing" | "demo" | "help" | "contact" | "about";
 
@@ -54,6 +55,15 @@ export default function WhatsAppCTA({
   return (
     <a
       href={href}
+      onClick={(event) => {
+        trackMarketingEvent("whatsapp_click", { intent });
+        const attribution = getAttribution();
+        if (!attribution.source || attribution.source === "direct") return;
+        event.preventDefault();
+        const context = [attribution.source, attribution.campaign].filter(Boolean).join(" / ");
+        const message = `${messages[intent][lang]}\nChanzo: ${context}`;
+        window.location.assign(`https://wa.me/255743910580?text=${encodeURIComponent(message)}`);
+      }}
       className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-colors ${styles[variant]} ${className}`}
     >
       <MessageCircle className="h-4 w-4" />

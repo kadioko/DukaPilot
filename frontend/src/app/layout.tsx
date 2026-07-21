@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import ServiceWorkerRegistrar from "@/components/ui/ServiceWorkerRegistrar";
+import MarketingTracker from "@/components/marketing/MarketingTracker";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.dukapilot.com"),
@@ -165,6 +166,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
         <ToastProvider>
+        <MarketingTracker />
         <ServiceWorkerRegistrar />
         {children}
       </ToastProvider>

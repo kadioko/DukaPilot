@@ -66,6 +66,12 @@ interface AdminOverview {
     followUpCoverage: number;
     noteCoverage: number;
   };
+  marketingAnalytics?: {
+    pageViews30d: number;
+    whatsappClicks30d: number;
+    registrationStarts30d: number;
+    topSources: Array<{ source: string; registrations: number; activated: number }>;
+  };
   assistantAnalytics?: {
     summary: {
       total: number;
@@ -1035,6 +1041,30 @@ export default function AdminPage() {
                 <MiniMetric label="Paid shops" value={overview.launchAnalytics?.paidShops || 0} tone="border-purple-200 bg-purple-50 text-purple-800" />
                 <MiniMetric label="Payments 7d" value={overview.launchAnalytics?.paymentsConfirmed7d || 0} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
               </div>
+            </section>
+            <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-indigo-950">Campaign Funnel</h2>
+                  <p className="text-xs text-indigo-800">Anonymous web interest, then registrations and activation by saved source.</p>
+                </div>
+                <span className="text-xs text-indigo-700">Last 30 days</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <MiniMetric label="Page views" value={overview.marketingAnalytics?.pageViews30d || 0} tone="border-indigo-200 bg-white text-indigo-800" />
+                <MiniMetric label="WhatsApp clicks" value={overview.marketingAnalytics?.whatsappClicks30d || 0} tone="border-green-200 bg-white text-green-800" />
+                <MiniMetric label="Registration starts" value={overview.marketingAnalytics?.registrationStarts30d || 0} tone="border-blue-200 bg-white text-blue-800" />
+              </div>
+              {(overview.marketingAnalytics?.topSources || []).length > 0 && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {overview.marketingAnalytics?.topSources.map((source) => (
+                    <div key={source.source} className="rounded-lg border border-indigo-100 bg-white p-3 text-xs text-gray-700">
+                      <p className="font-bold text-gray-950">{source.source}</p>
+                      <p className="mt-1">{source.registrations} registrations · {source.activated} activated</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">

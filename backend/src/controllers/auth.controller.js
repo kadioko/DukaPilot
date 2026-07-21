@@ -24,6 +24,17 @@ function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeAttribution(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const clean = (field) => normalizeText(source[field]).slice(0, 120) || null;
+  return {
+    acquisitionSource: clean("source"),
+    acquisitionMedium: clean("medium"),
+    acquisitionCampaign: clean("campaign"),
+    acquisitionContent: clean("content"),
+  };
+}
+
 function validatePhone(phone) {
   return /^\+?[1-9]\d{8,14}$/.test(phone);
 }
@@ -144,6 +155,7 @@ const register = asyncHandler(async (req, res) => {
   const shopLocation = normalizeText(req.body.shopLocation);
   const shopCategory = normalizeText(req.body.shopCategory);
   const shopDistrict = normalizeText(req.body.shopDistrict);
+  const attribution = normalizeAttribution(req.body.acquisition);
 
   if (!phone || !pin || !name) {
     return res.status(400).json({ error: "Phone, PIN, and name are required" });
@@ -192,6 +204,7 @@ const register = asyncHandler(async (req, res) => {
         category: shopCategory || "general",
         trialEndsAt,
         userId: user.id,
+        ...attribution,
       },
     });
   }

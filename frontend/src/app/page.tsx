@@ -27,6 +27,7 @@ import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import clsx from "clsx";
+import { getAttribution, trackMarketingEvent } from "@/lib/marketing";
 
 function normalizePhone(value: string): string {
   return value.replace(/[\s()-]/g, "").trim();
@@ -200,6 +201,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               shopLocation: shopLocation.trim() || undefined,
               shopDistrict: shopDistrict.trim() || undefined,
               shopCategory,
+              acquisition: getAttribution(),
             }
           : { phone: normalizedPhone, pin: normalizedPin };
 
@@ -418,14 +420,14 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           </div>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => switchView("register")}
+            <Link
+              href="/register"
+              onClick={() => trackMarketingEvent("registration_started", { placement: "hero" })}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-brand-800 shadow-lg shadow-black/10 transition-colors hover:bg-brand-50"
             >
               {lang === "sw" ? "Anza bure siku 14" : "Start free for 14 days"}
               <ArrowRight className="h-4 w-4" />
-            </button>
+            </Link>
             <WhatsAppCTA intent="setup" variant="light" />
           </div>
 

@@ -24,6 +24,8 @@ const overview = asyncHandler(async (req, res) => {
     contactedShops,
     shopsWithNotes,
     recentlyContactedShops,
+    marketingEvents,
+    attributedShops,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: "MERCHANT" } }),
@@ -42,8 +44,30 @@ const overview = asyncHandler(async (req, res) => {
     prisma.shop.count({ where: { lastContactedAt: { not: null } } }),
     prisma.shop.count({ where: { followUpNotes: { not: null } } }),
     prisma.shop.count({ where: { lastContactedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
+    prisma.marketingEvent.groupBy({
+      by: ["eventName"],
+      where: { createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+      _count: { id: true },
+    }),
+    prisma.shop.findMany({
+      where: { acquisitionSource: { not: null } },
+      select: {
+        acquisitionSource: true,
+        products: { select: { id: true }, take: 10 },
+        sales: { select: { id: true }, take: 10 },
+      },
+    }),
   ]);
   const onboardingByStatus = Object.fromEntries(onboardingRows.map((row) => [row.onboardingStatus, row._count.id]));
+  const eventsByName = Object.fromEntries(marketingEvents.map((row) => [row.eventName, row._count.id]));
+  const sourceSummary = Object.values(attributedShops.reduce((sources, shop) => {
+    const source = shop.acquisitionSource || "direct";
+    const current = sources[source] || { source, registrations: 0, activated: 0 };
+    current.registrations += 1;
+    if (shop.products.length >= 10 && shop.sales.length >= 10) current.activated += 1;
+    sources[source] = current;
+    return sources;
+  }, {})).sort((a, b) => b.registrations - a.registrations).slice(0, 6);
 
   res.json({
     summary: { users, merchants, suppliers, admins, shops, products, sales, orders, debts, expenses, paidShops, auditLogs },
@@ -72,6 +96,12 @@ const overview = asyncHandler(async (req, res) => {
       recentlyContactedShops,
       followUpCoverage: shops ? Math.round((contactedShops / shops) * 100) : 0,
       noteCoverage: shops ? Math.round((shopsWithNotes / shops) * 100) : 0,
+    },
+    marketingAnalytics: {
+      pageViews30d: eventsByName.page_view || 0,
+      whatsappClicks30d: eventsByName.whatsapp_click || 0,
+      registrationStarts30d: eventsByName.registration_started || 0,
+      topSources: sourceSummary,
     },
   });
 });

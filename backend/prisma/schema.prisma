@@ -129,10 +129,31 @@ model Shop {
   onboardingStatus     OnboardingStatus      @default(NEW)
   lastContactedAt      DateTime?
   followUpNotes        String?
+  acquisitionSource    String?
+  acquisitionMedium    String?
+  acquisitionCampaign  String?
+  acquisitionContent   String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
   @@map("shops")
+}
+
+model MarketingEvent {
+  id        String   @id @default(cuid())
+  eventName String
+  sessionId String
+  pagePath  String?
+  source    String?
+  medium    String?
+  campaign  String?
+  content   String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([eventName, createdAt])
+  @@index([source, campaign, createdAt])
+  @@map("marketing_events")
 }
 
 model SubscriptionPayment {
