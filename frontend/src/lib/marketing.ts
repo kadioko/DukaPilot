@@ -41,7 +41,12 @@ export function captureAttribution(): Attribution {
     content: clean(params.get("utm_content")),
   };
   const saved = window.localStorage.getItem(ATTRIBUTION_KEY);
-  const previous = saved ? JSON.parse(saved) : null;
+  let previous: Partial<Attribution> | null = null;
+  try {
+    previous = saved ? JSON.parse(saved) : null;
+  } catch {
+    window.localStorage.removeItem(ATTRIBUTION_KEY);
+  }
   const attribution = {
     source: incoming.source || previous?.source || "direct",
     medium: incoming.medium || previous?.medium || null,
