@@ -21,7 +21,7 @@ test("live login smoke test", async ({ page }) => {
     await page.getByRole("link", { name: /inventory|hifadhi ya bidhaa/i }).click();
     await page.waitForURL(/inventory/, { timeout: 15000 });
     await expect(page.getByRole("heading", { name: /inventory|hifadhi ya bidhaa/i })).toBeVisible();
-    await page.getByRole("link", { name: /orders|maagizo/i }).click();
+    await page.locator('a[href="/orders"]').click();
     await page.waitForURL(/orders/, { timeout: 15000 });
     await expect(page.getByRole("heading", { name: /supplier orders|maagizo ya bidhaa/i })).toBeVisible();
     await page.getByRole("link", { name: /sales|mauzo/i }).click();

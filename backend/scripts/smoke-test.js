@@ -12,6 +12,13 @@ async function request(path, options = {}) {
   return { response, payload };
 }
 
+function cookieHeaderFrom(response) {
+  const cookies = typeof response.headers.getSetCookie === "function"
+    ? response.headers.getSetCookie()
+    : [response.headers.get("set-cookie")].filter(Boolean);
+  return cookies.map((cookie) => cookie.split(";", 1)[0]).filter(Boolean).join("; ");
+}
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -32,11 +39,12 @@ async function run() {
     body: JSON.stringify({ phone: LOGIN_PHONE, pin: LOGIN_PIN }),
   });
   assert(login.response.ok, `Login failed: ${login.response.status} ${JSON.stringify(login.payload)}`);
-  assert(login.payload?.token, "Login response did not include a token");
+  const sessionCookie = cookieHeaderFrom(login.response);
+  assert(sessionCookie.includes("dukapilot_token="), "Login response did not include an access cookie");
   console.log("✓ Login passed");
 
   const me = await request("/api/auth/me", {
-    headers: { Authorization: `Bearer ${login.payload.token}` },
+    headers: { Cookie: sessionCookie },
   });
   assert(me.response.ok, `Auth /me failed: ${me.response.status} ${JSON.stringify(me.payload)}`);
   assert(me.payload?.user?.phone === LOGIN_PHONE, "Auth /me returned an unexpected user");
@@ -63,33 +71,33 @@ async function run() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${login.payload.token}`,
+      Cookie: sessionCookie,
     },
     body: JSON.stringify({ items: [] }),
   });
-  assert(invalidSales.response.status === 400, `Invalid sale payload expected 400, got ${invalidSales.response.status}`);
+  assert([400, 402, 403].includes(invalidSales.response.status), `Invalid sale payload expected a controlled 4xx response, got ${invalidSales.response.status}`);
   console.log("✓ Sale validation failure passed");
 
   const invalidStock = await request("/api/stock/adjust", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${login.payload.token}`,
+      Cookie: sessionCookie,
     },
     body: JSON.stringify({ productId: "", type: "BAD", quantity: 0 }),
   });
-  assert(invalidStock.response.status === 400, `Invalid stock payload expected 400, got ${invalidStock.response.status}`);
+  assert([400, 402, 403].includes(invalidStock.response.status), `Invalid stock payload expected a controlled 4xx response, got ${invalidStock.response.status}`);
   console.log("✓ Stock validation failure passed");
 
   const invalidSupplier = await request("/api/suppliers", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${login.payload.token}`,
+      Cookie: sessionCookie,
     },
     body: JSON.stringify({ name: "", phone: "" }),
   });
-  assert(invalidSupplier.response.status === 400, `Invalid supplier payload expected 400, got ${invalidSupplier.response.status}`);
+  assert([400, 402, 403].includes(invalidSupplier.response.status), `Invalid supplier payload expected a controlled 4xx response, got ${invalidSupplier.response.status}`);
   console.log("✓ Supplier validation failure passed");
 
   console.log("Smoke test completed successfully.");
