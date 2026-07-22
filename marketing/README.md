@@ -36,6 +36,21 @@ Swahili:
 
 > DukaPilot hukusaidia kufuatilia stock, mauzo, madeni, matumizi na maagizo ya bidhaa kwa Kiswahili kwenye simu.
 
+## Google Play Listing
+
+- App name: `DukaPilot`
+- Category: `Business`
+- Short description (English): `AI assistant for Tanzanian shop owners: sales, stock, debts and expenses.`
+- Short description (Swahili): `Msaidizi wa AI kwa wamiliki wa maduka: mauzo, stock, madeni na matumizi.`
+- Full description lead (English): `DukaPilot is the AI assistant that helps Tanzanian shop owners know what to do next: record sales, manage stock, follow up debts, track expenses, and run a stronger shop from a phone.`
+- Full description lead (Swahili): `DukaPilot ni msaidizi wa AI anayemsaidia mmiliki wa duka kujua hatua inayofuata: kurekodi mauzo, kusimamia stock, kufuatilia madeni, na kujua matumizi kwa simu.`
+
+Upload these verified assets:
+
+- `play-store-feature-graphic.png` - 1024x500 feature graphic.
+- `play-store-screenshots/phone/01-login.png` and `02-dashboard.png` - 1080x1920 phone screenshots.
+- `play-store-screenshots/7-inch-tablet/` and `10-inch-tablet/` - required tablet screenshots.
+
 ## Launch CTAs
 
 - Register free: `https://www.dukapilot.com/?view=register`

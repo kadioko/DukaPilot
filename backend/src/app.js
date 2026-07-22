@@ -25,6 +25,8 @@ const staffRoutes = require("./routes/staff.routes");
 const syncRoutes = require("./routes/sync.routes");
 const assistantRoutes = require("./routes/assistant.routes");
 const notificationRoutes = require("./routes/notification.routes");
+const pushRoutes = require("./routes/push.routes");
+const usageEventRoutes = require("./routes/usageEvent.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
@@ -129,6 +131,8 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/sync", syncRoutes);
 app.use("/api/assistant", assistantRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/push", pushRoutes);
+app.use("/api/usage-events", usageEventRoutes);
 
 if (Sentry.setupExpressErrorHandler) Sentry.setupExpressErrorHandler(app);
 

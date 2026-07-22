@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] - Android 16 Play Readiness
+
+### Added
+
+- Added opt-in browser push infrastructure: tenant-scoped subscriptions, alert preferences, queued deliveries, retry handling, and admin delivery health.
+- Added privacy-safe authenticated Android shortcut analytics for Sale, Stock, and Debts. No sales, customer, debt, or payment data is recorded in these events.
+
+### Changed
+
+- Updated the Android release to target Android 16 (API 36), meeting the Google Play update requirement effective 31 August 2026.
+- Raised the Android wrapper's Java compatibility to Java 17 and disabled device backup for the business app wrapper.
+- Corrected Trusted Web Activity navigation-bar divider metadata so Android system-bar styling is applied reliably.
+- Updated Android Browser Helper to `2.7.2` for the current Trusted Web Activity runtime.
+- Added Android long-press shortcuts for recording sales, inventory, and customer debts.
+- Added an ignored local signing-properties option for release builds so upload-key credentials stay out of Git.
+- Added CI coverage for the Android wrapper, API 36 target, live PWA manifest, Digital Asset Links, and Android shortcuts.
+
+---
+
 ## [1.4.1] - 2026-07-12 - Shop Attendant Privacy Controls
 
 ### Added

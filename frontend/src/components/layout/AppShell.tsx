@@ -25,6 +25,7 @@ import {
 import { clearToken, api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
+import ShortcutUsageTracker from "@/components/analytics/ShortcutUsageTracker";
 import clsx from "clsx";
 
 interface User {
@@ -309,6 +310,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         {/* Page content */}
         <main className="min-w-0 flex-1 p-4 lg:p-8 overflow-y-auto">
+          {user && <ShortcutUsageTracker merchant={user.role === "MERCHANT"} />}
           {authLoading ? (
             <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-label="Loading account">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" />

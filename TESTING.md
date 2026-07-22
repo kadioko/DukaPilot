@@ -9,6 +9,8 @@ cd backend
 npm test
 ```
 
+This includes push/shortcut coverage: invalid Android shortcut actions are rejected, events remain scoped to the authenticated shop, and incomplete browser push subscriptions are refused.
+
 Production checks are deliberately separate because they use a real demo login and consume rate-limit allowance:
 
 ```bash
@@ -41,6 +43,7 @@ Railway must apply `20260711001000_financial_integrity_and_supplier_catalog` bef
 - an offline retry with the same client reference returns the original sale;
 - debt payments produce ledger entries and cannot exceed the remaining balance;
 - merchant supplier edits are limited to suppliers created by that merchant's shop.
+- `20260722001000_push_notifications_and_app_usage` is applied before enabling push; after Railway VAPID secrets are set, run `npm run push:process` once and confirm it reports `configured: true`.
 - `20260712002000_staff_expense_permissions` is applied; owner/manager expense access is preserved and staff expense access is explicit.
 - A staff session without report permission does not receive buying prices, sale profit, or profit analytics data.
 
@@ -55,9 +58,13 @@ Railway must apply `20260711001000_financial_integrity_and_supplier_catalog` bef
 7. Confirm Settings changes a staff member's own name, PIN, and language without changing the owner.
 8. Confirm `/orders`, `/inventory`, and `/sales` have no horizontal page overflow at 390px width.
 9. Confirm the public catalog excludes demo/QA shops and loads additional products with the Load More button.
-10. Confirm Android does not request notification permission in release `1.0.2`.
-11. Confirm mobile homepage navigation is a compact drawer at 390px width and `/catalog` has a visible H1.
-12. Confirm a supplier catalog product can be imported into inventory, added to an order, and stocked only after delivery confirmation.
+10. Confirm Android requests notification permission only after the merchant explicitly taps Enable alerts in Settings.
+11. Long-press the DukaPilot launcher icon and confirm Sale, Stock, and Debts open their matching authenticated screens.
+12. On Android 15 or 16, test launch on a slow connection, app back navigation, sign-in, offline recovery, sales, inventory, and debt entry from a Play internal-testing install.
+13. Confirm mobile homepage navigation is a compact drawer at 390px width and `/catalog` has a visible H1.
+14. Confirm a supplier catalog product can be imported into inventory, added to an order, and stocked only after delivery confirmation.
+15. Enable alerts from Settings, disable them again, and confirm the device no longer appears active in the admin Push and Android activity panel.
+16. Open Sale, Stock, and Debts from Android long-press shortcuts; confirm the matching authenticated shop alone records the shortcut event.
 
 ## Live URLs
 

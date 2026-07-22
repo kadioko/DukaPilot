@@ -26,6 +26,9 @@ const overview = asyncHandler(async (req, res) => {
     recentlyContactedShops,
     marketingEvents,
     attributedShops,
+    pushDeliveries,
+    activePushDevices,
+    shortcutEvents,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: "MERCHANT" } }),
@@ -57,9 +60,21 @@ const overview = asyncHandler(async (req, res) => {
         sales: { select: { id: true }, take: 10 },
       },
     }),
+    prisma.pushDelivery.groupBy({
+      by: ["status"],
+      where: { createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+      _count: { id: true },
+    }),
+    prisma.pushSubscription.count({ where: { isActive: true } }),
+    prisma.appUsageEvent.groupBy({
+      by: ["action"],
+      where: { eventName: "android_shortcut_opened", createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+      _count: { id: true },
+    }),
   ]);
   const onboardingByStatus = Object.fromEntries(onboardingRows.map((row) => [row.onboardingStatus, row._count.id]));
   const eventsByName = Object.fromEntries(marketingEvents.map((row) => [row.eventName, row._count.id]));
+  const deliveriesByStatus = Object.fromEntries(pushDeliveries.map((row) => [row.status, row._count.id]));
   const sourceSummary = Object.values(attributedShops.reduce((sources, shop) => {
     const source = shop.acquisitionSource || "direct";
     const current = sources[source] || { source, registrations: 0, activated: 0 };
@@ -102,6 +117,14 @@ const overview = asyncHandler(async (req, res) => {
       whatsappClicks30d: eventsByName.whatsapp_click || 0,
       registrationStarts30d: eventsByName.registration_started || 0,
       topSources: sourceSummary,
+    },
+    pushAnalytics: {
+      activeDevices: activePushDevices,
+      queued: deliveriesByStatus.QUEUED || 0,
+      retrying: deliveriesByStatus.RETRYING || 0,
+      sent30d: deliveriesByStatus.SENT || 0,
+      failed30d: deliveriesByStatus.FAILED || 0,
+      shortcuts30d: shortcutEvents.map((row) => ({ action: row.action || "unknown", count: row._count.id })),
     },
   });
 });

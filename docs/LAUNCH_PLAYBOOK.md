@@ -15,6 +15,7 @@ Production is live at:
 What is strong:
 
 - The domain, HTTPS redirect, Vercel hosting, Railway API, and production database are working.
+- Push launch: deploy migration `20260722001000_push_notifications_and_app_usage`, set `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` in Railway, then schedule `npm run push:process` daily. Do not expose or commit the private VAPID key.
 - The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog, supplier orders, AI assistant, Swahili/English, and WhatsApp support.
 - Pricing is understandable for Tanzania: free trial, TZS 15,000/month Basic, TZS 35,000/month Pro.
 - The product has a natural sales motion: WhatsApp support plus M-Pesa payment reference verification.
@@ -246,7 +247,8 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Customer orders follow `PENDING -> CONFIRMED -> OUT_FOR_DELIVERY -> DELIVERED`.
 - Mobile Orders has no horizontal page overflow; Sales shows the sticky cart summary.
 - Public catalog contains only published, non-demo shops and supports pagination.
-- Android `1.0.2` / version code `3` is signed with the existing upload key before Play Console upload.
+- Android `1.0.3` / version code `4` targets API 36 and is signed with the existing upload key before Play Console upload.
+- For local release builds, copy `android/keystores/signing.properties.example` to the ignored `signing.properties` file and keep its credentials in the password manager, never Git.
 
 ## Immediate Next Product Improvements
 

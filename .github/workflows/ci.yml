@@ -41,6 +41,28 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  android-wrapper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - run: chmod +x gradlew
+      - run: ./gradlew :app:lintRelease :app:assembleDebug --no-daemon
+      - name: Verify Android and trusted-web-app metadata
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          grep -q 'targetSdkVersion 36' app/build.gradle
+          grep -q 'https://www.dukapilot.com/sales' android/twa-manifest.json
+          grep -q 'https://www.dukapilot.com/inventory' android/twa-manifest.json
+          grep -q 'https://www.dukapilot.com/debts' android/twa-manifest.json
+          curl --fail --silent --show-error https://www.dukapilot.com/manifest.json | grep -q 'DukaPilot'
+          curl --fail --silent --show-error https://www.dukapilot.com/.well-known/assetlinks.json | grep -q 'com.dukapilot.app'
+
   playwright-mocked:
     runs-on: ubuntu-latest
     defaults:

@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
-import { Store, User, Lock, Globe, Check, ChevronDown } from "lucide-react";
+import { Store, User, Lock, Globe, Check, ChevronDown, Bell } from "lucide-react";
+import NotificationSettings from "@/components/notifications/NotificationSettings";
 
 interface UserSettings {
   id: string;
@@ -319,6 +320,12 @@ export default function SettingsPage() {
                 {shopSaving ? "..." : t("common.save", lang)}
               </button>
             </form>
+          </SectionCard>
+        )}
+
+        {settings?.role === "MERCHANT" && (
+          <SectionCard title={lang === "sw" ? "Notifications" : "Notifications"} icon={<Bell className="w-4 h-4" />}>
+            <NotificationSettings owner={!settings.isStaff} />
           </SectionCard>
         )}
 

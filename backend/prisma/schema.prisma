@@ -118,6 +118,10 @@ model Shop {
   subscriptionPayments SubscriptionPayment[]
   offlineSyncEvents    OfflineSyncEvent[]
   assistantActions     AssistantAction[]
+  pushSubscriptions    PushSubscription[]
+  notificationPreference NotificationPreference?
+  pushDeliveries       PushDelivery[]
+  appUsageEvents       AppUsageEvent[]
   createdSuppliers     Supplier[]            @relation("SupplierCreatedByShop")
   // Subscription / trial
   plan                 String                @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
@@ -221,6 +225,85 @@ model AssistantAction {
   @@index([shopId, status])
   @@index([createdAt])
   @@map("assistant_actions")
+}
+
+model PushSubscription {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  endpoint     String
+  p256dh       String
+  auth         String
+  deviceId     String
+  deviceLabel  String?
+  userId       String?
+  staffId      String?
+  isActive     Boolean  @default(true)
+  failureCount Int      @default(0)
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deliveries   PushDelivery[]
+
+  @@unique([shopId, deviceId])
+  @@index([shopId, isActive])
+  @@index([endpoint])
+  @@map("push_subscriptions")
+}
+
+model NotificationPreference {
+  id                   String   @id @default(cuid())
+  shopId               String   @unique
+  shop                 Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  lowStock             Boolean  @default(true)
+  debtDue              Boolean  @default(true)
+  subscriptionExpiry   Boolean  @default(true)
+  dailyAssistant       Boolean  @default(false)
+  updatedAt            DateTime @updatedAt
+  createdAt            DateTime @default(now())
+
+  @@map("notification_preferences")
+}
+
+model PushDelivery {
+  id             String            @id @default(cuid())
+  shopId         String
+  shop           Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   PushSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  kind           String
+  title          String
+  body           String
+  href           String            @default("/notifications")
+  status         String            @default("QUEUED")
+  attemptCount   Int               @default(0)
+  lastError      String?
+  scheduledFor   DateTime          @default(now())
+  sentAt         DateTime?
+  retryAt        DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([status, retryAt])
+  @@index([shopId, createdAt])
+  @@map("push_deliveries")
+}
+
+model AppUsageEvent {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  deviceId  String
+  eventName String
+  action    String?
+  route     String
+  userId    String?
+  staffId   String?
+  createdAt DateTime @default(now())
+
+  @@index([shopId, eventName, createdAt])
+  @@index([shopId, deviceId, createdAt])
+  @@map("app_usage_events")
 }
 
 model Supplier {

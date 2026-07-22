@@ -363,6 +363,9 @@ npm run dev         # runs on :3000
 | `MAILTRAP_SMTP_USER` | Optional | Mailtrap SMTP username |
 | `MAILTRAP_SMTP_PASS` | Optional | Mailtrap SMTP password |
 | `SENTRY_DSN` | Optional | Sentry project DSN for error tracking |
+| `VAPID_SUBJECT` | Required for push | `mailto:support@dukapilot.com` |
+| `VAPID_PUBLIC_KEY` | Required for push | Public key from the private DukaPilot secrets vault |
+| `VAPID_PRIVATE_KEY` | Required for push | Private key from the private DukaPilot secrets vault. Never commit it. |
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
 | `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
 | `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
@@ -383,7 +386,7 @@ npm run dev         # runs on :3000
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Latest launch migrations:** `20260707002000_assistant_actions` and `20260708001000_sync_resolution_and_device_labels`
+- **Latest launch migration:** `20260722001000_push_notifications_and_app_usage` adds per-shop browser subscriptions, alert preferences, delivery retries, and authenticated Android shortcut analytics.
 
 ### Deployment Checklist
 
@@ -406,6 +409,7 @@ npm run dev         # runs on :3000
 - Expired or suspended shops can still view data and contact support, but operational mutations such as new sales, stock edits, expenses, staff changes, and orders require an active trial or subscription.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.
+- Push notifications are opt-in per browser/device. Schedule `npm run push:process` in Railway once daily (or use a separate worker service); it queues low-stock, overdue-debt, subscription, and opted-in AI alerts, then retries transient delivery failures. The API remains harmless until all three VAPID variables are set.
 
 ---
 

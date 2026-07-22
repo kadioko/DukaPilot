@@ -85,6 +85,14 @@ interface AdminOverview {
     };
     topActions: Array<{ actionKey: string; count: number; title: string; href: string }>;
   };
+  pushAnalytics?: {
+    activeDevices: number;
+    queued: number;
+    retrying: number;
+    sent30d: number;
+    failed30d: number;
+    shortcuts30d: Array<{ action: string; count: number }>;
+  };
 }
 
 interface AdminUser {
@@ -846,6 +854,20 @@ export default function AdminPage() {
               <StatCard label="Supplier Orders" value={overview.summary.orders} icon={<ClipboardList className="w-4 h-4 text-indigo-600" />} color="bg-indigo-50" />
               <StatCard label="Audit Events" value={overview.summary.auditLogs} icon={<Shield className="w-4 h-4 text-gray-600" />} color="bg-gray-100" />
             </div>
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <BellRing className="h-4 w-4 text-brand-700" />
+                <h2 className="text-sm font-semibold text-gray-900">Push and Android activity</h2>
+              </div>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+                <MiniMetric label="Active devices" value={overview.pushAnalytics?.activeDevices || 0} tone="border-brand-200 bg-brand-50 text-brand-800" />
+                <MiniMetric label="Sent (30d)" value={overview.pushAnalytics?.sent30d || 0} tone="border-green-200 bg-green-50 text-green-800" />
+                <MiniMetric label="Retrying" value={overview.pushAnalytics?.retrying || 0} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                <MiniMetric label="Failed (30d)" value={overview.pushAnalytics?.failed30d || 0} tone="border-red-200 bg-red-50 text-red-800" />
+                <MiniMetric label="Queued" value={overview.pushAnalytics?.queued || 0} tone="border-gray-200 bg-gray-50 text-gray-800" />
+              </div>
+              {(overview.pushAnalytics?.shortcuts30d || []).length > 0 && <p className="mt-3 text-xs text-gray-600">Android shortcuts (30 days): {overview.pushAnalytics?.shortcuts30d.map((item) => `${item.action} ${item.count}`).join(" / ")}</p>}
+            </section>
             <section className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-gray-900">Business Operations</h2>
