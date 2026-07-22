@@ -7,11 +7,3 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 5
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-
-[[crons]]
-schedule = "0 2 * * *"
-command = "node scripts/backup.js"
-
-[[crons]]
-schedule = "0 5 * * *"
-command = "npm run push:process"

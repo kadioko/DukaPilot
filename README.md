@@ -409,7 +409,7 @@ npm run dev         # runs on :3000
 - Expired or suspended shops can still view data and contact support, but operational mutations such as new sales, stock edits, expenses, staff changes, and orders require an active trial or subscription.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.
-- Push notifications are opt-in per browser/device. Schedule `npm run push:process` in Railway once daily (or use a separate worker service); it queues low-stock, overdue-debt, subscription, and opted-in AI alerts, then retries transient delivery failures. The API remains harmless until all three VAPID variables are set.
+- Push notifications are opt-in per browser/device. Run `npm run push:process` in a dedicated Railway cron service once daily; it queues low-stock, overdue-debt, subscription, and opted-in AI alerts, then retries transient delivery failures. The API remains harmless until all three VAPID variables are set.
 
 ---
 
