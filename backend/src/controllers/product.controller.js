@@ -1,8 +1,15 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { inferBarcodeType, validateBarcode, nextInternalBarcode } = require("../lib/barcode");
 
 function asyncHandler(fn) {
-  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch((error) => {
+    if (error?.code === "P2002" && Array.isArray(error?.meta?.target) && error.meta.target.includes("barcode")) {
+      req.audit = { action: "barcode.duplicate_attempt", resourceType: "product", metadata: { shopId: req.user?.shopId || null } };
+      return res.status(409).json({ error: "This barcode is already used by another product." });
+    }
+    return next(error);
+  });
 }
 
 function canViewFinancials(req) {
@@ -21,7 +28,11 @@ const list = asyncHandler(async (req, res) => {
   const skip = (pageNumber - 1) * limitNumber;
 
   const where = { shopId, isActive: true };
-  if (search) where.name = { contains: search, mode: "insensitive" };
+  if (search) where.OR = [
+    { name: { contains: search, mode: "insensitive" } },
+    { sku: { contains: search, mode: "insensitive" } },
+    { barcode: { contains: String(search).trim().toUpperCase() } },
+  ];
 
   const [products, total] = await Promise.all([
     prisma.product.findMany({
@@ -64,7 +75,7 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire } = req.body;
+  const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode } = req.body;
 
   if (!name || buyingPrice == null || sellingPrice == null) {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
@@ -79,7 +90,14 @@ const create = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
   }
 
+  const checked = validateBarcode(rawBarcode);
+  if (checked.error) return res.status(400).json({ error: checked.error });
   const product = await prisma.$transaction(async (tx) => {
+    const barcode = generateBarcode ? await nextInternalBarcode(tx) : checked.value;
+    if (barcode) {
+      const duplicate = await tx.product.findUnique({ where: { barcode }, select: { id: true } });
+      if (duplicate) throw Object.assign(new Error("This barcode is already used by another product."), { status: 409, code: "BARCODE_DUPLICATE" });
+    }
     const created = await tx.product.create({
       data: {
       name,
@@ -95,6 +113,11 @@ const create = asyncHandler(async (req, res) => {
       supplierId: supplierId || null,
       doesNotExpire: Boolean(doesNotExpire),
       expiryDate: doesNotExpire ? null : (expiryDate ? new Date(expiryDate) : null),
+      barcode,
+      barcodeType: barcode ? inferBarcodeType(barcode, generateBarcode ? "INTERNAL" : barcodeType) : null,
+      barcodeGenerated: Boolean(generateBarcode),
+      barcodeCreatedAt: barcode ? new Date() : null,
+      barcodeUpdatedAt: barcode ? new Date() : null,
     },
       include: { supplier: { select: { id: true, name: true, phone: true } } },
     });
@@ -121,7 +144,7 @@ const update = asyncHandler(async (req, res) => {
   const existing = await prisma.product.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Product not found" });
 
-  const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire } = req.body;
+  const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode } = req.body;
   const nextSellingPrice = sellingPrice === undefined ? existing.sellingPrice : Number(sellingPrice);
   const nextWholesalePrice = wholesalePrice === undefined
     ? existing.wholesalePrice
@@ -130,6 +153,17 @@ const update = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
   }
 
+  const checked = rawBarcode === undefined ? { value: undefined } : validateBarcode(rawBarcode);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  let barcode = checked.value;
+  if (generateBarcode) barcode = await prisma.$transaction((tx) => nextInternalBarcode(tx));
+  if (barcode && barcode !== existing.barcode) {
+    const duplicate = await prisma.product.findUnique({ where: { barcode }, select: { id: true } });
+    if (duplicate) {
+      req.audit = { action: "barcode.duplicate_attempt", resourceType: "product", resourceId: existing.id, metadata: { shopId, barcode } };
+      return res.status(409).json({ error: "This barcode is already used by another product." });
+    }
+  }
   const product = await prisma.product.update({
     where: { id: req.params.id },
     data: {
@@ -146,6 +180,13 @@ const update = asyncHandler(async (req, res) => {
       ...(doesNotExpire !== undefined && { doesNotExpire: Boolean(doesNotExpire) }),
       ...(doesNotExpire !== undefined && doesNotExpire ? { expiryDate: null } :
           expiryDate !== undefined ? { expiryDate: expiryDate ? new Date(expiryDate) : null } : {}),
+      ...(barcode !== undefined && {
+        barcode,
+        barcodeType: barcode ? inferBarcodeType(barcode, generateBarcode ? "INTERNAL" : barcodeType) : null,
+        barcodeGenerated: Boolean(generateBarcode) || (barcode === existing.barcode ? existing.barcodeGenerated : false),
+        barcodeCreatedAt: barcode && !existing.barcode ? new Date() : existing.barcodeCreatedAt,
+        barcodeUpdatedAt: new Date(),
+      }),
     },
     include: { supplier: { select: { id: true, name: true, phone: true } } },
   });

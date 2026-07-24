@@ -1,0 +1,10 @@
+const router = require("express").Router();
+const ctrl = require("../controllers/stockCount.controller");
+const { authenticate, requireRole, requirePermission } = require("../middleware/auth");
+const { requireActiveSubscription } = require("../middleware/subscription");
+router.use(authenticate, requireRole("MERCHANT", "ADMIN"), requirePermission("canManageStock"), requireActiveSubscription);
+router.post("/", ctrl.create);
+router.get("/:id", ctrl.get);
+router.post("/:id/scan", ctrl.scan);
+router.post("/:id/finish", ctrl.finish);
+module.exports = router;

@@ -83,6 +83,13 @@ enum OnboardingStatus {
   CHURN_RISK
 }
 
+enum BarcodeType {
+  EAN13
+  UPC
+  CODE128
+  INTERNAL
+}
+
 model User {
   id        String     @id @default(cuid())
   phone     String     @unique
@@ -122,6 +129,8 @@ model Shop {
   notificationPreference NotificationPreference?
   pushDeliveries       PushDelivery[]
   appUsageEvents       AppUsageEvent[]
+  barcodeScans         BarcodeScan[]
+  stockCounts          StockCount[]
   createdSuppliers     Supplier[]            @relation("SupplierCreatedByShop")
   // Subscription / trial
   plan                 String                @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
@@ -133,6 +142,13 @@ model Shop {
   onboardingStatus     OnboardingStatus      @default(NEW)
   lastContactedAt      DateTime?
   followUpNotes        String?
+  barcodeScanningEnabled Boolean             @default(true)
+  bluetoothScannerEnabled Boolean            @default(true)
+  barcodeGenerationEnabled Boolean           @default(true)
+  barcodeAutoFocus      Boolean              @default(true)
+  barcodeSuccessSound   Boolean              @default(true)
+  barcodeVibrate        Boolean              @default(true)
+  barcodeAutoAddToCart  Boolean              @default(true)
   acquisitionSource    String?
   acquisitionMedium    String?
   acquisitionCampaign  String?
@@ -331,6 +347,11 @@ model Product {
   id                       String                  @id @default(cuid())
   name                     String
   sku                      String?
+  barcode                  String?                 @unique
+  barcodeType              BarcodeType?
+  barcodeGenerated         Boolean                 @default(false)
+  barcodeCreatedAt         DateTime?
+  barcodeUpdatedAt         DateTime?
   unit                     String                  @default("pcs") // pcs, kg, litre, box, crate
   buyingPrice              Int
   sellingPrice             Int
@@ -351,12 +372,61 @@ model Product {
   orderItems               OrderItem[]
   customerOrderItems       CustomerOrderItem[]
   stockMovements           StockMovement[]
+  barcodeScans             BarcodeScan[]
+  stockCountItems          StockCountItem[]
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
   @@unique([shopId, supplierCatalogProductId])
   @@index([shopId, isActive])
+  @@index([shopId, barcode])
   @@map("products")
+}
+
+model BarcodeScan {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  barcode   String
+  context   String   @default("POS")
+  found     Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([shopId, barcode])
+  @@index([shopId, createdAt])
+  @@map("barcode_scans")
+}
+
+model StockCount {
+  id          String           @id @default(cuid())
+  shopId      String
+  shop        Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  status      String           @default("OPEN")
+  createdById String
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  items       StockCountItem[]
+
+  @@index([shopId, status])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id           String     @id @default(cuid())
+  stockCountId String
+  stockCount   StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  expected     Int
+  counted      Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([stockCountId, productId])
+  @@map("stock_count_items")
 }
 
 model SupplierCatalogProduct {

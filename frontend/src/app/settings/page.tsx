@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
-import { Store, User, Lock, Globe, Check, ChevronDown, Bell } from "lucide-react";
+import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine } from "lucide-react";
 import NotificationSettings from "@/components/notifications/NotificationSettings";
 
 interface UserSettings {
@@ -83,6 +83,7 @@ export default function SettingsPage() {
   const [pinSaving, setPinSaving] = useState(false);
   const [pinMsg, setPinMsg] = useState("");
   const [pinError, setPinError] = useState("");
+  const [barcodeSettings, setBarcodeSettings] = useState<Record<string, boolean> | null>(null);
 
   useEffect(() => {
     api.get<{ settings: UserSettings }>("/settings")
@@ -100,6 +101,7 @@ export default function SettingsPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+    api.get<{ settings: Record<string, boolean> }>("/barcodes/settings").then((data) => setBarcodeSettings(data.settings)).catch(() => {});
   }, []);
 
   async function saveShop(e: React.FormEvent) {
@@ -187,6 +189,13 @@ export default function SettingsPage() {
     } catch {
       // language saved locally already
     }
+  }
+
+  async function toggleBarcodeSetting(key: string) {
+    if (!barcodeSettings) return;
+    const next = { ...barcodeSettings, [key]: !barcodeSettings[key] };
+    setBarcodeSettings(next);
+    try { await api.patch("/barcodes/settings", { [key]: next[key] }); } catch { setBarcodeSettings(barcodeSettings); }
   }
 
   if (loading) {
@@ -326,6 +335,20 @@ export default function SettingsPage() {
         {settings?.role === "MERCHANT" && (
           <SectionCard title={lang === "sw" ? "Notifications" : "Notifications"} icon={<Bell className="w-4 h-4" />}>
             <NotificationSettings owner={!settings.isStaff} />
+          </SectionCard>
+        )}
+
+        {barcodeSettings && settings?.role === "MERCHANT" && (
+          <SectionCard title={lang === "sw" ? "Mipangilio ya Barcode" : "Barcode settings"} icon={<ScanLine className="w-4 h-4" />}>
+            {[
+              ["barcodeScanningEnabled", lang === "sw" ? "Ruhusu kuscan barcode" : "Enable barcode scanning"],
+              ["bluetoothScannerEnabled", lang === "sw" ? "Ruhusu scanner ya Bluetooth/USB" : "Enable Bluetooth/USB scanners"],
+              ["barcodeGenerationEnabled", lang === "sw" ? "Ruhusu kutengeneza barcode" : "Enable barcode generation"],
+              ["barcodeAutoFocus", lang === "sw" ? "Lenga scanner moja kwa moja" : "Auto-focus scanner"],
+              ["barcodeSuccessSound", lang === "sw" ? "Sauti baada ya scan" : "Play success sound"],
+              ["barcodeVibrate", lang === "sw" ? "Tetemesha simu baada ya scan" : "Vibrate after scan"],
+              ["barcodeAutoAddToCart", lang === "sw" ? "Ongeza cart moja kwa moja" : "Automatically add scanned products to cart"],
+            ].map(([key, label]) => <label key={key} className="flex items-center justify-between gap-3 border-b border-gray-100 py-2 last:border-0"><span className="text-sm text-gray-700">{label}</span><input type="checkbox" checked={Boolean(barcodeSettings[key])} onChange={() => toggleBarcodeSetting(key)} className="h-5 w-5 rounded border-gray-300 text-brand-600" /></label>)}
           </SectionCard>
         )}
 

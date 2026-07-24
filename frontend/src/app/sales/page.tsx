@@ -2,9 +2,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
-import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
+import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
 
 interface Product {
   id: string;
@@ -15,6 +16,7 @@ interface Product {
   wholesalePrice?: number | null;
   wholesaleMinQty?: number | null;
   currentStock: number;
+  barcode?: string | null;
 }
 
 interface CartItem {
@@ -156,6 +158,10 @@ export default function SalesPage() {
   const [isOnline, setIsOnline] = useState(true);
   const [assistantIntent, setAssistantIntent] = useState("");
   const [canViewFinancials, setCanViewFinancials] = useState(true);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const scannerBuffer = useRef("");
+  const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean } } } }>("/auth/me")
@@ -296,9 +302,7 @@ export default function SalesPage() {
     if (view === "history") fetchHistory();
   }, [view, fetchHistory]);
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search.trim().toUpperCase()));
 
   function defaultPriceFor(product: Product): number {
     if (saleMode === "WHOLESALE" && product.wholesalePrice != null) {
@@ -320,6 +324,38 @@ export default function SalesPage() {
       return [...prev, { product, quantity: 1, unitPrice: defaultPriceFor(product) }];
     });
   }
+
+  function signalScanSuccess() {
+    if (navigator.vibrate) navigator.vibrate(60);
+    try { const ctx = new AudioContext(); const tone = ctx.createOscillator(); const gain = ctx.createGain(); tone.frequency.value = 880; gain.gain.value = 0.05; tone.connect(gain); gain.connect(ctx.destination); tone.start(); tone.stop(ctx.currentTime + 0.08); } catch { /* Audio is optional. */ }
+  }
+
+  const handleBarcode = useCallback(async (value: string) => {
+    setScannerOpen(false);
+    const normalized = value.trim().toUpperCase();
+    try {
+      const data = await api.get<{ product: Product }>(`/barcodes/lookup/${encodeURIComponent(normalized)}?context=POS`, lang);
+      addToCart(data.product);
+      signalScanSuccess();
+      toast(lang === "sw" ? `${data.product.name} imeongezwa.` : `${data.product.name} added.`, "success");
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message === "This barcode was not found.") setUnknownBarcode(normalized);
+      else toast(error instanceof Error ? error.message : "Unable to scan barcode", "error");
+    }
+  }, [lang, toast]);
+
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || scannerOpen) return;
+      if (event.key === "Enter" && scannerBuffer.current.length >= 4) { const value = scannerBuffer.current; scannerBuffer.current = ""; if (scannerTimer.current) clearTimeout(scannerTimer.current); handleBarcode(value); return; }
+      if (event.key.length !== 1) return;
+      scannerBuffer.current += event.key;
+      if (scannerTimer.current) clearTimeout(scannerTimer.current);
+      scannerTimer.current = setTimeout(() => { scannerBuffer.current = ""; }, 180);
+    };
+    window.addEventListener("keydown", keydown);
+    return () => { window.removeEventListener("keydown", keydown); if (scannerTimer.current) clearTimeout(scannerTimer.current); };
+  }, [handleBarcode, scannerOpen]);
 
   function updateQty(productId: string, delta: number) {
     setCart((prev) =>
@@ -575,11 +611,14 @@ export default function SalesPage() {
                   </p>
                 </div>
               )}
-              <div className="relative mb-3">
+              <div className="mb-3 flex gap-2">
+                <div className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)}
                   placeholder={t("inventory.search", lang)}
                   className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
+                <button onClick={() => setScannerOpen(true)} aria-label="Scan barcode" className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white" title="Scan barcode"><ScanLine className="h-5 w-5" /></button>
               </div>
               <div className="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pb-2 sm:grid-cols-3 lg:max-h-[60vh] lg:grid-cols-2">
                 {filtered.map((p) => {
@@ -762,6 +801,8 @@ export default function SalesPage() {
           </button>
         )}
       </div>
+      {scannerOpen && <BarcodeScanner onDetected={handleBarcode} onClose={() => setScannerOpen(false)} />}
+      {unknownBarcode && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"><h2 className="font-bold text-gray-900">{lang === "sw" ? "Barcode haijapatikana" : "This barcode was not found."}</h2><p className="mt-2 text-sm text-gray-600">{unknownBarcode}</p><div className="mt-4 flex gap-2"><button onClick={() => { setSearch(unknownBarcode); setUnknownBarcode(null); }} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-semibold">{lang === "sw" ? "Tafuta" : "Search manually"}</button><button onClick={() => { window.location.href = `/inventory?barcode=${encodeURIComponent(unknownBarcode)}&action=add`; }} className="flex-1 rounded-lg bg-brand-600 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Ongeza bidhaa" : "Add new product"}</button></div><button onClick={() => setUnknownBarcode(null)} className="mt-3 w-full text-sm text-gray-500">{t("common.cancel", lang)}</button></div></div>}
     </AppShell>
   );
 }

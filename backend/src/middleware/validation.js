@@ -31,6 +31,9 @@ const productCreateValidation = [
   body("supplierId").optional({ values: "falsy" }).isString().withMessage("Supplier ID must be a string"),
   body("doesNotExpire").optional().isBoolean().withMessage("doesNotExpire must be true or false"),
   body("expiryDate").optional({ values: "falsy" }).isISO8601().withMessage("Expiry date must be a valid date"),
+  body("barcode").optional({ nullable: true, values: "falsy" }).trim().isLength({ min: 4, max: 64 }).matches(/^[A-Za-z0-9._-]+$/).withMessage("Barcode format is invalid"),
+  body("barcodeType").optional({ values: "falsy" }).isIn(["EAN13", "UPC", "CODE128", "INTERNAL"]).withMessage("Invalid barcode type"),
+  body("generateBarcode").optional().isBoolean().withMessage("generateBarcode must be true or false"),
   handleValidationErrors,
 ];
 
@@ -47,6 +50,9 @@ const productUpdateValidation = [
   body("isActive").optional().isBoolean().withMessage("isActive must be true or false"),
   body("doesNotExpire").optional().isBoolean().withMessage("doesNotExpire must be true or false"),
   body("expiryDate").optional({ nullable: true, values: "falsy" }).isISO8601().withMessage("Expiry date must be a valid date"),
+  body("barcode").optional({ nullable: true, values: "falsy" }).trim().isLength({ min: 4, max: 64 }).matches(/^[A-Za-z0-9._-]+$/).withMessage("Barcode format is invalid"),
+  body("barcodeType").optional({ values: "falsy" }).isIn(["EAN13", "UPC", "CODE128", "INTERNAL"]).withMessage("Invalid barcode type"),
+  body("generateBarcode").optional().isBoolean().withMessage("generateBarcode must be true or false"),
   handleValidationErrors,
 ];
 

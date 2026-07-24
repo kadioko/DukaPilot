@@ -14,8 +14,12 @@ import {
   ArrowDown,
   CalendarClock,
   Trash2,
+  ScanLine,
+  Printer,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
+import { BarcodeLabel } from "@/components/barcode/BarcodeLabel";
 
 interface Product {
   id: string;
@@ -32,6 +36,9 @@ interface Product {
   expiryDate?: string | null;
   doesNotExpire: boolean;
   supplier?: { id: string; name: string; phone: string };
+  barcode?: string | null;
+  barcodeType?: string | null;
+  barcodeGenerated?: boolean;
 }
 
 interface Supplier {
@@ -77,7 +84,7 @@ export default function InventoryPage() {
     name: "", sku: "", unit: "pcs", buyingPrice: "", sellingPrice: "",
     wholesalePrice: "", wholesaleMinQty: "",
     currentStock: "0", minimumStock: "5", supplierId: "",
-    expiryDate: "", doesNotExpire: false,
+    expiryDate: "", doesNotExpire: false, barcode: "", barcodeType: "", generateBarcode: false,
   });
   const [adjustForm, setAdjustForm] = useState({ type: "IN", quantity: "", note: "" });
   const [saving, setSaving] = useState(false);
@@ -85,6 +92,8 @@ export default function InventoryPage() {
   const latestLoad = useRef(0);
   const mutationInFlight = useRef(false);
   const [canViewFinancials, setCanViewFinancials] = useState(true);
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
+  const [labelProduct, setLabelProduct] = useState<Product | null>(null);
 
   const fetchProducts = useCallback(async () => {
     const requestId = ++latestLoad.current;
@@ -108,6 +117,15 @@ export default function InventoryPage() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("action") === "add") {
+      openAdd();
+      setForm((current) => ({ ...current, barcode: params.get("barcode") || "" }));
+    }
+  // Intentional one-time handoff from the POS unknown-barcode prompt.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
     api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean } } } }>("/auth/me")
       .then((data) => setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports)))
       .catch(() => setCanViewFinancials(false));
@@ -116,7 +134,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditProduct(null);
-    setForm({ name: "", sku: "", unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false });
+    setForm({ name: "", sku: "", unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, barcode: "", barcodeType: "", generateBarcode: false });
     setError("");
     setShowForm(true);
   }
@@ -132,6 +150,7 @@ export default function InventoryPage() {
       supplierId: p.supplier?.id || "",
       expiryDate: p.expiryDate ? p.expiryDate.slice(0, 10) : "",
       doesNotExpire: p.doesNotExpire,
+      barcode: p.barcode || "", barcodeType: p.barcodeType || "", generateBarcode: false,
     });
     setError("");
     setShowForm(true);
@@ -165,6 +184,9 @@ export default function InventoryPage() {
         supplierId: form.supplierId || undefined,
         doesNotExpire: form.doesNotExpire,
         expiryDate: form.doesNotExpire ? null : (form.expiryDate || null),
+        barcode: form.barcode || null,
+        barcodeType: form.barcodeType || undefined,
+        generateBarcode: form.generateBarcode,
       };
       const response = editProduct
         ? await api.patch<{ product: Product }>(`/products/${editProduct.id}`, body)
@@ -377,6 +399,7 @@ export default function InventoryPage() {
                       </div>
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
+                      {p.barcode && <button onClick={() => setLabelProduct(p)} aria-label={`Print label for ${p.name}`} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100" title="Print barcode"><Printer className="h-4 w-4" /></button>}
                       <button
                         onClick={() => {
                           setAdjustProduct(p);
@@ -435,6 +458,12 @@ export default function InventoryPage() {
                   ))}
                 </select>
               </Field>
+            </div>
+            <div className="space-y-2 rounded-lg border border-gray-200 p-3">
+              <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Barcode</p><button onClick={() => setBarcodeScannerOpen(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700"><ScanLine className="h-4 w-4" />Scan</button></div>
+              <input value={form.barcode} disabled={form.generateBarcode} onChange={(e) => setForm({ ...form, barcode: e.target.value.toUpperCase() })} placeholder="EAN, UPC, or DP00000001" className={INPUT} />
+              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.generateBarcode} onChange={(e) => setForm({ ...form, generateBarcode: e.target.checked, barcode: e.target.checked ? "" : form.barcode })} />Generate DukaPilot barcode</label>
+              {form.barcode && <BarcodeLabel value={form.barcode} name={form.name || "Product"} price={form.sellingPrice ? formatTZS(Number(form.sellingPrice)) : undefined} className="max-w-[240px] border" />}
             </div>
             <div className="grid grid-cols-2 gap-3">
               {canViewFinancials && <Field label={t("inventory.buyingPriceLabel", lang)}>
@@ -609,6 +638,8 @@ export default function InventoryPage() {
           </div>
         </Modal>
       )}
+      {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase(), generateBarcode: false }); setBarcodeScannerOpen(false); }} />}
+      {labelProduct?.barcode && <Modal title="Barcode label" onClose={() => setLabelProduct(null)}><div className="space-y-4"><BarcodeLabel value={labelProduct.barcode} name={labelProduct.name} price={formatTZS(labelProduct.sellingPrice)} className="border" /><button onClick={() => window.print()} className="w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white">Print label</button></div></Modal>}
     </AppShell>
   );
 }
