@@ -94,6 +94,9 @@ export default function InventoryPage() {
   const [canViewFinancials, setCanViewFinancials] = useState(true);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
+  const [stockCount, setStockCount] = useState<{ id: string; items: Array<{ id: string; expected: number; counted: number; product: { id: string; name: string; barcode?: string | null; unit: string } }> } | null>(null);
+  const [stockCountScannerOpen, setStockCountScannerOpen] = useState(false);
+  const [stockCountCode, setStockCountCode] = useState("");
 
   const fetchProducts = useCallback(async () => {
     const requestId = ++latestLoad.current;
@@ -253,6 +256,33 @@ export default function InventoryPage() {
     }
   }
 
+  async function startStockCount() {
+    try {
+      const data = await api.post<{ count: NonNullable<typeof stockCount> }>("/stock-counts", {});
+      setStockCount(data.count);
+      toast(lang === "sw" ? "Uhesabuji umeanza. Scan bidhaa." : "Stock count started. Scan items.", "success");
+    } catch (error: unknown) { toast(error instanceof Error ? error.message : "Could not start stock count", "error"); }
+  }
+
+  async function scanStockCount(barcode: string) {
+    if (!stockCount) return;
+    try {
+      const data = await api.post<{ item: { productId: string; counted: number } }>(`/stock-counts/${stockCount.id}/scan`, { barcode });
+      setStockCount((current) => current ? { ...current, items: current.items.map((item) => item.product.id === data.item.productId ? { ...item, counted: data.item.counted } : item) } : current);
+      setStockCountCode(""); setStockCountScannerOpen(false);
+      if (navigator.vibrate) navigator.vibrate(50);
+    } catch (error: unknown) { toast(error instanceof Error ? error.message : "Barcode not found", "error"); }
+  }
+
+  async function finishStockCount(applyAdjustments: boolean) {
+    if (!stockCount) return;
+    try {
+      await api.post(`/stock-counts/${stockCount.id}/finish`, { applyAdjustments });
+      setStockCount(null); await fetchProducts();
+      toast(applyAdjustments ? (lang === "sw" ? "Tofauti za stock zimetumika." : "Stock differences applied.") : (lang === "sw" ? "Uhesabuji umekamilika." : "Stock count completed."), "success");
+    } catch (error: unknown) { toast(error instanceof Error ? error.message : "Could not finish stock count", "error"); }
+  }
+
   const margin = (p: Product) =>
     p.sellingPrice > 0 ? (((p.sellingPrice - p.buyingPrice) / p.sellingPrice) * 100).toFixed(0) : "0";
 
@@ -262,15 +292,10 @@ export default function InventoryPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-bold text-gray-900">{t("inventory.title", lang)}</h1>
-          {canViewFinancials && <button
-            onClick={openAdd}
-            aria-label={t("inventory.addProduct", lang)}
-            className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span>
-          </button>}
+          <div className="flex gap-2">{canViewFinancials && <button onClick={startStockCount} aria-label="Start stock count" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title="Stock count"><ScanLine className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={openAdd} aria-label={t("inventory.addProduct", lang)} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"><Plus className="w-4 h-4" /><span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span></button>}</div>
         </div>
+
+        {stockCount && <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 p-3"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-brand-950">{lang === "sw" ? "Uhesabuji wa stock unaendelea" : "Stock count in progress"}</p><p className="text-xs text-brand-700">{stockCount.items.reduce((sum, item) => sum + item.counted, 0)} {lang === "sw" ? "zimescanwa" : "scanned"}</p></div><button onClick={() => setStockCountScannerOpen(true)} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white">Scan</button></div><div className="mt-3 flex gap-2"><input value={stockCountCode} onChange={(event) => setStockCountCode(event.target.value)} onKeyDown={(event) => event.key === "Enter" && scanStockCount(stockCountCode)} placeholder="Barcode" className="min-w-0 flex-1 rounded-lg border border-brand-200 px-3 py-2 text-sm" /><button onClick={() => scanStockCount(stockCountCode)} className="rounded-lg border border-brand-300 px-3 text-sm font-semibold text-brand-800">Add</button></div><div className="mt-3 max-h-32 overflow-y-auto text-xs">{stockCount.items.filter((item) => item.counted > 0).map((item) => <div key={item.id} className="flex justify-between border-t border-brand-100 py-1"><span>{item.product.name}</span><span>{item.expected} / {item.counted} ({item.counted - item.expected >= 0 ? "+" : ""}{item.counted - item.expected})</span></div>)}</div><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => finishStockCount(false)} className="rounded-lg border border-brand-300 py-2 text-sm font-semibold text-brand-800">{lang === "sw" ? "Maliza bila kubadili" : "Finish only"}</button><button onClick={() => finishStockCount(true)} className="rounded-lg bg-brand-700 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Tumia tofauti" : "Apply differences"}</button></div></div>}
 
         {assistantAction && (
           <div className="mb-4 rounded-xl border border-brand-100 bg-brand-50 p-3 text-sm text-brand-900">
@@ -639,6 +664,7 @@ export default function InventoryPage() {
         </Modal>
       )}
       {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase(), generateBarcode: false }); setBarcodeScannerOpen(false); }} />}
+      {stockCountScannerOpen && <BarcodeScanner onClose={() => setStockCountScannerOpen(false)} onDetected={scanStockCount} />}
       {labelProduct?.barcode && <Modal title="Barcode label" onClose={() => setLabelProduct(null)}><div className="space-y-4"><BarcodeLabel value={labelProduct.barcode} name={labelProduct.name} price={formatTZS(labelProduct.sellingPrice)} className="border" /><button onClick={() => window.print()} className="w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white">Print label</button></div></Modal>}
     </AppShell>
   );
