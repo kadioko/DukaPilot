@@ -11,7 +11,14 @@ const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const count = await prisma.$transaction(async (tx) => {
     const products = await tx.product.findMany({ where: { shopId, isActive: true }, select: { id: true, currentStock: true } });
-    return tx.stockCount.create({ data: { shopId, createdById: req.user.userId, items: { create: products.map((product) => ({ productId: product.id, expected: product.currentStock })) } }, include: { items: { include: { product: { select: { id: true, name: true, barcode: true, unit: true } } } } });
+    return tx.stockCount.create({
+      data: {
+        shopId,
+        createdById: req.user.userId,
+        items: { create: products.map((product) => ({ productId: product.id, expected: product.currentStock })) },
+      },
+      include: { items: { include: { product: { select: { id: true, name: true, barcode: true, unit: true } } } } },
+    });
   });
   res.status(201).json({ count });
 });
