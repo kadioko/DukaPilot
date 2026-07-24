@@ -3,41 +3,37 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, Keyboard, X } from "lucide-react";
 
-type Detector = { detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>> };
-declare global { interface Window { BarcodeDetector?: new (options?: { formats?: string[] }) => Detector } }
-
 export function BarcodeScanner({ onDetected, onClose }: { onDetected: (value: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [manual, setManual] = useState("");
   const [message, setMessage] = useState("Opening camera...");
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    let frame = 0;
+    let controls: { stop: () => void } | undefined;
     let stopped = false;
-    const stop = () => { stopped = true; cancelAnimationFrame(frame); stream?.getTracks().forEach((track) => track.stop()); };
+    const stop = () => { stopped = true; controls?.stop(); };
     (async () => {
-      if (!navigator.mediaDevices?.getUserMedia || !window.BarcodeDetector) {
-        setMessage("Camera scanning is not supported here. Enter the barcode below.");
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setMessage("This browser cannot open the camera. Enter the barcode below.");
         return;
       }
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
         if (!videoRef.current) return;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        const detector = new window.BarcodeDetector({ formats: ["ean_13", "upc_a", "upc_e", "code_128", "qr_code"] });
+        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        const reader = new BrowserMultiFormatReader();
         setMessage("Point your camera at a barcode");
-        const scan = async () => {
-          if (stopped || !videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            const value = codes[0]?.rawValue?.trim();
-            if (value) { stop(); onDetected(value); return; }
-          } catch { /* Low light and unsupported frames should not break manual fallback. */ }
-          frame = requestAnimationFrame(scan);
-        };
-        frame = requestAnimationFrame(scan);
+        controls = await reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: "environment" } }, audio: false },
+          videoRef.current,
+          (result, _error, scanControls) => {
+            const value = result?.getText()?.trim();
+            if (!value || stopped) return;
+            stopped = true;
+            scanControls.stop();
+            onDetected(value);
+          },
+        );
+        if (stopped) controls.stop();
       } catch {
         setMessage("Camera permission was not granted. Enter the barcode below.");
       }
