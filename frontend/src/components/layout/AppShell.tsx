@@ -21,6 +21,7 @@ import {
   CreditCard,
   Settings,
   ShoppingBag,
+  ScanLine,
 } from "lucide-react";
 import { clearToken, api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -63,6 +64,7 @@ interface NavItem {
 const merchantNav: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports" },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock" },
+  { href: "/barcodes", label: "Barcodes", icon: ScanLine, permission: "canManageStock" },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell" },
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell" },
   { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canRecordExpenses" },

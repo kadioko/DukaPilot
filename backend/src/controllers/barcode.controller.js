@@ -36,11 +36,14 @@ const history = asyncHandler(async (req, res) => {
 
 const report = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const [withoutBarcodes, mostScanned, duplicateAttempts] = await Promise.all([
+  const [withoutBarcodes, scannedGroups, duplicateAttempts] = await Promise.all([
     prisma.product.findMany({ where: { shopId, isActive: true, barcode: null }, select: { id: true, name: true, currentStock: true }, orderBy: { name: "asc" } }),
     prisma.barcodeScan.groupBy({ by: ["barcode"], where: { shopId, found: true }, _count: { barcode: true }, orderBy: { _count: { barcode: "desc" } }, take: 20 }),
     prisma.auditLog.count({ where: { action: "barcode.duplicate_attempt", metadata: { path: ["shopId"], equals: shopId } } }),
   ]);
+  const products = await prisma.product.findMany({ where: { shopId, barcode: { in: scannedGroups.map((row) => row.barcode) } }, select: { id: true, name: true, barcode: true, sellingPrice: true } });
+  const byBarcode = new Map(products.map((product) => [product.barcode, product]));
+  const mostScanned = scannedGroups.map((row) => ({ barcode: row.barcode, scans: row._count.barcode, product: byBarcode.get(row.barcode) || null }));
   res.json({ withoutBarcodes, mostScanned, duplicateAttempts });
 });
 
