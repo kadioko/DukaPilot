@@ -47,6 +47,7 @@ async function authenticate(req, res, next) {
         where: { id: payload.staffId, isActive: true },
         select: {
           id: true,
+          role: true,
           shopId: true,
           canSell: true,
           canManageStock: true,
@@ -60,6 +61,7 @@ async function authenticate(req, res, next) {
         return res.status(401).json({ error: "Staff access expired" });
       }
       payload.shopId = staff.shopId;
+      payload.staffRole = staff.role;
       payload.permissions = {
         canSell: staff.canSell,
         canManageStock: staff.canManageStock,

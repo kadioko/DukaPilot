@@ -3,7 +3,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { inferBarcodeType, normalizeBarcode, validateBarcode, nextInternalBarcode } = require("../lib/barcode");
 
 function asyncHandler(fn) { return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }
-function canManageBarcode(req) { return req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canManageStock; }
+function canManageBarcode(req) { return req.user.role === "ADMIN" || !req.user.staffId || req.user.staffRole === "MANAGER"; }
 
 const generate = asyncHandler(async (req, res) => {
   if (!canManageBarcode(req)) return res.status(403).json({ error: "Only an admin or manager can generate barcodes" });

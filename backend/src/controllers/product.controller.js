@@ -16,6 +16,10 @@ function canViewFinancials(req) {
   return req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canViewReports;
 }
 
+function canGenerateBarcode(req) {
+  return req.user.role === "ADMIN" || !req.user.staffId || req.user.staffRole === "MANAGER";
+}
+
 function redactProduct(product, req) {
   return canViewFinancials(req) ? product : { ...product, buyingPrice: null };
 }
@@ -92,6 +96,11 @@ const create = asyncHandler(async (req, res) => {
 
   const checked = validateBarcode(rawBarcode);
   if (checked.error) return res.status(400).json({ error: checked.error });
+  if (generateBarcode && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin or manager can generate barcodes" });
+  if (generateBarcode) {
+    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeGenerationEnabled: true } });
+    if (shop?.barcodeGenerationEnabled === false) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
+  }
   const product = await prisma.$transaction(async (tx) => {
     const barcode = generateBarcode ? await nextInternalBarcode(tx) : checked.value;
     if (barcode) {
@@ -155,6 +164,11 @@ const update = asyncHandler(async (req, res) => {
 
   const checked = rawBarcode === undefined ? { value: undefined } : validateBarcode(rawBarcode);
   if (checked.error) return res.status(400).json({ error: checked.error });
+  if (generateBarcode && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin or manager can generate barcodes" });
+  if (generateBarcode) {
+    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeGenerationEnabled: true } });
+    if (shop?.barcodeGenerationEnabled === false) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
+  }
   let barcode = checked.value;
   if (generateBarcode) barcode = await prisma.$transaction((tx) => nextInternalBarcode(tx));
   if (barcode && barcode !== existing.barcode) {
