@@ -41,9 +41,9 @@ def twaManifest = [
     // - url: Absolute path of the URL to launch the app with (e.g '/create').
     // - icon: Name of the resource in the drawable folder to use as an icon.
     shortcuts: [
-        [name: 'Record sale', short_name: 'Sale', url: 'https://www.dukapilot.com/sales', icon: 'shortcut_sale'],
-        [name: 'Inventory', short_name: 'Stock', url: 'https://www.dukapilot.com/inventory', icon: 'shortcut_inventory'],
-        [name: 'Customer debts', short_name: 'Debts', url: 'https://www.dukapilot.com/debts', icon: 'shortcut_debts'],
+        [name: 'Record sale', short_name: 'Sale', url: 'https://www.dukapilot.com/sales?shortcut=sale', icon: 'shortcut_sale'],
+        [name: 'Inventory', short_name: 'Stock', url: 'https://www.dukapilot.com/inventory?shortcut=inventory', icon: 'shortcut_inventory'],
+        [name: 'Customer debts', short_name: 'Debts', url: 'https://www.dukapilot.com/debts?shortcut=debts', icon: 'shortcut_debts'],
     ],
     // The duration of fade out animation in milliseconds to be played when removing splash screen.
     splashScreenFadeOutDuration: 300,
@@ -78,8 +78,8 @@ android {
         minSdkVersion 23
         // Google Play requires Android 16 / API 36 for app updates from 31 August 2026.
         targetSdkVersion 36
-        versionCode 4
-        versionName "1.0.3"
+        versionCode 5
+        versionName "1.0.4"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name

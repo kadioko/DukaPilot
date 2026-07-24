@@ -22,8 +22,8 @@
     "path": "keystores/dukapilot-upload.jks",
     "alias": "dukapilot"
   },
-  "appVersion": "1.0.3",
-  "appVersionCode": 4,
+  "appVersion": "1.0.4",
+  "appVersionCode": 5,
   "shortcuts": [
     {
       "name": "Record sale",
