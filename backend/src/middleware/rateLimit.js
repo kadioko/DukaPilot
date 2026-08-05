@@ -21,7 +21,10 @@ const sharedOptions = {
 const apiRateLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  // Browser traffic is proxied through Vercel, and Tanzanian mobile networks
+  // commonly place many customers behind one public IP. Keep this broad
+  // safety net high; sensitive authentication has its own strict limiter.
+  max: 5000,
   message: { error: "Too many requests. Please wait a few minutes and try again." },
 });
 
@@ -36,7 +39,7 @@ const authRateLimiter = rateLimit({
 const publicRateLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 1000,
   message: { error: "Too many requests to the public catalog. Please wait a few minutes and try again." },
 });
 
