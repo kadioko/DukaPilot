@@ -50,7 +50,6 @@ const TextReveal = React.memo(function TextReveal({
     onMouseEnter: () => setHovered(true),
     onMouseLeave: () => setHovered(false),
     onClick,
-    "aria-label": text,
   };
 
   if (Component === "a") {
@@ -62,7 +61,6 @@ const TextReveal = React.memo(function TextReveal({
   return (
     <Component {...rootProps}>
       <span
-        aria-hidden="true"
         className="inline-block will-change-transform"
         style={{
           transition: `transform ${duration}ms ${easing}`,

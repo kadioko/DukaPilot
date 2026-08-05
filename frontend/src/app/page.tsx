@@ -710,7 +710,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  className="w-full bg-brand-700 hover:bg-brand-800 disabled:opacity-60 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
                 >
                   {loading ? t("auth.loading", lang) : view === "register" ? t("auth.register", lang) : t("auth.login", lang)}
                   {!loading && <ArrowRight className="w-4 h-4" />}
@@ -721,7 +721,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                 <button
                   type="button"
                   onClick={() => switchView(view === "register" ? "login" : "register")}
-                  className="text-brand-600 text-sm hover:underline min-h-0 block w-full"
+                  className="text-brand-700 text-sm font-medium hover:underline min-h-0 block w-full"
                 >
                   {view === "register" ? t("auth.haveAccount", lang) : t("auth.noAccount", lang)}
                 </button>
@@ -729,7 +729,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                   <button
                     type="button"
                     onClick={() => switchView("forgot")}
-                    className="text-gray-400 text-sm hover:text-brand-600 hover:underline min-h-0 block w-full"
+                    className="text-gray-600 text-sm hover:text-brand-700 hover:underline min-h-0 block w-full"
                   >
                     {lang === "sw" ? "Umesahau PIN?" : "Forgot PIN?"}
                   </button>
