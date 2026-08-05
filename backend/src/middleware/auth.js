@@ -99,4 +99,16 @@ function requirePermission(permission) {
   };
 }
 
-module.exports = { authenticate, requireRole, requirePermission, readCookieToken };
+function requireAnyPermission(...permissions) {
+  return (req, res, next) => {
+    if (req.user.role === "ADMIN" || !req.user.staffId) return next();
+
+    const granted = req.user.permissions || {};
+    if (!permissions.some((permission) => granted[permission])) {
+      return res.status(403).json({ error: "You do not have permission for this action" });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, requireRole, requirePermission, requireAnyPermission, readCookieToken };
