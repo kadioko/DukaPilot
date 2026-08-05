@@ -1,7 +1,7 @@
 // DukaPilot Service Worker — offline support
 // Strategy: cache-first for static assets, network-first for API calls
 
-const CACHE_NAME = "dukapilot-v3";
+const CACHE_NAME = "dukapilot-v4";
 
 // Static assets to pre-cache on install
 const PRECACHE_URLS = [
@@ -45,19 +45,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML navigation requests: network-first, fall back to offline page
+  // Never cache HTML navigation. A cached marketing shell can hide a valid
+  // signed-in session and send a returning merchant back to the login view.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
-        .then((res) => {
-          // Cache a fresh copy of visited pages
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return res;
-        })
-        .catch(() =>
-          caches.match(request).then((cached) => cached || caches.match("/offline.html"))
-        )
+        .catch(() => caches.match("/offline.html"))
     );
     return;
   }

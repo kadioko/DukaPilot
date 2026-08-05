@@ -100,6 +100,7 @@ export default function DashboardPage() {
   const s = data?.summary;
   const allTime = data?.allTimeSummary;
   const currentPeriodLabel = t(PERIODS.find((p) => p.key === period)?.labelKey || "common.today", lang);
+  const noPeriodData = (lang === "sw" ? `Hakuna mauzo ya ${currentPeriodLabel.toLowerCase()} bado.` : `No sales recorded for ${currentPeriodLabel.toLowerCase()} yet.`);
 
   function paymentLabel(paymentMethod: string) {
     if (paymentMethod === "BANK") return t("sales.bank", lang);
@@ -171,8 +172,8 @@ export default function DashboardPage() {
                 <QuickAction
                   href="/inventory"
                   icon={<Package className="h-4 w-4" />}
-                  label={lang === "sw" ? "Bidhaa chache stock" : "Low-stock items"}
-                  value={String(s?.lowStockCount || 0)}
+                  label={lang === "sw" ? "Bidhaa zinazohitaji hatua" : "Items needing attention"}
+                  value={String((s?.lowStockCount || 0) + (s?.outOfStockCount || 0))}
                 />
                 <QuickAction
                   href="/orders"
@@ -200,6 +201,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "sw" ? `Kipindi hiki: ${currentPeriodLabel}` : `This period: ${currentPeriodLabel}`}</p>
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <KpiCard
             label={t("dashboard.sales", lang)}
@@ -235,6 +237,7 @@ export default function DashboardPage() {
           />
         </div>
 
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "sw" ? "Tangu kuanza kutumia DukaPilot" : "All time"}</p>
         <div className="mb-6 grid gap-3 lg:grid-cols-5">
           <KpiCard
             label={t("dashboard.allTime", lang)}
@@ -274,7 +277,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle className="w-4 h-4 text-amber-600" />
               <h2 className="font-semibold text-amber-800 text-sm">
-                {t("dashboard.lowStock", lang)} ({data.lowStockAlerts.length})
+                {lang === "sw" ? "Bidhaa zinazohitaji hatua" : "Items needing attention"} ({data.lowStockAlerts.length})
               </h2>
             </div>
             <div className="space-y-2">
@@ -309,7 +312,7 @@ export default function DashboardPage() {
                     return d.toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { weekday: "short" });
                   }}
                 />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v === 0 ? "0" : `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
                   formatter={(value, name) => [
                     formatTZS(typeof value === "number" ? value : 0),
@@ -323,9 +326,9 @@ export default function DashboardPage() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h2 className="font-semibold text-gray-800 mb-4 text-sm">{t("dashboard.topProducts", lang)}</h2>
+            <h2 className="font-semibold text-gray-800 mb-4 text-sm">{t("dashboard.topProducts", lang)} - {currentPeriodLabel}</h2>
             {data?.topProducts.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-8">{t("dashboard.noData", lang)}</p>
+              <div className="py-8 text-center"><p className="text-sm text-gray-400">{data?.allTimeSummary.salesCount ? noPeriodData : t("dashboard.noData", lang)}</p>{period !== "all" && data?.allTimeSummary.salesCount ? <button onClick={() => setPeriod("all")} className="mt-2 text-sm font-semibold text-brand-700 hover:underline">{lang === "sw" ? "Ona muda wote" : "View all time"}</button> : null}</div>
             ) : (
               <div className="space-y-3">
                 {data?.topProducts.map((tp, i) => (
@@ -351,9 +354,9 @@ export default function DashboardPage() {
 
         <div className="grid lg:grid-cols-2 gap-6 mt-6">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h2 className="font-semibold text-gray-800 mb-4 text-sm">{t("dashboard.paymentMix", lang)}</h2>
+            <h2 className="font-semibold text-gray-800 mb-4 text-sm">{t("dashboard.paymentMix", lang)} - {currentPeriodLabel}</h2>
             {data?.paymentBreakdown.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-8">{t("dashboard.noData", lang)}</p>
+              <div className="py-8 text-center"><p className="text-sm text-gray-400">{data?.allTimeSummary.salesCount ? noPeriodData : t("dashboard.noData", lang)}</p>{period !== "all" && data?.allTimeSummary.salesCount ? <button onClick={() => setPeriod("all")} className="mt-2 text-sm font-semibold text-brand-700 hover:underline">{lang === "sw" ? "Ona muda wote" : "View all time"}</button> : null}</div>
             ) : (
               <div className="space-y-3">
                 {data?.paymentBreakdown.map((item) => (

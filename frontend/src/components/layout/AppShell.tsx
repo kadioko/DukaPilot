@@ -59,24 +59,25 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses";
   feature?: "staff" | "assistant" | "exports";
+  group?: "overview" | "ai" | "sell" | "stock" | "money" | "manage";
 }
 
 const merchantNav: NavItem[] = [
-  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports" },
-  { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock" },
-  { href: "/barcodes", label: "Barcodes", icon: ScanLine, permission: "canManageStock" },
-  { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell" },
-  { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell" },
-  { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canRecordExpenses" },
-  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock" },
-  { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell" },
-  { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock" },
-  { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff", feature: "staff" },
-  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports", feature: "assistant" },
-  { href: "/profit", labelKey: "nav.profit", icon: ChartNoAxesCombined, permission: "canViewReports" },
-  { href: "/billing", labelKey: "nav.billing", icon: CreditCard, permission: "canManageStaff" },
-  { href: "/settings", labelKey: "nav.settings", icon: Settings },
-  { href: "/reports", label: "Report Issue", icon: AlertTriangle },
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports", group: "overview" },
+  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports", feature: "assistant", group: "ai" },
+  { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell", group: "sell" },
+  { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell", group: "sell" },
+  { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell", group: "sell" },
+  { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
+  { href: "/barcodes", label: "Barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
+  { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
+  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },
+  { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canRecordExpenses", group: "money" },
+  { href: "/profit", labelKey: "nav.profit", icon: ChartNoAxesCombined, permission: "canViewReports", group: "money" },
+  { href: "/billing", labelKey: "nav.billing", icon: CreditCard, permission: "canManageStaff", group: "money" },
+  { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff", feature: "staff", group: "manage" },
+  { href: "/settings", labelKey: "nav.settings", icon: Settings, group: "manage" },
+  { href: "/reports", label: "Report Issue", icon: AlertTriangle, group: "manage" },
 ];
 
 const adminNav: NavItem[] = [
@@ -162,6 +163,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
           (!item.feature || user?.features?.[item.feature] !== false)
         );
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
+  const navGroupLabel: Record<NonNullable<NavItem["group"]>, string> = {
+    overview: lang === "sw" ? "Muhtasari" : "Overview",
+    ai: "AI Assistant",
+    sell: lang === "sw" ? "Uuzaji" : "Sell",
+    stock: lang === "sw" ? "Stock" : "Stock",
+    money: lang === "sw" ? "Fedha" : "Money",
+    manage: lang === "sw" ? "Usimamizi" : "Manage",
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -215,26 +224,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {nav.map(({ href, labelKey, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => setSidebarOpen(false)}
-              className={clsx(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors",
-                pathname === href
-                  ? "bg-white/15 text-white"
-                  : "text-brand-200 hover:bg-white/10 hover:text-white"
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{labelKey ? t(labelKey, lang) : label}</span>
-              {href === "/inventory" && lowStockCount > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                  {lowStockCount}
-                </span>
-              )}
-            </Link>
+          {nav.map(({ href, labelKey, label, icon: Icon, group }, index) => (
+            <div key={href}>
+              {group && (index === 0 || group !== nav[index - 1]?.group) && <p className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-300">{navGroupLabel[group]}</p>}
+              <Link href={href} onClick={() => setSidebarOpen(false)} className={clsx("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors", pathname === href ? "bg-white/15 text-white" : "text-brand-200 hover:bg-white/10 hover:text-white")}>
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span>{href === "/barcodes" && lang === "sw" ? "Misimbo ya Bidhaa" : href === "/reports" && lang === "sw" ? "Ripoti Tatizo" : labelKey ? t(labelKey, lang) : label}</span>
+                {href === "/inventory" && lowStockCount > 0 && <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">{lowStockCount}</span>}
+              </Link>
+            </div>
           ))}
         </nav>
 

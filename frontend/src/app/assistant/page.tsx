@@ -151,23 +151,9 @@ export default function AssistantPage() {
               <p className="mt-1 text-sm text-gray-500">
                 {lang === "sw" ? "DukaPilot inapanga hatua muhimu kwanza." : "DukaPilot ranks the most useful next action first."}
               </p>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <div className="rounded-lg bg-red-50 px-3 py-2 text-red-800">
-                  <p className="font-bold">{recommendations.filter((item) => item.rank >= 80).length}</p>
-                  <p>{lang === "sw" ? "Haraka" : "Urgent"}</p>
-                </div>
-                <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
-                  <p className="font-bold">{recommendations.filter((item) => item.rank >= 60 && item.rank < 80).length}</p>
-                  <p>{lang === "sw" ? "Leo" : "Today"}</p>
-                </div>
-                <div className="rounded-lg bg-green-50 px-3 py-2 text-green-800">
-                  <p className="font-bold">{recommendations.length}</p>
-                  <p>{lang === "sw" ? "Hatua" : "Actions"}</p>
-                </div>
-              </div>
             </div>
-            <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600 sm:max-w-xs">
-              <span className="font-semibold text-gray-800">WhatsApp:</span> {ownerSummary}
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600 whitespace-pre-line sm:max-w-xs">
+              <span className="font-semibold text-gray-800">WhatsApp:</span>{"\n"}{ownerSummary}
             </div>
           </div>
           <div className="mt-4 grid gap-3">
@@ -208,10 +194,8 @@ export default function AssistantPage() {
                     <p className="mt-1 text-xs leading-5 text-gray-500">
                       <span className="font-semibold text-gray-700">{lang === "sw" ? "Matokeo:" : "Expected impact:"}</span> {item.impact}
                     </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold uppercase tracking-wide text-gray-500">
-                        {lang === "sw" ? "Fanya sasa" : "Do this now"}
-                      </span>
+                    <p className="mt-3 text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "sw" ? "Fanya sasa" : "Do this now"}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Link
                         href={item.href}
                         onClick={() => {
@@ -324,25 +308,26 @@ function buildRecommendations({
   }
 
   if (mostUrgentStock) {
+    const outOfStock = mostUrgentStock.currentStock === 0;
     items.push({
       id: "stock",
       rank: 100,
       icon: Package,
       tone: "bg-red-50 text-red-700",
       title: lang === "sw"
-        ? `Agiza ${mostUrgentStock.name} kabla haijaisha`
-        : `Restock ${mostUrgentStock.name} before it runs out`,
+        ? (outOfStock ? `${mostUrgentStock.name} imeisha - agiza leo` : `Agiza ${mostUrgentStock.name} kabla haijaisha`)
+        : (outOfStock ? `${mostUrgentStock.name} is out of stock - reorder today` : `Restock ${mostUrgentStock.name} before it runs out`),
       body: lang === "sw"
         ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`
         : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`,
-      action: lang === "sw" ? "Fungua inventory na agiza tena" : "Open inventory and reorder",
+      action: lang === "sw" ? "Fungua Hifadhi ya Bidhaa na agiza tena" : "Open inventory and reorder",
       href: `/inventory?search=${encodeURIComponent(mostUrgentStock.name)}&action=restock`,
       why: lang === "sw"
         ? "Stock ikiisha, mauzo husimama na mteja huenda kwa duka lingine."
         : "When stock runs out, sales stop and customers move to another shop.",
       impact: lang === "sw"
-        ? "Kulinda mauzo ya bidhaa inayohitajika kabla wiki haijaisha."
-        : "Protect sales from a needed item before the week ends.",
+        ? (outOfStock ? "Rudisha bidhaa inayouzwa ili mauzo yaanze tena." : "Kulinda mauzo ya bidhaa inayohitajika kabla wiki haijaisha.")
+        : (outOfStock ? "Restore a sellable item so sales can resume." : "Protect sales from a needed item before the week ends."),
     });
   }
 
@@ -363,7 +348,7 @@ function buildRecommendations({
         ? `Fuatilia madeni ya ${formatTZS(debts.summary.totalOwed)}`
         : `Follow up on ${formatTZS(debts.summary.totalOwed)} in unpaid debt`,
       body: lang === "sw"
-        ? customer ? `Anza na ${customer}. Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.` : `Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.`
+        ? customer ? `Anza na ${customer}. ${debts.summary.openCount === 1 ? "Kuna deni 1 ambalo bado halijafungwa." : `Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.`}` : `${debts.summary.openCount === 1 ? "Kuna deni 1 ambalo bado halijafungwa." : `Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.`}`
         : customer ? `Start with ${customer}. ${debts.summary.openCount} debt records are still open.` : `${debts.summary.openCount} debt records are still open.`,
       action: lang === "sw" ? "Fungua madeni na rekodi malipo" : "Open debts and record payment",
       href: `/debts${debtParams.toString() ? `?${debtParams.toString()}` : ""}`,
@@ -462,7 +447,7 @@ function buildOwnerSummary(recommendations: Recommendation[], lang: "sw" | "en")
   return recommendations
     .slice(0, 3)
     .map((item, index) => `${index + 1}. ${item.title}`)
-    .join(" ");
+    .join("\n");
 }
 
 function mostUrgStockMinimum(product: { minimumStock: number }) {

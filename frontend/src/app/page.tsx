@@ -120,6 +120,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   // Login / Register fields
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -129,6 +130,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   const [shopDistrict, setShopDistrict] = useState("");
   const [shopCategory, setShopCategory] = useState("general");
   const [role, setRole] = useState<"MERCHANT" | "SUPPLIER">("MERCHANT");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // PIN recovery fields
@@ -149,6 +151,25 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     }
   }, [initialView, searchParams]);
 
+  useEffect(() => {
+    if (initialView !== "login" || searchParams.get("view")) return;
+
+    let cancelled = false;
+    api.get<{ user: { role: string; staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canViewReports?: boolean } } } }>("/auth/me")
+      .then(({ user }) => {
+        if (cancelled) return;
+        if (user.role === "SUPPLIER") router.replace("/supplier");
+        else if (user.role === "ADMIN") router.replace("/admin");
+        else if (user.staff?.permissions?.canViewReports) router.replace("/dashboard");
+        else if (user.staff?.permissions?.canSell) router.replace("/sales");
+        else if (user.staff?.permissions?.canManageStock) router.replace("/inventory");
+        else if (!user.staff) router.replace("/dashboard");
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [initialView, router, searchParams]);
+
   function resetForms() {
     setError("");
     setForgotMsg("");
@@ -156,6 +177,8 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     setForgotPhone("");
     setForgotCode("");
     setForgotNewPin("");
+    setConfirmPin("");
+    setTermsAccepted(false);
   }
 
   function switchView(v: View) {
@@ -183,6 +206,16 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
 
     if (view === "register" && !normalizedName) {
       setError(t("auth.error.nameRequired", lang));
+      return;
+    }
+
+    if (view === "register" && normalizedPin !== confirmPin.trim()) {
+      setError(lang === "sw" ? "PIN mbili hazifanani." : "The two PINs do not match.");
+      return;
+    }
+
+    if (view === "register" && !termsAccepted) {
+      setError(lang === "sw" ? "Kubali Masharti na Sera ya Faragha ili kuendelea." : "Accept the Terms and Privacy Policy to continue.");
       return;
     }
 
@@ -448,9 +481,9 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           <div className="mt-8 hidden max-w-2xl gap-4 sm:grid sm:grid-cols-[170px_1fr]">
             <div className="rounded-xl border border-white/15 bg-white/10 p-4 backdrop-blur">
               <BadgeDollarSign className="h-5 w-5 text-brand-100" />
-              <p className="mt-3 text-sm font-bold text-white">TZS 15,000/month</p>
+              <p className="mt-3 text-sm font-bold text-white">{lang === "sw" ? "Kuanzia TZS 15,000/mwezi" : "Plans from TZS 15,000/month"}</p>
               <p className="mt-1 text-xs leading-5 text-brand-100">
-                {lang === "sw" ? "Baada ya jaribio la bure." : "After the free trial."}
+                {lang === "sw" ? "AI Assistant ipo kwenye Pro: TZS 35,000/mwezi." : "AI Assistant is included with Pro: TZS 35,000/month."}
               </p>
             </div>
             <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/95 p-3 shadow-2xl shadow-black/20">
@@ -593,13 +626,15 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                 {view === "register" && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t("auth.yourName", lang)}</label>
+                      <label htmlFor="register-name" className="block text-sm font-medium text-gray-700 mb-1">{t("auth.yourName", lang)}</label>
                       <input
+                        id="register-name"
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="Mama Amina"
                         className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        autoComplete="name"
                         required
                       />
                     </div>
@@ -633,20 +668,26 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                     </div>
 
                     {role === "MERCHANT" && (
-                      <>
+                      <details className="rounded-lg border border-gray-200 p-3">
+                        <summary className="cursor-pointer text-sm font-medium text-gray-700">
+                          {lang === "sw" ? "Ongeza maelezo ya duka (hiari)" : "Add shop details (optional)"}
+                        </summary>
+                        <div className="mt-3 space-y-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t("auth.shopName", lang)}</label>
+                          <label htmlFor="register-shop-name" className="block text-sm font-medium text-gray-700 mb-1">{t("auth.shopName", lang)} ({lang === "sw" ? "hiari" : "optional"})</label>
                           <input
+                            id="register-shop-name"
                             type="text"
                             value={shopName}
                             onChange={(e) => setShopName(e.target.value)}
                             placeholder="Duka la Amina"
+                            autoComplete="organization"
                             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            {lang === "sw" ? "Jiji / Mji" : "City / Town"}
+                            {lang === "sw" ? "Jiji / Mji (hiari)" : "City / Town (optional)"}
                           </label>
                           <div className="relative">
                             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -655,6 +696,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                               value={shopLocation}
                               onChange={(e) => setShopLocation(e.target.value)}
                               placeholder="Dar es Salaam"
+                              autoComplete="address-level2"
                               className="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                             />
                           </div>
@@ -668,6 +710,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                             value={shopDistrict}
                             onChange={(e) => setShopDistrict(e.target.value)}
                             placeholder="Kariakoo"
+                            autoComplete="address-level3"
                             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />
                         </div>
@@ -689,17 +732,19 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                           </div>
+                          </div>
                         </div>
-                      </>
+                      </details>
                     )}
                   </>
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("auth.phone", lang)}</label>
+                  <label htmlFor="auth-phone" className="block text-sm font-medium text-gray-700 mb-1">{t("auth.phone", lang)}</label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
+                      id="auth-phone"
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
@@ -712,10 +757,11 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("auth.pin", lang)}</label>
+                  <label htmlFor="auth-pin" className="block text-sm font-medium text-gray-700 mb-1">{t("auth.pin", lang)}</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
+                      id="auth-pin"
                       type={showPin ? "text" : "password"}
                       value={pin}
                       onChange={(e) => setPin(e.target.value)}
@@ -730,12 +776,40 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                       type="button"
                       onClick={() => setShowPin(!showPin)}
                       aria-label={showPin ? "Hide PIN" : "Show PIN"}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 min-h-0"
+                      className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-gray-400"
                     >
                       {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
+
+                {view === "register" && (
+                  <>
+                    <div>
+                      <label htmlFor="auth-confirm-pin" className="block text-sm font-medium text-gray-700 mb-1">
+                        {lang === "sw" ? "Rudia PIN" : "Confirm PIN"}
+                      </label>
+                      <input
+                        id="auth-confirm-pin"
+                        type="password"
+                        value={confirmPin}
+                        onChange={(e) => setConfirmPin(e.target.value)}
+                        placeholder={lang === "sw" ? "Rudia PIN yako" : "Enter your PIN again"}
+                        maxLength={8}
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        required
+                      />
+                    </div>
+                    <label className="flex items-start gap-2 text-sm text-gray-600">
+                      <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="mt-1 h-4 w-4" />
+                      <span>
+                        {lang === "sw" ? "Ninakubali" : "I agree to the"} <Link href="/terms" className="font-semibold text-brand-700 underline">{lang === "sw" ? "Masharti" : "Terms"}</Link> {lang === "sw" ? "na" : "and"} <Link href="/privacy" className="font-semibold text-brand-700 underline">{lang === "sw" ? "Sera ya Faragha" : "Privacy Policy"}</Link>.
+                      </span>
+                    </label>
+                  </>
+                )}
 
                 <button
                   type="submit"

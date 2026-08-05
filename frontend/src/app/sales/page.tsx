@@ -146,6 +146,8 @@ export default function SalesPage() {
   const [paymentRef, setPaymentRef] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [creditDueDate, setCreditDueDate] = useState("");
+  const [amountTendered, setAmountTendered] = useState("");
   const [search, setSearch] = useState("");
   const [completing, setCompleting] = useState(false);
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
@@ -380,6 +382,7 @@ export default function SalesPage() {
   }
 
   const total = cart.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const changeDue = Number(amountTendered || 0) - total;
   const profit = canViewFinancials ? cart.reduce((sum, i) => sum + i.quantity * (i.unitPrice - (i.product.buyingPrice || 0)), 0) : 0;
 
   async function completeSale() {
@@ -401,6 +404,7 @@ export default function SalesPage() {
       paymentRef: paymentRef || undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
+      dueDate: paymentMethod === "CREDIT" && creditDueDate ? creditDueDate : undefined,
       clientReference,
     };
     try {
@@ -410,6 +414,8 @@ export default function SalesPage() {
       setPaymentRef("");
       setCustomerName("");
       setCustomerPhone("");
+      setCreditDueDate("");
+      setAmountTendered("");
       // Refresh products stock
       api.get<{ products: Product[] }>("/products")
         .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
@@ -438,6 +444,8 @@ export default function SalesPage() {
         setPaymentRef("");
         setCustomerName("");
         setCustomerPhone("");
+        setCreditDueDate("");
+        setAmountTendered("");
         toast(lang === "sw" ? "Mtandao haupo. Mauzo yamehifadhiwa kusubiri sync." : "Offline. Sale saved and will sync later.", "success");
       } else {
         toast(message, "error");
@@ -721,21 +729,21 @@ export default function SalesPage() {
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-brand-500" />
                     )}
 
+                    {paymentMethod === "CASH" && (
+                      <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <label className="grid gap-1 text-sm font-medium text-gray-700">
+                          <span>{lang === "sw" ? "Mteja ametoa (TZS)" : "Customer gave (TZS)"}</span>
+                          <input value={amountTendered} onChange={(e) => setAmountTendered(e.target.value)} type="number" min="0" inputMode="numeric" placeholder={lang === "sw" ? "Hiari" : "Optional"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                        </label>
+                        {amountTendered && <p className={`rounded-lg px-3 py-2 text-sm font-bold ${changeDue < 0 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{lang === "sw" ? "Chenji" : "Change"}: {formatTZS(Math.max(0, changeDue))}</p>}
+                      </div>
+                    )}
+
                     {paymentMethod === "CREDIT" && (
                       <div className="mb-3 grid gap-2 sm:grid-cols-2">
-                        <input
-                          value={customerName}
-                          onChange={(e) => setCustomerName(e.target.value)}
-                          placeholder={lang === "sw" ? "Jina la mteja (hiari)" : "Customer name (optional)"}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                        />
-                        <input
-                          value={customerPhone}
-                          onChange={(e) => setCustomerPhone(e.target.value)}
-                          placeholder={lang === "sw" ? "Simu ya mteja *" : "Customer phone *"}
-                          type="tel"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                        />
+                        <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Jina la mteja" : "Customer name"}</span><input value={customerName} onChange={(e) => setCustomerName(e.target.value)} autoComplete="name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
+                        <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Simu ya mteja" : "Customer phone"}</span><input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} type="tel" autoComplete="tel" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
+                        <label className="grid gap-1 text-sm font-medium text-gray-700 sm:col-span-2"><span>{lang === "sw" ? "Tarehe ya mwisho ya kulipa (dd/mm/yyyy)" : "Payment due date (dd/mm/yyyy)"}</span><input value={creditDueDate} onChange={(e) => setCreditDueDate(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
                       </div>
                     )}
 

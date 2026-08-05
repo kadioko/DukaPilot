@@ -3,6 +3,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import ServiceWorkerRegistrar from "@/components/ui/ServiceWorkerRegistrar";
 import MarketingTracker from "@/components/marketing/MarketingTracker";
+import HtmlLanguageSync from "@/components/ui/HtmlLanguageSync";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.dukapilot.com"),
@@ -44,6 +45,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: "/",
+    languages: {
+      "sw-TZ": "/?lang=sw",
+      en: "/?lang=en",
+    },
   },
   openGraph: {
     title: "DukaPilot - POS and Inventory App for Tanzanian Shops",
@@ -166,6 +171,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
         <ToastProvider>
+        <HtmlLanguageSync />
         <MarketingTracker />
         <ServiceWorkerRegistrar />
         {children}

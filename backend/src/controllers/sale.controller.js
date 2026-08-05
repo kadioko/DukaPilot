@@ -64,7 +64,7 @@ const list = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { items, paymentMethod = "CASH", paymentRef, customerName, customerPhone, note, saleMode, channel, clientReference } = req.body;
+  const { items, paymentMethod = "CASH", paymentRef, customerName, customerPhone, dueDate, note, saleMode, channel, clientReference } = req.body;
   const normalizedPaymentMethod = String(paymentMethod || "CASH").toUpperCase();
   const pricingTier = String(saleMode || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
   const saleChannel = String(channel || "POS").toUpperCase() === "ONLINE" ? "ONLINE" : "POS";
@@ -185,6 +185,7 @@ const create = asyncHandler(async (req, res) => {
           customerName: String(customerName || "").trim() || null,
           customerPhone,
           amount: totalAmount,
+          dueDate: dueDate ? new Date(dueDate) : null,
           note: note || `Credit sale #${newSale.id.slice(-6)}`,
           saleId: newSale.id,
           shopId,

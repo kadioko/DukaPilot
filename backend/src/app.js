@@ -76,8 +76,12 @@ const corsOptions = {
 };
 
 app.use(helmet({
-  // Allow same-origin framing for admin UI (change to false to block all iframes)
-  frameguard: { action: "sameorigin" },
+  frameguard: { action: "deny" },
+  strictTransportSecurity: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
   // Next.js frontend handles its own CSP; skip it here to avoid double-config
   contentSecurityPolicy: false,
 }));
@@ -137,6 +141,10 @@ app.use("/api/push", pushRoutes);
 app.use("/api/usage-events", usageEventRoutes);
 app.use("/api/barcodes", barcodeRoutes);
 app.use("/api/stock-counts", stockCountRoutes);
+
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "API route not found" });
+});
 
 if (Sentry.setupExpressErrorHandler) Sentry.setupExpressErrorHandler(app);
 

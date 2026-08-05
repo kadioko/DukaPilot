@@ -87,6 +87,7 @@ const saleCreateValidation = [
   body("paymentMethod").optional().custom((value) => PAYMENT_METHODS.includes(String(value).toUpperCase())).withMessage("Invalid payment method"),
   body("paymentRef").optional({ values: "falsy" }).trim().isLength({ max: 100 }).withMessage("Payment reference must be 100 characters or less"),
   body("customerPhone").optional({ values: "falsy" }).trim().isLength({ max: 30 }).withMessage("Customer phone must be 30 characters or less"),
+  body("dueDate").optional({ values: "falsy" }).isISO8601().withMessage("Due date must be a valid date"),
   body("note").optional({ values: "falsy" }).trim().isLength({ max: 500 }).withMessage("Note must be 500 characters or less"),
   handleValidationErrors,
 ];

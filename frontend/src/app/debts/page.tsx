@@ -15,6 +15,7 @@ interface Debt {
   status: "OPEN" | "PARTIAL" | "PAID" | "CANCELLED";
   dueDate: string | null;
   note: string | null;
+  createdAt: string;
   payments?: Array<{
     id: string;
     amount: number;
@@ -35,6 +36,20 @@ export default function DebtsPage() {
   const [paymentDrafts, setPaymentDrafts] = useState<Record<string, string>>({});
   const [assistantPrefill, setAssistantPrefill] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [shopName, setShopName] = useState("DukaPilot");
+
+  function whatsappNumber(phone: string) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("0")) return `255${digits.slice(1)}`;
+    if (digits.startsWith("255")) return digits;
+    return digits;
+  }
+
+  function debtAge(createdAt: string) {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000));
+    return lang === "sw" ? `Imewekwa siku ${days} zilizopita` : `Opened ${days} day${days === 1 ? "" : "s"} ago`;
+  }
 
   async function load() {
     setLoading(true);
@@ -49,6 +64,9 @@ export default function DebtsPage() {
 
   useEffect(() => {
     load().catch(console.error);
+    api.get<{ settings: { shop?: { name?: string } } }>("/settings", lang)
+      .then((data) => setShopName(data.settings.shop?.name || "DukaPilot"))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -72,6 +90,7 @@ export default function DebtsPage() {
     event.preventDefault();
     await api.post("/debts", { ...form, amount: Number(form.amount) }, lang);
     setForm({ customerName: "", customerPhone: "", amount: "", dueDate: "", note: "" });
+    setShowForm(false);
     setAssistantPrefill(false);
     await load();
   }
@@ -93,8 +112,13 @@ export default function DebtsPage() {
               {lang === "sw" ? "Fuatilia wateja waliokopa na malipo yao." : "Track customer credit and repayments."}
             </p>
           </div>
-          <div className="rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-900">
-            <strong>{formatTZS(summary.totalOwed)}</strong> {lang === "sw" ? "bado kulipwa" : "still owed"} - {summary.openCount}
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-900">
+              <strong>{formatTZS(summary.totalOwed)}</strong> {lang === "sw" ? "bado kulipwa kutoka kwa wadaiwa" : "still owed across open debts"} ({summary.openCount})
+            </div>
+            <button type="button" onClick={() => setShowForm((open) => !open)} className="rounded-lg bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">
+              {showForm ? (lang === "sw" ? "Funga" : "Close") : (lang === "sw" ? "Ongeza deni" : "Add debt")}
+            </button>
           </div>
         </div>
 
@@ -109,16 +133,14 @@ export default function DebtsPage() {
           </div>
         )}
 
-        <form onSubmit={addDebt} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-6">
-          <input className={`${INPUT} md:col-span-2`} placeholder={lang === "sw" ? "Jina la mteja" : "Customer name"} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
-          <input className={`${INPUT} md:col-span-2`} required placeholder={lang === "sw" ? "Simu" : "Phone"} value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} />
-          <input className={INPUT} required type="number" min="1" inputMode="numeric" placeholder={lang === "sw" ? "Kiasi" : "Amount"} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-          <input className={INPUT} type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
-          <input className={`${INPUT} md:col-span-4`} placeholder={lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-          <button className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 md:col-span-2">
-            {lang === "sw" ? "Ongeza" : "Add"}
-          </button>
-        </form>
+        {showForm && <form onSubmit={addDebt} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-6">
+          <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-2"><span>{lang === "sw" ? "Jina la mteja" : "Customer name"}</span><input className={INPUT} required autoComplete="name" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
+          <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-2"><span>{lang === "sw" ? "Simu ya mteja" : "Customer phone"}</span><input className={INPUT} required type="tel" inputMode="tel" autoComplete="tel" value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} /></label>
+          <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><input className={INPUT} required type="number" min="1" inputMode="numeric" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
+          <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Tarehe ya mwisho (dd/mm/yyyy)" : "Due date (dd/mm/yyyy)"}</span><input className={INPUT} type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label>
+          <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-4"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><input className={INPUT} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
+          <button className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 md:col-span-2">{lang === "sw" ? "Hifadhi deni" : "Save debt"}</button>
+        </form>}
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           {loading ? (
@@ -131,7 +153,7 @@ export default function DebtsPage() {
               <div key={debt.id} className="grid gap-3 border-b border-gray-100 p-4 last:border-b-0 lg:grid-cols-[1fr_auto_auto] lg:items-center">
                 <div>
                   <p className="font-semibold text-gray-950">{debt.customerName || debt.customerPhone}</p>
-                  <p className="text-sm text-gray-500">{debt.customerPhone} - {debt.status}</p>
+                  <p className="text-sm text-gray-500">{debt.customerPhone} - {debt.status} - {debtAge(debt.createdAt)}</p>
                   {debt.note && <p className="mt-1 text-xs text-gray-500">{debt.note}</p>}
                   {debt.payments && debt.payments.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -171,7 +193,7 @@ export default function DebtsPage() {
                       {lang === "sw" ? "Lipa yote" : "All paid"}
                     </button>
                     <a
-                      href={`https://wa.me/${debt.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(lang === "sw" ? `Habari, kumbusho la deni lako ${formatTZS(balance)}.` : `Hello, reminder for your outstanding balance ${formatTZS(balance)}.`)}`}
+                      href={`https://wa.me/${whatsappNumber(debt.customerPhone)}?text=${encodeURIComponent(lang === "sw" ? `Habari ${debt.customerName || ""}, hii ni kumbukumbu kutoka ${shopName}. Deni lako ni ${formatTZS(balance)}.` : `Hello ${debt.customerName || ""}, this is a reminder from ${shopName}. Your outstanding balance is ${formatTZS(balance)}.`)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-100 px-3 py-3 text-sm font-semibold text-green-700 hover:bg-green-200 sm:col-span-3"

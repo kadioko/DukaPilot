@@ -67,7 +67,7 @@ const overview = asyncHandler(async (req, res) => {
   const salesWhere = from ? { shopId, createdAt: { gte: from } } : { shopId };
   const activeProductsWhere = { shopId, isActive: true };
 
-  const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCount, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
+  const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
     prisma.shop.findUnique({ where: { id: shopId }, select: { plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true } }),
     prisma.sale.aggregate({
       where: salesWhere,
@@ -85,12 +85,6 @@ const overview = asyncHandler(async (req, res) => {
       select: { id: true, name: true, currentStock: true, minimumStock: true, unit: true },
       orderBy: [{ currentStock: "asc" }, { name: "asc" }],
     }),
-    prisma.product.count({
-      where: {
-        ...activeProductsWhere,
-        currentStock: { gt: 0, lte: 5 },
-      },
-    }),
     prisma.product.count({ where: { ...activeProductsWhere, currentStock: 0 } }),
     prisma.order.count({ where: { shopId, status: { in: ["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY"] } } }),
     prisma.sale.findMany({
@@ -101,7 +95,9 @@ const overview = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  const lowStockProducts = lowStockCandidates.filter((p) => p.currentStock <= p.minimumStock);
+  const lowStockProducts = lowStockCandidates.filter((p) => p.currentStock > 0 && p.currentStock <= p.minimumStock);
+  const outOfStockProducts = lowStockCandidates.filter((p) => p.currentStock === 0);
+  const needsAttentionProducts = [...outOfStockProducts, ...lowStockProducts];
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const dailySales = await prisma.sale.findMany({
@@ -185,7 +181,7 @@ const overview = asyncHandler(async (req, res) => {
       salesCount,
       pendingOrders,
       totalProducts,
-      lowStockCount: Math.max(lowStockCount, lowStockProducts.length),
+      lowStockCount: lowStockProducts.length,
       outOfStockCount,
     },
     allTimeSummary: {
@@ -197,7 +193,7 @@ const overview = asyncHandler(async (req, res) => {
       salesCount: historySales.length,
       firstSaleAt,
     },
-    lowStockAlerts: lowStockProducts.map((p) => ({
+    lowStockAlerts: needsAttentionProducts.map((p) => ({
       id: p.id,
       name: p.name,
       currentStock: p.currentStock,
