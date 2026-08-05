@@ -1,6 +1,9 @@
 const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { normalizePhone, phoneLookupValues } = require("../lib/phone");
+
+const DEFAULT_STAFF_PIN = "1234";
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -33,19 +36,16 @@ function boolValue(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function normalizePhone(value) {
-  return String(value || "").replace(/[\s()-]/g, "").trim();
-}
-
 function validatePin(pin) {
   return /^\d{4,8}$/.test(String(pin || "").trim());
 }
 
 async function phoneConflict(phone, excludeStaffId = null) {
   if (!phone) return false;
+  const phoneValues = phoneLookupValues(phone);
   const [user, staff] = await Promise.all([
-    prisma.user.findUnique({ where: { phone }, select: { id: true } }),
-    prisma.staffMember.findUnique({ where: { phone }, select: { id: true } }),
+    prisma.user.findFirst({ where: { phone: { in: phoneValues } }, select: { id: true } }),
+    prisma.staffMember.findFirst({ where: { phone: { in: phoneValues } }, select: { id: true } }),
   ]);
   return Boolean(user || (staff && staff.id !== excludeStaffId));
 }
@@ -65,18 +65,19 @@ const create = asyncHandler(async (req, res) => {
   const name = String(req.body.name || "").trim();
   const role = String(req.body.role || "CASHIER").toUpperCase();
   const phone = normalizePhone(req.body.phone);
-  const pin = String(req.body.pin || "").trim();
+  const pin = String(req.body.pin || DEFAULT_STAFF_PIN).trim();
   if (!name) return res.status(400).json({ error: "Staff name is required" });
+  if (!phone) return res.status(400).json({ error: "Staff phone is required for login" });
   if (!ROLES.has(role)) return res.status(400).json({ error: "Invalid staff role" });
-  if (pin && (!phone || !validatePin(pin))) return res.status(400).json({ error: "Staff login requires a phone and 4 to 8 digit PIN" });
+  if (!validatePin(pin)) return res.status(400).json({ error: "Staff PIN must be 4 to 8 digits" });
   if (await phoneConflict(phone)) return res.status(409).json({ error: "This phone number already belongs to another DukaPilot login" });
 
   const defaults = permissionsFor(role);
   const staff = await prisma.staffMember.create({
     data: {
       name,
-      phone: phone || null,
-      pin: pin ? await bcrypt.hash(pin, 10) : null,
+      phone,
+      pin: await bcrypt.hash(pin, 10),
       role,
       canSell: boolValue(req.body.canSell, defaults.canSell),
       canManageStock: boolValue(req.body.canManageStock, defaults.canManageStock),

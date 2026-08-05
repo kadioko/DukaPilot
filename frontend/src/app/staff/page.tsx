@@ -20,6 +20,12 @@ interface StaffMember {
 }
 
 const roles = ["MANAGER", "CASHIER", "STOCK_CLERK", "OWNER"];
+const roleGuides = {
+  OWNER: { en: "Full shop access, including staff, reports, stock, sales, and expenses.", sw: "Anaweza kila kitu: staff, ripoti, stock, mauzo na matumizi." },
+  MANAGER: { en: "Runs day-to-day operations with the same default permissions as Owner.", sw: "Anaendesha shughuli za kila siku akiwa na ruhusa zote za msingi." },
+  CASHIER: { en: "Records sales and handles the POS. Cannot view reports, stock, staff, or expenses.", sw: "Anauza kwa POS. Haoni ripoti, stock, staff au matumizi." },
+  STOCK_CLERK: { en: "Manages inventory, receiving, and stock counts. Cannot sell or view finances.", sw: "Anasimamia inventory, kupokea bidhaa na stock count. Hauzi wala haoni fedha." },
+};
 
 export default function StaffPage() {
   const lang = useLang();
@@ -67,10 +73,14 @@ export default function StaffPage() {
           </p>
         </div>
 
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {roles.map((role) => <div key={role} className="rounded-lg border border-gray-200 bg-white p-3"><p className="text-xs font-bold text-brand-700">{role.replace("_", " ")}</p><p className="mt-1 text-xs leading-5 text-gray-600">{lang === "sw" ? roleGuides[role as keyof typeof roleGuides].sw : roleGuides[role as keyof typeof roleGuides].en}</p></div>)}
+        </div>
+
         <form onSubmit={addStaff} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-5">
           <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required placeholder={lang === "sw" ? "Jina" : "Name"} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder={lang === "sw" ? "Simu" : "Phone"} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="numeric" maxLength={8} placeholder={lang === "sw" ? "PIN ya kuingia" : "Login PIN"} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} />
+          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required inputMode="tel" placeholder={lang === "sw" ? "Simu (07... au +255...)" : "Phone (07... or +255...)"} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="numeric" maxLength={8} placeholder={lang === "sw" ? "PIN (chaguo, 1234)" : "PIN (optional, 1234)"} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} />
           <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select>
@@ -78,6 +88,7 @@ export default function StaffPage() {
             {lang === "sw" ? "Ongeza" : "Add"}
           </button>
         </form>
+        <p className="-mt-3 text-xs text-gray-500">{lang === "sw" ? "PIN ikiachwa wazi, staff ataingia kwa 1234 na anaweza kuibadilisha kwenye Settings baada ya kuingia." : "When the PIN is blank, the staff member logs in with 1234 and can change it in Settings after signing in."}</p>
 
         <div className="grid gap-3">
           {staff.length === 0 ? (

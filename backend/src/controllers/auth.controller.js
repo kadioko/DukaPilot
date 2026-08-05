@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
 const { issueOtp, verifyOtp } = require("../services/otp.service");
 const { activePlan, canUseFeature, featureSnapshot } = require("../lib/entitlements");
+const { normalizePhone, phoneLookupValues, isValidPhone } = require("../lib/phone");
 
 const VALID_ROLES = new Set(["MERCHANT", "SUPPLIER"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
@@ -14,10 +15,6 @@ const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
 function asyncHandler(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
-}
-
-function normalizePhone(value) {
-  return String(value || "").replace(/[\s()-]/g, "").trim();
 }
 
 function normalizeText(value) {
@@ -36,11 +33,20 @@ function normalizeAttribution(value) {
 }
 
 function validatePhone(phone) {
-  return /^\+?[1-9]\d{8,14}$/.test(phone);
+  return isValidPhone(phone);
 }
 
 function validatePin(pin) {
   return /^\d{4,8}$/.test(pin);
+}
+
+function findByPhone(model, rawPhone) {
+  const phone = normalizePhone(rawPhone);
+  if (typeof model.findFirst === "function") {
+    return model.findFirst({ where: { phone: { in: phoneLookupValues(rawPhone) } } });
+  }
+  // Keeps minimal test doubles and older integrations compatible.
+  return model.findUnique({ where: { phone } });
 }
 
 function getCookieOptions(maxAge) {
@@ -174,8 +180,8 @@ const register = asyncHandler(async (req, res) => {
   }
 
   const [existing, existingStaff] = await Promise.all([
-    prisma.user.findUnique({ where: { phone } }),
-    prisma.staffMember.findUnique({ where: { phone } }),
+    findByPhone(prisma.user, req.body.phone),
+    findByPhone(prisma.staffMember, req.body.phone),
   ]);
   if (existing || existingStaff) {
     return res.status(409).json({ error: "Phone number already registered" });
@@ -243,7 +249,8 @@ const login = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "PIN must be 4 to 8 digits" });
   }
 
-  const user = await prisma.user.findUnique({ where: { phone } });
+  const phoneValues = phoneLookupValues(req.body.phone);
+  const user = await findByPhone(prisma.user, req.body.phone);
   let staff = null;
   let accountUser = user;
 
@@ -251,8 +258,8 @@ const login = asyncHandler(async (req, res) => {
     const match = await bcrypt.compare(pin, user.pin);
     if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
   } else {
-    staff = await prisma.staffMember.findUnique({
-      where: { phone },
+    staff = await prisma.staffMember.findFirst({
+      where: { phone: { in: phoneValues } },
       include: { shop: { include: { user: true } } },
     });
     if (!staff || !staff.isActive || !staff.pin) return res.status(401).json({ error: "Invalid phone or PIN" });
@@ -350,7 +357,7 @@ const requestOtp = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Enter a valid phone number" });
   }
 
-  const user = await prisma.user.findUnique({ where: { phone } });
+  const user = await findByPhone(prisma.user, req.body.phone);
   // Don't reveal whether phone exists — always return success
   if (user) {
     try {
@@ -389,7 +396,7 @@ const verifyOtpAndResetPin = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: err.message || "Invalid or expired OTP" });
   }
 
-  const user = await prisma.user.findUnique({ where: { phone } });
+  const user = await findByPhone(prisma.user, req.body.phone);
   if (!user) return res.status(404).json({ error: "User not found" });
 
   const hashedPin = await bcrypt.hash(newPin, 10);
