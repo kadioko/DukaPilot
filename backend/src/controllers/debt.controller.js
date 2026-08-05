@@ -1,12 +1,9 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { normalizePhone } = require("../lib/phone");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-}
-
-function normalizePhone(value) {
-  return String(value || "").replace(/[\s()-]/g, "").trim();
 }
 
 function nextStatus(amount, amountPaid) {
@@ -43,6 +40,30 @@ const list = asyncHandler(async (req, res) => {
       totalOwed: (summary._sum.amount || 0) - (summary._sum.amountPaid || 0),
     },
   });
+});
+
+const customers = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const debts = await prisma.debt.findMany({
+    where: { shopId },
+    select: { customerName: true, customerPhone: true, amount: true, amountPaid: true, status: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const customerMap = new Map();
+  for (const debt of debts) {
+    const phone = normalizePhone(debt.customerPhone);
+    if (!phone) continue;
+    const existing = customerMap.get(phone) || {
+      name: debt.customerName || "",
+      phone,
+      openBalance: 0,
+      lastSaleAt: debt.createdAt,
+    };
+    if (!existing.name && debt.customerName) existing.name = debt.customerName;
+    if (["OPEN", "PARTIAL"].includes(debt.status)) existing.openBalance += debt.amount - debt.amountPaid;
+    customerMap.set(phone, existing);
+  }
+  res.json({ customers: Array.from(customerMap.values()) });
 });
 
 const create = asyncHandler(async (req, res) => {
@@ -163,4 +184,4 @@ const update = asyncHandler(async (req, res) => {
   res.json({ debt: updated });
 });
 
-module.exports = { list, create, recordPayment, update };
+module.exports = { list, customers, create, recordPayment, update };

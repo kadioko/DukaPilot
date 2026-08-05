@@ -45,7 +45,8 @@ async function sendSms(phone, message) {
   });
   if (senderId) body.set("from", senderId);
 
-  const response = await fetch("https://api.africastalking.com/version1/messaging", {
+  const host = username === "sandbox" ? "https://api.sandbox.africastalking.com" : "https://api.africastalking.com";
+  const response = await fetch(`${host}/version1/messaging`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -76,10 +77,14 @@ async function sendSms(phone, message) {
 async function issueOtp(phone) {
   cleanExpired();
   const code = generateCode();
-  otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
-
   const message = `Nambari yako ya DukaPilot ni: ${code}. Inatumika kwa dakika 10. / Your DukaPilot code: ${code}. Valid 10 mins.`;
-  return sendSms(phone, message);
+  const result = await sendSms(phone, message);
+  if (result.sent) otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+  return result;
+}
+
+function isSmsConfigured() {
+  return Boolean(process.env.AT_API_KEY && process.env.AT_USERNAME && process.env.AT_USERNAME !== "sandbox");
 }
 
 /**
@@ -106,4 +111,4 @@ function verifyOtp(phone, code) {
   return true;
 }
 
-module.exports = { issueOtp, verifyOtp };
+module.exports = { issueOtp, verifyOtp, isSmsConfigured };

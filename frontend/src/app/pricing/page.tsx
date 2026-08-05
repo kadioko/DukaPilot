@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Star, Zap, Shield, Phone } from "lucide-react";
-import LogoMark from "@/components/brand/LogoMark";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
+import PublicHeader from "@/components/marketing/PublicHeader";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -84,21 +84,25 @@ const competitors = [
     name: "DukaPilot",
     price: { sw: "TZS 15,000/mwezi", en: "TZS 15,000/month" },
     highlight: true,
+    source: "/pricing",
   },
   {
     name: "QuickBooks POS",
-    price: { sw: "TZS 150,000+/mwezi", en: "TZS 150,000+/month" },
+    price: { sw: "Ilisitishwa 3 Okt 2023", en: "Discontinued 3 Oct 2023" },
     highlight: false,
+    source: "https://quickbooks.intuit.com/learn-support/en-us/help-article/accounting-bookkeeping/activate-merchant-services-quickbooks-point-sale/L5v8QFwdY_US_en_US",
   },
   {
-    name: "Tally",
-    price: { sw: "TZS 80,000+/mwezi", en: "TZS 80,000+/month" },
+    name: "TallyPrime International",
+    price: { sw: "USD 630 mara moja", en: "USD 630 one-time" },
     highlight: false,
+    source: "https://tallysolutions.com/global/buy-tally/",
   },
   {
     name: "iKhokha",
-    price: { sw: "TZS 50,000+/mwezi", en: "TZS 50,000+/month" },
+    price: { sw: "Hakuna ada ya mwezi; vifaa/miamala (Afrika Kusini)", en: "No monthly fee; hardware/transaction fees (South Africa)" },
     highlight: false,
+    source: "https://www.ikhokha.com/pricing",
   },
 ];
 
@@ -176,39 +180,7 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white">
-      <nav className="px-4 py-4 flex flex-wrap items-center justify-between gap-3 max-w-5xl mx-auto">
-        <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold text-brand-700">
-          <LogoMark className="h-9 w-9 rounded-xl" />
-          DukaPilot
-        </Link>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
-            <Link
-              href="/pricing?lang=sw"
-              onClick={() => updateLanguage("sw")}
-              className={`px-2 py-1 rounded-md text-xs font-semibold min-h-0 ${lang === "sw" ? "bg-brand-600 text-white" : "text-gray-500 hover:text-gray-900"}`}
-            >
-              {t("app.swahili", lang)}
-            </Link>
-            <Link
-              href="/pricing?lang=en"
-              onClick={() => updateLanguage("en")}
-              className={`px-2 py-1 rounded-md text-xs font-semibold min-h-0 ${lang === "en" ? "bg-brand-600 text-white" : "text-gray-500 hover:text-gray-900"}`}
-            >
-              {t("app.english", lang)}
-            </Link>
-          </div>
-          <Link href="/" className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5">
-            {copy.home[lang]}
-          </Link>
-          <Link href="/contact" className="hidden sm:inline text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5">
-            {lang === "sw" ? "Mawasiliano" : "Contact"}
-          </Link>
-          <Link href="/" className="text-sm bg-brand-600 text-white px-4 py-1.5 rounded-lg hover:bg-brand-700">
-            {copy.signIn[lang]}
-          </Link>
-        </div>
-      </nav>
+      <PublicHeader lang={lang} onLanguageChange={updateLanguage} />
 
       <div className="max-w-5xl mx-auto px-4 pb-16">
         <div className="text-center py-12">
@@ -319,7 +291,7 @@ export default function PricingPage() {
                 {competitors.map((competitor) => (
                   <tr key={competitor.name} className={`border-b border-gray-50 ${competitor.highlight ? "bg-brand-50" : ""}`}>
                     <td className="py-2 pr-4 font-medium text-gray-900">
-                      {competitor.name}
+                      <a href={competitor.source} target={competitor.source.startsWith("http") ? "_blank" : undefined} rel={competitor.source.startsWith("http") ? "noreferrer" : undefined} className="underline decoration-gray-300 underline-offset-2 hover:text-brand-700">{competitor.name}</a>
                       {competitor.highlight && (
                         <span className="ml-2 text-xs bg-brand-600 text-white px-1.5 py-0.5 rounded">{copy.us[lang]}</span>
                       )}
@@ -338,6 +310,7 @@ export default function PricingPage() {
               </tbody>
             </table>
           </div>
+          <p className="mt-3 text-xs leading-5 text-gray-500">{lang === "sw" ? "Vyanzo rasmi vimekaguliwa 5 Agosti 2026. Bei za fedha za kigeni, VAT, vifaa na ada za miamala hazijabadilishwa kuwa TZS; thibitisha na muuzaji kabla ya kununua." : "Official sources checked 5 August 2026. Foreign-currency prices, VAT, hardware, and transaction fees are not converted to TZS; confirm with the vendor before purchase."}</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 mb-10">
@@ -411,7 +384,7 @@ export default function PricingPage() {
           <Link href="/about" className="hover:text-brand-700">{lang === "sw" ? "Kuhusu" : "About"}</Link>
           <Link href="/contact" className="hover:text-brand-700">{lang === "sw" ? "Mawasiliano" : "Contact"}</Link>
           <Link href="/help" className="hover:text-brand-700">{lang === "sw" ? "Msaada" : "Help"}</Link>
-          <Link href="/demo" className="hover:text-brand-700">Demo</Link>
+          <Link prefetch={false} href="/demo" className="hover:text-brand-700">{lang === "sw" ? "Onyesho" : "Demo"}</Link>
           <Link href="/terms" className="hover:text-brand-700">{lang === "sw" ? "Masharti" : "Terms"}</Link>
           <Link href="/privacy" className="hover:text-brand-700">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
         </div>

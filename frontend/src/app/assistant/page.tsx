@@ -10,7 +10,7 @@ import { ArrowRight, CheckCircle2, ClipboardCopy, HandCoins, Package, ReceiptTex
 
 interface DashboardData {
   summary: { totalSales: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
-  lowStockAlerts?: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string }>;
+  lowStockAlerts?: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string; buyingPrice?: number; sellingPrice?: number }>;
   topProducts?: Array<{ product?: { name: string; unit?: string }; totalQuantity?: number; totalRevenue?: number }>;
 }
 
@@ -260,7 +260,22 @@ function buildRecommendations({
   lang: "sw" | "en";
 }): Recommendation[] {
   const items: Recommendation[] = [];
-  const lowStock = dashboard?.lowStockAlerts || [];
+  const salesByProduct = new Map((allTime?.topProducts || []).map((item) => [item.product?.name || "", {
+    quantity: item.totalQuantity || 0,
+    revenue: item.totalRevenue || 0,
+  }]));
+  const recentSalesByProduct = new Map((dashboard?.topProducts || []).map((item) => [item.product?.name || "", item.totalQuantity || 0]));
+  const lowStock = [...(dashboard?.lowStockAlerts || [])].sort((a, b) => {
+    const aSales = salesByProduct.get(a.name) || { quantity: 0, revenue: 0 };
+    const bSales = salesByProduct.get(b.name) || { quantity: 0, revenue: 0 };
+    const score = (product: typeof a, sales: { quantity: number; revenue: number }) =>
+      (product.currentStock === 0 ? 1000000 : 0) +
+      sales.revenue +
+      (sales.quantity * 1000) +
+      ((recentSalesByProduct.get(product.name) || 0) * 5000) +
+      Math.max(0, (product.sellingPrice || 0) - (product.buyingPrice || 0)) * 10;
+    return score(b, bSales) - score(a, aSales);
+  });
   const mostUrgentStock = lowStock[0];
   const todaySalesCount = dashboard?.summary.salesCount || 0;
   const hasBusinessHistory = Boolean((allTime?.summary.salesCount || 0) > 0 || (allTime?.summary.totalSales || 0) > 0);
@@ -309,22 +324,25 @@ function buildRecommendations({
 
   if (mostUrgentStock) {
     const outOfStock = mostUrgentStock.currentStock === 0;
+    const productSales = salesByProduct.get(mostUrgentStock.name) || { quantity: 0, revenue: 0 };
+    const marginPerUnit = Math.max(0, (mostUrgentStock.sellingPrice || 0) - (mostUrgentStock.buyingPrice || 0));
+    const stockRank = Math.min(100, 78 + (outOfStock ? 12 : 0) + (productSales.revenue > 0 ? 5 : 0) + (marginPerUnit > 0 ? 3 : 0));
     items.push({
       id: "stock",
-      rank: 100,
+      rank: stockRank,
       icon: Package,
       tone: "bg-red-50 text-red-700",
       title: lang === "sw"
         ? (outOfStock ? `${mostUrgentStock.name} imeisha - agiza leo` : `Agiza ${mostUrgentStock.name} kabla haijaisha`)
         : (outOfStock ? `${mostUrgentStock.name} is out of stock - reorder today` : `Restock ${mostUrgentStock.name} before it runs out`),
       body: lang === "sw"
-        ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`
-        : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`,
+        ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Imeuza ${productSales.quantity} na kuleta ${formatTZS(productSales.revenue)}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`
+        : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. It sold ${productSales.quantity} units for ${formatTZS(productSales.revenue)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`,
       action: lang === "sw" ? "Fungua Hifadhi ya Bidhaa na agiza tena" : "Open inventory and reorder",
       href: `/inventory?search=${encodeURIComponent(mostUrgentStock.name)}&action=restock`,
       why: lang === "sw"
-        ? "Stock ikiisha, mauzo husimama na mteja huenda kwa duka lingine."
-        : "When stock runs out, sales stop and customers move to another shop.",
+        ? `Kipaumbele kinatumia stock, kasi ya mauzo, mapato na faida ya ${formatTZS(marginPerUnit)} kwa unit.`
+        : `Priority combines stock, sales velocity, revenue, and ${formatTZS(marginPerUnit)} margin per unit.`,
       impact: lang === "sw"
         ? (outOfStock ? "Rudisha bidhaa inayouzwa ili mauzo yaanze tena." : "Kulinda mauzo ya bidhaa inayohitajika kabla wiki haijaisha.")
         : (outOfStock ? "Restore a sellable item so sales can resume." : "Protect sales from a needed item before the week ends."),

@@ -64,7 +64,7 @@ const overview = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const { period = "today" } = req.query;
   const from = startOf(period);
-  const salesWhere = from ? { shopId, createdAt: { gte: from } } : { shopId };
+  const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from } } : { shopId, status: "COMPLETED" };
   const activeProductsWhere = { shopId, isActive: true };
 
   const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
@@ -82,7 +82,7 @@ const overview = asyncHandler(async (req, res) => {
     prisma.product.count({ where: activeProductsWhere }),
     prisma.product.findMany({
       where: activeProductsWhere,
-      select: { id: true, name: true, currentStock: true, minimumStock: true, unit: true },
+      select: { id: true, name: true, currentStock: true, minimumStock: true, unit: true, buyingPrice: true, sellingPrice: true },
       orderBy: [{ currentStock: "asc" }, { name: "asc" }],
     }),
     prisma.product.count({ where: { ...activeProductsWhere, currentStock: 0 } }),
@@ -101,7 +101,7 @@ const overview = asyncHandler(async (req, res) => {
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const dailySales = await prisma.sale.findMany({
-    where: { shopId, createdAt: { gte: sevenDaysAgo } },
+    where: { shopId, status: "COMPLETED", createdAt: { gte: sevenDaysAgo } },
     select: { totalAmount: true, profit: true, createdAt: true },
   });
 
@@ -122,7 +122,7 @@ const overview = asyncHandler(async (req, res) => {
 
   const topProducts = await prisma.saleItem.groupBy({
     by: ["productId"],
-    where: from ? { sale: { shopId, createdAt: { gte: from } } } : { sale: { shopId } },
+    where: from ? { sale: { shopId, status: "COMPLETED", createdAt: { gte: from } } } : { sale: { shopId, status: "COMPLETED" } },
     _sum: { quantity: true, totalPrice: true },
     orderBy: { _sum: { totalPrice: "desc" } },
     take: 5,
@@ -144,7 +144,7 @@ const overview = asyncHandler(async (req, res) => {
 
   const [historySales, allExpenseAgg] = await Promise.all([
     prisma.sale.findMany({
-      where: { shopId },
+      where: { shopId, status: "COMPLETED" },
       select: { totalAmount: true, profit: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
@@ -199,6 +199,8 @@ const overview = asyncHandler(async (req, res) => {
       currentStock: p.currentStock,
       minimumStock: p.minimumStock,
       unit: p.unit,
+      buyingPrice: p.buyingPrice,
+      sellingPrice: p.sellingPrice,
     })),
     recentSales,
     dailyChart: Object.values(dailyMap),
@@ -245,7 +247,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
               COALESCE(SUM(si.quantity), 0)::bigint AS \"unitsSold\"
        FROM sales s
        JOIN sale_items si ON si.\"saleId\" = s.id
-       WHERE s.\"shopId\" = $1 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3`,
+       WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3`,
       shopId, range.from, range.to,
     ),
     prisma.$queryRawUnsafe(
@@ -255,7 +257,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
               COALESCE(SUM(si.\"totalPrice\" - (si.\"buyingPrice\" * si.quantity)), 0)::bigint AS profit
        FROM sales s
        JOIN sale_items si ON si.\"saleId\" = s.id
-       WHERE s.\"shopId\" = $1 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3
+       WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3
        GROUP BY ${bucket}
        ORDER BY ${bucket} ASC`,
       shopId, range.from, range.to,

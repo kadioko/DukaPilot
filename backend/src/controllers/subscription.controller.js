@@ -105,7 +105,7 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
       _count: {
         select: {
           products: { where: { isActive: true } },
-          sales: true,
+          sales: { where: { status: "COMPLETED" } },
           orders: true,
         },
       },
@@ -120,6 +120,7 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
         by: ["shopId"],
         where: {
           shopId: { in: shopIds },
+          status: "COMPLETED",
         },
         _min: { createdAt: true },
         _max: { createdAt: true },

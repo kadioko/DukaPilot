@@ -16,6 +16,7 @@ import {
   Trash2,
   ScanLine,
   Printer,
+  MoreVertical,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
@@ -80,6 +81,7 @@ export default function InventoryPage() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [actionMenuProductId, setActionMenuProductId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "", sku: "", unit: "pcs", buyingPrice: "", sellingPrice: "",
     wholesalePrice: "", wholesaleMinQty: "",
@@ -419,40 +421,36 @@ export default function InventoryPage() {
                         </div>
                         {canViewFinancials && <div>
                           <p className="text-xs text-gray-400">{t("inventory.marginLabel", lang)}</p>
-                          <p className="text-sm font-medium text-green-600">{margin(p)}%</p>
+                          <p className={`text-sm font-medium ${p.sellingPrice - p.buyingPrice < 0 ? "text-red-600" : "text-green-600"}`}>{formatTZS(p.sellingPrice - p.buyingPrice)} <span className="text-xs">({margin(p)}%)</span></p>
                         </div>}
                       </div>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      {p.barcode && <button onClick={() => setLabelProduct(p)} aria-label={`Print label for ${p.name}`} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100" title="Print barcode"><Printer className="h-4 w-4" /></button>}
+                    <div className="relative flex flex-shrink-0 items-start gap-2">
                       <button
                         onClick={() => {
                           setAdjustProduct(p);
                           setAdjustForm({ type: "IN", quantity: "", note: "" });
                         }}
                         aria-label={`${t("inventory.adjustStock", lang)} ${p.name}`}
-                        className="flex h-11 w-11 items-center justify-center text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors min-h-0"
+                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-brand-50 px-3 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100"
                         title={t("inventory.adjustStock", lang)}
                       >
                         <ArrowUp className="w-4 h-4" />
+                        {lang === "sw" ? "Ongeza stock" : "Restock"}
                       </button>
                       <button
-                        onClick={() => openEdit(p)}
-                        aria-label={`${t("inventory.editTitle", lang)} ${p.name}`}
-                        className="flex h-11 w-11 items-center justify-center text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-h-0"
-                        title={t("common.edit", lang)}
+                        onClick={() => setActionMenuProductId((current) => current === p.id ? null : p.id)}
+                        aria-label={`${lang === "sw" ? "Vitendo vya" : "Actions for"} ${p.name}`}
+                        aria-expanded={actionMenuProductId === p.id}
+                        className="flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        <MoreVertical className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => setDeleteProduct(p)}
-                        disabled={saving}
-                        aria-label={`${t("inventory.deleteProduct", lang)} ${p.name}`}
-                        className="flex h-11 w-11 items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 min-h-0"
-                        title={t("inventory.deleteProduct", lang)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {actionMenuProductId === p.id && <div className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
+                        {p.barcode && <button onClick={() => { setLabelProduct(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Printer className="h-4 w-4" />{lang === "sw" ? "Chapisha lebo" : "Print label"}</button>}
+                        <button onClick={() => { openEdit(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Edit2 className="h-4 w-4" />{t("common.edit", lang)}</button>
+                        <button onClick={() => { setDeleteProduct(p); setActionMenuProductId(null); }} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-4 w-4" />{t("inventory.deleteProduct", lang)}</button>
+                      </div>}
                     </div>
                   </div>
                 </div>
@@ -486,7 +484,7 @@ export default function InventoryPage() {
             </div>
             <div className="space-y-2 rounded-lg border border-gray-200 p-3">
               <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Barcode</p><button onClick={() => setBarcodeScannerOpen(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700"><ScanLine className="h-4 w-4" />Scan</button></div>
-              <input value={form.barcode} disabled={form.generateBarcode} onChange={(e) => setForm({ ...form, barcode: e.target.value.toUpperCase() })} placeholder="EAN, UPC, or DP00000001" className={INPUT} />
+              <input aria-label="Barcode" value={form.barcode} disabled={form.generateBarcode} onChange={(e) => setForm({ ...form, barcode: e.target.value.toUpperCase() })} placeholder="EAN, UPC, or DP00000001" className={INPUT} />
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.generateBarcode} onChange={(e) => setForm({ ...form, generateBarcode: e.target.checked, barcode: e.target.checked ? "" : form.barcode })} />Generate DukaPilot barcode</label>
               {form.barcode && <BarcodeLabel value={form.barcode} name={form.name || "Product"} price={form.sellingPrice ? formatTZS(Number(form.sellingPrice)) : undefined} className="max-w-[240px] border" />}
             </div>

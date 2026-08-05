@@ -334,7 +334,7 @@ export default function OrdersPage() {
             <div className="p-4 space-y-4">
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t("orders.supplierLabel", lang)}</label>
-                <select value={selectedSupplier} onChange={(e) => selectSupplier(e.target.value)}
+                <select aria-label={t("orders.supplierLabel", lang)} value={selectedSupplier} onChange={(e) => selectSupplier(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="">{t("orders.selectSupplier", lang)}</option>
                   {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.phone})</option>)}
@@ -368,7 +368,7 @@ export default function OrdersPage() {
                       return (
                         <div key={item.productId} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
                           <span className="flex-1 text-xs font-medium text-gray-700">{p?.name}</span>
-                          <input type="number" value={item.quantity} min={1}
+                          <input aria-label={`${p?.name || "Product"} ${lang === "sw" ? "idadi" : "quantity"}`} type="number" value={item.quantity} min={1}
                             onChange={(e) => updateItemQty(item.productId, Number(e.target.value))}
                             className="w-16 border border-gray-300 rounded px-2 py-1 text-xs text-center focus:outline-none" />
                           <span className="text-xs text-gray-400">{p?.unit}</span>
@@ -401,7 +401,7 @@ export default function OrdersPage() {
 
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t("orders.noteLabel", lang)}</label>
-                <input value={note} onChange={(e) => setNote(e.target.value)}
+                <input aria-label={t("orders.noteLabel", lang)} value={note} onChange={(e) => setNote(e.target.value)}
                   placeholder={t("orders.notePlaceholder", lang)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>

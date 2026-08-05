@@ -21,7 +21,7 @@ function sendCsv(res, filename, rows) {
 }
 
 const exportSalesCsv = asyncHandler(async (req, res) => {
-  const where = {};
+  const where = { status: "COMPLETED" };
   if (req.user.role !== "ADMIN") {
     where.shopId = await getShopIdForUser(req.user);
   }

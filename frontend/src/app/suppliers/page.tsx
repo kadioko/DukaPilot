@@ -214,6 +214,7 @@ export default function SuppliersPage() {
                 <div key={key}>
                   <label className="text-xs font-medium text-gray-600 mb-1 block">{t(labelKey, lang)}</label>
                   <input type={type} value={form[key]}
+                    aria-label={t(labelKey, lang)}
                     onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                     placeholder={placeholder}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />

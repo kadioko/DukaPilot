@@ -43,6 +43,47 @@ test("sale retry returns the original sale before touching stock", async () => {
   assert.equal(productsRead, false);
 });
 
+test("voiding a sale restores stock, cancels unpaid debt, and records the reason", async () => {
+  let restoredStock = 0;
+  let movementNote = "";
+  let cancelledDebt = false;
+  let voidData;
+  const existing = {
+    id: "sale-1",
+    receiptNumber: 17,
+    status: "COMPLETED",
+    debt: { id: "debt-1", amountPaid: 0, payments: [] },
+    items: [{ productId: "product-1", quantity: 2, product: { id: "product-1", name: "Soap", unit: "pcs" } }],
+  };
+  const tx = {
+    sale: {
+      findFirst: async () => existing,
+      updateMany: async ({ data }) => { voidData = data; return { count: 1 }; },
+      findUnique: async () => ({ ...existing, ...voidData, shop: { name: "Duka Test" } }),
+    },
+    product: { update: async ({ data }) => { restoredStock += data.currentStock.increment; } },
+    stockMovement: { create: async ({ data }) => { movementNote = data.note; } },
+    debt: { update: async () => { cancelledDebt = true; } },
+  };
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (fn) => fn(tx),
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[saleControllerPath];
+  const controller = require(saleControllerPath);
+  const res = response();
+  const req = { user: { userId: "owner-1" }, params: { id: "sale-1" }, body: { reason: "Entered twice" } };
+
+  await controller.voidSale(req, res);
+
+  assert.equal(restoredStock, 2);
+  assert.equal(cancelledDebt, true);
+  assert.equal(voidData.status, "VOIDED");
+  assert.match(movementNote, /#000017/);
+  assert.equal(req.audit.action, "sale.void");
+});
+
 test("debt payment rejects an overpayment and does not create a ledger entry", async () => {
   let createdPayments = 0;
   mockPrisma({

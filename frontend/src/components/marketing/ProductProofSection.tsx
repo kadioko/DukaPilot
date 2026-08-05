@@ -54,13 +54,13 @@ export default function ProductProofSection({ compact = false }: { compact?: boo
               : "DukaPilot is more than pricing. These are the daily workflows a shop owner uses: dashboard, sales, inventory, debts, supplier orders, and the AI Assistant."}
           </p>
 
-          <div className="mt-5 overflow-hidden rounded-2xl border border-brand-100 bg-brand-50 p-3">
+          <div className="mt-5 flex justify-center overflow-hidden rounded-lg border border-brand-100 bg-brand-50 p-3">
             <Image
               src="/marketing/phone-dashboard.png"
               alt={lang === "sw" ? "Screenshot ya dashboard ya DukaPilot" : "DukaPilot dashboard screenshot"}
               width={640}
               height={1138}
-              className="h-72 w-full rounded-xl object-cover object-top sm:h-80"
+              className="h-auto max-h-[34rem] w-auto max-w-full rounded-lg object-contain shadow-sm"
             />
           </div>
         </div>

@@ -78,12 +78,12 @@ export default function StaffPage() {
         </div>
 
         <form onSubmit={addStaff} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-5">
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required placeholder={lang === "sw" ? "Jina" : "Name"} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required inputMode="tel" placeholder={lang === "sw" ? "Simu (07... au +255...)" : "Phone (07... or +255...)"} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="numeric" maxLength={8} placeholder={lang === "sw" ? "PIN (chaguo, 1234)" : "PIN (optional, 1234)"} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} />
-          <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jina" : "Name"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Simu" : "Phone"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required inputMode="tel" placeholder="07... au +255..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>PIN ({lang === "sw" ? "hiari" : "optional"})</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="numeric" maxLength={8} placeholder="1234" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} /></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jukumu" : "Role"}</span><select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
-          </select>
+          </select></label>
           <button className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             {lang === "sw" ? "Ongeza" : "Add"}
           </button>

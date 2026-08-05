@@ -108,53 +108,54 @@ model User {
 }
 
 model Shop {
-  id                   String                @id @default(cuid())
-  name                 String
-  location             String
-  district             String?
-  category             String                @default("general") // grocery, pharmacy, beauty, bar, general
-  userId               String                @unique
-  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  products             Product[]
-  sales                Sale[]
-  orders               Order[]
-  customerOrders       CustomerOrder[]
-  debts                Debt[]
-  expenses             Expense[]
-  staffMembers         StaffMember[]
-  subscriptionPayments SubscriptionPayment[]
-  offlineSyncEvents    OfflineSyncEvent[]
-  assistantActions     AssistantAction[]
-  pushSubscriptions    PushSubscription[]
-  notificationPreference NotificationPreference?
-  pushDeliveries       PushDelivery[]
-  appUsageEvents       AppUsageEvent[]
-  barcodeScans         BarcodeScan[]
-  stockCounts          StockCount[]
-  createdSuppliers     Supplier[]            @relation("SupplierCreatedByShop")
+  id                       String                  @id @default(cuid())
+  name                     String
+  location                 String
+  district                 String?
+  category                 String                  @default("general") // grocery, pharmacy, beauty, bar, general
+  userId                   String                  @unique
+  user                     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products                 Product[]
+  sales                    Sale[]
+  orders                   Order[]
+  customerOrders           CustomerOrder[]
+  debts                    Debt[]
+  expenses                 Expense[]
+  staffMembers             StaffMember[]
+  subscriptionPayments     SubscriptionPayment[]
+  offlineSyncEvents        OfflineSyncEvent[]
+  assistantActions         AssistantAction[]
+  pushSubscriptions        PushSubscription[]
+  notificationPreference   NotificationPreference?
+  pushDeliveries           PushDelivery[]
+  appUsageEvents           AppUsageEvent[]
+  barcodeScans             BarcodeScan[]
+  stockCounts              StockCount[]
+  createdSuppliers         Supplier[]              @relation("SupplierCreatedByShop")
   // Subscription / trial
-  plan                 String                @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
-  trialEndsAt          DateTime?
-  subscriptionEndsAt   DateTime?
-  isActive             Boolean               @default(true)
-  isCatalogPublished   Boolean               @default(true)
-  isDemo               Boolean               @default(false)
-  onboardingStatus     OnboardingStatus      @default(NEW)
-  lastContactedAt      DateTime?
-  followUpNotes        String?
-  barcodeScanningEnabled Boolean             @default(true)
-  bluetoothScannerEnabled Boolean            @default(true)
-  barcodeGenerationEnabled Boolean           @default(true)
-  barcodeAutoFocus      Boolean              @default(true)
-  barcodeSuccessSound   Boolean              @default(true)
-  barcodeVibrate        Boolean              @default(true)
-  barcodeAutoAddToCart  Boolean              @default(true)
-  acquisitionSource    String?
-  acquisitionMedium    String?
-  acquisitionCampaign  String?
-  acquisitionContent   String?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  plan                     String                  @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
+  trialEndsAt              DateTime?
+  subscriptionEndsAt       DateTime?
+  isActive                 Boolean                 @default(true)
+  isCatalogPublished       Boolean                 @default(true)
+  isDemo                   Boolean                 @default(false)
+  onboardingStatus         OnboardingStatus        @default(NEW)
+  lastContactedAt          DateTime?
+  followUpNotes            String?
+  barcodeScanningEnabled   Boolean                 @default(true)
+  bluetoothScannerEnabled  Boolean                 @default(true)
+  barcodeGenerationEnabled Boolean                 @default(true)
+  barcodeAutoFocus         Boolean                 @default(true)
+  barcodeSuccessSound      Boolean                 @default(true)
+  barcodeVibrate           Boolean                 @default(true)
+  barcodeAutoAddToCart     Boolean                 @default(true)
+  nextSaleNumber           Int                     @default(1)
+  acquisitionSource        String?
+  acquisitionMedium        String?
+  acquisitionCampaign      String?
+  acquisitionContent       String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 
   @@map("shops")
 }
@@ -244,9 +245,9 @@ model AssistantAction {
 }
 
 model PushSubscription {
-  id           String   @id @default(cuid())
+  id           String         @id @default(cuid())
   shopId       String
-  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop         Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   endpoint     String
   p256dh       String
   auth         String
@@ -254,11 +255,11 @@ model PushSubscription {
   deviceLabel  String?
   userId       String?
   staffId      String?
-  isActive     Boolean  @default(true)
-  failureCount Int      @default(0)
-  lastSeenAt   DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isActive     Boolean        @default(true)
+  failureCount Int            @default(0)
+  lastSeenAt   DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
   deliveries   PushDelivery[]
 
   @@unique([shopId, deviceId])
@@ -268,15 +269,15 @@ model PushSubscription {
 }
 
 model NotificationPreference {
-  id                   String   @id @default(cuid())
-  shopId               String   @unique
-  shop                 Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  lowStock             Boolean  @default(true)
-  debtDue              Boolean  @default(true)
-  subscriptionExpiry   Boolean  @default(true)
-  dailyAssistant       Boolean  @default(false)
-  updatedAt            DateTime @updatedAt
-  createdAt            DateTime @default(now())
+  id                 String   @id @default(cuid())
+  shopId             String   @unique
+  shop               Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  lowStock           Boolean  @default(true)
+  debtDue            Boolean  @default(true)
+  subscriptionExpiry Boolean  @default(true)
+  dailyAssistant     Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
 
   @@map("notification_preferences")
 }
@@ -471,6 +472,11 @@ model Sale {
   customerPhone   String?
   note            String?
   clientReference String?
+  receiptNumber   Int?
+  status          String        @default("COMPLETED")
+  voidedAt        DateTime?
+  voidReason      String?
+  voidedBy        String?
   shopId          String
   shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   items           SaleItem[]
@@ -478,7 +484,9 @@ model Sale {
   createdAt       DateTime      @default(now())
 
   @@unique([shopId, clientReference])
+  @@unique([shopId, receiptNumber])
   @@index([shopId, createdAt])
+  @@index([shopId, status, createdAt])
   @@map("sales")
 }
 
@@ -538,22 +546,22 @@ model Expense {
 }
 
 model StaffMember {
-  id             String    @id @default(cuid())
-  name           String
-  phone          String?   @unique
-  pin            String?
-  language       String    @default("sw")
-  role           StaffRole @default(CASHIER)
-  canSell        Boolean   @default(true)
-  canManageStock Boolean   @default(false)
-  canManageStaff Boolean   @default(false)
-  canViewReports Boolean   @default(false)
-  canRecordExpenses Boolean @default(false)
-  isActive       Boolean   @default(true)
-  shopId         String
-  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  name              String
+  phone             String?   @unique
+  pin               String?
+  language          String    @default("sw")
+  role              StaffRole @default(CASHIER)
+  canSell           Boolean   @default(true)
+  canManageStock    Boolean   @default(false)
+  canManageStaff    Boolean   @default(false)
+  canViewReports    Boolean   @default(false)
+  canRecordExpenses Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  shopId            String
+  shop              Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([shopId, role])
   @@map("staff_members")
@@ -570,9 +578,9 @@ model SaleItem {
   productId   String
   product     Product @relation(fields: [productId], references: [id])
 
-  @@map("sale_items")
   @@index([saleId])
   @@index([productId])
+  @@map("sale_items")
 }
 
 model Order {

@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
-const { issueOtp, verifyOtp } = require("../services/otp.service");
+const { issueOtp, verifyOtp, isSmsConfigured } = require("../services/otp.service");
 const { activePlan, canUseFeature, featureSnapshot } = require("../lib/entitlements");
 const { normalizePhone, phoneLookupValues, isValidPhone } = require("../lib/phone");
 
@@ -355,6 +355,9 @@ const requestOtp = asyncHandler(async (req, res) => {
 
   if (!validatePhone(phone)) {
     return res.status(400).json({ error: "Enter a valid phone number" });
+  }
+  if (process.env.NODE_ENV === "production" && !isSmsConfigured()) {
+    return res.status(503).json({ error: "PIN recovery SMS is temporarily unavailable. Contact DukaPilot support on WhatsApp." });
   }
 
   const user = await findByPhone(prisma.user, req.body.phone);

@@ -5,7 +5,7 @@ import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { CheckCircle2, MessageCircle, ReceiptText, Send, Smartphone } from "lucide-react";
+import { Check, CheckCircle2, ClipboardCopy, MessageCircle, ReceiptText, Send, Smartphone } from "lucide-react";
 
 interface SubscriptionStatus {
   plan: string;
@@ -17,6 +17,7 @@ interface SubscriptionStatus {
   trialEndsAt?: string | null;
   subscriptionEndsAt?: string | null;
   reminderStage?: string | null;
+  validUntil?: string | null;
 }
 
 const plans = [
@@ -62,8 +63,16 @@ export default function BillingPage() {
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
   const [reports, setReports] = useState<BillingReport[]>([]);
+  const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const selectedPlan = plans.find((item) => item.id === plan) || plans[0];
   const subscriptionActive = Boolean(status?.isActive && (status?.trialActive || status?.subActive || status?.status === "active"));
+  const renewalDate = status?.validUntil || status?.subscriptionEndsAt || status?.trialEndsAt;
+
+  async function copyPaymentNumber(value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopiedValue(value);
+    window.setTimeout(() => setCopiedValue((current) => current === value ? null : current), 1800);
+  }
 
   useEffect(() => {
     api.get<SubscriptionStatus>("/subscription/status", lang).then(setStatus).catch(() => null);
@@ -117,14 +126,15 @@ export default function BillingPage() {
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{lang === "sw" ? "Mpango" : "Plan"}</p>
             <p className="mt-1 text-lg font-bold text-gray-950">{status?.plan || "FREE_TRIAL"}</p>
-            <p className="text-xs text-gray-500">{status?.status || "checking"}</p>
+            <p className="text-xs text-gray-500">{lang === "sw" ? "Mpango wa sasa" : "Current plan"}</p>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{lang === "sw" ? "Hali" : "Status"}</p>
             <p className={`mt-1 text-lg font-bold ${subscriptionActive ? "text-green-700" : "text-red-700"}`}>
               {subscriptionActive ? (lang === "sw" ? "Active" : "Active") : (lang === "sw" ? "Inahitaji malipo" : "Payment needed")}
             </p>
-            <p className="text-xs text-gray-500">{status?.daysLeft !== null && status?.daysLeft !== undefined ? `${status.daysLeft} days left` : "-"}</p>
+            <p className="text-xs text-gray-500">{status?.daysLeft !== null && status?.daysLeft !== undefined ? `${status.daysLeft} ${lang === "sw" ? "siku zimebaki" : "days left"}` : "-"}</p>
+            {renewalDate && <p className="mt-1 text-xs font-medium text-gray-700">{lang === "sw" ? "Tarehe ya kuongeza muda" : "Renew by"}: {new Date(renewalDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-TZ", { day: "numeric", month: "long", year: "numeric" })}</p>}
           </div>
           <div className="rounded-lg border border-green-200 bg-green-50 p-4">
             <MessageCircle className="h-5 w-5 text-green-700" />
@@ -166,17 +176,17 @@ export default function BillingPage() {
               </p>
               <div className="mt-3 grid gap-2">
                 {paymentOptions.map((option, index) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setPaymentOption(option.id)}
-                    className={`rounded-lg border p-3 text-left text-sm ${paymentOption === option.id ? "border-green-500 bg-green-50" : "border-gray-200 bg-white"}`}
-                  >
-                    <span className="text-xs font-bold uppercase tracking-wide text-gray-400">{index + 1}</span>
-                    <span className="ml-2 font-bold text-gray-950">{option.title}</span>
-                    <span className="mt-1 block text-lg font-black text-gray-950">{option.value}</span>
-                    <span className="block text-xs leading-5 text-gray-500">{lang === "sw" ? "Jina" : "Name"}: {option.name}</span>
-                  </button>
+                  <div key={option.id} className={`flex items-center gap-2 rounded-lg border p-2 ${paymentOption === option.id ? "border-green-500 bg-green-50" : "border-gray-200 bg-white"}`}>
+                    <button type="button" onClick={() => setPaymentOption(option.id)} className="min-w-0 flex-1 p-1 text-left text-sm">
+                      <span className="text-xs font-bold uppercase tracking-wide text-gray-400">{index + 1}</span>
+                      <span className="ml-2 font-bold text-gray-950">{option.title}</span>
+                      <span className="mt-1 block text-lg font-black text-gray-950">{option.value}</span>
+                      <span className="block text-xs leading-5 text-gray-500">{lang === "sw" ? "Jina" : "Name"}: {option.name}</span>
+                    </button>
+                    <button type="button" onClick={() => copyPaymentNumber(option.value)} aria-label={`${lang === "sw" ? "Nakili" : "Copy"} ${option.value}`} title={lang === "sw" ? "Nakili namba" : "Copy number"} className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-brand-700">
+                      {copiedValue === option.value ? <Check className="h-4 w-4 text-green-700" /> : <ClipboardCopy className="h-4 w-4" />}
+                    </button>
+                  </div>
                 ))}
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -205,19 +215,8 @@ export default function BillingPage() {
           <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-950">
             <strong>{lang === "sw" ? "Ulichagua" : "Selected"}:</strong> {selectedPaymentOption.title} {selectedPaymentOption.value} - {selectedPaymentOption.name}
           </div>
-          <input
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            placeholder={lang === "sw" ? "Mfano: QF123ABC45" : "Example: QF123ABC45"}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={lang === "sw" ? "Maelezo ya ziada, hiari" : "Extra note, optional"}
-            rows={3}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
+          <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Reference ya malipo" : "Payment reference"}</span><input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={lang === "sw" ? "Mfano: QF123ABC45" : "Example: QF123ABC45"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
+          <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo ya ziada (hiari)" : "Extra note (optional)"}</span><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={lang === "sw" ? "Maelezo ya ziada, hiari" : "Extra note, optional"} rows={3} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
           {message && (
             <p className={`rounded-lg px-3 py-2 text-sm ${message.includes("received") || message.includes("Tumepokea") ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
               {message}

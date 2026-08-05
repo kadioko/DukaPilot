@@ -12,7 +12,6 @@ import {
   Eye,
   EyeOff,
   Lock,
-  Menu,
   MapPin,
   MessageCircle,
   PackageCheck,
@@ -20,10 +19,10 @@ import {
   ReceiptText,
   Store,
   TrendingUp,
-  X,
 } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
+import PublicHeader from "@/components/marketing/PublicHeader";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import clsx from "clsx";
@@ -100,15 +99,6 @@ const aiThinkingCards = [
   },
 ];
 
-const publicNav = [
-  { href: "/pricing", sw: "Bei", en: "Pricing" },
-  { href: "/catalog", sw: "Catalog", en: "Catalog" },
-  { href: "/help", sw: "Msaada", en: "Help" },
-  { href: "/contact", sw: "Mawasiliano", en: "Contact" },
-  { href: "/about", sw: "Kuhusu", en: "About" },
-  { href: "/demo", sw: "Demo", en: "Demo" },
-];
-
 type View = "login" | "register" | "forgot";
 
 export function LoginPageContent({ initialView = "login" }: { initialView?: View }) {
@@ -131,7 +121,6 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   const [shopCategory, setShopCategory] = useState("general");
   const [role, setRole] = useState<"MERCHANT" | "SUPPLIER">("MERCHANT");
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // PIN recovery fields
   const [forgotPhone, setForgotPhone] = useState("");
@@ -317,100 +306,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
 
   return (
     <div className="min-h-screen bg-[linear-gradient(135deg,#0b5d34_0%,#13763f_44%,#0d342c_100%)] px-4 py-3 lg:px-8 lg:py-4">
-      <header className="sticky top-3 z-20 mx-auto flex w-full max-w-6xl items-center justify-between gap-3 rounded-2xl border border-white/15 bg-[#0d6b3c]/90 p-3 text-white shadow-xl shadow-black/15 backdrop-blur">
-        <Link href="/" className="flex items-center gap-3">
-          <img
-            src="/logo/dukapilot-icon-192.png"
-            alt="DukaPilot"
-            width={40}
-            height={40}
-            className="h-10 w-10 rounded-xl bg-white/10 shadow-sm ring-1 ring-white/20"
-          />
-          <div>
-            <p className="text-sm font-bold leading-tight">DukaPilot</p>
-            <p className="text-xs text-brand-100">Merchant OS - Tanzania</p>
-          </div>
-        </Link>
-
-        <div className="hidden items-center gap-3 md:flex">
-          <nav className="flex rounded-xl bg-white/10 p-1 text-sm font-semibold text-brand-50">
-            {publicNav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="min-h-0 whitespace-nowrap rounded-lg px-2.5 py-2 text-center transition-colors hover:bg-white/15 hover:text-white md:px-3"
-              >
-                {lang === "sw" ? item.sw : item.en}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/10 p-1">
-              <button
-                type="button"
-                onClick={() => setAppLanguage("sw")}
-                className={clsx(
-                  "min-h-0 rounded-lg px-3 py-2 text-xs font-bold transition-colors",
-                  lang === "sw" ? "bg-white text-brand-800 shadow-sm" : "text-brand-50 hover:bg-white/10"
-                )}
-              >
-                SW
-              </button>
-              <button
-                type="button"
-                onClick={() => setAppLanguage("en")}
-                className={clsx(
-                  "min-h-0 rounded-lg px-3 py-2 text-xs font-bold transition-colors",
-                  lang === "en" ? "bg-white text-brand-800 shadow-sm" : "text-brand-50 hover:bg-white/10"
-                )}
-              >
-                EN
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => switchView("register")}
-              className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-brand-800 shadow-sm transition-colors hover:bg-brand-50"
-            >
-              {lang === "sw" ? "Anza bure" : "Start free"}
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 md:hidden">
-          <button
-            type="button"
-            onClick={() => setAppLanguage(lang === "sw" ? "en" : "sw")}
-            className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-white/10 px-2 text-xs font-bold text-white hover:bg-white/15"
-            aria-label={lang === "sw" ? "Change language to English" : "Badilisha lugha kuwa Kiswahili"}
-          >
-            {lang === "sw" ? "EN" : "SW"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen((open) => !open)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-brand-800 shadow-sm"
-            aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileNavOpen}
-          >
-            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
-        {mobileNavOpen && (
-          <div className="absolute left-0 right-0 top-full mt-2 rounded-2xl border border-white/15 bg-[#0d6b3c] p-3 shadow-xl md:hidden">
-            <nav className="grid grid-cols-2 gap-1 text-sm font-semibold text-brand-50">
-              {publicNav.map((item) => (
-                <Link key={item.href} href={item.href} onClick={() => setMobileNavOpen(false)} className="rounded-lg px-3 py-3 hover:bg-white/15">
-                  {lang === "sw" ? item.sw : item.en}
-                </Link>
-              ))}
-            </nav>
-            <button type="button" onClick={() => { setMobileNavOpen(false); switchView("register"); }} className="mt-3 min-h-11 w-full rounded-xl bg-white px-4 py-2 text-sm font-bold text-brand-800">
-              {lang === "sw" ? "Anza bure" : "Start free"}
-            </button>
-          </div>
-        )}
-      </header>
+      <PublicHeader lang={lang} onLanguageChange={setAppLanguage} onStart={() => switchView("register")} className="top-3 mx-auto max-w-6xl rounded-lg border" />
 
       <div className="mx-auto grid min-h-[calc(100vh-6rem)] w-full max-w-6xl items-center gap-7 py-6 lg:grid-cols-[1.08fr_420px] lg:gap-8 lg:py-8">
         <section className="text-white">
@@ -844,6 +740,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </div>
 
         <Link
+          prefetch={false}
           href="/catalog"
           className="mt-4 w-full inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-sm font-semibold py-3 rounded-xl transition-colors"
         >
@@ -852,23 +749,24 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </Link>
 
         <Link
+          prefetch={false}
           href="/pricing"
           className="mt-2 w-full inline-flex items-center justify-center gap-2 text-brand-200 hover:text-white text-sm py-2 transition-colors"
         >
-          {lang === "sw" ? "Ona bei zetu ->" : "View pricing ->"}
+          {lang === "sw" ? "Ona bei zetu" : "View pricing"}<ArrowRight className="h-4 w-4" />
         </Link>
 
         <p className="text-center text-brand-200 text-xs mt-4">
           DukaPilot - Kujenga biashara Tanzania
         </p>
-        <div className="mt-3 flex flex-wrap justify-center gap-3 text-xs text-brand-200">
-          <Link href="/about" className="hover:text-white">{lang === "sw" ? "Kuhusu" : "About"}</Link>
-          <Link href="/pricing" className="hover:text-white">{lang === "sw" ? "Bei" : "Pricing"}</Link>
-          <Link href="/contact" className="hover:text-white">{lang === "sw" ? "Mawasiliano" : "Contact"}</Link>
-          <Link href="/help" className="hover:text-white">{lang === "sw" ? "Msaada" : "Help"}</Link>
-          <Link href="/demo" className="hover:text-white">{lang === "sw" ? "Demo" : "Demo"}</Link>
-          <Link href="/terms" className="hover:text-white">{lang === "sw" ? "Masharti" : "Terms"}</Link>
-          <Link href="/privacy" className="hover:text-white">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
+        <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-brand-100">
+          <Link prefetch={false} href="/about" className="hover:text-white">{lang === "sw" ? "Kuhusu" : "About"}</Link>
+          <Link prefetch={false} href="/pricing" className="hover:text-white">{lang === "sw" ? "Bei" : "Pricing"}</Link>
+          <Link prefetch={false} href="/contact" className="hover:text-white">{lang === "sw" ? "Mawasiliano" : "Contact"}</Link>
+          <Link prefetch={false} href="/help" className="hover:text-white">{lang === "sw" ? "Msaada" : "Help"}</Link>
+          <Link prefetch={false} href="/demo" className="hover:text-white">{lang === "sw" ? "Onyesho" : "Demo"}</Link>
+          <Link prefetch={false} href="/terms" className="hover:text-white">{lang === "sw" ? "Masharti" : "Terms"}</Link>
+          <Link prefetch={false} href="/privacy" className="hover:text-white">{lang === "sw" ? "Faragha" : "Privacy"}</Link>
         </div>
         </div>
       </div>
@@ -896,8 +794,8 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                   {lang === "sw" ? "Ona AI Assistant" : "See AI Assistant"}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
-                <Link href="/demo" className="inline-flex items-center justify-center rounded-xl border border-white/20 px-5 py-3 text-sm font-bold text-white hover:bg-white/10">
-                  {lang === "sw" ? "Jaribu demo" : "Try demo"}
+                <Link prefetch={false} href="/demo" className="inline-flex items-center justify-center rounded-xl border border-white/20 px-5 py-3 text-sm font-bold text-white hover:bg-white/10">
+                  {lang === "sw" ? "Jaribu onyesho" : "Try demo"}
                 </Link>
               </div>
             </div>

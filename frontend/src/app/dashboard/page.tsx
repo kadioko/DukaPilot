@@ -48,7 +48,7 @@ interface DashboardData {
     salesCount: number;
     firstSaleAt: string | null;
   };
-  lowStockAlerts: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string }>;
+  lowStockAlerts: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string; buyingPrice: number; sellingPrice: number }>;
   recentSales: Array<{ id: string; totalAmount: number; profit: number; paymentMethod: string; createdAt: string }>;
   dailyChart: Array<{ date: string; sales: number; profit: number }>;
   paymentBreakdown: Array<{ paymentMethod: string; totalAmount: number; salesCount: number }>;
@@ -128,7 +128,7 @@ export default function DashboardPage() {
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
                     {lang === "sw"
                       ? `Muhtasari wa ${currentPeriodLabel.toLowerCase()} na hatua muhimu za duka lako.`
-                      : `${currentPeriodLabel} performance and the next actions your shop needs.`}
+                      : `${period === "today" ? "Today's" : currentPeriodLabel} performance and the next actions your shop needs.`}
                   </p>
                 </div>
                 <Link
@@ -212,15 +212,17 @@ export default function DashboardPage() {
           <KpiCard
             label={period === "today" ? (lang === "sw" ? "Faida Leo" : "Profit Today") : (lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit")}
             value={formatTZS(s?.totalProfit || 0)}
-            icon={<TrendingUp className="w-5 h-5 text-green-600" />}
+            icon={<TrendingUp className={`h-5 w-5 ${(s?.totalProfit || 0) < 0 ? "text-red-600" : "text-green-600"}`} />}
             color="green"
+            danger={(s?.totalProfit || 0) < 0}
             sub={s && s.totalSales > 0 ? `${((s.totalProfit / s.totalSales) * 100).toFixed(0)}% ${t("dashboard.margin", lang)}` : undefined}
           />
           <KpiCard
             label={lang === "sw" ? "Faida halisi" : "Net profit"}
             value={formatTZS(s?.netProfit || 0)}
-            icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
+            icon={<TrendingUp className={`h-5 w-5 ${(s?.netProfit || 0) < 0 ? "text-red-600" : "text-emerald-600"}`} />}
             color="green"
+            danger={(s?.netProfit || 0) < 0}
             sub={`${formatTZS(s?.totalExpenses || 0)} ${lang === "sw" ? "matumizi" : "expenses"}`}
           />
           <KpiCard
@@ -250,12 +252,14 @@ export default function DashboardPage() {
             value={formatTZS(allTime?.totalProfit || 0)}
             icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
             color="green"
+            danger={(allTime?.totalProfit || 0) < 0}
           />
           <KpiCard
             label={lang === "sw" ? "Faida halisi" : "Net profit"}
             value={formatTZS(allTime?.netProfit || 0)}
             icon={<TrendingUp className="w-5 h-5 text-green-600" />}
             color="green"
+            danger={(allTime?.netProfit || 0) < 0}
             sub={`${formatTZS(allTime?.totalExpenses || 0)} ${lang === "sw" ? "matumizi" : "expenses"}`}
           />
           <KpiCard
@@ -381,12 +385,12 @@ export default function DashboardPage() {
                 {data?.historyTimeline.slice().reverse().map((item) => (
                   <div key={item.period} className="flex items-start justify-between border-b border-gray-100 pb-3">
                     <div>
-                      <p className="text-sm font-medium text-gray-800">{item.period}</p>
+                      <p className="text-sm font-medium text-gray-800">{new Date(`${item.period}-01T12:00:00Z`).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-TZ", { month: "long", year: "numeric", timeZone: "Africa/Dar_es_Salaam" })}</p>
                       <p className="text-xs text-gray-500">{item.salesCount} {t("dashboard.transactions", lang)}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-gray-900">{formatTZS(item.sales)}</p>
-                      <p className="text-xs text-green-600">+{formatTZS(item.profit)}</p>
+                      <p className={`text-xs ${item.profit < 0 ? "font-semibold text-red-600" : "text-green-600"}`}>{item.profit >= 0 ? "+" : ""}{formatTZS(item.profit)}</p>
                     </div>
                   </div>
                 ))}
@@ -409,7 +413,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-brand-600">+{formatTZS(s.profit)}</p>
+                    <p className={`text-sm font-semibold ${s.profit < 0 ? "text-red-600" : "text-brand-600"}`}>{s.profit >= 0 ? "+" : ""}{formatTZS(s.profit)}</p>
                     <p className="text-xs text-gray-400">{t("dashboard.profit", lang).toLowerCase()}</p>
                   </div>
                 </div>
@@ -428,12 +432,14 @@ function KpiCard({
   icon,
   color,
   sub,
+  danger = false,
 }: {
   label: string;
   value: string;
   icon: React.ReactNode;
   color: string;
   sub?: string;
+  danger?: boolean;
 }) {
   const bgMap: Record<string, string> = {
     blue: "bg-sky-50 text-sky-700 ring-sky-100",
@@ -442,11 +448,11 @@ function KpiCard({
     orange: "bg-amber-50 text-amber-700 ring-amber-100",
   };
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-brand-200 hover:shadow-md">
+    <div className={`rounded-2xl border bg-white p-4 shadow-sm transition hover:shadow-md ${danger ? "border-red-300" : "border-gray-200 hover:border-brand-200"}`}>
       <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ring-1 ${bgMap[color]}`}>
         {icon}
       </div>
-      <p className="break-words text-lg font-bold leading-tight text-gray-950">{value}</p>
+      <p className={`break-words text-lg font-bold leading-tight ${danger ? "text-red-700" : "text-gray-950"}`}>{value}</p>
       <p className="mt-1 text-xs font-medium text-gray-500">{label}</p>
       {sub && <p className="mt-1 text-xs text-gray-400">{sub}</p>}
     </div>

@@ -64,6 +64,9 @@ test("sale create calculates total and profit before persisting transaction", as
   let stockMovements = 0;
 
   const tx = {
+    shop: {
+      update: async () => ({ nextSaleNumber: 42 }),
+    },
     sale: {
       create: async ({ data }) => {
         capturedSaleCreate = data;
@@ -122,6 +125,35 @@ test("sale create calculates total and profit before persisting transaction", as
   assert.equal(capturedSaleCreate.totalAmount, 6500);
   assert.equal(capturedSaleCreate.profit, 1700);
   assert.equal(capturedSaleCreate.paymentMethod, "CASH");
+  assert.equal(capturedSaleCreate.receiptNumber, 41);
   assert.equal(stockUpdates, 2);
   assert.equal(stockMovements, 2);
+});
+
+test("sale create blocks an expired product before opening a transaction", async () => {
+  let transactionStarted = false;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findMany: async () => [{
+        id: "prod-1",
+        name: "Expired milk",
+        unit: "pcs",
+        currentStock: 2,
+        sellingPrice: 2000,
+        buyingPrice: 1500,
+        doesNotExpire: false,
+        expiryDate: new Date("2020-01-01T00:00:00.000Z"),
+      }],
+    },
+    $transaction: async () => { transactionStarted = true; },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.create({ user: { userId: "user-1" }, body: { items: [{ productId: "prod-1", quantity: 1 }] } }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.match(res.payload.error, /expired/);
+  assert.equal(transactionStarted, false);
 });

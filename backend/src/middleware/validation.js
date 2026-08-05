@@ -92,6 +92,11 @@ const saleCreateValidation = [
   handleValidationErrors,
 ];
 
+const saleVoidValidation = [
+  body("reason").trim().isLength({ min: 3, max: 200 }).withMessage("A void reason between 3 and 200 characters is required"),
+  handleValidationErrors,
+];
+
 const orderListValidation = [
   query("status").optional().custom((value) => ORDER_STATUSES.includes(String(value).toUpperCase())).withMessage("Invalid order status"),
   handleValidationErrors,
@@ -159,6 +164,7 @@ module.exports = {
   saleListValidation,
   saleSummaryValidation,
   saleCreateValidation,
+  saleVoidValidation,
   orderListValidation,
   orderCreateValidation,
   stockAdjustValidation,

@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTime");
+const { normalizePhone } = require("../lib/phone");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -68,6 +69,7 @@ const create = asyncHandler(async (req, res) => {
   const normalizedPaymentMethod = String(paymentMethod || "CASH").toUpperCase();
   const pricingTier = String(saleMode || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
   const saleChannel = String(channel || "POS").toUpperCase() === "ONLINE" ? "ONLINE" : "POS";
+  const normalizedCustomerPhone = customerPhone ? normalizePhone(customerPhone) : null;
 
   if (!items || items.length === 0) {
     return res.status(400).json({ error: "Sale must have at least one item" });
@@ -80,12 +82,15 @@ const create = asyncHandler(async (req, res) => {
   if (normalizedClientReference) {
     const existingSale = await prisma.sale.findFirst({
       where: { shopId, clientReference: normalizedClientReference },
-      include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+      include: {
+        shop: { select: { name: true } },
+        items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+      },
     });
     if (existingSale) return res.json({ sale: redactSale(existingSale, req), reused: true });
   }
 
-  if (normalizedPaymentMethod === "CREDIT" && !customerPhone) {
+  if (normalizedPaymentMethod === "CREDIT" && !normalizedCustomerPhone) {
     return res.status(400).json({ error: "Customer phone is required for credit sales" });
   }
 
@@ -106,6 +111,9 @@ const create = asyncHandler(async (req, res) => {
 
   for (const item of items) {
     const product = productMap[item.productId];
+    if (!product.doesNotExpire && product.expiryDate && product.expiryDate < startOfTanzaniaDay()) {
+      return res.status(400).json({ error: `${product.name} is expired and cannot be sold` });
+    }
     if (product.currentStock < item.quantity) {
       return res.status(400).json({
         error: `Insufficient stock for ${product.name}. Available: ${product.currentStock} ${product.unit}`,
@@ -138,6 +146,12 @@ const create = asyncHandler(async (req, res) => {
   let sale;
   try {
     sale = await prisma.$transaction(async (tx) => {
+    const shopCounter = await tx.shop.update({
+      where: { id: shopId },
+      data: { nextSaleNumber: { increment: 1 } },
+      select: { nextSaleNumber: true },
+    });
+    const receiptNumber = shopCounter.nextSaleNumber - 1;
     const newSale = await tx.sale.create({
       data: {
         totalAmount,
@@ -146,13 +160,15 @@ const create = asyncHandler(async (req, res) => {
         paymentRef,
         channel: saleChannel,
         pricingTier,
-        customerPhone,
+        customerPhone: normalizedCustomerPhone,
         note,
         clientReference: normalizedClientReference,
+        receiptNumber,
         shopId,
         items: { create: saleItemsData },
       },
       include: {
+        shop: { select: { name: true } },
         items: {
           include: { product: { select: { id: true, name: true, unit: true } } },
         },
@@ -173,20 +189,25 @@ const create = asyncHandler(async (req, res) => {
         data: {
           type: "OUT",
           quantity: item.quantity,
-          note: `Sale #${newSale.id.slice(-6)}`,
+          note: `Sale receipt #${String(receiptNumber).padStart(6, "0")}`,
           productId: item.productId,
         },
       });
     }
 
     if (normalizedPaymentMethod === "CREDIT") {
+      const previousCustomer = await tx.debt.findFirst({
+        where: { shopId, customerPhone: normalizedCustomerPhone },
+        orderBy: { createdAt: "desc" },
+        select: { customerName: true },
+      });
       await tx.debt.create({
         data: {
-          customerName: String(customerName || "").trim() || null,
-          customerPhone,
+          customerName: String(customerName || "").trim() || previousCustomer?.customerName || null,
+          customerPhone: normalizedCustomerPhone,
           amount: totalAmount,
           dueDate: dueDate ? new Date(dueDate) : null,
-          note: note || `Credit sale #${newSale.id.slice(-6)}`,
+          note: note || `Credit sale receipt #${String(receiptNumber).padStart(6, "0")}`,
           saleId: newSale.id,
           shopId,
         },
@@ -201,13 +222,75 @@ const create = asyncHandler(async (req, res) => {
     if (error?.code !== "P2002" || !normalizedClientReference) throw error;
     const existingSale = await prisma.sale.findFirst({
       where: { shopId, clientReference: normalizedClientReference },
-      include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+      include: {
+        shop: { select: { name: true } },
+        items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+      },
     });
     if (!existingSale) throw error;
     return res.json({ sale: redactSale(existingSale, req), reused: true });
   }
 
+  req.audit = { action: "sale.create", resourceType: "sale", resourceId: sale.id, metadata: { receiptNumber: sale.receiptNumber } };
   res.status(201).json({ sale: redactSale(sale, req) });
+});
+
+const voidSale = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const reason = String(req.body.reason || "").trim();
+
+  const sale = await prisma.$transaction(async (tx) => {
+    const existing = await tx.sale.findFirst({
+      where: { id: req.params.id, shopId },
+      include: {
+        debt: { include: { payments: { select: { id: true }, take: 1 } } },
+        items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+      },
+    });
+    if (!existing) throw Object.assign(new Error("Sale not found"), { status: 404 });
+    if (existing.status === "VOIDED") throw Object.assign(new Error("This sale is already voided"), { status: 409 });
+    if (existing.debt && (existing.debt.amountPaid > 0 || existing.debt.payments.length > 0)) {
+      throw Object.assign(new Error("This credit sale has a recorded payment. Reverse the payment before voiding the sale."), { status: 409 });
+    }
+
+    const guarded = await tx.sale.updateMany({
+      where: { id: existing.id, shopId, status: "COMPLETED" },
+      data: {
+        status: "VOIDED",
+        voidedAt: new Date(),
+        voidReason: reason,
+        voidedBy: req.user.staffId || req.user.userId,
+      },
+    });
+    if (guarded.count !== 1) throw Object.assign(new Error("Sale changed before it could be voided. Refresh and try again."), { status: 409 });
+
+    const receiptLabel = existing.receiptNumber ? `#${String(existing.receiptNumber).padStart(6, "0")}` : `#${existing.id.slice(-6)}`;
+    for (const item of existing.items) {
+      await tx.product.update({ where: { id: item.productId }, data: { currentStock: { increment: item.quantity } } });
+      await tx.stockMovement.create({
+        data: { type: "IN", quantity: item.quantity, note: `Voided sale ${receiptLabel}: ${reason}`, productId: item.productId },
+      });
+    }
+    if (existing.debt) {
+      await tx.debt.update({ where: { id: existing.debt.id }, data: { status: "CANCELLED", note: `Sale voided: ${reason}` } });
+    }
+
+    return tx.sale.findUnique({
+      where: { id: existing.id },
+      include: {
+        shop: { select: { name: true } },
+        items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+      },
+    });
+  });
+
+  req.audit = {
+    action: "sale.void",
+    resourceType: "sale",
+    resourceId: sale.id,
+    metadata: { reason, receiptNumber: sale.receiptNumber, restoredItems: sale.items.length },
+  };
+  res.json({ sale: redactSale(sale, req) });
 });
 
 const get = asyncHandler(async (req, res) => {
@@ -238,7 +321,7 @@ const summary = asyncHandler(async (req, res) => {
     from = startOfTanzaniaMonth(now);
   }
 
-  const where = { shopId, createdAt: { gte: from } };
+  const where = { shopId, status: "COMPLETED", createdAt: { gte: from } };
   const [sales, aggregate] = await Promise.all([
     prisma.sale.findMany({
       where,
@@ -268,4 +351,4 @@ const summary = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, create, get, summary };
+module.exports = { list, create, voidSale, get, summary };

@@ -70,13 +70,13 @@ export default function ExpensesPage() {
           </div>
         )}
 
-        <form onSubmit={addExpense} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-6">
-          <input className={`${INPUT} md:col-span-2`} required placeholder={lang === "sw" ? "Mfano: Kodi ya mwezi" : "Example: Monthly rent"} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          <input className={INPUT} required type="number" min="1" inputMode="numeric" placeholder={lang === "sw" ? "Kiasi" : "Amount"} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-          <select className={INPUT} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+        <form onSubmit={addExpense} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-6 md:items-end">
+          <label className="grid gap-1 text-xs font-medium text-gray-600 md:col-span-2"><span>{lang === "sw" ? "Jina la matumizi" : "Expense name"}</span><input className={INPUT} required placeholder={lang === "sw" ? "Mfano: Kodi ya mwezi" : "Example: Monthly rent"} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><input className={INPUT} required type="number" min="1" inputMode="numeric" placeholder="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Aina" : "Category"}</span><select className={INPUT} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
             {categories.map((category) => <option key={category} value={category}>{category.replace("_", " ")}</option>)}
-          </select>
-          <input className={INPUT} placeholder={lang === "sw" ? "Muuzaji (hiari)" : "Vendor (optional)"} value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
+          </select></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Muuzaji (hiari)" : "Vendor (optional)"}</span><input className={INPUT} placeholder={lang === "sw" ? "Mfano: TANESCO" : "Example: TANESCO"} value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} /></label>
           <button className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">
             {lang === "sw" ? "Hifadhi" : "Save"}
           </button>

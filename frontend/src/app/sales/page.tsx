@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
-import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine } from "lucide-react";
+import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
@@ -17,6 +18,8 @@ interface Product {
   wholesaleMinQty?: number | null;
   currentStock: number;
   barcode?: string | null;
+  expiryDate?: string | null;
+  doesNotExpire?: boolean;
 }
 
 interface CartItem {
@@ -31,6 +34,11 @@ interface SaleRecord {
   profit: number | null;
   paymentMethod: string;
   createdAt: string;
+  receiptNumber?: number | null;
+  status?: "COMPLETED" | "VOIDED";
+  voidReason?: string | null;
+  customerPhone?: string | null;
+  shop?: { name: string };
   items: Array<{ quantity: number; unitPrice: number; totalPrice: number; product: { name: string; unit: string } }>;
 }
 
@@ -48,6 +56,12 @@ interface PendingSale {
     customerName?: string;
     customerPhone?: string;
   };
+}
+
+interface CustomerRecord {
+  name: string;
+  phone: string;
+  openBalance: number;
 }
 
 interface SyncEvent {
@@ -134,12 +148,25 @@ function formatSyncTime(value: string | null) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function isExpired(product: Product) {
+  if (product.doesNotExpire || !product.expiryDate) return false;
+  const expiry = new Date(product.expiryDate);
+  const today = new Date();
+  expiry.setHours(23, 59, 59, 999);
+  return expiry < today;
+}
+
+function receiptLabel(sale: SaleRecord) {
+  return sale.receiptNumber ? `DP-${String(sale.receiptNumber).padStart(6, "0")}` : sale.id.slice(-8).toUpperCase();
+}
+
 export default function SalesPage() {
   const lang = useLang();
   const { toast } = useToast();
   const syncingRef = useRef(false);
   const cartPanelRef = useRef<HTMLDivElement>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
@@ -161,6 +188,8 @@ export default function SalesPage() {
   const [assistantIntent, setAssistantIntent] = useState("");
   const [canViewFinancials, setCanViewFinancials] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
+  const [voidingSaleId, setVoidingSaleId] = useState<string | null>(null);
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const scannerBuffer = useRef("");
   const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,7 +199,10 @@ export default function SalesPage() {
       .then((data) => setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports)))
       .catch(() => setCanViewFinancials(false));
     api.get<{ products: Product[] }>("/products")
-      .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
+      .then((d) => setProducts(d.products));
+    api.get<{ customers: CustomerRecord[] }>("/debts/customers")
+      .then((d) => setCustomers(d.customers))
+      .catch(() => setCustomers([]));
   }, []);
 
   const syncPendingSales = useCallback(async () => {
@@ -227,7 +259,7 @@ export default function SalesPage() {
       if (remaining.length < pending.length) {
         toast(lang === "sw" ? "Mauzo ya offline yamesawazishwa." : "Offline sales synced.", "success");
         api.get<{ products: Product[] }>("/products")
-          .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)))
+          .then((d) => setProducts(d.products))
           .catch(() => {});
       }
     } finally {
@@ -304,7 +336,9 @@ export default function SalesPage() {
     if (view === "history") fetchHistory();
   }, [view, fetchHistory]);
 
-  const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search.trim().toUpperCase()));
+  const hiddenOutOfStock = products.filter((p) => p.currentStock <= 0).length;
+  const hiddenExpired = products.filter((p) => p.currentStock > 0 && isExpired(p)).length;
+  const filtered = products.filter((p) => p.currentStock > 0 && !isExpired(p) && (p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search.trim().toUpperCase())));
 
   function defaultPriceFor(product: Product): number {
     if (saleMode === "WHOLESALE" && product.wholesalePrice != null) {
@@ -314,6 +348,10 @@ export default function SalesPage() {
   }
 
   function addToCart(product: Product) {
+    if (isExpired(product)) {
+      toast(lang === "sw" ? `${product.name} imeisha muda na haiwezi kuuzwa.` : `${product.name} is expired and cannot be sold.`, "error");
+      return;
+    }
     setCart((prev) => {
       const existing = prev.find((i) => i.product.id === product.id);
       if (existing) {
@@ -385,6 +423,47 @@ export default function SalesPage() {
   const changeDue = Number(amountTendered || 0) - total;
   const profit = canViewFinancials ? cart.reduce((sum, i) => sum + i.quantity * (i.unitPrice - (i.product.buyingPrice || 0)), 0) : 0;
 
+  function updateCustomerFromPhone(phone: string) {
+    setCustomerPhone(phone);
+    const normalized = phone.replace(/\D/g, "").replace(/^0/, "255");
+    const match = customers.find((customer) => customer.phone.replace(/\D/g, "") === normalized);
+    if (match?.name) setCustomerName(match.name);
+  }
+
+  function shareReceipt(sale: SaleRecord) {
+    const lines = [
+      sale.shop?.name || "DukaPilot",
+      `${lang === "sw" ? "Risiti" : "Receipt"}: ${receiptLabel(sale)}`,
+      new Date(sale.createdAt).toLocaleString(lang === "sw" ? "sw-TZ" : "en-TZ"),
+      "",
+      ...sale.items.map((item) => `${item.product.name} x${item.quantity} - ${formatTZS(item.totalPrice)}`),
+      "",
+      `${lang === "sw" ? "Jumla" : "Total"}: ${formatTZS(sale.totalAmount)}`,
+      `${lang === "sw" ? "Malipo" : "Payment"}: ${t(PAYMENT_METHODS.find((method) => method.value === sale.paymentMethod)?.labelKey || "sales.cash", lang)}`,
+      lang === "sw" ? "Asante kwa kununua." : "Thank you for your purchase.",
+    ];
+    const phone = sale.customerPhone?.replace(/\D/g, "").replace(/^0/, "255") || "";
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function voidSale(sale: SaleRecord) {
+    const reason = window.prompt(lang === "sw" ? "Sababu ya kufuta mauzo haya (inahifadhiwa kwenye audit):" : "Reason for voiding this sale (saved in the audit trail):");
+    if (!reason?.trim()) return;
+    if (!window.confirm(lang === "sw" ? "Thibitisha: stock itarudishwa na mauzo yataondolewa kwenye ripoti." : "Confirm: stock will be restored and the sale removed from reports.")) return;
+    setVoidingSaleId(sale.id);
+    try {
+      await api.patch(`/sales/${sale.id}/void`, { reason: reason.trim() }, lang);
+      toast(lang === "sw" ? `Mauzo ${receiptLabel(sale)} yamefutwa na stock imerudishwa.` : `Sale ${receiptLabel(sale)} was voided and stock restored.`, "success");
+      await fetchHistory();
+      const data = await api.get<{ products: Product[] }>("/products");
+      setProducts(data.products);
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+    } finally {
+      setVoidingSaleId(null);
+    }
+  }
+
   async function completeSale() {
     if (cart.length === 0) return;
     if (paymentMethod === "CREDIT" && !customerPhone.trim()) {
@@ -408,8 +487,9 @@ export default function SalesPage() {
       clientReference,
     };
     try {
-      await api.post("/sales", payload, lang);
-      toast(t("sales.completed", lang), "success");
+      const result = await api.post<{ sale: SaleRecord }>("/sales", payload, lang);
+      setCompletedSale(result.sale);
+      toast(lang === "sw" ? `Mauzo yamekamilika. Risiti ${receiptLabel(result.sale)}.` : `Sale complete. Receipt ${receiptLabel(result.sale)}.`, "success");
       setCart([]);
       setPaymentRef("");
       setCustomerName("");
@@ -418,7 +498,7 @@ export default function SalesPage() {
       setAmountTendered("");
       // Refresh products stock
       api.get<{ products: Product[] }>("/products")
-        .then((d) => setProducts(d.products.filter((p) => p.currentStock > 0)));
+        .then((d) => setProducts(d.products));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : t("common.error", lang);
       const canQueue = typeof navigator !== "undefined" && (!navigator.onLine || message.includes("Unable to reach"));
@@ -508,6 +588,23 @@ export default function SalesPage() {
                   : (lang === "sw" ? `${pendingSales.length} yanangoja sync` : `${pendingSales.length} pending sync`)}
               </button>
             )}
+          </div>
+        )}
+
+        {view === "pos" && (hiddenOutOfStock > 0 || hiddenExpired > 0) && (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
+              <p>
+                {lang === "sw" ? "Bidhaa zilizofichwa kwenye POS:" : "Hidden from POS:"}{" "}
+                {hiddenOutOfStock > 0 && `${hiddenOutOfStock} ${lang === "sw" ? "zimeisha stock" : "out of stock"}`}
+                {hiddenOutOfStock > 0 && hiddenExpired > 0 ? ", " : ""}
+                {hiddenExpired > 0 && `${hiddenExpired} ${lang === "sw" ? "zimeisha muda" : "expired"}`}.
+              </p>
+            </div>
+            <Link href="/inventory" className="flex-shrink-0 font-semibold text-amber-800 underline underline-offset-2">
+              {lang === "sw" ? "Kagua stock" : "Review stock"}
+            </Link>
           </div>
         )}
 
@@ -741,8 +838,8 @@ export default function SalesPage() {
 
                     {paymentMethod === "CREDIT" && (
                       <div className="mb-3 grid gap-2 sm:grid-cols-2">
-                        <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Jina la mteja" : "Customer name"}</span><input value={customerName} onChange={(e) => setCustomerName(e.target.value)} autoComplete="name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
-                        <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Simu ya mteja" : "Customer phone"}</span><input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} type="tel" autoComplete="tel" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
+                        <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Jina la mteja" : "Customer name"}</span><input list="known-customer-names" value={customerName} onChange={(e) => { setCustomerName(e.target.value); const match = customers.find((customer) => customer.name.toLowerCase() === e.target.value.toLowerCase()); if (match) setCustomerPhone(match.phone); }} autoComplete="name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /><datalist id="known-customer-names">{customers.filter((customer) => customer.name).map((customer) => <option key={customer.phone} value={customer.name}>{customer.phone}</option>)}</datalist></label>
+                        <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Simu ya mteja" : "Customer phone"}</span><input list="known-customer-phones" value={customerPhone} onChange={(e) => updateCustomerFromPhone(e.target.value)} type="tel" autoComplete="tel" placeholder="07XXXXXXXX au +255..." className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /><datalist id="known-customer-phones">{customers.map((customer) => <option key={customer.phone} value={customer.phone}>{customer.name || customer.phone}</option>)}</datalist></label>
                         <label className="grid gap-1 text-sm font-medium text-gray-700 sm:col-span-2"><span>{lang === "sw" ? "Tarehe ya mwisho ya kulipa (dd/mm/yyyy)" : "Payment due date (dd/mm/yyyy)"}</span><input value={creditDueDate} onChange={(e) => setCreditDueDate(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
                       </div>
                     )}
@@ -769,10 +866,14 @@ export default function SalesPage() {
             ) : (
               <div className="space-y-3">
                 {recentSales.map((sale) => (
-                  <div key={sale.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div key={sale.id} className={`rounded-xl border p-4 ${sale.status === "VOIDED" ? "border-red-200 bg-red-50/60" : "border-gray-200 bg-white"}`}>
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-semibold text-gray-900">{formatTZS(sale.totalAmount)}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className={`font-semibold ${sale.status === "VOIDED" ? "text-gray-500 line-through" : "text-gray-900"}`}>{formatTZS(sale.totalAmount)}</p>
+                          <span className="text-xs font-semibold text-gray-500">{receiptLabel(sale)}</span>
+                          {sale.status === "VOIDED" && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{lang === "sw" ? "IMEFUTWA" : "VOIDED"}</span>}
+                        </div>
                         <p className="text-xs text-gray-400 mt-0.5">
                           {new Date(sale.createdAt).toLocaleString(lang === "sw" ? "sw-TZ" : "en-US", {
                             day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
@@ -783,7 +884,7 @@ export default function SalesPage() {
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                           {t(PAYMENT_METHODS.find((m) => m.value === sale.paymentMethod)?.labelKey || "sales.cash", lang)}
                         </span>
-                        {canViewFinancials && sale.profit != null && <p className="text-sm font-bold text-green-600 mt-1">+{formatTZS(sale.profit)}</p>}
+                        {canViewFinancials && sale.profit != null && sale.status !== "VOIDED" && <p className={`mt-1 text-sm font-bold ${sale.profit < 0 ? "text-red-600" : "text-green-600"}`}>{sale.profit >= 0 ? "+" : ""}{formatTZS(sale.profit)}</p>}
                       </div>
                     </div>
                     <div className="divide-y divide-gray-50">
@@ -793,6 +894,13 @@ export default function SalesPage() {
                         </p>
                       ))}
                     </div>
+                    {sale.voidReason && <p className="mt-2 text-xs font-medium text-red-700">{lang === "sw" ? "Sababu" : "Reason"}: {sale.voidReason}</p>}
+                    {sale.status !== "VOIDED" && (
+                      <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+                        <button onClick={() => shareReceipt(sale)} className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"><MessageCircle className="h-4 w-4" />{lang === "sw" ? "Tuma risiti" : "Share receipt"}</button>
+                        {canViewFinancials && <button onClick={() => voidSale(sale)} disabled={voidingSaleId === sale.id} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />{voidingSaleId === sale.id ? (lang === "sw" ? "Inafuta..." : "Voiding...") : (lang === "sw" ? "Futa mauzo" : "Void sale")}</button>}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -810,6 +918,22 @@ export default function SalesPage() {
         )}
       </div>
       {scannerOpen && <BarcodeScanner onDetected={handleBarcode} onClose={() => setScannerOpen(false)} />}
+      {completedSale && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-100 text-green-700"><Check className="h-6 w-6" /></span><div><h2 className="font-bold text-gray-950">{lang === "sw" ? "Mauzo yamekamilika" : "Sale completed"}</h2><p className="text-sm font-semibold text-brand-700">{receiptLabel(completedSale)}</p></div></div>
+              <button onClick={() => setCompletedSale(null)} aria-label={lang === "sw" ? "Funga" : "Close"} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="my-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">{lang === "sw" ? "Jumla" : "Total"}</span><strong>{formatTZS(completedSale.totalAmount)}</strong></div>
+              <div className="mt-2 flex justify-between"><span className="text-gray-500">{lang === "sw" ? "Malipo" : "Payment"}</span><span>{t(PAYMENT_METHODS.find((method) => method.value === completedSale.paymentMethod)?.labelKey || "sales.cash", lang)}</span></div>
+            </div>
+            <button onClick={() => shareReceipt(completedSale)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-700"><MessageCircle className="h-5 w-5" />{lang === "sw" ? "Tuma risiti kwa WhatsApp" : "Share receipt on WhatsApp"}</button>
+            <button onClick={() => { setCompletedSale(null); setView("history"); }} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700"><ReceiptText className="h-4 w-4" />{lang === "sw" ? "Fungua historia" : "View sale history"}</button>
+          </div>
+        </div>
+      )}
       {unknownBarcode && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"><h2 className="font-bold text-gray-900">{lang === "sw" ? "Barcode haijapatikana" : "This barcode was not found."}</h2><p className="mt-2 text-sm text-gray-600">{unknownBarcode}</p><div className="mt-4 flex gap-2"><button onClick={() => { setSearch(unknownBarcode); setUnknownBarcode(null); }} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-semibold">{lang === "sw" ? "Tafuta" : "Search manually"}</button><button onClick={() => { window.location.href = `/inventory?barcode=${encodeURIComponent(unknownBarcode)}&action=add`; }} className="flex-1 rounded-lg bg-brand-600 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Ongeza bidhaa" : "Add new product"}</button></div><button onClick={() => setUnknownBarcode(null)} className="mt-3 w-full text-sm text-gray-500">{t("common.cancel", lang)}</button></div></div>}
     </AppShell>
   );

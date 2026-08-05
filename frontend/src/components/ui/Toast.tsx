@@ -38,7 +38,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const toast = useCallback((message: string, variant: ToastVariant = "success") => {
     const id = ++_idCounter;
     setToasts((prev) => [...prev.slice(-3), { id, message, variant }]); // max 4 visible
-    const timer = setTimeout(() => dismiss(id), variant === "error" ? 5000 : 3000);
+    const timer = setTimeout(() => dismiss(id), variant === "error" ? 6000 : 4500);
     timers.current.set(id, timer);
   }, [dismiss]);
 
@@ -48,7 +48,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div
         aria-live="polite"
         aria-atomic="false"
-        className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none"
+        className="fixed bottom-20 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none sm:bottom-6 sm:left-auto sm:right-6 sm:w-full sm:max-w-sm"
       >
         {toasts.map((t) => (
           <ToastBubble key={t.id} item={t} onDismiss={dismiss} />
@@ -85,7 +85,7 @@ function ToastBubble({ item, onDismiss }: { item: ToastItem; onDismiss: (id: num
 
   return (
     <div
-      className={`pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-sm font-medium
+      className={`pointer-events-auto flex items-center gap-2.5 rounded-lg border border-white/20 px-4 py-3.5 shadow-2xl text-sm font-semibold
         transition-all duration-300
         ${visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"}
         ${VARIANT_STYLES[item.variant]}`}

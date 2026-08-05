@@ -36,7 +36,7 @@ const overview = asyncHandler(async (req, res) => {
     prisma.user.count({ where: { role: "ADMIN" } }),
     prisma.shop.count(),
     prisma.product.count({ where: { isActive: true } }),
-    prisma.sale.count(),
+    prisma.sale.count({ where: { status: "COMPLETED" } }),
     prisma.order.count(),
     prisma.debt.count(),
     prisma.expense.count(),
