@@ -8,7 +8,7 @@ type Intent = "setup" | "pricing" | "demo" | "help" | "contact" | "about";
 
 const messages: Record<Intent, { sw: string; en: string }> = {
   setup: {
-    sw: "Habari DukaPilot, nataka setup ya duka langu. Aina ya duka: ",
+    sw: "Habari DukaPilot, nataka kusaidiwa kuweka mfumo wa duka langu. Aina ya duka: ",
     en: "Hello DukaPilot, I want help setting up my shop. Shop type: ",
   },
   pricing: {
@@ -16,7 +16,7 @@ const messages: Record<Intent, { sw: string; en: string }> = {
     en: "Hello DukaPilot, I want help choosing a plan for my shop. Shop type: ",
   },
   demo: {
-    sw: "Habari DukaPilot, nimeona demo na nataka setup ya duka langu. Aina ya duka: ",
+    sw: "Habari DukaPilot, nimeona onyesho na nataka kusaidiwa kuweka mfumo wa duka langu. Aina ya duka: ",
     en: "Hello DukaPilot, I saw the demo and want setup help. Shop type: ",
   },
   help: {
@@ -24,7 +24,7 @@ const messages: Record<Intent, { sw: string; en: string }> = {
     en: "Hello DukaPilot, I need help. My question is: ",
   },
   contact: {
-    sw: "Habari DukaPilot, nataka kuongea kuhusu setup ya duka langu. Aina ya duka: ",
+    sw: "Habari DukaPilot, nataka kuongea kuhusu kuweka mfumo wa duka langu. Aina ya duka: ",
     en: "Hello DukaPilot, I want to talk about setting up my shop. Shop type: ",
   },
   about: {
@@ -67,7 +67,7 @@ export default function WhatsAppCTA({
       className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-colors ${styles[variant]} ${className}`}
     >
       <MessageCircle className="h-4 w-4" />
-      {label || (lang === "sw" ? "Panga setup WhatsApp" : "Set up on WhatsApp")}
+      {label || (lang === "sw" ? "Panga kuweka mfumo WhatsApp" : "Set up on WhatsApp")}
     </a>
   );
 }

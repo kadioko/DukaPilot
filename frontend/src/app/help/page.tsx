@@ -13,7 +13,7 @@ export default function HelpPage() {
   const lang = useLang();
   const faqs = [
     [lang === "sw" ? "Ninaanzaje?" : "How do I start?", lang === "sw" ? "Jisajili, kamilisha duka, ongeza bidhaa chache, kisha rekodi mauzo ya kwanza." : "Register, complete shop setup, add a few products, then record your first sale."],
-    [lang === "sw" ? "Nawezaje kushare catalog?" : "How do I share the catalog?", lang === "sw" ? "Fungua Catalog, chagua duka lako, kisha tuma link kwa WhatsApp au mitandao mingine." : "Open Catalog, choose your shop, then send the link on WhatsApp or other channels."],
+    [lang === "sw" ? "Ninatumaje orodha ya bidhaa?" : "How do I share the catalog?", lang === "sw" ? "Fungua Orodha ya bidhaa, chagua duka lako, kisha tuma kiungo kwa WhatsApp au mitandao mingine." : "Open Catalog, choose your shop, then send the link on WhatsApp or other channels."],
     [lang === "sw" ? "Staff wanaingiaje?" : "How do staff sign in?", lang === "sw" ? "Owner anaongeza staff, simu na PIN kwenye ukurasa wa Staff. Staff hutumia simu na PIN kuingia." : "The owner adds staff, phone, and PIN on the Staff page. Staff use that phone and PIN to sign in."],
     [lang === "sw" ? "Offline inafanya kazi?" : "Does offline work?", lang === "sw" ? "Ukurasa wa Sales unaweza kuhifadhi mauzo kwenye browser ukiwa offline na kuyasawazisha internet ikirudi. Kagua sync history kwa hitilafu za stock." : "The Sales page can save sales locally while offline and sync them when internet returns. Check sync history for stock conflict errors."],
     [lang === "sw" ? "Ninalipaje subscription?" : "How do I pay for subscription?", lang === "sw" ? "Njia ya kwanza: M-Pesa Lipa Number 52806296 jina Necuva Group Limited. Njia ya pili: Mix by Yas Lipa Number 18214626 jina Necuva. Njia ya tatu: tuma pesa 0743910580. Baada ya kulipa, weka reference kwenye Billing au tuma WhatsApp 0743910580." : "First option: M-Pesa Lipa Number 52806296, name Necuva Group Limited. Second option: Mix by Yas Lipa Number 18214626, name Necuva. Third option: send money to 0743910580. After paying, submit the reference in Billing or WhatsApp 0743910580."],
@@ -22,7 +22,7 @@ export default function HelpPage() {
     [lang === "sw" ? "Nafutaje akaunti yangu?" : "How do I delete my account?", lang === "sw" ? "Fungua ukurasa wa Delete Account kuona hatua, aina ya data inayofutwa, na muda wa retention." : "Open the Delete Account page to see the steps, deleted data types, and retention period."],
   ];
   const walkthrough = [
-    [lang === "sw" ? "Setup" : "Setup", lang === "sw" ? "Weka jina la duka, lugha, na mawasiliano." : "Set shop name, language, and contact details."],
+    [lang === "sw" ? "Kuweka mfumo" : "Setup", lang === "sw" ? "Weka jina la duka, lugha, na mawasiliano." : "Set shop name, language, and contact details."],
     [lang === "sw" ? "Bidhaa" : "Products", lang === "sw" ? "Ongeza stock, bei ya kununua, bei ya kuuza, na supplier." : "Add stock, buying price, selling price, and supplier."],
     [lang === "sw" ? "Mauzo" : "Sales", lang === "sw" ? "Rekodi cash, M-Pesa, bank, au credit sale kwa simu." : "Record cash, M-Pesa, bank, or credit sales from the phone."],
     [lang === "sw" ? "Hatua za AI" : "AI actions", lang === "sw" ? "Fungua Assistant kuona cha kufanya leo." : "Open Assistant to see what to do today."],
@@ -53,7 +53,7 @@ export default function HelpPage() {
           lang={lang}
           headline={lang === "sw" ? "Pata msaada wa kuendesha duka vizuri" : "Get help running your shop better"}
           body={lang === "sw"
-            ? "Majibu ya haraka kwa setup, catalog, staff, offline sales, malipo na AI assistant. Ukikwama, WhatsApp support ipo karibu."
+            ? "Majibu ya haraka kwa kuweka mfumo, orodha ya bidhaa, wafanyakazi, mauzo bila intaneti, malipo na msaidizi wa AI. Ukikwama, msaada wa WhatsApp upo karibu."
             : "Quick answers for setup, catalog links, staff, offline sales, payments, and the AI assistant. If you get stuck, WhatsApp support is close."}
           primaryCta={{ href: "/contact", label: lang === "sw" ? "Ongea na support" : "Talk to support" }}
           secondaryCta={{
@@ -72,7 +72,7 @@ export default function HelpPage() {
                 <TextReveal text={lang === "sw" ? "Msaada" : "Help"} hoverColor="#15803d" />
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
-                {lang === "sw" ? "Majibu ya haraka kwa setup, catalog, staff, offline sales, malipo na AI assistant." : "Quick answers for setup, catalog links, staff, offline sales, payments, and the AI assistant."}
+                {lang === "sw" ? "Majibu ya haraka kwa kuweka mfumo, orodha ya bidhaa, wafanyakazi, mauzo bila intaneti, malipo na msaidizi wa AI." : "Quick answers for setup, catalog links, staff, offline sales, payments, and the AI assistant."}
               </p>
             </div>
             <div className="rounded-2xl border border-brand-100 bg-brand-50 p-5">

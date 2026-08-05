@@ -29,8 +29,8 @@ export default function DemoPage() {
             : "Use demo accounts to see sales, stock, orders, debts, expenses, staff, billing, and the AI Assistant. All PINs are 1234."}
           primaryCta={{ href: "/", label: lang === "sw" ? "Fungua login" : "Open login" }}
           secondaryCta={{
-            href: "https://wa.me/255743910580?text=Nataka%20setup%20baada%20ya%20demo%20ya%20DukaPilot",
-            label: lang === "sw" ? "Nataka setup" : "I want setup",
+            href: "https://wa.me/255743910580?text=Nataka%20kusaidiwa%20kuweka%20mfumo%20baada%20ya%20onyesho%20la%20DukaPilot",
+            label: lang === "sw" ? "Nataka kuweka mfumo" : "I want setup",
           }}
           features={[
             { title: "Merchant", description: lang === "sw" ? "Angalia duka kamili, dashboard, bidhaa na mauzo." : "Explore the full shop, dashboard, products, and sales." },
@@ -41,11 +41,11 @@ export default function DemoPage() {
         />
         <div>
           <h1 className="text-3xl font-bold text-gray-950">
-            <TextReveal text={lang === "sw" ? "Demo ya DukaPilot" : "DukaPilot Demo"} hoverColor="#15803d" />
+            <TextReveal text={lang === "sw" ? "Onyesho la DukaPilot" : "DukaPilot Demo"} hoverColor="#15803d" />
           </h1>
         </div>
         <section className="rounded-xl border border-brand-200 bg-brand-50 p-5">
-          <h2 className="font-semibold text-brand-950">{lang === "sw" ? "Demo flows za kujaribu" : "Demo flows to try"}</h2>
+          <h2 className="font-semibold text-brand-950">{lang === "sw" ? "Hatua za onyesho za kujaribu" : "Demo flows to try"}</h2>
           <div className="mt-3 grid gap-2 text-sm text-brand-900 sm:grid-cols-2">
             <p>{lang === "sw" ? "1. Rekodi sale, kisha angalia dashboard." : "1. Record a sale, then check the dashboard."}</p>
             <p>{lang === "sw" ? "2. Fungua AI Assistant uone hatua za leo." : "2. Open AI Assistant to see today's actions."}</p>
@@ -68,7 +68,7 @@ export default function DemoPage() {
             {lang === "sw" ? "Fungua login" : "Open login"}
             <ArrowRight className="h-4 w-4" />
           </Link>
-          <WhatsAppCTA intent="demo" label={lang === "sw" ? "Nataka setup baada ya demo" : "I want setup after demo"} />
+          <WhatsAppCTA intent="demo" label={lang === "sw" ? "Nataka kuweka mfumo baada ya onyesho" : "I want setup after demo"} />
         </div>
       </div>
     </PublicPageShell>

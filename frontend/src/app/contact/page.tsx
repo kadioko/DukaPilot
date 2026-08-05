@@ -12,7 +12,7 @@ export default function ContactPage() {
   const lang = useLang();
   const whatsappSetupHref = `https://wa.me/255743910580?text=${encodeURIComponent(
     lang === "sw"
-      ? "Habari DukaPilot, nataka setup ya duka langu. Aina ya duka: "
+      ? "Habari DukaPilot, nataka kusaidiwa kuweka mfumo wa duka langu. Aina ya duka: "
       : "Hello DukaPilot, I want help setting up my shop. Shop type: "
   )}`;
   const channels = [
@@ -20,7 +20,7 @@ export default function ContactPage() {
       Icon: MessageCircle,
       title: "WhatsApp",
       value: "+255 743 910 580",
-      detail: lang === "sw" ? "Njia ya haraka kwa setup, malipo na support." : "Fastest for setup, payments, and support.",
+      detail: lang === "sw" ? "Njia ya haraka kwa kuweka mfumo, malipo na msaada." : "Fastest for setup, payments, and support.",
       href: whatsappSetupHref,
     },
     {
@@ -46,7 +46,7 @@ export default function ContactPage() {
           lang={lang}
           headline={lang === "sw" ? "Support ya DukaPilot ipo karibu" : "DukaPilot support is close"}
           body={lang === "sw"
-            ? "Tuma swali, screenshot, payment reference au ombi la setup. Tutakusaidia bidhaa, mauzo, staff, catalog, billing na AI assistant."
+            ? "Tuma swali, picha ya skrini, kumbukumbu ya malipo au ombi la kuweka mfumo. Tutakusaidia bidhaa, mauzo, wafanyakazi, orodha ya bidhaa, malipo na msaidizi wa AI."
             : "Send a question, screenshot, payment reference, or setup request. We help with products, sales, staff, catalog, billing, and the AI assistant."}
           primaryCta={{
             href: whatsappSetupHref,
@@ -96,7 +96,7 @@ export default function ContactPage() {
                   <ShieldCheck className="h-5 w-5 text-brand-200" />
                   <p className="mt-3 text-sm font-semibold">{lang === "sw" ? "Kwa biashara Tanzania" : "For Tanzanian shops"}</p>
                   <p className="mt-1 text-sm leading-6 text-brand-100">
-                    {lang === "sw" ? "Setup, malipo, madeni, bidhaa na staff kwa lugha unayopenda." : "Setup, payments, debts, products, and staff support in the language you prefer."}
+                    {lang === "sw" ? "Kuweka mfumo, malipo, madeni, bidhaa na wafanyakazi kwa lugha unayopenda." : "Setup, payments, debts, products, and staff support in the language you prefer."}
                   </p>
                 </div>
               </div>
@@ -130,7 +130,7 @@ export default function ContactPage() {
             <Link href="/help" className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-bold text-green-800 hover:bg-green-100">
               {lang === "sw" ? "Soma msaada" : "Read help"}
             </Link>
-            <WhatsAppCTA intent="contact" label={lang === "sw" ? "Nataka setup" : "I want setup"} />
+            <WhatsAppCTA intent="contact" label={lang === "sw" ? "Nataka kuweka mfumo" : "I want setup"} />
           </div>
         </section>
       </div>
