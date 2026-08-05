@@ -58,11 +58,15 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
 
 let refreshingPromise: Promise<boolean> | null = null;
 let authFailureHandled = false;
+const SESSION_HINT_KEY = "dukapilot_session_active";
 
 function handleAuthenticationFailure() {
   if (typeof window !== "undefined" && !authFailureHandled) {
     authFailureHandled = true;
-    window.location.href = "/";
+    window.localStorage.removeItem(SESSION_HINT_KEY);
+    if (window.location.pathname !== "/") {
+      window.location.href = "/";
+    }
   }
 }
 
@@ -182,8 +186,20 @@ export function setToken(_token?: string) {
   // Secure, HttpOnly cookies and no access token is stored in browser script.
 }
 
+export function markSessionActive() {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(SESSION_HINT_KEY, "1");
+  }
+  authFailureHandled = false;
+}
+
+export function hasSessionHint(): boolean {
+  return typeof window !== "undefined" && window.localStorage.getItem(SESSION_HINT_KEY) === "1";
+}
+
 export function clearToken() {
   if (typeof window !== "undefined") {
+    localStorage.removeItem(SESSION_HINT_KEY);
     localStorage.removeItem("dukapilot_token");
     localStorage.removeItem("dukaos_token");
   }

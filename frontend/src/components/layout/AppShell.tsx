@@ -23,7 +23,7 @@ import {
   ShoppingBag,
   ScanLine,
 } from "lucide-react";
-import { clearToken, api } from "@/lib/api";
+import { clearToken, api, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
 import ShortcutUsageTracker from "@/components/analytics/ShortcutUsageTracker";
@@ -106,6 +106,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     api.get<{ user: User }>("/auth/me")
       .then((d) => {
+        markSessionActive();
         setUser(d.user);
         if (d.user.language === "sw" || d.user.language === "en") {
           setAppLanguage(d.user.language);
