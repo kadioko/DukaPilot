@@ -549,6 +549,12 @@ Current sprint checks:
 | `MAILTRAP_SMTP_PORT` | Optional | Mailtrap SMTP port, usually `587` |
 | `MAILTRAP_SMTP_USER` | Optional | Mailtrap SMTP username |
 | `MAILTRAP_SMTP_PASS` | Optional | Mailtrap SMTP password |
+| `SENTRY_DSN` | Yes | Backend error-tracking DSN. Configured in Railway production; never commit it. |
+| `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
+| `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
+| `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
+| `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
+| `BACKUP_RETAIN_DAYS` | Optional | Days to keep backups (default: `7`) |
 
 ### Production monitor
 
@@ -560,20 +566,23 @@ npm run monitor:prod
 ```
 
 This checks backend health, frontend shell, public catalog/API loading, CORS preflight for the Vercel origin, login, authenticated dashboard access, controlled 401 handling, and stale old Railway API URL leakage.
-| `SENTRY_DSN` | Optional | Sentry project DSN for error tracking |
-| `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
-| `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
-| `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
-| `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
-| `BACKUP_RETAIN_DAYS` | Optional | Days to keep backups (default: `7`) |
+
+### Sentry backend alert drill
+
+```bash
+cd backend
+railway run npm run sentry:test
+```
+
+Confirm the command succeeds, the `DukaPilot alert drill` issue appears in the `dukapilot-backend` Sentry project, and the founder email notification arrives. Resolve the test issue after verification. The production alert path was last verified on 2026-08-06. See `docs/SENTRY_MONITORING.md`.
 
 ### Frontend (Vercel)
 
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Yes | `https://dukapilotproduction.up.railway.app/api` — no trailing slash or newline |
-| `NEXT_PUBLIC_SENTRY_DSN` | Optional | Sentry DSN for client-side error tracking |
-| `SENTRY_DSN` | Optional | Sentry DSN for server-side (SSR) error tracking |
+| `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Browser error tracking; currently not configured in Vercel production |
+| `SENTRY_DSN` | Recommended | Next.js server-side error tracking; currently not configured in Vercel production |
 
 ---
 

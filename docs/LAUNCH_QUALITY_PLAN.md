@@ -9,6 +9,7 @@
 - Add registration PIN confirmation, Terms/Privacy consent, autofill hints, optional shop details, and a usable PIN visibility control.
 - Place pricing before payment instructions and state that AI Assistant is a Pro feature.
 - Add HSTS and a JSON response for unknown API routes.
+- Activate backend Sentry on Railway, create high-priority founder email alerts, and complete a real alert drill.
 - Clarify dashboard time windows, zero-value charts, and all-time fallback states.
 - Distinguish low stock from out of stock in dashboard alerts and counts.
 - Repair Tanzania WhatsApp debt reminders, include the shop name, add debt age, labelled fields, and an optional due date.
@@ -23,6 +24,7 @@
 3. Run PageSpeed Insights and a throttled mobile test; track FCP, LCP, and page weight before changing imagery or loading strategy.
 4. Configure the Vercel toolbar so it is disabled for production, then verify from an incognito browser.
 5. Have Tanzanian counsel review the Terms, Privacy Policy, consent wording, retention, and support process under the Personal Data Protection Act 2022.
+6. Configure the existing frontend Sentry integration in Vercel and complete a separate browser/server alert drill.
 
 ## Next: product decisions
 

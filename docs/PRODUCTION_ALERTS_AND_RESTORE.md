@@ -13,11 +13,20 @@ On failure, the workflow opens one `Production monitor failure` issue. Watching 
 
 ## Sentry Alert Destination
 
-1. Set `SENTRY_DSN` on Railway and `NEXT_PUBLIC_SENTRY_DSN` on Vercel.
-2. In Sentry, create an issue alert for any new error in the `production` environment.
-3. Send it to the founder's email or Slack/WhatsApp bridge; use email first if no bridge is available.
-4. Send one test event with `npm run sentry:test` from `backend/` after setting `SENTRY_TEST_DSN` locally or in a secure runner.
-5. Confirm both the event and notification arrive, then resolve the test issue.
+Backend monitoring is live. The `dukapilot-backend` Sentry project receives Railway production errors through `SENTRY_DSN`, and new high-priority issues notify the founder by email.
+
+The alert path was tested successfully on 2026-08-06 with issue `DUKAPILOT-BACKEND-1 - DukaPilot alert drill`. Railway startup logs also confirmed `[sentry] Initialized`.
+
+Run future drills without copying the DSN locally:
+
+```powershell
+cd backend
+railway run npm run sentry:test
+```
+
+Confirm both the Sentry issue and notification email arrive, then resolve the test issue. The frontend SDK is present but Vercel DSNs are not yet configured; do not describe frontend error monitoring as active until that setup has its own successful drill.
+
+See `docs/SENTRY_MONITORING.md` for coverage, limits, testing, and incident response.
 
 ## Restore Drill
 

@@ -1,6 +1,6 @@
 # DukaPilot Launch Playbook
 
-Last updated: 2026-07-10
+Last updated: 2026-08-06
 
 This is the working plan for turning the live DukaPilot product into active merchants, paid shops, and supplier relationships.
 
@@ -15,6 +15,7 @@ Production is live at:
 What is strong:
 
 - The domain, HTTPS redirect, Vercel hosting, Railway API, and production database are working.
+- Backend Sentry monitoring is live on Railway with founder email alerts; the alert path was tested on 2026-08-06.
 - Push launch: deploy migration `20260722001000_push_notifications_and_app_usage`, set `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` in Railway, then create a dedicated Railway cron service with start command `npm run push:process` and schedule `0 5 * * *` UTC. Do not expose or commit the private VAPID key.
 - The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog, supplier orders, AI assistant, Swahili/English, and WhatsApp support.
 - Pricing is understandable for Tanzania: free trial, TZS 15,000/month Basic, TZS 35,000/month Pro.
@@ -29,7 +30,7 @@ What should improve before scaling ads:
 - Keep Search Console verified, submit the sitemap after public-page changes, and build trustworthy local backlinks; technical metadata and structured data are already in place.
 - Add a stronger WhatsApp CTA for people who are not ready to register: "Tuma WhatsApp tupange setup ya duka lako."
 - Add social proof as soon as the first 3-5 real merchants are onboarded.
-- Watch production support signals daily: failed logins, unpaid/expiring shops, unresolved sync failures, billing reports, and assistant actions that are opened but not completed.
+- Watch production support signals daily: new Sentry issues, failed logins, unpaid/expiring shops, unresolved sync failures, billing reports, and assistant actions that are opened but not completed.
 
 ## Positioning
 
@@ -236,12 +237,14 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Catalog trust. Keep demo/QA shops unpublished and review wholesale prices before sharing a merchant catalog.
 - Plan leakage. Test Basic and Pro entitlements after every billing or authorization change.
 - Shared mobile IPs. Avoid repeated production login tests; use local unit/browser tests and one controlled production monitor.
+- Monitoring blind spots. Backend Sentry is active, but frontend browser and Next.js server capture still require Vercel DSNs and a separate alert drill.
 - Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows without receiving buying costs, margins, shop-wide profit, or AI report data.
 
 ## Release Gate - 1.3.0
 
 - Railway migration: `20260710001000_launch_hardening`.
 - Production monitor passes once after Railway and Vercel deploy.
+- Railway logs include `[sentry] Initialized`, and the backend alert drill reaches both Sentry and founder email.
 - Basic account cannot use staff or AI routes; Pro and active trial can.
 - Duplicate payment reference returns the existing confirmation without extending time again.
 - Customer orders follow `PENDING -> CONFIRMED -> OUT_FOR_DELIVERY -> DELIVERED`.

@@ -27,6 +27,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Health:** [https://dukapilotproduction.up.railway.app/health](https://dukapilotproduction.up.railway.app/health)
 - **Status:** [https://dukapilotproduction.up.railway.app/status](https://dukapilotproduction.up.railway.app/status)
 - **Email:** Mailtrap for outbound app email; ImprovMX for inbound forwarding on `dukapilot.com`
+- **Error monitoring:** Backend Sentry alerts are live; see [docs/SENTRY_MONITORING.md](./docs/SENTRY_MONITORING.md)
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
 - **Marketing assets:** [marketing/README.md](./marketing/README.md)
 
@@ -132,7 +133,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 | **Frontend** | Next.js 16 · React 19 · TypeScript 6 · Tailwind CSS 4 |
 | **Auth** | Secure HttpOnly session cookies (1h access + 30d refresh) · phone + PIN login · OTP PIN recovery |
 | **SMS / OTP** | Africa's Talking (sandbox in dev, live in production) |
-| **Error tracking** | Sentry (`@sentry/node` + `@sentry/nextjs`) |
+| **Error tracking** | Sentry (`@sentry/node` backend live; `@sentry/nextjs` integration present but awaiting Vercel DSNs) |
 | **Messaging** | WhatsApp deep links + WhatsApp Cloud API (optional) |
 | **Payments** | Cash, Bank, Credit, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa |
 | **Charts** | Recharts |
@@ -362,7 +363,7 @@ npm run dev         # runs on :3000
 | `MAILTRAP_SMTP_PORT` | Optional | Mailtrap SMTP port, usually `587` |
 | `MAILTRAP_SMTP_USER` | Optional | Mailtrap SMTP username |
 | `MAILTRAP_SMTP_PASS` | Optional | Mailtrap SMTP password |
-| `SENTRY_DSN` | Optional | Sentry project DSN for error tracking |
+| `SENTRY_DSN` | Yes | Backend Sentry project DSN. Configured in Railway production; never commit or print it. |
 | `VAPID_SUBJECT` | Required for push | `mailto:support@dukapilot.com` |
 | `VAPID_PUBLIC_KEY` | Required for push | Public key from the private DukaPilot secrets vault |
 | `VAPID_PRIVATE_KEY` | Required for push | Private key from the private DukaPilot secrets vault. Never commit it. |
@@ -377,8 +378,8 @@ npm run dev         # runs on :3000
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Yes | `https://dukapilotproduction.up.railway.app/api` — no trailing slash or newline |
-| `NEXT_PUBLIC_SENTRY_DSN` | Optional | Sentry DSN for client-side error tracking |
-| `SENTRY_DSN` | Optional | Sentry DSN for server-side (SSR) error tracking |
+| `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Frontend browser Sentry DSN. Not yet configured in production. |
+| `SENTRY_DSN` | Recommended | Next.js server-side Sentry DSN. Not yet configured in production. |
 
 ### Production Database Workflow
 
@@ -399,7 +400,16 @@ npm run dev         # runs on :3000
 7. Run `cd backend && npm run monitor:prod` for health, CORS, catalog, login, dashboard, and stale API URL checks.
 8. Run `cd backend && npm run email:dns-check` to verify Mailtrap outbound and ImprovMX inbound DNS.
 9. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
-10. Review `TESTING.md` for the full manual and automated test checklist.
+10. Confirm Railway startup logs include `[sentry] Initialized`; run `cd backend && railway run npm run sentry:test` after Sentry configuration changes.
+11. Review `TESTING.md` for the full manual and automated test checklist.
+
+### Production Monitoring
+
+- Sentry reports unexpected backend exceptions with stack traces, route context, occurrence counts, and high-priority email alerts.
+- The scheduled production monitor checks availability and known workflows; Sentry does not replace it.
+- Backups and restore drills protect data recovery; Sentry does not replace them.
+- The backend alert path was tested successfully on 2026-08-06.
+- See [docs/SENTRY_MONITORING.md](./docs/SENTRY_MONITORING.md) and [docs/PRODUCTION_ALERTS_AND_RESTORE.md](./docs/PRODUCTION_ALERTS_AND_RESTORE.md).
 
 ### Launch Notes
 

@@ -11,6 +11,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Added opt-in browser push infrastructure: tenant-scoped subscriptions, alert preferences, queued deliveries, retry handling, and admin delivery health.
 - Added privacy-safe authenticated Android shortcut analytics for Sale, Stock, and Debts. No sales, customer, debt, or payment data is recorded in these events.
+- Activated the dedicated `dukapilot-backend` Sentry project in Railway production with high-priority founder email alerts and a verified alert drill.
+- Added a production Sentry operator guide covering scope, limitations, testing, secrets, and incident response.
 
 ### Changed
 
