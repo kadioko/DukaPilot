@@ -268,12 +268,16 @@ function buildRecommendations({
   const lowStock = [...(dashboard?.lowStockAlerts || [])].sort((a, b) => {
     const aSales = salesByProduct.get(a.name) || { quantity: 0, revenue: 0 };
     const bSales = salesByProduct.get(b.name) || { quantity: 0, revenue: 0 };
-    const score = (product: typeof a, sales: { quantity: number; revenue: number }) =>
-      (product.currentStock === 0 ? 1000000 : 0) +
-      sales.revenue +
-      (sales.quantity * 1000) +
-      ((recentSalesByProduct.get(product.name) || 0) * 5000) +
-      Math.max(0, (product.sellingPrice || 0) - (product.buyingPrice || 0)) * 10;
+    const score = (product: typeof a, sales: { quantity: number; revenue: number }) => {
+      const recentQuantity = recentSalesByProduct.get(product.name) || 0;
+      const hasSalesHistory = sales.quantity > 0 || recentQuantity > 0;
+      return (hasSalesHistory ? 1000000 : 0) +
+        (hasSalesHistory && product.currentStock === 0 ? 100000 : 0) +
+        sales.revenue +
+        (sales.quantity * 1000) +
+        (recentQuantity * 5000) +
+        Math.max(0, (product.sellingPrice || 0) - (product.buyingPrice || 0)) * 10;
+    };
     return score(b, bSales) - score(a, aSales);
   });
   const mostUrgentStock = lowStock[0];
@@ -325,27 +329,35 @@ function buildRecommendations({
   if (mostUrgentStock) {
     const outOfStock = mostUrgentStock.currentStock === 0;
     const productSales = salesByProduct.get(mostUrgentStock.name) || { quantity: 0, revenue: 0 };
+    const recentQuantity = recentSalesByProduct.get(mostUrgentStock.name) || 0;
+    const hasSalesHistory = productSales.quantity > 0 || recentQuantity > 0;
     const marginPerUnit = Math.max(0, (mostUrgentStock.sellingPrice || 0) - (mostUrgentStock.buyingPrice || 0));
-    const stockRank = Math.min(100, 78 + (outOfStock ? 12 : 0) + (productSales.revenue > 0 ? 5 : 0) + (marginPerUnit > 0 ? 3 : 0));
+    const stockRank = hasSalesHistory
+      ? Math.min(100, 78 + (outOfStock ? 12 : 0) + (productSales.revenue > 0 ? 5 : 0) + (marginPerUnit > 0 ? 3 : 0))
+      : 35;
     items.push({
       id: "stock",
       rank: stockRank,
       icon: Package,
-      tone: "bg-red-50 text-red-700",
+      tone: hasSalesHistory ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700",
       title: lang === "sw"
-        ? (outOfStock ? `Stock ya ${mostUrgentStock.name} imeisha - agiza leo` : `Agiza ${mostUrgentStock.name} kabla stock haijaisha`)
-        : (outOfStock ? `${mostUrgentStock.name} is out of stock - reorder today` : `Restock ${mostUrgentStock.name} before it runs out`),
+        ? (!hasSalesHistory ? `Kagua mahitaji ya ${mostUrgentStock.name} kabla ya kuagiza` : outOfStock ? `Stock ya ${mostUrgentStock.name} imeisha - agiza leo` : `Agiza ${mostUrgentStock.name} kabla stock haijaisha`)
+        : (!hasSalesHistory ? `Verify demand for ${mostUrgentStock.name} before reordering` : outOfStock ? `${mostUrgentStock.name} is out of stock - reorder today` : `Restock ${mostUrgentStock.name} before it runs out`),
       body: lang === "sw"
-        ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Imeuza ${productSales.quantity} na kuleta ${formatTZS(productSales.revenue)}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`
-        : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. It sold ${productSales.quantity} units for ${formatTZS(productSales.revenue)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`,
-      action: lang === "sw" ? "Fungua Hifadhi ya Bidhaa na agiza tena" : "Open inventory and reorder",
+        ? (!hasSalesHistory
+          ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}, lakini hakuna mauzo yaliyorekodiwa kwa bidhaa hii. Thibitisha mahitaji kabla ya kufunga pesa kwenye stock.`
+          : `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Imeuza ${productSales.quantity} na kuleta ${formatTZS(productSales.revenue)}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`)
+        : (!hasSalesHistory
+          ? `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} remain, but this product has no recorded sales. Verify demand before tying up cash in more stock.`
+          : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. It sold ${productSales.quantity} units for ${formatTZS(productSales.revenue)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`),
+      action: lang === "sw" ? (hasSalesHistory ? "Fungua Hifadhi ya Bidhaa na agiza tena" : "Kagua bidhaa kwenye Hifadhi") : (hasSalesHistory ? "Open inventory and reorder" : "Review product in inventory"),
       href: `/inventory?search=${encodeURIComponent(mostUrgentStock.name)}&action=restock`,
       why: lang === "sw"
-        ? `Kipaumbele kinatumia stock, kasi ya mauzo, mapato na faida ya ${formatTZS(marginPerUnit)} kwa unit.`
-        : `Priority combines stock, sales velocity, revenue, and ${formatTZS(marginPerUnit)} margin per unit.`,
+        ? (hasSalesHistory ? `Kipaumbele kinatumia stock, kasi ya mauzo, mapato na faida ya ${formatTZS(marginPerUnit)} kwa unit.` : "Bidhaa zisizo na historia ya mauzo huwekwa chini ya bidhaa ambazo tayari zina mahitaji yaliyothibitishwa.")
+        : (hasSalesHistory ? `Priority combines stock, sales velocity, revenue, and ${formatTZS(marginPerUnit)} margin per unit.` : "Products with no sales history rank below products with proven demand."),
       impact: lang === "sw"
-        ? (outOfStock ? "Rudisha bidhaa inayouzwa ili mauzo yaanze tena." : "Kulinda mauzo ya bidhaa inayohitajika kabla wiki haijaisha.")
-        : (outOfStock ? "Restore a sellable item so sales can resume." : "Protect sales from a needed item before the week ends."),
+        ? (!hasSalesHistory ? "Epuka kununua stock ambayo haijathibitisha kuwa inahitajika." : outOfStock ? "Rudisha bidhaa inayouzwa ili mauzo yaanze tena." : "Kulinda mauzo ya bidhaa inayohitajika kabla wiki haijaisha.")
+        : (!hasSalesHistory ? "Avoid buying stock before demand is proven." : outOfStock ? "Restore a sellable item so sales can resume." : "Protect sales from a needed item before the week ends."),
     });
   }
 

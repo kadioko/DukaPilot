@@ -102,6 +102,7 @@ async function request<T>(
   const baseUrl = getBaseUrl();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-DukaPilot-Language": lang,
     ...(options.headers as Record<string, string>),
   };
 

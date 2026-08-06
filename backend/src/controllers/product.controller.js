@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { inferBarcodeType, validateBarcode, nextInternalBarcode } = require("../lib/barcode");
+const { getRequestLanguage } = require("../lib/requestLanguage");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch((error) => {
@@ -152,6 +153,17 @@ const update = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const existing = await prisma.product.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Product not found" });
+
+  if (Object.prototype.hasOwnProperty.call(req.body, "currentStock")) {
+    const lang = getRequestLanguage(req);
+    return res.status(400).json({
+      error: lang === "sw"
+        ? "Stock haiwezi kubadilishwa kupitia taarifa za bidhaa. Tumia Ongeza/Punguza stock ili mabadiliko yawekwe kwenye historia."
+        : "Stock cannot be changed through product details. Use Adjust stock so the change is recorded in stock history.",
+      code: "STOCK_ADJUSTMENT_REQUIRED",
+      supportedEndpoint: "POST /api/stock/adjust",
+    });
+  }
 
   const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode } = req.body;
   const nextSellingPrice = sellingPrice === undefined ? existing.sellingPrice : Number(sellingPrice);

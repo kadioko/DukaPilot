@@ -13,7 +13,7 @@
     "test:auth": "playwright test tests/auth.negative.spec.ts",
     "test:inventory": "playwright test tests/inventory.flows.spec.ts",
     "test:supplier": "playwright test tests/supplier.portal.spec.ts",
-    "test:mocked": "playwright test tests/a11y.spec.ts tests/auth.negative.spec.ts tests/dashboard.empty-state.spec.ts tests/inventory.flows.spec.ts tests/sales.receipt.spec.ts tests/supplier.portal.spec.ts",
+    "test:mocked": "playwright test tests/a11y.spec.ts tests/auth.negative.spec.ts tests/dashboard.empty-state.spec.ts tests/expenses-assistant.spec.ts tests/inventory.flows.spec.ts tests/sales.receipt.spec.ts tests/supplier.portal.spec.ts",
     "test:mocked:prod": "cross-env PLAYWRIGHT_PRODUCTION=1 npm run test:mocked",
     "test:a11y": "playwright test tests/a11y.spec.ts",
     "test:e2e": "playwright test"

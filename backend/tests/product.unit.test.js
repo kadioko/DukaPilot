@@ -105,3 +105,30 @@ test("product creation commits opening stock and stock movement together", async
   assert.equal(res.payload.product.minimumStock, 0);
   assert.deepEqual(movements, [{ type: "IN", quantity: 12, note: "Initial stock", productId: "prod-1" }]);
 });
+
+test("product update rejects direct currentStock changes and names the supported endpoint", async () => {
+  let updateCalled = false;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findFirst: async () => ({ id: "prod-1", shopId: "shop-1", currentStock: 5 }),
+      update: async () => { updateCalled = true; },
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const req = {
+    user: { userId: "user-1" },
+    params: { id: "prod-1" },
+    headers: { "x-dukapilot-language": "sw" },
+    body: { currentStock: 12 },
+  };
+  const res = createRes();
+
+  await ctrl.update(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.code, "STOCK_ADJUSTMENT_REQUIRED");
+  assert.equal(res.payload.supportedEndpoint, "POST /api/stock/adjust");
+  assert.match(res.payload.error, /Stock haiwezi/);
+  assert.equal(updateCalled, false);
+});

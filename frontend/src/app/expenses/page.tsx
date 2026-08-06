@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
+import DateSelect from "@/components/ui/DateSelect";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
@@ -15,13 +16,36 @@ interface Expense {
 }
 
 const categories = ["RENT", "SALARY", "UTILITIES", "TRANSPORT", "STOCK", "MARKETING", "TAX", "OTHER"];
-const INPUT = "rounded-xl border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm";
+const INPUT = "min-w-0 w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm";
+
+function localDateValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function emptyExpenseForm() {
+  return { title: "", amount: "", category: "OTHER", vendor: "", spentAt: localDateValue() };
+}
+
+const CATEGORY_LABELS: Record<string, { sw: string; en: string }> = {
+  RENT: { sw: "Kodi", en: "Rent" },
+  SALARY: { sw: "Mishahara", en: "Salaries" },
+  UTILITIES: { sw: "Umeme na huduma", en: "Utilities" },
+  TRANSPORT: { sw: "Usafiri", en: "Transport" },
+  STOCK: { sw: "Ununuzi wa bidhaa", en: "Stock purchases" },
+  MARKETING: { sw: "Matangazo", en: "Marketing" },
+  TAX: { sw: "Kodi ya serikali", en: "Tax" },
+  OTHER: { sw: "Mengine", en: "Other" },
+};
 
 export default function ExpensesPage() {
   const lang = useLang();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState({ total: 0, count: 0 });
-  const [form, setForm] = useState({ title: "", amount: "", category: "OTHER", vendor: "" });
+  const [form, setForm] = useState(emptyExpenseForm);
   const [assistantFocus, setAssistantFocus] = useState("");
 
   async function load() {
@@ -38,7 +62,7 @@ export default function ExpensesPage() {
   async function addExpense(event: React.FormEvent) {
     event.preventDefault();
     await api.post("/expenses", { ...form, amount: Number(form.amount) }, lang);
-    setForm({ title: "", amount: "", category: "OTHER", vendor: "" });
+    setForm(emptyExpenseForm());
     await load();
   }
 
@@ -70,14 +94,15 @@ export default function ExpensesPage() {
           </div>
         )}
 
-        <form onSubmit={addExpense} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-6 md:items-end">
-          <label className="grid gap-1 text-xs font-medium text-gray-600 md:col-span-2"><span>{lang === "sw" ? "Jina la matumizi" : "Expense name"}</span><input className={INPUT} required placeholder={lang === "sw" ? "Mfano: Kodi ya mwezi" : "Example: Monthly rent"} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
-          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><input className={INPUT} required type="number" min="1" inputMode="numeric" placeholder="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
-          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Aina" : "Category"}</span><select className={INPUT} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-            {categories.map((category) => <option key={category} value={category}>{category.replace("_", " ")}</option>)}
+        <form onSubmit={addExpense} className="grid min-w-0 gap-4 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+          <label className="grid min-w-0 gap-1 text-xs font-medium text-gray-600 sm:col-span-2 lg:col-span-4"><span>{lang === "sw" ? "Jina la matumizi" : "Expense name"}</span><input className={INPUT} required placeholder={lang === "sw" ? "Mfano: Kodi ya mwezi" : "Example: Monthly rent"} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
+          <label className="grid min-w-0 gap-1 text-xs font-medium text-gray-600 lg:col-span-2"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><input className={INPUT} required type="number" min="1" inputMode="numeric" placeholder="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
+          <label className="grid min-w-0 gap-1 text-xs font-medium text-gray-600 lg:col-span-2"><span>{lang === "sw" ? "Aina" : "Category"}</span><select className={INPUT} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+            {categories.map((category) => <option key={category} value={category}>{CATEGORY_LABELS[category][lang]}</option>)}
           </select></label>
-          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Muuzaji (hiari)" : "Vendor (optional)"}</span><input className={INPUT} placeholder={lang === "sw" ? "Mfano: TANESCO" : "Example: TANESCO"} value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} /></label>
-          <button className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">
+          <label className="grid min-w-0 gap-1 text-xs font-medium text-gray-600 sm:col-span-2 lg:col-span-4"><span>{lang === "sw" ? "Muuzaji (hiari)" : "Vendor (optional)"}</span><input className={INPUT} placeholder={lang === "sw" ? "Mfano: TANESCO" : "Example: TANESCO"} value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} /></label>
+          <DateSelect className="sm:col-span-2 lg:col-span-6" lang={lang} label={lang === "sw" ? "Tarehe ya matumizi" : "Expense date"} required value={form.spentAt} onChange={(spentAt) => setForm({ ...form, spentAt })} />
+          <button className="h-12 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 sm:col-span-2 lg:col-span-2">
             {lang === "sw" ? "Hifadhi" : "Save"}
           </button>
         </form>
@@ -90,7 +115,7 @@ export default function ExpensesPage() {
               <div>
                 <p className="font-semibold text-gray-950">{expense.title}</p>
                 <p className="text-sm text-gray-500">
-                  {expense.category.replace("_", " ")} - {new Date(expense.spentAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}
+                  {(CATEGORY_LABELS[expense.category] || { sw: expense.category, en: expense.category })[lang]} - {new Date(expense.spentAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}
                   {expense.vendor ? ` - ${expense.vendor}` : ""}
                 </p>
               </div>

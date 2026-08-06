@@ -177,6 +177,7 @@ DukaPilot/
 │   │   └── migrations/            # Prisma migration history
 │   ├── prisma.config.js           # Prisma 7 datasource config (read by CLI)
 │   ├── scripts/
+│   │   ├── seed-demo-history.js   # Guarded 30-day demo sales history
 │   │   ├── migrate-and-start.js   # Railway startup: migrate then start
 │   │   ├── backup.js              # pg_dump + gzip backup
 │   │   ├── smoke-test.js          # Production smoke checks
@@ -331,6 +332,8 @@ cp .env.example .env.local
 # Edit .env.local: NEXT_PUBLIC_API_URL=http://localhost:4000/api
 npm run dev         # runs on :3000
 ```
+
+For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm run db:seed-demo-history` from `backend/`. It redistributes existing demo sales across 30 days before adding any missing history; it never enables backdating in the live sales API. Read [docs/DEMO_HISTORY_SEEDING.md](./docs/DEMO_HISTORY_SEEDING.md) before running it against a hosted database.
 
 ### Local Verification Checklist
 
