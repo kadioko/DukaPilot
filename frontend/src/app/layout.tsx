@@ -165,6 +165,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="sw">
+      <head>
+        {process.env.VERCEL_ENV === "production" && (
+          <script dangerouslySetInnerHTML={{ __html: "try{localStorage.removeItem('__vercel_toolbar_injector')}catch(e){}" }} />
+        )}
+      </head>
       <body>
         <script
           type="application/ld+json"

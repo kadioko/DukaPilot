@@ -153,7 +153,8 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await expect(page.getByText("Sukari White")).toBeVisible();
   await expect(page.getByText(/tzs 3,500/i)).toBeVisible();
 
-  await page.getByLabel(/edit product sukari white|hariri bidhaa sukari white/i).click();
+  await page.getByLabel(/actions for sukari white|vitendo vya sukari white/i).click();
+  await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();
   await expect(page.getByText(/edit product|hariri bidhaa/i)).toBeVisible();
   await page.getByLabel(/product name|jina la bidhaa/i).fill("");
   await page.getByLabel(/product name|jina la bidhaa/i).fill("Sukari Brown");
@@ -173,7 +174,8 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
 
   await expect(page.getByText(/25 pcs/)).toBeVisible();
 
-  await page.getByLabel(/edit product sukari brown|hariri bidhaa sukari brown/i).click();
+  await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
+  await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();
   await page.getByLabel(/product name|jina la bidhaa/i).fill("Failure Product");
   await page.getByLabel(/^save$|^hifadhi$/i).click();
   await expect(page.getByText("Could not save product")).toBeVisible();

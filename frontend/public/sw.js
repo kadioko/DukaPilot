@@ -1,83 +1,65 @@
-// DukaPilot Service Worker — offline support
-// Strategy: cache-first for static assets, network-first for API calls
+// DukaPilot service worker - offline sales support and fresh live navigation.
 
-const CACHE_NAME = "dukapilot-v4";
+const CACHE_NAME = "dukapilot-v5-20260806";
+const PRECACHE_URLS = ["/manifest.json", "/offline.html"];
 
-// Static assets to pre-cache on install
-const PRECACHE_URLS = [
-  "/manifest.json",
-  "/offline.html",
-];
-
-// ── Install: pre-cache shell ────────────────────────────────────────────────
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)));
   self.skipWaiting();
 });
 
-// ── Activate: clean old caches ──────────────────────────────────────────────
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    )
+    caches.keys().then((keys) => Promise.all(
+      keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+    ))
   );
   self.clients.claim();
 });
 
-// ── Fetch ────────────────────────────────────────────────────────────────────
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Never intercept API calls, Chrome extensions, or non-GET requests
   if (
     request.method !== "GET" ||
     url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/_api/") ||
     url.protocol === "chrome-extension:"
   ) {
     return;
   }
 
-  // Never cache HTML navigation. A cached marketing shell can hide a valid
-  // signed-in session and send a returning merchant back to the login view.
+  // Always use the network for HTML so existing users receive the latest app
+  // and authentication redirects. The offline page is only a fallback.
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .catch(() => caches.match("/offline.html"))
-    );
+    event.respondWith(fetch(request).catch(() => caches.match("/offline.html")));
     return;
   }
 
-  // Static assets (_next/static, images, fonts): cache-first
+  // Build assets are content-hashed, so cache-first is safe for these files.
   if (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/static/") ||
     /\.(png|jpg|jpeg|svg|ico|woff2?|ttf|css)$/.test(url.pathname)
   ) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return res;
-        });
-      })
+      caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        return response;
+      }))
     );
-    return;
   }
 });
 
 self.addEventListener("push", (event) => {
   let payload = {};
-  try { payload = event.data ? event.data.json() : {}; } catch { payload = { body: event.data?.text() }; }
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data?.text() };
+  }
   const title = payload.title || "DukaPilot";
   const options = {
     body: payload.body || "You have a new shop alert.",

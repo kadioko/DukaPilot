@@ -32,7 +32,7 @@ const plans: Plan[] = [
     color: "border-gray-200",
     features: [
       { sw: "Hifadhi ya bidhaa kamili", en: "Full inventory management" },
-      { sw: "Mauzo ya POS na online", en: "POS and online sales" },
+      { sw: "Mauzo dukani na mtandaoni", en: "POS and online sales" },
       { sw: "Ripoti za msingi", en: "Basic reports" },
       { sw: "Maagizo ya wasambazaji", en: "Supplier orders" },
       { sw: "Kiswahili na English", en: "Swahili and English" },
@@ -51,8 +51,8 @@ const plans: Plan[] = [
     features: [
       { sw: "Kila kitu katika Jaribio", en: "Everything in Trial" },
       { sw: "Bidhaa zisizo na kikomo", en: "Unlimited products" },
-      { sw: "Dashboard ya faida, mauzo na malipo", en: "Profit, sales, and payment dashboard" },
-      { sw: "Export ya mauzo na inventory (CSV)", en: "Sales and inventory export (CSV)" },
+      { sw: "Dashibodi ya faida, mauzo na malipo", en: "Profit, sales, and payment dashboard" },
+      { sw: "Pakua mauzo na bidhaa (CSV)", en: "Sales and inventory export (CSV)" },
       { sw: "Msaada wa WhatsApp", en: "WhatsApp support" },
     ],
     bestFor: { sw: "Duka moja lenye bidhaa, mauzo, madeni na matumizi ya kila siku.", en: "One shop tracking products, sales, debts, and daily expenses." },
@@ -68,12 +68,12 @@ const plans: Plan[] = [
     badge: { sw: "Bora Zaidi", en: "Best Value" },
     features: [
       { sw: "Kila kitu katika Msingi", en: "Everything in Basic" },
-      { sw: "Akaunti nyingi za wafanyakazi na permissions", en: "Multiple staff accounts and permissions" },
+      { sw: "Akaunti nyingi za wafanyakazi na ruhusa", en: "Multiple staff accounts and permissions" },
       { sw: "Ufuatiliaji wa wafanyakazi na historia ya hatua za AI", en: "Staff oversight and AI action history" },
-      { sw: "AI priority workflows za kila siku", en: "AI priority workflows for daily actions" },
+      { sw: "Vipaumbele vya kila siku kutoka kwa AI", en: "AI priority workflows for daily actions" },
       { sw: "Msaada wa kipaumbele WhatsApp", en: "Priority WhatsApp support" },
     ],
-    bestFor: { sw: "Biashara inayokua yenye wafanyakazi, reports na AI assistant ya maamuzi ya kila siku.", en: "A growing business with staff, reports, and an AI assistant for daily decisions." },
+    bestFor: { sw: "Biashara inayokua yenye wafanyakazi, ripoti na msaidizi wa AI kwa maamuzi ya kila siku.", en: "A growing business with staff, reports, and an AI assistant for daily decisions." },
     cta: { sw: "Chagua Pro", en: "Choose Pro" },
     highlight: false,
   },
@@ -336,7 +336,7 @@ export default function PricingPage() {
               </div>
             </div>
             <Link href="/billing" className="mt-4 inline-flex rounded-xl bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700">
-              {lang === "sw" ? "Weka payment reference" : "Submit payment reference"}
+              {lang === "sw" ? "Weka namba ya kumbukumbu ya malipo" : "Submit payment reference"}
             </Link>
           </section>
           <section className="bg-white rounded-2xl border border-brand-200 p-6">
@@ -347,7 +347,7 @@ export default function PricingPage() {
                 : "DukaPilot is not just POS. It is an AI assistant that tells you what to do: restock, collect debt, reduce costs, and promote high-margin products."}
             </p>
             <Link href="/assistant" className="mt-4 inline-flex rounded-xl border border-brand-200 px-5 py-3 text-sm font-bold text-brand-700 hover:bg-brand-50">
-              {lang === "sw" ? "Ona AI Assistant" : "See AI Assistant"}
+              {lang === "sw" ? "Ona Msaidizi wa AI" : "See AI Assistant"}
             </Link>
           </section>
         </div>

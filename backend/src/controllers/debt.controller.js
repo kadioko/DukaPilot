@@ -184,4 +184,29 @@ const update = asyncHandler(async (req, res) => {
   res.json({ debt: updated });
 });
 
-module.exports = { list, customers, create, recordPayment, update };
+const remove = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const debt = await prisma.debt.findFirst({
+    where: { id: req.params.id, shopId },
+    select: { id: true, saleId: true, amountPaid: true, _count: { select: { payments: true } } },
+  });
+  if (!debt) return res.status(404).json({ error: "Debt not found" });
+  if (debt.saleId) {
+    return res.status(409).json({ error: "This debt belongs to a sale. Void the sale from Sales History so stock and reports are corrected together." });
+  }
+  if (debt.amountPaid > 0 || debt._count.payments > 0) {
+    return res.status(409).json({ error: "A debt with recorded payments cannot be deleted because its payment history must be preserved." });
+  }
+
+  const deleted = await prisma.debt.deleteMany({
+    where: { id: debt.id, shopId, saleId: null, amountPaid: 0, payments: { none: {} } },
+  });
+  if (deleted.count !== 1) {
+    return res.status(409).json({ error: "This debt changed before it could be deleted. Refresh and try again." });
+  }
+
+  req.audit = { action: "debt.delete", resourceType: "debt", resourceId: debt.id, metadata: { reason: "manual_entry_correction" } };
+  res.json({ message: "Debt deleted" });
+});
+
+module.exports = { list, customers, create, recordPayment, update, remove };

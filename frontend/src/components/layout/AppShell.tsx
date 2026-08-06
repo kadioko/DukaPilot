@@ -69,7 +69,7 @@ const merchantNav: NavItem[] = [
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell", group: "sell" },
   { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell", group: "sell" },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
-  { href: "/barcodes", label: "Barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
+  { href: "/barcodes", labelKey: "nav.barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },
   { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canRecordExpenses", group: "money" },
@@ -77,7 +77,7 @@ const merchantNav: NavItem[] = [
   { href: "/billing", labelKey: "nav.billing", icon: CreditCard, permission: "canManageStaff", group: "money" },
   { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff", feature: "staff", group: "manage" },
   { href: "/settings", labelKey: "nav.settings", icon: Settings, group: "manage" },
-  { href: "/reports", label: "Report Issue", icon: AlertTriangle, group: "manage" },
+  { href: "/reports", labelKey: "nav.reportIssue", icon: AlertTriangle, group: "manage" },
 ];
 
 const adminNav: NavItem[] = [
@@ -166,9 +166,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
   const navGroupLabel: Record<NonNullable<NavItem["group"]>, string> = {
     overview: lang === "sw" ? "Muhtasari" : "Overview",
-    ai: "AI Assistant",
+    ai: lang === "sw" ? "Msaidizi wa AI" : "AI Assistant",
     sell: lang === "sw" ? "Uuzaji" : "Sell",
-    stock: lang === "sw" ? "Stock" : "Stock",
+    stock: lang === "sw" ? "Bidhaa" : "Stock",
     money: lang === "sw" ? "Fedha" : "Money",
     manage: lang === "sw" ? "Usimamizi" : "Manage",
   };

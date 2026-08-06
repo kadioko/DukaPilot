@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Trash2 } from "lucide-react";
+import DateSelect from "@/components/ui/DateSelect";
+import { useToast } from "@/components/ui/Toast";
 
 interface Debt {
   id: string;
@@ -15,6 +17,7 @@ interface Debt {
   status: "OPEN" | "PARTIAL" | "PAID" | "CANCELLED";
   dueDate: string | null;
   note: string | null;
+  saleId?: string | null;
   createdAt: string;
   payments?: Array<{
     id: string;
@@ -30,6 +33,7 @@ const INPUT = "rounded-xl border border-gray-300 px-3 py-3 text-base focus:outli
 
 export default function DebtsPage() {
   const lang = useLang();
+  const { toast } = useToast();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [summary, setSummary] = useState({ openCount: 0, totalOwed: 0 });
   const [form, setForm] = useState({ customerName: "", customerPhone: "", amount: "", dueDate: "", note: "" });
@@ -102,6 +106,18 @@ export default function DebtsPage() {
     await load();
   }
 
+  async function deleteDebt(debt: Debt) {
+    const confirmed = window.confirm(lang === "sw" ? "Futa deni hili lililoingizwa kimakosa? Hatua hii haiwezi kurudishwa." : "Delete this mistakenly entered debt? This cannot be undone.");
+    if (!confirmed) return;
+    try {
+      await api.delete(`/debts/${debt.id}`, lang);
+      toast(lang === "sw" ? "Deni limefutwa." : "Debt deleted.", "success");
+      await load();
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Deni halikuweza kufutwa." : "The debt could not be deleted."), "error");
+    }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl space-y-6 pb-24 lg:pb-6">
@@ -137,7 +153,7 @@ export default function DebtsPage() {
           <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-2"><span>{lang === "sw" ? "Jina la mteja" : "Customer name"}</span><input className={INPUT} required autoComplete="name" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
           <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-2"><span>{lang === "sw" ? "Simu ya mteja" : "Customer phone"}</span><input className={INPUT} required type="tel" inputMode="tel" autoComplete="tel" value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} /></label>
           <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><input className={INPUT} required type="number" min="1" inputMode="numeric" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
-          <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Tarehe ya mwisho (dd/mm/yyyy)" : "Due date (dd/mm/yyyy)"}</span><input className={INPUT} type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label>
+          <DateSelect className="md:col-span-2" lang={lang} label={lang === "sw" ? "Tarehe ya mwisho" : "Due date"} value={form.dueDate} onChange={(dueDate) => setForm({ ...form, dueDate })} />
           <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-4"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><input className={INPUT} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
           <button className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 md:col-span-2">{lang === "sw" ? "Hifadhi deni" : "Save debt"}</button>
         </form>}
@@ -201,6 +217,12 @@ export default function DebtsPage() {
                       <MessageCircle className="h-4 w-4" />
                       WhatsApp
                     </a>
+                    {debt.amountPaid === 0 && (
+                      <button onClick={() => deleteDebt(debt)} className="inline-flex items-center justify-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 sm:col-span-3">
+                        <Trash2 className="h-4 w-4" />
+                        {lang === "sw" ? "Futa deni lililoingizwa kimakosa" : "Delete mistaken debt"}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

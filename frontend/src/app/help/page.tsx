@@ -14,23 +14,23 @@ export default function HelpPage() {
   const faqs = [
     [lang === "sw" ? "Ninaanzaje?" : "How do I start?", lang === "sw" ? "Jisajili, kamilisha duka, ongeza bidhaa chache, kisha rekodi mauzo ya kwanza." : "Register, complete shop setup, add a few products, then record your first sale."],
     [lang === "sw" ? "Ninatumaje orodha ya bidhaa?" : "How do I share the catalog?", lang === "sw" ? "Fungua Orodha ya bidhaa, chagua duka lako, kisha tuma kiungo kwa WhatsApp au mitandao mingine." : "Open Catalog, choose your shop, then send the link on WhatsApp or other channels."],
-    [lang === "sw" ? "Staff wanaingiaje?" : "How do staff sign in?", lang === "sw" ? "Owner anaongeza staff, simu na PIN kwenye ukurasa wa Staff. Staff hutumia simu na PIN kuingia." : "The owner adds staff, phone, and PIN on the Staff page. Staff use that phone and PIN to sign in."],
-    [lang === "sw" ? "Offline inafanya kazi?" : "Does offline work?", lang === "sw" ? "Ukurasa wa Sales unaweza kuhifadhi mauzo kwenye browser ukiwa offline na kuyasawazisha internet ikirudi. Kagua sync history kwa hitilafu za stock." : "The Sales page can save sales locally while offline and sync them when internet returns. Check sync history for stock conflict errors."],
-    [lang === "sw" ? "Ninalipaje subscription?" : "How do I pay for subscription?", lang === "sw" ? "Njia ya kwanza: M-Pesa Lipa Number 52806296 jina Necuva Group Limited. Njia ya pili: Mix by Yas Lipa Number 18214626 jina Necuva. Njia ya tatu: tuma pesa 0743910580. Baada ya kulipa, weka reference kwenye Billing au tuma WhatsApp 0743910580." : "First option: M-Pesa Lipa Number 52806296, name Necuva Group Limited. Second option: Mix by Yas Lipa Number 18214626, name Necuva. Third option: send money to 0743910580. After paying, submit the reference in Billing or WhatsApp 0743910580."],
-    [lang === "sw" ? "Nitajuaje malipo yamekubaliwa?" : "How do I know payment was confirmed?", lang === "sw" ? "Billing inaonyesha maombi yako ya malipo na status. Admin akithibitisha, plan itaonekana active." : "Billing shows your payment requests and status. Once admin confirms, your plan shows active."],
-    [lang === "sw" ? "AI Assistant inanisaidiaje?" : "How does the AI Assistant help?", lang === "sw" ? "Inapanga hatua za leo kama kuagiza bidhaa, kufuatilia madeni, kupunguza gharama na kushughulikia order." : "It ranks today's actions like restocking, following up debts, reducing costs, and handling orders."],
+    [lang === "sw" ? "Wafanyakazi wanaingiaje?" : "How do staff sign in?", lang === "sw" ? "Mmiliki anaongeza mfanyakazi, simu na PIN kwenye ukurasa wa Wafanyakazi. Mfanyakazi hutumia simu na PIN kuingia." : "The owner adds staff, phone, and PIN on the Staff page. Staff use that phone and PIN to sign in."],
+    [lang === "sw" ? "Mfumo hufanya kazi bila intaneti?" : "Does offline work?", lang === "sw" ? "Ukurasa wa Mauzo unaweza kuhifadhi mauzo kwenye simu bila intaneti na kuyasawazisha intaneti ikirudi. Kagua historia ya usawazishaji kwa hitilafu za kiasi cha bidhaa." : "The Sales page can save sales locally while offline and sync them when internet returns. Check sync history for stock conflict errors."],
+    [lang === "sw" ? "Ninalipaje mpango wangu?" : "How do I pay for subscription?", lang === "sw" ? "Njia ya kwanza: M-Pesa Lipa Namba 52806296 jina Necuva Group Limited. Njia ya pili: Mix by Yas Lipa Namba 18214626 jina Necuva. Njia ya tatu: tuma pesa 0743910580. Baada ya kulipa, weka namba ya kumbukumbu kwenye Malipo au tuma WhatsApp 0743910580." : "First option: M-Pesa Lipa Number 52806296, name Necuva Group Limited. Second option: Mix by Yas Lipa Number 18214626, name Necuva. Third option: send money to 0743910580. After paying, submit the reference in Billing or WhatsApp 0743910580."],
+    [lang === "sw" ? "Nitajuaje malipo yamekubaliwa?" : "How do I know payment was confirmed?", lang === "sw" ? "Ukurasa wa Malipo unaonyesha maombi yako na hali yake. Msimamizi akithibitisha, mpango utaonekana umeanza." : "Billing shows your payment requests and status. Once admin confirms, your plan shows active."],
+    [lang === "sw" ? "Msaidizi wa AI ananisaidiaje?" : "How does the AI Assistant help?", lang === "sw" ? "Anapanga hatua za leo kama kuagiza bidhaa, kufuatilia madeni, kupunguza gharama na kushughulikia maagizo." : "It ranks today's actions like restocking, following up debts, reducing costs, and handling orders."],
     [lang === "sw" ? "Nafutaje akaunti yangu?" : "How do I delete my account?", lang === "sw" ? "Fungua ukurasa wa Delete Account kuona hatua, aina ya data inayofutwa, na muda wa retention." : "Open the Delete Account page to see the steps, deleted data types, and retention period."],
   ];
   const walkthrough = [
     [lang === "sw" ? "Kuweka mfumo" : "Setup", lang === "sw" ? "Weka jina la duka, lugha, na mawasiliano." : "Set shop name, language, and contact details."],
-    [lang === "sw" ? "Bidhaa" : "Products", lang === "sw" ? "Ongeza stock, bei ya kununua, bei ya kuuza, na supplier." : "Add stock, buying price, selling price, and supplier."],
-    [lang === "sw" ? "Mauzo" : "Sales", lang === "sw" ? "Rekodi cash, M-Pesa, bank, au credit sale kwa simu." : "Record cash, M-Pesa, bank, or credit sales from the phone."],
-    [lang === "sw" ? "Hatua za AI" : "AI actions", lang === "sw" ? "Fungua Assistant kuona cha kufanya leo." : "Open Assistant to see what to do today."],
+    [lang === "sw" ? "Bidhaa" : "Products", lang === "sw" ? "Ongeza kiasi, bei ya kununua, bei ya kuuza na msambazaji." : "Add stock, buying price, selling price, and supplier."],
+    [lang === "sw" ? "Mauzo" : "Sales", lang === "sw" ? "Rekodi mauzo ya taslimu, M-Pesa, benki au deni kwa simu." : "Record cash, M-Pesa, bank, or credit sales from the phone."],
+    [lang === "sw" ? "Hatua za AI" : "AI actions", lang === "sw" ? "Fungua Msaidizi wa AI kuona cha kufanya leo." : "Open Assistant to see what to do today."],
   ];
   const aiThinking = [
     [
       lang === "sw" ? "1. Inasoma data" : "1. Reads shop data",
-      lang === "sw" ? "Mauzo, stock, madeni, matumizi, order na staff activity." : "Sales, stock, debts, expenses, orders, and staff activity.",
+      lang === "sw" ? "Mauzo, bidhaa, madeni, matumizi, maagizo na shughuli za wafanyakazi." : "Sales, stock, debts, expenses, orders, and staff activity.",
     ],
     [
       lang === "sw" ? "2. Inatafuta hatari" : "2. Finds risk",
@@ -38,11 +38,11 @@ export default function HelpPage() {
     ],
     [
       lang === "sw" ? "3. Inapanga kipaumbele" : "3. Ranks priority",
-      lang === "sw" ? "Kinachoweza kuathiri cash, faida au uaminifu wa mteja huja kwanza." : "Anything affecting cash, profit, or customer trust comes first.",
+      lang === "sw" ? "Kinachoweza kuathiri fedha, faida au uaminifu wa mteja huja kwanza." : "Anything affecting cash, profit, or customer trust comes first.",
     ],
     [
       lang === "sw" ? "4. Inapendekeza hatua" : "4. Suggests action",
-      lang === "sw" ? "Fuatilia deni, agiza bidhaa, punguza gharama au shughulikia order." : "Collect debt, restock, reduce costs, or handle pending orders.",
+      lang === "sw" ? "Fuatilia deni, agiza bidhaa, punguza gharama au shughulikia agizo." : "Collect debt, restock, reduce costs, or handle pending orders.",
     ],
   ];
 
@@ -125,7 +125,7 @@ export default function HelpPage() {
                   : "The goal is not just to show reports. The goal is to tell you the next action before the shop gets stuck."}
               </p>
               <Link href="/assistant" className="mt-6 inline-flex rounded-xl bg-white px-5 py-3 text-sm font-bold text-brand-800 hover:bg-brand-50">
-                {lang === "sw" ? "Fungua AI Assistant" : "Open AI Assistant"}
+                {lang === "sw" ? "Fungua Msaidizi wa AI" : "Open AI Assistant"}
               </Link>
             </div>
             <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">

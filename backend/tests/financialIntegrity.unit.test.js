@@ -106,6 +106,49 @@ test("debt payment rejects an overpayment and does not create a ledger entry", a
   assert.equal(createdPayments, 0);
 });
 
+test("only an unpaid standalone debt can be deleted", async () => {
+  let deleteWhere;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    debt: {
+      findFirst: async () => ({ id: "debt-1", saleId: null, amountPaid: 0, _count: { payments: 0 } }),
+      deleteMany: async ({ where }) => { deleteWhere = where; return { count: 1 }; },
+    },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[debtControllerPath];
+  const controller = require(debtControllerPath);
+  const res = response();
+  const req = { user: { userId: "owner-1" }, params: { id: "debt-1" } };
+
+  await controller.remove(req, res);
+
+  assert.equal(deleteWhere.saleId, null);
+  assert.deepEqual(deleteWhere.payments, { none: {} });
+  assert.equal(req.audit.action, "debt.delete");
+});
+
+test("a sale-linked debt cannot be deleted independently", async () => {
+  let deleted = false;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    debt: {
+      findFirst: async () => ({ id: "debt-1", saleId: "sale-1", amountPaid: 0, _count: { payments: 0 } }),
+      deleteMany: async () => { deleted = true; return { count: 1 }; },
+    },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[debtControllerPath];
+  const controller = require(debtControllerPath);
+  const res = response();
+
+  await controller.remove({ user: { userId: "owner-1" }, params: { id: "debt-1" } }, res);
+
+  assert.equal(res.statusCode, 409);
+  assert.match(res.payload.error, /Void the sale/);
+  assert.equal(deleted, false);
+});
+
 test("merchant cannot edit a supplier created by another shop", async () => {
   mockPrisma({
     shop: { findUnique: async () => ({ id: "shop-1" }) },

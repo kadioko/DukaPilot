@@ -101,6 +101,8 @@ export default function DashboardPage() {
   const allTime = data?.allTimeSummary;
   const currentPeriodLabel = t(PERIODS.find((p) => p.key === period)?.labelKey || "common.today", lang);
   const noPeriodData = (lang === "sw" ? `Hakuna mauzo ya ${currentPeriodLabel.toLowerCase()} bado.` : `No sales recorded for ${currentPeriodLabel.toLowerCase()} yet.`);
+  const hasPeriodActivity = Boolean((s?.salesCount || 0) > 0 || (s?.totalExpenses || 0) > 0 || (s?.pendingOrders || 0) > 0);
+  const hasChartActivity = Boolean(data?.dailyChart.some((item) => item.sales !== 0 || item.profit !== 0));
 
   function paymentLabel(paymentMethod: string) {
     if (paymentMethod === "BANK") return t("sales.bank", lang);
@@ -200,6 +202,20 @@ export default function DashboardPage() {
             </div>
           </div>
         </section>
+
+        {!hasPeriodActivity && (
+          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold">{noPeriodData}</p>
+              <p className="mt-1 text-xs text-sky-800">{lang === "sw" ? "Chagua kipindi kingine au rekodi mauzo ya kwanza katika kipindi hiki." : "Choose another period or record the first sale for this period."}</p>
+            </div>
+            {period !== "all" && allTime?.salesCount ? (
+              <button onClick={() => setPeriod("all")} className="rounded-lg bg-white px-4 py-2 font-semibold text-sky-800 shadow-sm">{lang === "sw" ? "Ona muda wote" : "View all time"}</button>
+            ) : (
+              <Link href="/sales" className="rounded-lg bg-sky-800 px-4 py-2 text-center font-semibold text-white">{t("sales.startSale", lang)}</Link>
+            )}
+          </div>
+        )}
 
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "sw" ? `Kipindi hiki: ${currentPeriodLabel}` : `This period: ${currentPeriodLabel}`}</p>
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -305,7 +321,7 @@ export default function DashboardPage() {
         <div className="grid lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <h2 className="font-semibold text-gray-800 mb-4 text-sm">{t("dashboard.weeklyChart", lang)}</h2>
-            <ResponsiveContainer width="100%" height={200}>
+            {hasChartActivity ? <ResponsiveContainer width="100%" height={200}>
               <BarChart data={data?.dailyChart || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis
@@ -316,7 +332,7 @@ export default function DashboardPage() {
                     return d.toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { weekday: "short" });
                   }}
                 />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v === 0 ? "0" : `${(v / 1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} domain={["auto", "auto"]} tickFormatter={(v) => v === 0 ? "0" : `${Math.round(v / 1000)}k`} />
                 <Tooltip
                   formatter={(value, name) => [
                     formatTZS(typeof value === "number" ? value : 0),
@@ -326,7 +342,7 @@ export default function DashboardPage() {
                 <Bar dataKey="sales" fill="#16a34a" radius={[4, 4, 0, 0]} name="sales" />
                 <Bar dataKey="profit" fill="#86efac" radius={[4, 4, 0, 0]} name="profit" />
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer> : <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-50 px-4 text-center text-sm text-gray-500">{noPeriodData}</div>}
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -472,13 +488,13 @@ function QuickAction({
 }) {
   return (
     <Link href={href} className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 p-3 text-sm transition hover:bg-white/15">
-      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-brand-200">
+      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-white/10 text-brand-200">
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-gray-100">{label}</span>
+        <span className="block whitespace-normal break-words font-medium leading-5 text-gray-100">{label}</span>
       </span>
-      <span className="flex items-center gap-1 font-bold text-white">
+      <span className="flex flex-shrink-0 items-center gap-1 font-bold text-white">
         {value}
         <ArrowRight className="h-3.5 w-3.5 text-gray-400 transition group-hover:translate-x-0.5" />
       </span>

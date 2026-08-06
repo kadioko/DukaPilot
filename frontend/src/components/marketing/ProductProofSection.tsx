@@ -8,32 +8,32 @@ const proofCards = [
   {
     icon: ReceiptText,
     title: { sw: "Mauzo / POS", en: "Sales / POS" },
-    body: { sw: "Rekodi mauzo kwa cash, M-Pesa, benki au credit.", en: "Record sales by cash, M-Pesa, bank, or credit." },
-    rows: ["Sukari 1kg - TZS 3,200", "Maziwa fresh - TZS 2,500", "Faida: TZS 1,100"],
+    body: { sw: "Rekodi mauzo kwa taslimu, M-Pesa, benki au deni.", en: "Record sales by cash, M-Pesa, bank, or credit." },
+    rows: [{ sw: "Sukari 1kg - TZS 3,200", en: "Sugar 1kg - TZS 3,200" }, { sw: "Maziwa - TZS 2,500", en: "Fresh milk - TZS 2,500" }, { sw: "Faida: TZS 1,100", en: "Profit: TZS 1,100" }],
   },
   {
     icon: PackageCheck,
-    title: { sw: "Stock", en: "Inventory" },
+    title: { sw: "Bidhaa dukani", en: "Inventory" },
     body: { sw: "Ona bidhaa zilizo chini ya kiwango na agiza mapema.", en: "Spot low-stock products and reorder early." },
-    rows: ["Mafuta 1L - 4 left", "Mchele 5kg - 2 left", "Alert: agiza leo"],
+    rows: [{ sw: "Mafuta 1L - pakiti 4 zimebaki", en: "Oil 1L - 4 left" }, { sw: "Mchele 5kg - mifuko 2 imebaki", en: "Rice 5kg - 2 left" }, { sw: "Tahadhari: agiza leo", en: "Alert: reorder today" }],
   },
   {
     icon: CreditCard,
     title: { sw: "Madeni", en: "Debts" },
     body: { sw: "Fuatilia deni la mteja na uweke malipo yakirudi.", en: "Track customer credit and mark payments when collected." },
-    rows: ["Asha - TZS 18,000", "Salum - TZS 7,500", "Status: partial"],
+    rows: [{ sw: "Asha - TZS 18,000", en: "Asha - TZS 18,000" }, { sw: "Salum - TZS 7,500", en: "Salum - TZS 7,500" }, { sw: "Hali: amelipa sehemu", en: "Status: partial" }],
   },
   {
     icon: MessageCircle,
-    title: { sw: "Order za supplier", en: "Supplier orders" },
-    body: { sw: "Tengeneza order na ujumbe tayari kutuma WhatsApp.", en: "Create an order with a WhatsApp-ready supplier message." },
-    rows: ["Jumla Traders", "Bidhaa 6", "Tuma WhatsApp"],
+    title: { sw: "Maagizo kwa wasambazaji", en: "Supplier orders" },
+    body: { sw: "Tengeneza agizo na ujumbe tayari kutuma WhatsApp.", en: "Create an order with a WhatsApp-ready supplier message." },
+    rows: [{ sw: "Jumla Traders", en: "Jumla Traders" }, { sw: "Bidhaa 6", en: "6 products" }, { sw: "Tuma WhatsApp", en: "Send on WhatsApp" }],
   },
   {
     icon: Bot,
-    title: { sw: "AI Assistant", en: "AI Assistant" },
+    title: { sw: "Msaidizi wa AI", en: "AI Assistant" },
     body: { sw: "Pata hatua za leo: agiza, fuatilia deni, punguza gharama.", en: "See today's actions: restock, collect debt, reduce costs." },
-    rows: ["1. Agiza sukari", "2. Fuata deni la Asha", "3. Promote bidhaa yenye margin"],
+    rows: [{ sw: "1. Agiza sukari", en: "1. Reorder sugar" }, { sw: "2. Fuatilia deni la Asha", en: "2. Follow up Asha's debt" }, { sw: "3. Tangaza bidhaa yenye faida", en: "3. Promote a high-margin product" }],
   },
 ];
 
@@ -50,14 +50,14 @@ export default function ProductProofSection({ compact = false }: { compact?: boo
           </h2>
           <p className="mt-3 text-sm leading-6 text-gray-600 sm:text-base">
             {lang === "sw"
-              ? "DukaPilot si bei tu. Hizi ndizo sehemu ambazo mfanyabiashara hutumia kila siku: dashboard, mauzo, stock, madeni, supplier orders na AI Assistant."
+              ? "DukaPilot si bei tu. Hizi ndizo sehemu ambazo mfanyabiashara hutumia kila siku: dashibodi, mauzo, bidhaa dukani, madeni, maagizo kwa wasambazaji na msaidizi wa AI."
               : "DukaPilot is more than pricing. These are the daily workflows a shop owner uses: dashboard, sales, inventory, debts, supplier orders, and the AI Assistant."}
           </p>
 
           <div className="mt-5 flex justify-center overflow-hidden rounded-lg border border-brand-100 bg-brand-50 p-3">
             <Image
               src="/marketing/phone-dashboard.png"
-              alt={lang === "sw" ? "Screenshot ya dashboard ya DukaPilot" : "DukaPilot dashboard screenshot"}
+              alt={lang === "sw" ? "Picha ya dashibodi ya DukaPilot" : "DukaPilot dashboard screenshot"}
               width={640}
               height={1138}
               className="h-auto max-h-[34rem] w-auto max-w-full rounded-lg object-contain shadow-sm"
@@ -81,9 +81,9 @@ export default function ProductProofSection({ compact = false }: { compact?: boo
                 </div>
                 <div className="mt-4 rounded-xl border border-gray-200 bg-white p-3">
                   {card.rows.map((row) => (
-                    <div key={row} className="flex items-center gap-2 border-b border-gray-100 py-2 text-xs font-semibold text-gray-700 last:border-b-0">
+                    <div key={row.en} className="flex items-center gap-2 border-b border-gray-100 py-2 text-xs font-semibold text-gray-700 last:border-b-0">
                       <ClipboardList className="h-3.5 w-3.5 flex-shrink-0 text-brand-600" />
-                      <span>{row}</span>
+                      <span>{row[lang]}</span>
                     </div>
                   ))}
                 </div>

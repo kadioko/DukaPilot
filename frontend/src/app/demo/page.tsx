@@ -23,7 +23,7 @@ export default function DemoPage() {
       <div className="space-y-8">
         <TheInfiniteGrid
           lang={lang}
-          headline={lang === "sw" ? "Jaribu demo kabla ya kuanza" : "Try the demo before you start"}
+          headline={lang === "sw" ? "Jaribu onyesho kabla ya kuanza" : "Try the demo before you start"}
           body={lang === "sw"
             ? "Tumia akaunti za demo kuona mauzo, stock, maagizo, madeni, matumizi, staff, billing na AI Assistant. PIN zote ni 1234."
             : "Use demo accounts to see sales, stock, orders, debts, expenses, staff, billing, and the AI Assistant. All PINs are 1234."}
@@ -33,10 +33,10 @@ export default function DemoPage() {
             label: lang === "sw" ? "Nataka kuweka mfumo" : "I want setup",
           }}
           features={[
-            { title: "Merchant", description: lang === "sw" ? "Angalia duka kamili, dashboard, bidhaa na mauzo." : "Explore the full shop, dashboard, products, and sales." },
-            { title: "Cashier", description: lang === "sw" ? "Jaribu role ya kuuza bila kubadilisha stock/settings." : "Try a sales role without stock/settings access." },
-            { title: "Supplier", description: lang === "sw" ? "Ona upande wa supplier na bidhaa za jumla." : "See the supplier side and wholesale products." },
-            { title: "AI Assistant", description: lang === "sw" ? "Fungua mapendekezo ya hatua za leo." : "Open the recommended actions for today." },
+            { title: lang === "sw" ? "Mmiliki" : "Merchant", description: lang === "sw" ? "Angalia duka kamili, dashibodi, bidhaa na mauzo." : "Explore the full shop, dashboard, products, and sales." },
+            { title: lang === "sw" ? "Muuzaji" : "Cashier", description: lang === "sw" ? "Jaribu jukumu la kuuza bila ruhusa ya kubadilisha bidhaa au mipangilio." : "Try a sales role without stock/settings access." },
+            { title: lang === "sw" ? "Msambazaji" : "Supplier", description: lang === "sw" ? "Ona upande wa msambazaji na bidhaa za jumla." : "See the supplier side and wholesale products." },
+            { title: lang === "sw" ? "Msaidizi wa AI" : "AI Assistant", description: lang === "sw" ? "Fungua mapendekezo ya hatua za leo." : "Open the recommended actions for today." },
           ]}
         />
         <div>
@@ -47,10 +47,10 @@ export default function DemoPage() {
         <section className="rounded-xl border border-brand-200 bg-brand-50 p-5">
           <h2 className="font-semibold text-brand-950">{lang === "sw" ? "Hatua za onyesho za kujaribu" : "Demo flows to try"}</h2>
           <div className="mt-3 grid gap-2 text-sm text-brand-900 sm:grid-cols-2">
-            <p>{lang === "sw" ? "1. Rekodi sale, kisha angalia dashboard." : "1. Record a sale, then check the dashboard."}</p>
-            <p>{lang === "sw" ? "2. Fungua AI Assistant uone hatua za leo." : "2. Open AI Assistant to see today's actions."}</p>
-            <p>{lang === "sw" ? "3. Jaribu cashier kuona role limits." : "3. Try cashier to see role limits."}</p>
-            <p>{lang === "sw" ? "4. Angalia Billing na payment reference." : "4. Check Billing and payment reference."}</p>
+            <p>{lang === "sw" ? "1. Rekodi mauzo, kisha angalia dashibodi." : "1. Record a sale, then check the dashboard."}</p>
+            <p>{lang === "sw" ? "2. Fungua Msaidizi wa AI uone hatua za leo." : "2. Open AI Assistant to see today's actions."}</p>
+            <p>{lang === "sw" ? "3. Jaribu akaunti ya muuzaji kuona mipaka ya ruhusa." : "3. Try cashier to see role limits."}</p>
+            <p>{lang === "sw" ? "4. Angalia Malipo na namba ya kumbukumbu." : "4. Check Billing and payment reference."}</p>
           </div>
         </section>
         <ProductProofSection />

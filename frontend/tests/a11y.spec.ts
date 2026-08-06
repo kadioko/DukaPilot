@@ -8,6 +8,20 @@ test("login page has no critical accessibility violations", async ({ page }) => 
   test.expect(blocking).toEqual([]);
 });
 
+test("registration fields are labelled and consent is required", async ({ page }) => {
+  await page.goto("/register");
+  await page.locator("details summary").filter({ hasText: /shop details|maelezo ya duka/i }).click();
+
+  await test.expect(page.getByLabel(/city|jiji/i)).toBeVisible();
+  await test.expect(page.getByLabel(/district|wilaya/i)).toBeVisible();
+  await test.expect(page.getByLabel(/shop category|aina ya biashara/i)).toBeVisible();
+  await test.expect(page.locator('input[type="checkbox"][required]')).toHaveCount(1);
+
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  const blocking = results.violations.filter((item) => item.impact === "critical");
+  test.expect(blocking).toEqual([]);
+});
+
 test("inventory page has no critical accessibility violations with mocked auth", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");

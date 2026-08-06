@@ -27,6 +27,8 @@ import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import clsx from "clsx";
 import { getAttribution, trackMarketingEvent } from "@/lib/marketing";
+import ProductProofSection from "@/components/marketing/ProductProofSection";
+import PublicFAQSection from "@/components/marketing/PublicFAQSection";
 
 function normalizePhone(value: string): string {
   return value.replace(/[\s()-]/g, "").trim();
@@ -54,7 +56,7 @@ const SHOP_CATEGORIES = [
 const heroFeatures = [
   {
     icon: PackageCheck,
-    sw: "Jua stock iliyobaki kabla haijaisha.",
+    sw: "Jua bidhaa zilizobaki kabla hazijaisha.",
     en: "Know what stock is left before it runs out.",
   },
   {
@@ -64,14 +66,14 @@ const heroFeatures = [
   },
   {
     icon: MessageCircle,
-    sw: "Tengeneza order ya supplier tayari kwa WhatsApp.",
+    sw: "Tengeneza agizo la msambazaji tayari kwa WhatsApp.",
     en: "Create supplier orders ready for WhatsApp.",
   },
 ];
 
 const heroProofPoints = [
   { sw: "AI inapanga kipaumbele cha leo", en: "AI ranks today's priorities" },
-  { sw: "Mauzo, stock, madeni na matumizi", en: "Sales, stock, debts, and expenses" },
+  { sw: "Mauzo, bidhaa, madeni na matumizi", en: "Sales, stock, debts, and expenses" },
   { sw: "Imejengwa kwa maduka Tanzania", en: "Built for Tanzanian shops" },
 ];
 
@@ -80,21 +82,21 @@ const aiThinkingCards = [
     icon: Brain,
     swTitle: "AI inayosoma duka",
     enTitle: "AI that reads the shop",
-    swBody: "Inaangalia mauzo, stock, madeni, matumizi na order ili kuelewa kinachotokea.",
+    swBody: "Inaangalia mauzo, bidhaa, madeni, matumizi na maagizo ili kuelewa kinachotokea.",
     enBody: "It reads sales, stock, debts, expenses, and orders to understand what is happening.",
   },
   {
     icon: TrendingUp,
     swTitle: "Inapanga cha kufanya kwanza",
     enTitle: "Ranks what to do first",
-    swBody: "Cash, faida na uaminifu wa mteja vikiwa hatarini, hatua hiyo inapanda juu.",
+    swBody: "Taslimu, faida na uaminifu wa mteja vikiwa hatarini, hatua hiyo inapanda juu.",
     enBody: "When cash, profit, or customer trust is at risk, that action moves to the top.",
   },
   {
     icon: MessageCircle,
     swTitle: "Inageuka kuwa ujumbe",
     enTitle: "Turns insight into action",
-    swBody: "Mmiliki anaweza kufuatilia deni, kuagiza stock au kutuma summary kwa WhatsApp.",
+    swBody: "Mmiliki anaweza kufuatilia deni, kuagiza bidhaa au kutuma muhtasari kwa WhatsApp.",
     enBody: "Owners can collect debt, reorder stock, or share a WhatsApp-ready summary.",
   },
 ];
@@ -325,7 +327,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           <div className="mt-5 max-w-2xl lg:mt-8">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200/30 bg-amber-100 px-3 py-1.5 text-xs font-bold uppercase tracking-normal text-[#713f12] shadow-sm">
               <BadgeDollarSign className="h-4 w-4" />
-              {lang === "sw" ? "AI assistant ya duka" : "AI shop assistant"}
+              {lang === "sw" ? "Msaidizi wa AI wa duka" : "AI shop assistant"}
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-normal sm:text-5xl">
               {lang === "sw"
@@ -381,13 +383,13 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               <BadgeDollarSign className="h-5 w-5 text-brand-100" />
               <p className="mt-3 text-sm font-bold text-white">{lang === "sw" ? "Kuanzia TZS 15,000/mwezi" : "Plans from TZS 15,000/month"}</p>
               <p className="mt-1 text-xs leading-5 text-brand-100">
-                {lang === "sw" ? "AI Assistant ipo kwenye Pro: TZS 35,000/mwezi." : "AI Assistant is included with Pro: TZS 35,000/month."}
+                {lang === "sw" ? "Msaidizi wa AI upo kwenye Pro: TZS 35,000/mwezi." : "AI Assistant is included with Pro: TZS 35,000/month."}
               </p>
             </div>
             <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/95 p-3 shadow-2xl shadow-black/20">
               <Image
                 src="/marketing/phone-dashboard.png"
-                alt={lang === "sw" ? "Muonekano wa dashboard ya DukaPilot" : "DukaPilot dashboard preview"}
+                alt={lang === "sw" ? "Muonekano wa dashibodi ya DukaPilot" : "DukaPilot dashboard preview"}
                 width={420}
                 height={744}
                 className="h-56 w-full rounded-xl object-cover object-top sm:h-64"
@@ -584,12 +586,13 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor="register-shop-city" className="block text-sm font-medium text-gray-700 mb-1">
                             {lang === "sw" ? "Jiji / Mji (hiari)" : "City / Town (optional)"}
                           </label>
                           <div className="relative">
                             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
+                              id="register-shop-city"
                               type="text"
                               value={shopLocation}
                               onChange={(e) => setShopLocation(e.target.value)}
@@ -600,10 +603,11 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                           </div>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor="register-shop-district" className="block text-sm font-medium text-gray-700 mb-1">
                             {lang === "sw" ? "Mtaa / Wilaya (hiari)" : "District / Area (optional)"}
                           </label>
                           <input
+                            id="register-shop-district"
                             type="text"
                             value={shopDistrict}
                             onChange={(e) => setShopDistrict(e.target.value)}
@@ -613,11 +617,12 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor="register-shop-category" className="block text-sm font-medium text-gray-700 mb-1">
                             {lang === "sw" ? "Aina ya Biashara" : "Shop Category"}
                           </label>
                           <div className="relative">
                             <select
+                              id="register-shop-category"
                               value={shopCategory}
                               onChange={(e) => setShopCategory(e.target.value)}
                               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 appearance-none bg-white"
@@ -701,7 +706,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                       />
                     </div>
                     <label className="flex items-start gap-2 text-sm text-gray-600">
-                      <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="mt-1 h-4 w-4" />
+                      <input type="checkbox" required checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="mt-1 h-4 w-4" />
                       <span>
                         {lang === "sw" ? "Ninakubali" : "I agree to the"} <Link href="/terms" className="font-semibold text-brand-700 underline">{lang === "sw" ? "Masharti" : "Terms"}</Link> {lang === "sw" ? "na" : "and"} <Link href="/privacy" className="font-semibold text-brand-700 underline">{lang === "sw" ? "Sera ya Faragha" : "Privacy Policy"}</Link>.
                       </span>
@@ -772,7 +777,11 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         </div>
         </div>
       </div>
-      <section className="mx-auto w-full max-w-6xl pb-10 lg:pb-14">
+      <section className="mx-auto w-full max-w-6xl px-4 pb-10 lg:pb-14">
+        <ProductProofSection />
+      </section>
+      <PublicFAQSection />
+      <section className="mx-auto w-full max-w-6xl px-4 py-10 lg:py-14">
         <div className="overflow-hidden rounded-3xl border border-white/15 bg-white/95 shadow-2xl shadow-black/15">
           <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">
             <div className="bg-[#052e22] p-6 text-white sm:p-8 lg:p-10">
@@ -788,12 +797,12 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               </h2>
               <p className="mt-4 text-sm leading-6 text-brand-100 sm:text-base">
                 {lang === "sw"
-                  ? "Si POS tu. DukaPilot inageuza data ya kila siku kuwa orodha ya vipaumbele: nini uagize, nani umfuatilie, na gharama zipi zipunguzwe."
+                  ? "Si sehemu ya mauzo tu. DukaPilot inageuza taarifa za kila siku kuwa orodha ya vipaumbele: nini uagize, nani umfuatilie, na gharama zipi zipunguzwe."
                   : "It is not just POS. DukaPilot turns daily data into a priority list: what to restock, who to follow up, and which costs to reduce."}
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link href="/assistant" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-brand-800 hover:bg-brand-50">
-                  {lang === "sw" ? "Ona AI Assistant" : "See AI Assistant"}
+                  {lang === "sw" ? "Ona Msaidizi wa AI" : "See AI Assistant"}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link prefetch={false} href="/demo" className="inline-flex items-center justify-center rounded-xl border border-white/20 px-5 py-3 text-sm font-bold text-white hover:bg-white/10">

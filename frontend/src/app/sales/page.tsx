@@ -3,10 +3,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
-import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle } from "lucide-react";
+import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle, PackagePlus } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
+import DateSelect from "@/components/ui/DateSelect";
 
 interface Product {
   id: string;
@@ -187,16 +188,24 @@ export default function SalesPage() {
   const [isOnline, setIsOnline] = useState(true);
   const [assistantIntent, setAssistantIntent] = useState("");
   const [canViewFinancials, setCanViewFinancials] = useState(true);
+  const [canManageStock, setCanManageStock] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
+  const [completedChange, setCompletedChange] = useState<number | null>(null);
+  const [restockProduct, setRestockProduct] = useState<Product | null>(null);
+  const [restockQuantity, setRestockQuantity] = useState("");
+  const [restocking, setRestocking] = useState(false);
   const [voidingSaleId, setVoidingSaleId] = useState<string | null>(null);
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const scannerBuffer = useRef("");
   const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean } } } }>("/auth/me")
-      .then((data) => setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports)))
+    api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>("/auth/me")
+      .then((data) => {
+        setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports));
+        setCanManageStock(data.user.role === "ADMIN" || !data.user.staff || Boolean(data.user.staff.permissions?.canManageStock));
+      })
       .catch(() => setCanViewFinancials(false));
     api.get<{ products: Product[] }>("/products")
       .then((d) => setProducts(d.products));
@@ -229,7 +238,7 @@ export default function SalesPage() {
             at: new Date().toISOString(),
             status: "synced",
             total: sale.total,
-            message: lang === "sw" ? "Sale synced successfully" : "Sale synced successfully",
+            message: lang === "sw" ? "Mauzo yamesawazishwa." : "Sale synced successfully",
           });
           reportSyncEvent({ status: "SYNCED", total: sale.total, message: "Sale synced successfully", attempts: sale.attempts || 0, localId: sale.id });
         } catch (err: unknown) {
@@ -242,7 +251,7 @@ export default function SalesPage() {
             status: "failed",
             total: sale.total,
             message: message.includes("Insufficient stock")
-              ? (lang === "sw" ? "Stock imebadilika kabla ya sync. Kagua cart na inventory." : "Stock changed before sync. Review cart and inventory.")
+              ? (lang === "sw" ? "Kiasi cha bidhaa kilibadilika kabla ya kusawazisha. Kagua kikapu na bidhaa dukani." : "Stock changed before sync. Review cart and inventory.")
               : message,
           });
           reportSyncEvent({ status: "FAILED", total: sale.total, message, attempts: nextSale.attempts, localId: sale.id });
@@ -257,7 +266,7 @@ export default function SalesPage() {
       setPendingSales(remaining);
       setLastSyncAt(new Date().toISOString());
       if (remaining.length < pending.length) {
-        toast(lang === "sw" ? "Mauzo ya offline yamesawazishwa." : "Offline sales synced.", "success");
+        toast(lang === "sw" ? "Mauzo ya bila intaneti yamesawazishwa." : "Offline sales synced.", "success");
         api.get<{ products: Product[] }>("/products")
           .then((d) => setProducts(d.products))
           .catch(() => {});
@@ -322,7 +331,7 @@ export default function SalesPage() {
     writePendingSales(nextPending);
     setPendingSales(nextPending);
     reportSyncEvent({ status: "REMOVED", total: sale.total, message: sale.lastError, attempts: sale.attempts || 0, localId: sale.id });
-    toast(lang === "sw" ? "Sale ya offline imeondolewa." : "Offline sale removed.", "success");
+    toast(lang === "sw" ? "Mauzo ya bila intaneti yameondolewa." : "Offline sale removed.", "success");
   }
 
   const fetchHistory = useCallback(async () => {
@@ -338,7 +347,7 @@ export default function SalesPage() {
 
   const hiddenOutOfStock = products.filter((p) => p.currentStock <= 0).length;
   const hiddenExpired = products.filter((p) => p.currentStock > 0 && isExpired(p)).length;
-  const filtered = products.filter((p) => p.currentStock > 0 && !isExpired(p) && (p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search.trim().toUpperCase())));
+  const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search.trim().toUpperCase()));
 
   function defaultPriceFor(product: Product): number {
     if (saleMode === "WHOLESALE" && product.wholesalePrice != null) {
@@ -348,6 +357,10 @@ export default function SalesPage() {
   }
 
   function addToCart(product: Product) {
+    if (product.currentStock <= 0) {
+      toast(lang === "sw" ? `Stock ya ${product.name} imeisha.` : `${product.name} is out of stock.`, "error");
+      return;
+    }
     if (isExpired(product)) {
       toast(lang === "sw" ? `${product.name} imeisha muda na haiwezi kuuzwa.` : `${product.name} is expired and cannot be sold.`, "error");
       return;
@@ -421,6 +434,7 @@ export default function SalesPage() {
 
   const total = cart.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
   const changeDue = Number(amountTendered || 0) - total;
+  const cashShort = paymentMethod === "CASH" && Boolean(amountTendered) && changeDue < 0;
   const profit = canViewFinancials ? cart.reduce((sum, i) => sum + i.quantity * (i.unitPrice - (i.product.buyingPrice || 0)), 0) : 0;
 
   function updateCustomerFromPhone(phone: string) {
@@ -430,7 +444,7 @@ export default function SalesPage() {
     if (match?.name) setCustomerName(match.name);
   }
 
-  function shareReceipt(sale: SaleRecord) {
+  function shareReceipt(sale: SaleRecord, change: number | null = null) {
     const lines = [
       sale.shop?.name || "DukaPilot",
       `${lang === "sw" ? "Risiti" : "Receipt"}: ${receiptLabel(sale)}`,
@@ -440,6 +454,7 @@ export default function SalesPage() {
       "",
       `${lang === "sw" ? "Jumla" : "Total"}: ${formatTZS(sale.totalAmount)}`,
       `${lang === "sw" ? "Malipo" : "Payment"}: ${t(PAYMENT_METHODS.find((method) => method.value === sale.paymentMethod)?.labelKey || "sales.cash", lang)}`,
+      ...(change != null && change > 0 ? [`${lang === "sw" ? "Chenji" : "Change"}: ${formatTZS(change)}`] : []),
       lang === "sw" ? "Asante kwa kununua." : "Thank you for your purchase.",
     ];
     const phone = sale.customerPhone?.replace(/\D/g, "").replace(/^0/, "255") || "";
@@ -447,7 +462,7 @@ export default function SalesPage() {
   }
 
   async function voidSale(sale: SaleRecord) {
-    const reason = window.prompt(lang === "sw" ? "Sababu ya kufuta mauzo haya (inahifadhiwa kwenye audit):" : "Reason for voiding this sale (saved in the audit trail):");
+    const reason = window.prompt(lang === "sw" ? "Sababu ya kufuta mauzo haya (itahifadhiwa kwenye rekodi ya ukaguzi):" : "Reason for voiding this sale (saved in the audit trail):");
     if (!reason?.trim()) return;
     if (!window.confirm(lang === "sw" ? "Thibitisha: stock itarudishwa na mauzo yataondolewa kwenye ripoti." : "Confirm: stock will be restored and the sale removed from reports.")) return;
     setVoidingSaleId(sale.id);
@@ -470,6 +485,10 @@ export default function SalesPage() {
       toast(lang === "sw" ? "Weka namba ya simu ya mteja kwa mauzo ya deni." : "Enter the customer phone for credit sales.", "error");
       return;
     }
+    if (cashShort) {
+      toast(lang === "sw" ? `Pesa iliyotolewa imepungua kwa ${formatTZS(Math.abs(changeDue))}.` : `The amount tendered is short by ${formatTZS(Math.abs(changeDue))}.`, "error");
+      return;
+    }
     setCompleting(true);
     const clientReference = newLocalId();
     const payload = {
@@ -489,6 +508,7 @@ export default function SalesPage() {
     try {
       const result = await api.post<{ sale: SaleRecord }>("/sales", payload, lang);
       setCompletedSale(result.sale);
+      setCompletedChange(paymentMethod === "CASH" && amountTendered ? Math.max(0, changeDue) : null);
       toast(lang === "sw" ? `Mauzo yamekamilika. Risiti ${receiptLabel(result.sale)}.` : `Sale complete. Receipt ${receiptLabel(result.sale)}.`, "success");
       setCart([]);
       setPaymentRef("");
@@ -499,6 +519,9 @@ export default function SalesPage() {
       // Refresh products stock
       api.get<{ products: Product[] }>("/products")
         .then((d) => setProducts(d.products));
+      if (paymentMethod === "CREDIT") {
+        api.get<{ customers: CustomerRecord[] }>("/debts/customers").then((d) => setCustomers(d.customers)).catch(() => {});
+      }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : t("common.error", lang);
       const canQueue = typeof navigator !== "undefined" && (!navigator.onLine || message.includes("Unable to reach"));
@@ -526,12 +549,33 @@ export default function SalesPage() {
         setCustomerPhone("");
         setCreditDueDate("");
         setAmountTendered("");
-        toast(lang === "sw" ? "Mtandao haupo. Mauzo yamehifadhiwa kusubiri sync." : "Offline. Sale saved and will sync later.", "success");
+        toast(lang === "sw" ? "Mtandao haupo. Mauzo yamehifadhiwa na yatasawazishwa baadaye." : "Offline. Sale saved and will sync later.", "success");
       } else {
         toast(message, "error");
       }
     } finally {
       setCompleting(false);
+    }
+  }
+
+  async function restockFromPos() {
+    if (!restockProduct) return;
+    const quantity = Number(restockQuantity);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      toast(lang === "sw" ? "Weka idadi kamili iliyo zaidi ya sifuri." : "Enter a whole quantity greater than zero.", "error");
+      return;
+    }
+    setRestocking(true);
+    try {
+      const result = await api.post<{ product: Product }>("/stock/adjust", { productId: restockProduct.id, type: "IN", quantity, note: "Restocked from POS" }, lang);
+      setProducts((current) => current.map((product) => product.id === result.product.id ? result.product : product));
+      toast(lang === "sw" ? `Stock ya ${restockProduct.name} imeongezwa.` : `${restockProduct.name} restocked.`, "success");
+      setRestockProduct(null);
+      setRestockQuantity("");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+    } finally {
+      setRestocking(false);
     }
   }
 
@@ -585,7 +629,7 @@ export default function SalesPage() {
                 <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
                 {syncing
                   ? (lang === "sw" ? "Inasawazisha" : "Syncing")
-                  : (lang === "sw" ? `${pendingSales.length} yanangoja sync` : `${pendingSales.length} pending sync`)}
+                  : (lang === "sw" ? `${pendingSales.length} yanasubiri kusawazishwa` : `${pendingSales.length} pending sync`)}
               </button>
             )}
           </div>
@@ -596,8 +640,8 @@ export default function SalesPage() {
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
               <p>
-                {lang === "sw" ? "Bidhaa zilizofichwa kwenye POS:" : "Hidden from POS:"}{" "}
-                {hiddenOutOfStock > 0 && `${hiddenOutOfStock} ${lang === "sw" ? "zimeisha stock" : "out of stock"}`}
+                {lang === "sw" ? "Bidhaa zisizoweza kuuzwa sasa:" : "Currently unavailable to sell:"}{" "}
+                {hiddenOutOfStock > 0 && `${hiddenOutOfStock} ${lang === "sw" ? "bidhaa ambazo stock imeisha" : "out of stock"}`}
                 {hiddenOutOfStock > 0 && hiddenExpired > 0 ? ", " : ""}
                 {hiddenExpired > 0 && `${hiddenExpired} ${lang === "sw" ? "zimeisha muda" : "expired"}`}.
               </p>
@@ -614,12 +658,12 @@ export default function SalesPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <WifiOff className="h-4 w-4 text-amber-700" />
-                  <p className="text-sm font-semibold text-amber-950">{lang === "sw" ? "Offline sales sync" : "Offline sales sync"}</p>
+                  <p className="text-sm font-semibold text-amber-950">{lang === "sw" ? "Usawazishaji wa mauzo bila intaneti" : "Offline sales sync"}</p>
                 </div>
                 <p className="text-xs text-amber-800">
                   {pendingSales.length > 0
-                    ? (lang === "sw" ? `${pendingSales.length} sale zinasubiri. Kila sale itajaribu tena internet ikirudi.` : `${pendingSales.length} sale(s) waiting. Each sale retries when internet returns.`)
-                    : (lang === "sw" ? "Hakuna sale inayosubiri sync." : "No sales are waiting to sync.")}
+                    ? (lang === "sw" ? `Mauzo ${pendingSales.length} yanasubiri. Kila moja litajaribu tena intaneti ikirudi.` : `${pendingSales.length} sale(s) waiting. Each sale retries when internet returns.`)
+                    : (lang === "sw" ? "Hakuna mauzo yanayosubiri kusawazishwa." : "No sales are waiting to sync.")}
                 </p>
                 <p className="mt-1 text-[11px] text-amber-700">
                   {isOnline
@@ -642,7 +686,7 @@ export default function SalesPage() {
                     className="inline-flex items-center gap-1 rounded-lg bg-amber-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-950 disabled:opacity-60"
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
-                    {lang === "sw" ? "Jaribu sync" : "Retry sync"}
+                    {lang === "sw" ? "Jaribu kusawazisha" : "Retry sync"}
                   </button>
                 )}
                 {syncHistory.length > 0 && (
@@ -708,7 +752,7 @@ export default function SalesPage() {
                 <div className="mb-3 rounded-xl border border-brand-100 bg-brand-50 p-3 text-sm text-brand-900">
                   <p className="font-semibold">
                     {assistantIntent === "first-sale"
-                      ? (lang === "sw" ? "DukaPilot imekufungua kwenye sale ya kwanza ya leo." : "DukaPilot opened your first sale flow for today.")
+                      ? (lang === "sw" ? "DukaPilot imekufungulia mauzo ya kwanza ya leo." : "DukaPilot opened your first sale flow for today.")
                       : (lang === "sw" ? "DukaPilot imekufungua kwenye POS." : "DukaPilot opened the POS for this action.")}
                   </p>
                   <p className="mt-1 text-xs text-brand-700">
@@ -728,24 +772,27 @@ export default function SalesPage() {
               <div className="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pb-2 sm:grid-cols-3 lg:max-h-[60vh] lg:grid-cols-2">
                 {filtered.map((p) => {
                   const inCart = cart.find((i) => i.product.id === p.id);
+                  const expired = isExpired(p);
+                  const outOfStock = p.currentStock <= 0;
+                  const unavailable = expired || outOfStock;
                   return (
-                    <button key={p.id} onClick={() => addToCart(p)}
-                      className={`min-h-28 text-left p-3 rounded-xl border transition-all ${inCart ? "border-brand-400 bg-brand-50" : "border-gray-200 bg-white hover:border-brand-300"}`}>
-                      <p className="text-sm font-medium text-gray-800 leading-tight">{p.name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{p.currentStock} {p.unit} {t("dashboard.remaining", lang)}</p>
-                      <p className="text-sm font-bold text-brand-700 mt-1">{formatTZS(defaultPriceFor(p))}</p>
-                      {saleMode === "WHOLESALE" && p.wholesalePrice == null && (
-                        <p className="text-[10px] text-amber-600 mt-0.5">{t("sales.noWholesalePrice", lang)}</p>
+                    <div key={p.id} className={`flex min-h-32 flex-col rounded-xl border p-3 transition-all ${unavailable ? "border-gray-200 bg-gray-100" : inCart ? "border-brand-400 bg-brand-50" : "border-gray-200 bg-white hover:border-brand-300"}`}>
+                      <button disabled={unavailable} onClick={() => addToCart(p)} className="min-h-0 flex-1 text-left disabled:cursor-not-allowed">
+                        <p className={`break-words text-sm font-medium leading-tight ${unavailable ? "text-gray-500" : "text-gray-800"}`}>{p.name}</p>
+                        <p className={`mt-1 text-xs font-semibold ${outOfStock || expired ? "text-red-600" : "text-gray-500"}`}>
+                          {expired ? (lang === "sw" ? "Muda umeisha" : "Expired") : outOfStock ? (lang === "sw" ? "Stock imeisha" : "Out of stock") : `${p.currentStock} ${p.unit} ${t("dashboard.remaining", lang)}`}
+                        </p>
+                        <p className={`mt-1 text-sm font-bold ${unavailable ? "text-gray-500" : "text-brand-700"}`}>{formatTZS(defaultPriceFor(p))}</p>
+                        {!unavailable && saleMode === "WHOLESALE" && p.wholesalePrice == null && <p className="mt-0.5 text-[10px] text-amber-600">{t("sales.noWholesalePrice", lang)}</p>}
+                        {!unavailable && p.wholesalePrice != null && p.wholesaleMinQty != null && <p className="mt-0.5 text-[10px] text-gray-400">{t("sales.wholesaleMinHint", lang).replace("{n}", String(p.wholesaleMinQty))}</p>}
+                        {inCart && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-xs text-white">x{inCart.quantity}</span>}
+                      </button>
+                      {outOfStock && canManageStock && (
+                        <button onClick={() => { setRestockProduct(p); setRestockQuantity(""); }} className="mt-2 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-white px-2 py-2 text-xs font-bold text-brand-800 hover:bg-brand-50">
+                          <PackagePlus className="h-4 w-4" />{lang === "sw" ? "Ongeza stock" : "Restock"}
+                        </button>
                       )}
-                      {p.wholesalePrice != null && p.wholesaleMinQty != null && (
-                        <p className="text-[10px] text-gray-400 mt-0.5">{t("sales.wholesaleMinHint", lang).replace("{n}", String(p.wholesaleMinQty))}</p>
-                      )}
-                      {inCart && (
-                        <span className="text-xs bg-brand-600 text-white px-1.5 py-0.5 rounded-full">
-                          x{inCart.quantity}
-                        </span>
-                      )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -832,7 +879,7 @@ export default function SalesPage() {
                           <span>{lang === "sw" ? "Mteja ametoa (TZS)" : "Customer gave (TZS)"}</span>
                           <input value={amountTendered} onChange={(e) => setAmountTendered(e.target.value)} type="number" min="0" inputMode="numeric" placeholder={lang === "sw" ? "Hiari" : "Optional"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
                         </label>
-                        {amountTendered && <p className={`rounded-lg px-3 py-2 text-sm font-bold ${changeDue < 0 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{lang === "sw" ? "Chenji" : "Change"}: {formatTZS(Math.max(0, changeDue))}</p>}
+                        {amountTendered && <p className={`rounded-lg px-3 py-2 text-sm font-bold ${cashShort ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{cashShort ? (lang === "sw" ? "Bado" : "Still needed") : (lang === "sw" ? "Chenji" : "Change")}: {formatTZS(Math.abs(changeDue))}</p>}
                       </div>
                     )}
 
@@ -840,11 +887,11 @@ export default function SalesPage() {
                       <div className="mb-3 grid gap-2 sm:grid-cols-2">
                         <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Jina la mteja" : "Customer name"}</span><input list="known-customer-names" value={customerName} onChange={(e) => { setCustomerName(e.target.value); const match = customers.find((customer) => customer.name.toLowerCase() === e.target.value.toLowerCase()); if (match) setCustomerPhone(match.phone); }} autoComplete="name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /><datalist id="known-customer-names">{customers.filter((customer) => customer.name).map((customer) => <option key={customer.phone} value={customer.name}>{customer.phone}</option>)}</datalist></label>
                         <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Simu ya mteja" : "Customer phone"}</span><input list="known-customer-phones" value={customerPhone} onChange={(e) => updateCustomerFromPhone(e.target.value)} type="tel" autoComplete="tel" placeholder="07XXXXXXXX au +255..." className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /><datalist id="known-customer-phones">{customers.map((customer) => <option key={customer.phone} value={customer.phone}>{customer.name || customer.phone}</option>)}</datalist></label>
-                        <label className="grid gap-1 text-sm font-medium text-gray-700 sm:col-span-2"><span>{lang === "sw" ? "Tarehe ya mwisho ya kulipa (dd/mm/yyyy)" : "Payment due date (dd/mm/yyyy)"}</span><input value={creditDueDate} onChange={(e) => setCreditDueDate(e.target.value)} type="date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
+                        <DateSelect className="sm:col-span-2" lang={lang} label={lang === "sw" ? "Tarehe ya mwisho ya kulipa" : "Payment due date"} value={creditDueDate} onChange={setCreditDueDate} />
                       </div>
                     )}
 
-                    <button onClick={completeSale} disabled={completing || cart.length === 0}
+                    <button onClick={completeSale} disabled={completing || cart.length === 0 || cashShort}
                       className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
                       <Check className="w-4 h-4" />
                       {completing ? t("sales.saving", lang) : `${t("sales.complete", lang)} - ${formatTZS(total)}`}
@@ -923,14 +970,27 @@ export default function SalesPage() {
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-100 text-green-700"><Check className="h-6 w-6" /></span><div><h2 className="font-bold text-gray-950">{lang === "sw" ? "Mauzo yamekamilika" : "Sale completed"}</h2><p className="text-sm font-semibold text-brand-700">{receiptLabel(completedSale)}</p></div></div>
-              <button onClick={() => setCompletedSale(null)} aria-label={lang === "sw" ? "Funga" : "Close"} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+              <button onClick={() => { setCompletedSale(null); setCompletedChange(null); }} aria-label={lang === "sw" ? "Funga" : "Close"} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
             </div>
             <div className="my-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">{lang === "sw" ? "Jumla" : "Total"}</span><strong>{formatTZS(completedSale.totalAmount)}</strong></div>
               <div className="mt-2 flex justify-between"><span className="text-gray-500">{lang === "sw" ? "Malipo" : "Payment"}</span><span>{t(PAYMENT_METHODS.find((method) => method.value === completedSale.paymentMethod)?.labelKey || "sales.cash", lang)}</span></div>
+              {completedChange != null && completedChange > 0 && <div className="mt-2 flex justify-between text-green-800"><span>{lang === "sw" ? "Chenji" : "Change"}</span><strong>{formatTZS(completedChange)}</strong></div>}
             </div>
-            <button onClick={() => shareReceipt(completedSale)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-700"><MessageCircle className="h-5 w-5" />{lang === "sw" ? "Tuma risiti kwa WhatsApp" : "Share receipt on WhatsApp"}</button>
-            <button onClick={() => { setCompletedSale(null); setView("history"); }} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700"><ReceiptText className="h-4 w-4" />{lang === "sw" ? "Fungua historia" : "View sale history"}</button>
+            <button onClick={() => shareReceipt(completedSale, completedChange)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-700"><MessageCircle className="h-5 w-5" />{lang === "sw" ? "Tuma risiti kwa WhatsApp" : "Share receipt on WhatsApp"}</button>
+            <button onClick={() => { setCompletedSale(null); setCompletedChange(null); setView("history"); }} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700"><ReceiptText className="h-4 w-4" />{lang === "sw" ? "Fungua historia" : "View sale history"}</button>
+          </div>
+        </div>
+      )}
+      {restockProduct && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-3 sm:items-center sm:justify-center">
+          <div role="dialog" aria-modal="true" aria-labelledby="pos-restock-title" className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div><h2 id="pos-restock-title" className="font-bold text-gray-950">{lang === "sw" ? "Ongeza stock" : "Restock"}: {restockProduct.name}</h2><p className="mt-1 text-sm text-gray-500">{lang === "sw" ? "Idadi hii itaingia kwenye historia ya stock." : "This quantity will be recorded in stock history."}</p></div>
+              <button aria-label={lang === "sw" ? "Funga" : "Close"} onClick={() => setRestockProduct(null)} className="rounded-lg p-2 text-gray-500"><X className="h-5 w-5" /></button>
+            </div>
+            <label className="mt-4 grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Idadi inayoingia" : "Quantity received"}</span><input autoFocus type="number" min="1" step="1" inputMode="numeric" value={restockQuantity} onChange={(event) => setRestockQuantity(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
+            <button disabled={restocking || !restockQuantity} onClick={restockFromPos} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-3 font-semibold text-white disabled:opacity-50"><PackagePlus className="h-5 w-5" />{restocking ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi stock" : "Save stock")}</button>
           </div>
         </div>
       )}

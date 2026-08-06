@@ -307,7 +307,7 @@ function buildRecommendations({
       rank: 85,
       icon: TrendingDown,
       tone: "bg-red-50 text-red-700",
-      title: lang === "sw" ? "Hakuna sale iliyorekodiwa leo" : "No sale recorded today yet",
+      title: lang === "sw" ? "Hakuna mauzo yaliyorekodiwa leo" : "No sale recorded today yet",
       body: lang === "sw"
         ? "Angalia kama mauzo hayajaingizwa au tumia bidhaa inayouza sana kuvutia wateja."
         : "Check whether sales were missed or use a proven product to pull customers in.",
@@ -333,7 +333,7 @@ function buildRecommendations({
       icon: Package,
       tone: "bg-red-50 text-red-700",
       title: lang === "sw"
-        ? (outOfStock ? `${mostUrgentStock.name} imeisha - agiza leo` : `Agiza ${mostUrgentStock.name} kabla haijaisha`)
+        ? (outOfStock ? `Stock ya ${mostUrgentStock.name} imeisha - agiza leo` : `Agiza ${mostUrgentStock.name} kabla stock haijaisha`)
         : (outOfStock ? `${mostUrgentStock.name} is out of stock - reorder today` : `Restock ${mostUrgentStock.name} before it runs out`),
       body: lang === "sw"
         ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Imeuza ${productSales.quantity} na kuleta ${formatTZS(productSales.revenue)}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`
