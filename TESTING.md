@@ -581,8 +581,8 @@ Confirm the command succeeds, the `DukaPilot alert drill` issue appears in the `
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Yes | `https://dukapilotproduction.up.railway.app/api` — no trailing slash or newline |
-| `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Browser error tracking; currently not configured in Vercel production |
-| `SENTRY_DSN` | Recommended | Next.js server-side error tracking; currently not configured in Vercel production |
+| `NEXT_PUBLIC_SENTRY_DSN` | Yes | Browser error tracking; configured in Vercel production |
+| `SENTRY_DSN` | Yes | Next.js server-side error tracking; configured in Vercel production |
 
 ---
 

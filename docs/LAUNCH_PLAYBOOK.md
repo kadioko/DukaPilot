@@ -16,6 +16,7 @@ What is strong:
 
 - The domain, HTTPS redirect, Vercel hosting, Railway API, and production database are working.
 - Backend Sentry monitoring is live on Railway with founder email alerts; the alert path was tested on 2026-08-06.
+- Frontend browser and Next.js server monitoring are live through Vercel and the `javascript-nextjs` Sentry project.
 - Push launch: deploy migration `20260722001000_push_notifications_and_app_usage`, set `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` in Railway, then create a dedicated Railway cron service with start command `npm run push:process` and schedule `0 5 * * *` UTC. Do not expose or commit the private VAPID key.
 - The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog, supplier orders, AI assistant, Swahili/English, and WhatsApp support.
 - Pricing is understandable for Tanzania: free trial, TZS 15,000/month Basic, TZS 35,000/month Pro.
@@ -237,7 +238,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Catalog trust. Keep demo/QA shops unpublished and review wholesale prices before sharing a merchant catalog.
 - Plan leakage. Test Basic and Pro entitlements after every billing or authorization change.
 - Shared mobile IPs. Avoid repeated production login tests; use local unit/browser tests and one controlled production monitor.
-- Monitoring blind spots. Backend Sentry is active, but frontend browser and Next.js server capture still require Vercel DSNs and a separate alert drill.
+- Monitoring noise. Keep expected validation and authentication `4xx` responses out of Sentry so genuine production exceptions remain visible.
 - Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows without receiving buying costs, margins, shop-wide profit, or AI report data.
 
 ## Release Gate - 1.3.0

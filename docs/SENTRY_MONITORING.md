@@ -39,7 +39,14 @@ The DSN must remain in Railway variables or another approved secrets manager. Ne
 
 ### Frontend
 
-The frontend Sentry integration exists in the codebase, but production browser and Next.js server capture are currently inactive because Vercel does not have `NEXT_PUBLIC_SENTRY_DSN` or `SENTRY_DSN`. Configure and test these separately before describing frontend monitoring as live.
+Frontend monitoring is live through the existing `javascript-nextjs` Sentry project.
+
+- Vercel production variable `NEXT_PUBLIC_SENTRY_DSN` enables browser error capture.
+- Vercel production variable `SENTRY_DSN` enables Next.js server-side error capture.
+- Browser and server performance tracing sample 10% of transactions.
+- Browser replay is disabled for normal sessions and enabled only when an error is captured.
+
+Both variables are configured only in Vercel and must never be committed to Git. Review Sentry events before sharing them outside the incident-response team, and never add PINs, OTPs, authentication tokens, payment references, or customer phone numbers as custom Sentry context.
 
 ## Test The Backend Alert
 
@@ -57,7 +64,7 @@ Expected result:
 3. The founder receives the Sentry email notification.
 4. The test issue is resolved after verification so the issue feed stays useful.
 
-Run this drill after changing the Sentry project, DSN, alert rule, notification email, SDK version, or Railway environment. Otherwise, test quarterly.
+Run an alert drill after changing either Sentry project, a DSN, alert rule, notification email, SDK version, Railway environment, or Vercel environment. Otherwise, test quarterly.
 
 ## Incident Response
 

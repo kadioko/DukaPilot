@@ -133,7 +133,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 | **Frontend** | Next.js 16 · React 19 · TypeScript 6 · Tailwind CSS 4 |
 | **Auth** | Secure HttpOnly session cookies (1h access + 30d refresh) · phone + PIN login · OTP PIN recovery |
 | **SMS / OTP** | Africa's Talking (sandbox in dev, live in production) |
-| **Error tracking** | Sentry (`@sentry/node` backend live; `@sentry/nextjs` integration present but awaiting Vercel DSNs) |
+| **Error tracking** | Sentry (`@sentry/node` backend and `@sentry/nextjs` browser/server monitoring live in production) |
 | **Messaging** | WhatsApp deep links + WhatsApp Cloud API (optional) |
 | **Payments** | Cash, Bank, Credit, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa |
 | **Charts** | Recharts |
@@ -378,8 +378,8 @@ npm run dev         # runs on :3000
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Yes | `https://dukapilotproduction.up.railway.app/api` — no trailing slash or newline |
-| `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Frontend browser Sentry DSN. Not yet configured in production. |
-| `SENTRY_DSN` | Recommended | Next.js server-side Sentry DSN. Not yet configured in production. |
+| `NEXT_PUBLIC_SENTRY_DSN` | Yes | Frontend browser Sentry DSN. Configured in Vercel production. |
+| `SENTRY_DSN` | Yes | Next.js server-side Sentry DSN. Configured in Vercel production. |
 
 ### Production Database Workflow
 
@@ -405,7 +405,7 @@ npm run dev         # runs on :3000
 
 ### Production Monitoring
 
-- Sentry reports unexpected backend exceptions with stack traces, route context, occurrence counts, and high-priority email alerts.
+- Sentry reports unexpected backend, browser, and Next.js server exceptions with stack traces, route context, occurrence counts, and high-priority email alerts.
 - The scheduled production monitor checks availability and known workflows; Sentry does not replace it.
 - Backups and restore drills protect data recovery; Sentry does not replace them.
 - The backend alert path was tested successfully on 2026-08-06.

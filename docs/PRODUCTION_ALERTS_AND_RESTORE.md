@@ -24,7 +24,9 @@ cd backend
 railway run npm run sentry:test
 ```
 
-Confirm both the Sentry issue and notification email arrive, then resolve the test issue. The frontend SDK is present but Vercel DSNs are not yet configured; do not describe frontend error monitoring as active until that setup has its own successful drill.
+Confirm both the Sentry issue and notification email arrive, then resolve the test issue.
+
+Frontend browser and Next.js server monitoring are also live through the `javascript-nextjs` project. Vercel production holds both `NEXT_PUBLIC_SENTRY_DSN` and `SENTRY_DSN`; neither value belongs in Git or documentation.
 
 See `docs/SENTRY_MONITORING.md` for coverage, limits, testing, and incident response.
 
