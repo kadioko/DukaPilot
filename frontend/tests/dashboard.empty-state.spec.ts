@@ -80,6 +80,7 @@ test("zero-data dashboard explains the selected period without clipped Swahili",
 
   await expect(page.getByText("Hakuna mauzo ya leo bado.").first()).toBeVisible();
   await expect(page.locator(".recharts-wrapper")).toHaveCount(0);
+  await expect(page.locator("section").first().getByText("Kipindi hiki: Leo")).toBeVisible();
 
   const actionLabel = page.getByText("Bidhaa zinazohitaji hatua").first();
   await expect(actionLabel).toBeVisible();

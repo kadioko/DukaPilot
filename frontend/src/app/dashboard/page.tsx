@@ -164,6 +164,30 @@ export default function DashboardPage() {
                   </button>
                 ))}
               </div>
+
+              <div className="mt-5">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "sw" ? `Kipindi hiki: ${currentPeriodLabel}` : `This period: ${currentPeriodLabel}`}</p>
+                {!hasPeriodActivity && (
+                  <div className="mb-3 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold">{noPeriodData}</p>
+                      <p className="mt-1 text-xs text-sky-800">{lang === "sw" ? "Chagua kipindi kingine au rekodi mauzo ya kwanza katika kipindi hiki." : "Choose another period or record the first sale for this period."}</p>
+                    </div>
+                    {period !== "all" && allTime?.salesCount ? (
+                      <button onClick={() => setPeriod("all")} className="rounded-lg bg-white px-4 py-2 font-semibold text-sky-800 shadow-sm">{lang === "sw" ? "Ona muda wote" : "View all time"}</button>
+                    ) : (
+                      <Link href="/sales" className="rounded-lg bg-sky-800 px-4 py-2 text-center font-semibold text-white">{t("sales.startSale", lang)}</Link>
+                    )}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 xl:grid-cols-5">
+                  <PeriodStat label={t("dashboard.sales", lang)} value={formatTZS(s?.totalSales || 0)} />
+                  <PeriodStat label={period === "today" ? (lang === "sw" ? "Faida Leo" : "Profit Today") : (lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit")} value={formatTZS(s?.totalProfit || 0)} danger={(s?.totalProfit || 0) < 0} sub={s && s.totalSales > 0 ? `${((s.totalProfit / s.totalSales) * 100).toFixed(0)}% ${t("dashboard.margin", lang)}` : undefined} />
+                  <PeriodStat label={lang === "sw" ? "Faida halisi" : "Net profit"} value={formatTZS(s?.netProfit || 0)} danger={(s?.netProfit || 0) < 0} sub={`${formatTZS(s?.totalExpenses || 0)} ${lang === "sw" ? "matumizi" : "expenses"}`} />
+                  <PeriodStat label={t("dashboard.salesCount", lang)} value={String(s?.salesCount || 0)} />
+                  <PeriodStat label={t("dashboard.pendingOrders", lang)} value={String(s?.pendingOrders || 0)} />
+                </div>
+              </div>
             </div>
             <div className="border-t border-gray-100 bg-gray-950 p-5 text-white lg:border-l lg:border-t-0 sm:p-6 lg:p-7">
               <div className="flex items-center gap-2">
@@ -202,58 +226,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </section>
-
-        {!hasPeriodActivity && (
-          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold">{noPeriodData}</p>
-              <p className="mt-1 text-xs text-sky-800">{lang === "sw" ? "Chagua kipindi kingine au rekodi mauzo ya kwanza katika kipindi hiki." : "Choose another period or record the first sale for this period."}</p>
-            </div>
-            {period !== "all" && allTime?.salesCount ? (
-              <button onClick={() => setPeriod("all")} className="rounded-lg bg-white px-4 py-2 font-semibold text-sky-800 shadow-sm">{lang === "sw" ? "Ona muda wote" : "View all time"}</button>
-            ) : (
-              <Link href="/sales" className="rounded-lg bg-sky-800 px-4 py-2 text-center font-semibold text-white">{t("sales.startSale", lang)}</Link>
-            )}
-          </div>
-        )}
-
-        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "sw" ? `Kipindi hiki: ${currentPeriodLabel}` : `This period: ${currentPeriodLabel}`}</p>
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <KpiCard
-            label={t("dashboard.sales", lang)}
-            value={formatTZS(s?.totalSales || 0)}
-            icon={<ShoppingCart className="w-5 h-5 text-blue-600" />}
-            color="blue"
-          />
-          <KpiCard
-            label={period === "today" ? (lang === "sw" ? "Faida Leo" : "Profit Today") : (lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit")}
-            value={formatTZS(s?.totalProfit || 0)}
-            icon={<TrendingUp className={`h-5 w-5 ${(s?.totalProfit || 0) < 0 ? "text-red-600" : "text-green-600"}`} />}
-            color="green"
-            danger={(s?.totalProfit || 0) < 0}
-            sub={s && s.totalSales > 0 ? `${((s.totalProfit / s.totalSales) * 100).toFixed(0)}% ${t("dashboard.margin", lang)}` : undefined}
-          />
-          <KpiCard
-            label={lang === "sw" ? "Faida halisi" : "Net profit"}
-            value={formatTZS(s?.netProfit || 0)}
-            icon={<TrendingUp className={`h-5 w-5 ${(s?.netProfit || 0) < 0 ? "text-red-600" : "text-emerald-600"}`} />}
-            color="green"
-            danger={(s?.netProfit || 0) < 0}
-            sub={`${formatTZS(s?.totalExpenses || 0)} ${lang === "sw" ? "matumizi" : "expenses"}`}
-          />
-          <KpiCard
-            label={t("dashboard.salesCount", lang)}
-            value={String(s?.salesCount || 0)}
-            icon={<BarChart2 className="w-5 h-5 text-purple-600" />}
-            color="purple"
-          />
-          <KpiCard
-            label={t("dashboard.pendingOrders", lang)}
-            value={String(s?.pendingOrders || 0)}
-            icon={<Clock className="w-5 h-5 text-orange-600" />}
-            color="orange"
-          />
-        </div>
 
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "sw" ? "Tangu kuanza kutumia DukaPilot" : "All time"}</p>
         <div className="mb-6 grid gap-3 lg:grid-cols-5">
@@ -439,6 +411,16 @@ export default function DashboardPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function PeriodStat({ label, value, sub, danger = false }: { label: string; value: string; sub?: string; danger?: boolean }) {
+  return (
+    <div className="min-w-0 border-b border-r border-gray-200 px-3 py-3 last:border-r-0 xl:border-b-0">
+      <p className={`break-words text-base font-bold leading-tight ${danger ? "text-red-700" : "text-gray-950"}`}>{value}</p>
+      <p className="mt-1 text-xs font-medium leading-4 text-gray-600">{label}</p>
+      {sub && <p className="mt-1 text-[11px] leading-4 text-gray-500">{sub}</p>}
+    </div>
   );
 }
 

@@ -8,6 +8,7 @@ import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
 import DateSelect from "@/components/ui/DateSelect";
+import { normalizeWhatsAppNumber } from "@/lib/phone";
 
 interface Product {
   id: string;
@@ -457,7 +458,19 @@ export default function SalesPage() {
       ...(change != null && change > 0 ? [`${lang === "sw" ? "Chenji" : "Change"}: ${formatTZS(change)}`] : []),
       lang === "sw" ? "Asante kwa kununua." : "Thank you for your purchase.",
     ];
-    const phone = sale.customerPhone?.replace(/\D/g, "").replace(/^0/, "255") || "";
+    let phone = normalizeWhatsAppNumber(sale.customerPhone);
+    if (!phone) {
+      const entered = window.prompt(lang === "sw" ? "Weka namba ya WhatsApp ya kupokea risiti (mfano 0712345678):" : "Enter the WhatsApp number that should receive this receipt (for example 0712345678):");
+      if (!entered) {
+        toast(lang === "sw" ? "Risiti haijatumwa. Weka namba ya mteja ili kuendelea." : "Receipt not shared. Enter a customer number to continue.", "info");
+        return;
+      }
+      phone = normalizeWhatsAppNumber(entered);
+      if (!phone) {
+        toast(lang === "sw" ? "Namba ya WhatsApp si sahihi. Tumia 07XXXXXXXX au +2557XXXXXXXX." : "Invalid WhatsApp number. Use 07XXXXXXXX or +2557XXXXXXXX.", "error");
+        return;
+      }
+    }
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank", "noopener,noreferrer");
   }
 

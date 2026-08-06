@@ -35,6 +35,18 @@ const faqs = [
     swAnswer: "Hapana. Anza bila kadi, ongeza bidhaa zako na ujaribu mauzo halisi kabla ya kuchagua mpango.",
     enAnswer: "No. Start without a card, add your products, and test real sales before choosing a plan.",
   },
+  {
+    sw: "Taarifa za duka langu zinalindwa vipi?",
+    en: "How is my shop data protected?",
+    swAnswer: "Taarifa hupatikana baada ya kuingia kwenye akaunti. Mmiliki ndiye anayechagua ruhusa za kila mfanyakazi, na mawasiliano na DukaPilot hutumia HTTPS.",
+    enAnswer: "Shop data requires an authenticated account. The owner controls each staff member's permissions, and communication with DukaPilot uses HTTPS.",
+  },
+  {
+    sw: "Nini hutokea nikiacha kulipia?",
+    en: "What happens if I stop paying?",
+    swAnswer: "Taarifa zako hazifutwi mpango unapoisha. Unaweza kuona rekodi zilizopo, lakini kuongeza au kubadilisha rekodi kunahitaji kuhuisha mpango.",
+    enAnswer: "Your data is not deleted when the plan expires. You can still view existing records, but creating or changing records requires reactivation.",
+  },
 ];
 
 export default function PublicFAQSection() {

@@ -7,6 +7,7 @@ import { useLang } from "@/lib/i18n";
 import { MessageCircle, Trash2 } from "lucide-react";
 import DateSelect from "@/components/ui/DateSelect";
 import { useToast } from "@/components/ui/Toast";
+import { normalizeWhatsAppNumber } from "@/lib/phone";
 
 interface Debt {
   id: string;
@@ -42,13 +43,6 @@ export default function DebtsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [shopName, setShopName] = useState("DukaPilot");
-
-  function whatsappNumber(phone: string) {
-    const digits = phone.replace(/\D/g, "");
-    if (digits.startsWith("0")) return `255${digits.slice(1)}`;
-    if (digits.startsWith("255")) return digits;
-    return digits;
-  }
 
   function debtAge(createdAt: string) {
     const days = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000));
@@ -165,6 +159,7 @@ export default function DebtsPage() {
             <div className="p-6 text-sm text-gray-500">{lang === "sw" ? "Hakuna madeni bado." : "No debts yet."}</div>
           ) : debts.map((debt) => {
             const balance = debt.amount - debt.amountPaid;
+            const whatsappPhone = normalizeWhatsAppNumber(debt.customerPhone);
             return (
               <div key={debt.id} className="grid gap-3 border-b border-gray-100 p-4 last:border-b-0 lg:grid-cols-[1fr_auto_auto] lg:items-center">
                 <div>
@@ -208,15 +203,17 @@ export default function DebtsPage() {
                     <button onClick={() => recordPayment(debt, balance)} className="rounded-xl border border-brand-600 px-3 py-3 text-sm font-semibold text-brand-700 hover:bg-brand-50">
                       {lang === "sw" ? "Lipa yote" : "All paid"}
                     </button>
-                    <a
-                      href={`https://wa.me/${whatsappNumber(debt.customerPhone)}?text=${encodeURIComponent(lang === "sw" ? `Habari ${debt.customerName || ""}, hii ni kumbukumbu kutoka ${shopName}. Deni lako ni ${formatTZS(balance)}.` : `Hello ${debt.customerName || ""}, this is a reminder from ${shopName}. Your outstanding balance is ${formatTZS(balance)}.`)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-100 px-3 py-3 text-sm font-semibold text-green-700 hover:bg-green-200 sm:col-span-3"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      WhatsApp
-                    </a>
+                    {whatsappPhone && (
+                      <a
+                        href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(lang === "sw" ? `Habari ${debt.customerName || ""}, hii ni kumbukumbu kutoka ${shopName}. Deni lako ni ${formatTZS(balance)}.` : `Hello ${debt.customerName || ""}, this is a reminder from ${shopName}. Your outstanding balance is ${formatTZS(balance)}.`)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-100 px-3 py-3 text-sm font-semibold text-green-700 hover:bg-green-200 sm:col-span-3"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        WhatsApp
+                      </a>
+                    )}
                     {debt.amountPaid === 0 && (
                       <button onClick={() => deleteDebt(debt)} className="inline-flex items-center justify-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 sm:col-span-3">
                         <Trash2 className="h-4 w-4" />

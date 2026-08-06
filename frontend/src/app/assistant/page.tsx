@@ -110,7 +110,7 @@ export default function AssistantPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-950">
-                  <TextReveal text="DukaPilot AI Assistant" fontSize="inherit" hoverColor="#15803d" />
+                  <TextReveal text={lang === "sw" ? "Msaidizi wa AI wa DukaPilot" : "DukaPilot AI Assistant"} fontSize="inherit" hoverColor="#15803d" />
                 </h1>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
                   {lang === "sw"
