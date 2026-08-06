@@ -1,10 +1,6 @@
 /**
- * Sentry client-side configuration — DukaPilot Frontend
- *
- * Required env var:
- *   NEXT_PUBLIC_SENTRY_DSN — your Sentry project DSN (public)
- *
- * If NEXT_PUBLIC_SENTRY_DSN is not set, Sentry is disabled.
+ * Next.js client instrumentation entry point.
+ * This file is bundled automatically and initializes browser-side Sentry.
  */
 
 import * as Sentry from "@sentry/nextjs";
@@ -21,3 +17,5 @@ if (dsn) {
     integrations: [Sentry.replayIntegration()],
   });
 }
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

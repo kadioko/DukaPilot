@@ -242,7 +242,7 @@ DukaPilot/
 │   │   └── lib/
 │   │       ├── api.ts                 # Typed fetch wrapper
 │   │       └── i18n.ts                # Kiswahili / English translations
-│   ├── sentry.client.config.ts
+│   ├── instrumentation-client.ts  # Browser Sentry init and navigation tracing
 │   ├── sentry.server.config.ts
 │   ├── .env.example
 │   └── package.json
