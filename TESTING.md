@@ -584,6 +584,8 @@ Confirm the command succeeds, the `DukaPilot alert drill` issue appears in the `
 | `NEXT_PUBLIC_SENTRY_DSN` | Yes | Browser error tracking; configured in Vercel production |
 | `SENTRY_DSN` | Yes | Next.js server-side error tracking; configured in Vercel production |
 
+The frontend Sentry project and founder email alert were verified on 2026-08-06 with `JAVASCRIPT-NEXTJS-1 - DukaPilot frontend alert drill`. The live browser bundle was also checked for the configured Sentry project before the test issue was resolved.
+
 ---
 
 ## API Quick Reference

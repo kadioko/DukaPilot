@@ -28,6 +28,8 @@ Confirm both the Sentry issue and notification email arrive, then resolve the te
 
 Frontend browser and Next.js server monitoring are also live through the `javascript-nextjs` project. Vercel production holds both `NEXT_PUBLIC_SENTRY_DSN` and `SENTRY_DSN`; neither value belongs in Git or documentation.
 
+The frontend issue and email path was verified on 2026-08-06 with `JAVASCRIPT-NEXTJS-1 - DukaPilot frontend alert drill`, then the test issue was resolved.
+
 See `docs/SENTRY_MONITORING.md` for coverage, limits, testing, and incident response.
 
 ## Restore Drill

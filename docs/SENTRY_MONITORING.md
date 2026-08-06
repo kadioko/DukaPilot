@@ -45,6 +45,7 @@ Frontend monitoring is live through the existing `javascript-nextjs` Sentry proj
 - Vercel production variable `SENTRY_DSN` enables Next.js server-side error capture.
 - Browser and server performance tracing sample 10% of transactions.
 - Browser replay is disabled for normal sessions and enabled only when an error is captured.
+- Alert drill: `JAVASCRIPT-NEXTJS-1 - DukaPilot frontend alert drill` was received by Sentry and email, then resolved, on 2026-08-06.
 
 Both variables are configured only in Vercel and must never be committed to Git. Review Sentry events before sharing them outside the incident-response team, and never add PINs, OTPs, authentication tokens, payment references, or customer phone numbers as custom Sentry context.
 

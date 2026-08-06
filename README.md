@@ -408,7 +408,7 @@ npm run dev         # runs on :3000
 - Sentry reports unexpected backend, browser, and Next.js server exceptions with stack traces, route context, occurrence counts, and high-priority email alerts.
 - The scheduled production monitor checks availability and known workflows; Sentry does not replace it.
 - Backups and restore drills protect data recovery; Sentry does not replace them.
-- The backend alert path was tested successfully on 2026-08-06.
+- Backend and frontend Sentry issue/email alert paths were tested successfully on 2026-08-06.
 - See [docs/SENTRY_MONITORING.md](./docs/SENTRY_MONITORING.md) and [docs/PRODUCTION_ALERTS_AND_RESTORE.md](./docs/PRODUCTION_ALERTS_AND_RESTORE.md).
 
 ### Launch Notes
