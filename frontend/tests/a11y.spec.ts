@@ -27,7 +27,7 @@ test("inventory page has no critical accessibility violations with mocked auth",
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
   });
 
-  await page.route("**/api/auth/me", async (route) => {
+  await page.route("**/*api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -42,7 +42,7 @@ test("inventory page has no critical accessibility violations with mocked auth",
     });
   });
 
-  await page.route("**/api/products/low-stock", async (route) => {
+  await page.route("**/*api/products/low-stock", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -50,15 +50,15 @@ test("inventory page has no critical accessibility violations with mocked auth",
     });
   });
 
-  await page.route("**/api/subscription/status", async (route) => {
+  await page.route("**/*api/subscription/status", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
   });
 
-  await page.route("**/api/notifications", async (route) => {
+  await page.route("**/*api/notifications", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) });
   });
 
-  await page.route("**/api/suppliers", async (route) => {
+  await page.route("**/*api/suppliers", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -66,7 +66,7 @@ test("inventory page has no critical accessibility violations with mocked auth",
     });
   });
 
-  await page.route("**/api/products?*", async (route) => {
+  await page.route("**/*api/products?*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

@@ -1,6 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3010";
+const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
+const productionMode = process.env.PLAYWRIGHT_PRODUCTION === "1";
+const localBaseURL = productionMode ? "http://127.0.0.1:3010" : "http://localhost:3010";
+const baseURL = externalBaseURL || localBaseURL;
 
 export default defineConfig({
   testDir: "./tests",
@@ -14,9 +17,9 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   reporter: [["list"]],
-  webServer: process.env.PLAYWRIGHT_BASE_URL ? undefined : {
-    command: "npm run dev -- -p 3010",
-    url: "http://localhost:3010",
+  webServer: externalBaseURL ? undefined : {
+    command: productionMode ? "npm run start -- -p 3010" : "npm run dev -- -p 3010",
+    url: localBaseURL,
     reuseExistingServer: true,
     timeout: 120_000,
   },

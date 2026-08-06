@@ -21,7 +21,7 @@ test("shows validation error for invalid pin input", async ({ page }) => {
 });
 
 test("shows login error for invalid credentials", async ({ page }) => {
-  await page.route("**/api/auth/login", async (route) => {
+  await page.route("**/*api/auth/login", async (route) => {
     await route.fulfill({
       status: 400,
       contentType: "application/json",

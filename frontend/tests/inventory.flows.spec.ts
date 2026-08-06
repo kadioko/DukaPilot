@@ -23,7 +23,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
   });
 
-  await page.route("**/api/auth/me", async (route) => {
+  await page.route("**/*api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -38,7 +38,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/api/products/low-stock", async (route) => {
+  await page.route("**/*api/products/low-stock", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -46,15 +46,15 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/api/subscription/status", async (route) => {
+  await page.route("**/*api/subscription/status", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
   });
 
-  await page.route("**/api/notifications", async (route) => {
+  await page.route("**/*api/notifications", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) });
   });
 
-  await page.route("**/api/suppliers", async (route) => {
+  await page.route("**/*api/suppliers", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -62,7 +62,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/api/products?*", async (route) => {
+  await page.route("**/*api/products?*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -70,7 +70,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/api/products", async (route) => {
+  await page.route("**/*api/products", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
       return;
@@ -91,7 +91,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/api/products/*", async (route) => {
+  await page.route("**/*api/products/*", async (route) => {
     if (route.request().method() !== "PATCH") {
       await route.fallback();
       return;
@@ -117,7 +117,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/api/stock/adjust", async (route) => {
+  await page.route("**/*api/stock/adjust", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
     const product = products.find((item) => item.id === body.productId);
     if (product) {

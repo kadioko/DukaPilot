@@ -33,7 +33,7 @@ test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }
     window.localStorage.setItem("dukapilot_token", "playwright-supplier-token");
   });
 
-  await page.route("**/api/auth/me", async (route) => {
+  await page.route("**/*api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -41,11 +41,11 @@ test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }
     });
   });
 
-  await page.route("**/api/suppliers/portal/products", async (route) => {
+  await page.route("**/*api/suppliers/portal/products", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
   });
 
-  await page.route("**/api/suppliers/portal/dashboard", async (route) => {
+  await page.route("**/*api/suppliers/portal/dashboard", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -56,7 +56,7 @@ test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }
     });
   });
 
-  await page.route("**/api/suppliers/portal/orders", async (route) => {
+  await page.route("**/*api/suppliers/portal/orders", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -64,7 +64,7 @@ test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }
     });
   });
 
-  await page.route("**/api/suppliers/portal/orders/*/status", async (route) => {
+  await page.route("**/*api/suppliers/portal/orders/*/status", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
     const orderId = route.request().url().split("/").slice(-2)[0];
     const order = orders.find((item) => item.id === orderId);
