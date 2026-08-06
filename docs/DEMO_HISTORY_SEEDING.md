@@ -23,8 +23,11 @@ Run from `backend/` in the Railway service shell or another environment that has
 $env:DEMO_HISTORY_CONFIRM="SEED_DUKAPILOT_DEMO_HISTORY"
 $env:DEMO_SHOP_PHONE="+255700000002"
 $env:DEMO_HISTORY_SALE_COUNT="72"
+$env:DEMO_HISTORY_DRY_RUN="1"
 npm run db:seed-demo-history
 ```
+
+Review the dry-run output. It reads the target and planned counts without writing anything. Remove `DEMO_HISTORY_DRY_RUN` only after the shop name, demo flag, product count, recent sale count, and 30-day target are correct.
 
 Optional: set `DEMO_HISTORY_END_DATE=2026-08-06` in `YYYY-MM-DD` format to pin the reporting window to a specific demo date. Without it, the script ends the window on today's date in Tanzania.
 

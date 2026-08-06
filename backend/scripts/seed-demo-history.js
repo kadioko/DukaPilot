@@ -32,12 +32,8 @@ async function main() {
     throw new Error(`Refusing to seed ${user.shop.name}: mark the shop as a demo account before running this script.`);
   }
 
-  const shop = await prisma.shop.update({
-    where: { id: user.shop.id },
-    data: { isDemo: true, isCatalogPublished: false },
-  });
   const products = await prisma.product.findMany({
-    where: { shopId: shop.id, isActive: true },
+    where: { shopId: user.shop.id, isActive: true },
     select: { id: true, unit: true, buyingPrice: true, sellingPrice: true },
     orderBy: { id: "asc" },
   });
@@ -52,7 +48,7 @@ async function main() {
   const firstDate = preliminarySchedule[0].createdAt.toISOString().slice(0, 10);
   const windowStart = new Date(`${firstDate}T00:00:00+03:00`);
   const recentCount = await prisma.sale.count({
-    where: { shopId: shop.id, status: "COMPLETED", createdAt: { gte: windowStart } },
+    where: { shopId: user.shop.id, status: "COMPLETED", createdAt: { gte: windowStart } },
   });
   if (recentCount > MAX_SALES) {
     throw new Error(`This demo has ${recentCount} completed sales in the 30-day window. Refusing to leave a partial spike; reduce it to ${MAX_SALES} or fewer first.`);
@@ -62,6 +58,17 @@ async function main() {
   const schedule = targetCount === requestedCount
     ? preliminarySchedule
     : generateDemoSaleSchedule({ endDate, count: targetCount, products });
+  if (process.env.DEMO_HISTORY_DRY_RUN === "1") {
+    console.log(`Dry run for ${user.shop.name} (${phone}).`);
+    console.log(`Demo flag: ${user.shop.isDemo}; public catalog: ${user.shop.isCatalogPublished}; active products: ${products.length}.`);
+    console.log(`Would redistribute ${recentCount} existing sales and create ${targetCount - recentCount} sales across 30 days ending ${endDate}.`);
+    return;
+  }
+
+  const shop = await prisma.shop.update({
+    where: { id: user.shop.id },
+    data: { isDemo: true, isCatalogPublished: false },
+  });
   const existingSales = await prisma.sale.findMany({
     where: { shopId: shop.id, status: "COMPLETED", createdAt: { gte: windowStart } },
     select: { id: true },
