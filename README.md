@@ -29,6 +29,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Email:** Mailtrap for outbound app email; ImprovMX for inbound forwarding on `dukapilot.com`
 - **Error monitoring:** Backend Sentry alerts are live; see [docs/SENTRY_MONITORING.md](./docs/SENTRY_MONITORING.md)
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
+- **Android release build:** [docs/ANDROID_RELEASE_BUILD.md](./docs/ANDROID_RELEASE_BUILD.md)
 - **Marketing assets:** [marketing/README.md](./marketing/README.md)
 
 ---
