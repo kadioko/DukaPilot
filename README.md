@@ -60,7 +60,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations, why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
 | **AI action history** | Merchants can review opened, completed, and dismissed AI actions from `/assistant/history` |
 | **Offline sales queue** | Sales entered during connection loss are saved locally with an idempotent reference, show sync history/errors, and retry safely when the browser comes back online |
-| **PIN recovery** | "Forgot PIN?" sends a 6-digit OTP via SMS (Africa's Talking) |
+| **PIN recovery** | "Forgot PIN?" sends a 6-digit SMS code through NextSMS for owners and active staff |
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
 | **Operational alerts** | Actionable low-stock, debt, customer-order, offline-sync, and subscription notifications |
 | **Catalog publishing** | Owners can publish or temporarily hide their public shop while cleaning products and prices |
@@ -133,7 +133,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 | **Database** | PostgreSQL |
 | **Frontend** | Next.js 16 · React 19 · TypeScript 6 · Tailwind CSS 4 |
 | **Auth** | Secure HttpOnly session cookies (1h access + 30d refresh) · phone + PIN login · OTP PIN recovery |
-| **SMS / OTP** | Africa's Talking (sandbox in dev, live in production) |
+| **SMS / OTP** | NextSMS production SMS with an approved DukaPilot sender ID |
 | **Error tracking** | Sentry (`@sentry/node` backend and `@sentry/nextjs` browser/server monitoring live in production) |
 | **Messaging** | WhatsApp deep links + WhatsApp Cloud API (optional) |
 | **Payments** | Cash, Bank, Credit, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa |
@@ -147,7 +147,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 
 - **Login:** phone number + PIN → JWT access token (1h) + `dukapilot_refresh` cookie (30d)
 - **Refresh:** frontend silently renews the access token via `POST /api/auth/refresh` — no visible logout
-- **PIN recovery:** "Forgot PIN?" on login screen → 6-digit SMS OTP via Africa's Talking → set new PIN
+- **PIN recovery:** "Forgot PIN?" on login screen → 6-digit NextSMS code → set a new PIN. Active staff can use the same flow.
 - **Change PIN:** authenticated users can change PIN from `/settings`
 - **Admin PIN reset:** admin can reset any user's PIN via `/admin` (audit-logged)
 - **Registration:** collects phone, PIN, name, role (MERCHANT / SUPPLIER), shop city, district, and category
@@ -164,7 +164,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - Staff can be configured as a shop attendant: `canSell`, `canManageStock`, and `canRecordExpenses` may be enabled while `canViewReports` remains off. Staff without report access receive redacted buying-cost and profit fields, while owners/managers keep full financial visibility.
 - Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
 - OTP codes expire after 10 minutes and are single-use.
-- Africa's Talking credentials must be verified separately in production; the production monitor does not send a real OTP.
+- NextSMS credentials must be verified separately in production; the production monitor does not send a real OTP. See [NextSMS PIN Recovery Setup](./docs/NEXTSMS_PIN_RECOVERY.md).
 
 ---
 
@@ -208,7 +208,7 @@ DukaPilot/
 │   │   ├── routes/                # One file per resource
 │   │   └── services/
 │   │       ├── whatsapp.service.js   # WhatsApp message builder
-│   │       └── otp.service.js        # Africa's Talking OTP
+│   │       └── otp.service.js        # NextSMS PIN recovery
 │   ├── Dockerfile                 # node:24-alpine
 │   ├── .env.example
 │   └── package.json
@@ -358,9 +358,10 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 | `JWT_SECRET` | Yes | Generate: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `NODE_ENV` | Yes | Set to `production` |
 | `FRONTEND_URL` | Yes | Official frontend URL for CORS (`https://www.dukapilot.com`) |
-| `AT_API_KEY` | Recommended | Africa's Talking key for SMS OTP |
-| `AT_USERNAME` | Recommended | Africa's Talking username (`sandbox` for testing) |
-| `AT_SENDER_ID` | Optional | Custom SMS sender ID |
+| `SMS_PROVIDER` | Yes for live OTP | `NEXTSMS` |
+| `NEXTSMS_API_KEY` | Yes for live OTP | NextSMS bearer token; Railway secret only |
+| `NEXTSMS_SENDER_ID` | Yes for live OTP | Exact approved sender ID, for example `DukaPilot` |
+| `NEXTSMS_API_URL` | Optional | Defaults to `https://messaging-service.co.tz/api/sms/v2/text/single` |
 | `MAIL_FROM` | Optional | Outbound sender, for example `DukaPilot <noreply@dukapilot.com>` |
 | `MAIL_REPLY_TO` | Optional | Reply-to address, usually `support@dukapilot.com` |
 | `MAILTRAP_API_TOKEN` | Optional | Mailtrap Email API token for outbound email |

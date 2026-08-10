@@ -360,9 +360,12 @@ const requestOtp = asyncHandler(async (req, res) => {
     return res.status(503).json({ error: "PIN recovery SMS is temporarily unavailable. Contact DukaPilot support on WhatsApp." });
   }
 
-  const user = await findByPhone(prisma.user, req.body.phone);
+  const [user, staff] = await Promise.all([
+    findByPhone(prisma.user, req.body.phone),
+    findByPhone(prisma.staffMember, req.body.phone),
+  ]);
   // Don't reveal whether phone exists — always return success
-  if (user) {
+  if (user || staff?.isActive) {
     try {
       await issueOtp(phone);
     } catch (err) {
@@ -399,13 +402,18 @@ const verifyOtpAndResetPin = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: err.message || "Invalid or expired OTP" });
   }
 
-  const user = await findByPhone(prisma.user, req.body.phone);
-  if (!user) return res.status(404).json({ error: "User not found" });
-
   const hashedPin = await bcrypt.hash(newPin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pin: hashedPin } });
+  const user = await findByPhone(prisma.user, req.body.phone);
+  const staff = user ? null : await findByPhone(prisma.staffMember, req.body.phone);
+  if (user) {
+    await prisma.user.update({ where: { id: user.id }, data: { pin: hashedPin } });
+  } else if (staff?.isActive) {
+    await prisma.staffMember.update({ where: { id: staff.id }, data: { pin: hashedPin } });
+  } else {
+    return res.status(404).json({ error: "User not found" });
+  }
 
-  req.audit = { action: "auth.pin.resetViaOtp", resourceType: "user", resourceId: user.id };
+  req.audit = { action: "auth.pin.resetViaOtp", resourceType: user ? "user" : "staff", resourceId: user?.id || staff.id };
   res.json({ message: "PIN reset successfully. You can now log in with your new PIN." });
 });
 
