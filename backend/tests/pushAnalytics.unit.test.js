@@ -52,3 +52,60 @@ test("push subscription rejects incomplete browser subscription data", async () 
   assert.equal(res.statusCode, 400);
   assert.match(res.payload.error, /valid device subscription/);
 });
+
+test("push subscription saves a valid browser device for the authenticated shop", async () => {
+  let saved;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-a" }) },
+    pushSubscription: {
+      updateMany: async () => ({ count: 0 }),
+      upsert: async ({ create }) => {
+        saved = create;
+        return create;
+      },
+    },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[pushControllerPath];
+  const controller = require(pushControllerPath);
+  const res = response();
+
+  await controller.subscribe({
+    user: { userId: "owner-a", role: "MERCHANT" },
+    body: {
+      endpoint: "https://push.example/subscription",
+      keys: { p256dh: "public-key", auth: "auth-key" },
+      deviceId: "device-12345678",
+      deviceLabel: "Android phone",
+    },
+  }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(saved.shopId, "shop-a");
+  assert.equal(saved.deviceId, "device-12345678");
+  assert.equal(res.payload.message, "Device alerts enabled");
+});
+
+test("shop owners can save one alert preference without changing the others", async () => {
+  let saved;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-a" }) },
+    notificationPreference: {
+      upsert: async ({ update }) => {
+        saved = update;
+        return { shopId: "shop-a", lowStock: false, debtDue: true, subscriptionExpiry: true, dailyAssistant: false };
+      },
+    },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[pushControllerPath];
+  const controller = require(pushControllerPath);
+  const res = response();
+
+  await controller.updatePreferences({ user: { userId: "owner-a", role: "MERCHANT" }, body: { lowStock: false, unexpected: true } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(saved, { lowStock: false });
+  assert.equal(res.payload.preferences.lowStock, false);
+  assert.equal(res.payload.preferences.debtDue, true);
+});

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, BellOff, Check, LoaderCircle } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, Check, Info, LoaderCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
 type Preferences = { lowStock: boolean; debtDue: boolean; subscriptionExpiry: boolean; dailyAssistant: boolean };
+type Notice = { tone: "success" | "error" | "info"; text: string };
 const DEVICE_ID_KEY = "dukapilot_push_device_id";
 
 function deviceId() {
@@ -30,6 +31,16 @@ function base64UrlToUint8Array(value: string) {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+function friendlyPushError(error: unknown, lang: "en" | "sw") {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "Internal server error" || !message) {
+    return lang === "sw"
+      ? "Alerts za kifaa hazikuweza kuwashwa. Hakuna kilichobadilishwa; jaribu tena baadaye."
+      : "Device alerts could not be enabled. Nothing was changed; please try again shortly.";
+  }
+  return message;
+}
+
 export default function NotificationSettings({ owner }: { owner: boolean }) {
   const lang = useLang();
   const [preferences, setPreferences] = useState<Preferences | null>(null);
@@ -37,7 +48,8 @@ export default function NotificationSettings({ owner }: { owner: boolean }) {
   const [subscribed, setSubscribed] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [savingPreference, setSavingPreference] = useState<keyof Preferences | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   useEffect(() => {
     const canPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -48,23 +60,31 @@ export default function NotificationSettings({ owner }: { owner: boolean }) {
         setConfigured(data.pushConfigured);
         setSubscribed(data.subscriptions.some((subscription) => subscription.deviceId === deviceId() && subscription.isActive));
       })
-      .catch(() => {});
+      .catch((error) => {
+        setNotice({
+          tone: "error",
+          text: lang === "sw"
+            ? "Mipangilio ya alerts haikupakiwa. Sasisha ukurasa kisha jaribu tena."
+            : "Alert settings could not be loaded. Refresh the page and try again.",
+        });
+        console.error("Unable to load push preferences", error);
+      });
   }, []);
 
   async function enable() {
     if (!supported) return;
     setSaving(true);
-    setMessage("");
+    setNotice(null);
     try {
       const config = await api.get<{ enabled: boolean; publicKey: string | null }>("/push/config");
       if (!config.enabled || !config.publicKey) {
         setConfigured(false);
-        setMessage(lang === "sw" ? "Alerts za push bado zinaandaliwa. Tumia taarifa za ndani ya app kwa sasa." : "Push alerts are being prepared. In-app alerts are available now.");
+        setNotice({ tone: "info", text: lang === "sw" ? "Alerts za push bado zinaandaliwa. Tumia taarifa za ndani ya app kwa sasa." : "Push alerts are being prepared. In-app alerts are available now." });
         return;
       }
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        setMessage(lang === "sw" ? "Ruhusu notifications kwenye browser ili kupokea alerts." : "Allow notifications in your browser to receive alerts.");
+        setNotice({ tone: "info", text: lang === "sw" ? "Ruhusu notifications kwenye browser ili kupokea alerts." : "Allow notifications in your browser to receive alerts." });
         return;
       }
       const registration = await navigator.serviceWorker.ready;
@@ -73,23 +93,24 @@ export default function NotificationSettings({ owner }: { owner: boolean }) {
       await api.post("/push/subscribe", { endpoint: json.endpoint, keys: json.keys, deviceId: deviceId(), deviceLabel: deviceLabel() });
       setSubscribed(true);
       setConfigured(true);
-      setMessage(lang === "sw" ? "Alerts za kifaa hiki zimewashwa." : "Alerts are enabled on this device.");
+      setNotice({ tone: "success", text: lang === "sw" ? "Alerts za kifaa hiki zimewashwa." : "Alerts are enabled on this device." });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to enable alerts");
+      setNotice({ tone: "error", text: friendlyPushError(error, lang) });
     } finally { setSaving(false); }
   }
 
   async function disable() {
     setSaving(true);
+    setNotice(null);
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
       await subscription?.unsubscribe();
       await api.post("/push/unsubscribe", { deviceId: deviceId() });
       setSubscribed(false);
-      setMessage(lang === "sw" ? "Alerts za kifaa hiki zimezimwa." : "Alerts are disabled on this device.");
+      setNotice({ tone: "success", text: lang === "sw" ? "Alerts za kifaa hiki zimezimwa." : "Alerts are disabled on this device." });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to disable alerts");
+      setNotice({ tone: "error", text: friendlyPushError(error, lang) });
     } finally { setSaving(false); }
   }
 
@@ -97,8 +118,18 @@ export default function NotificationSettings({ owner }: { owner: boolean }) {
     if (!preferences || !owner) return;
     const next = { ...preferences, [key]: !preferences[key] };
     setPreferences(next);
-    try { await api.patch("/push/preferences", { [key]: next[key] }); }
-    catch { setPreferences(preferences); }
+    setSavingPreference(key);
+    setNotice(null);
+    try {
+      await api.patch("/push/preferences", { [key]: next[key] }, lang);
+      setNotice({ tone: "success", text: lang === "sw" ? "Mpangilio wa alerts umehifadhiwa." : "Alert preference saved." });
+    } catch (error) {
+      setPreferences(preferences);
+      setNotice({ tone: "error", text: lang === "sw" ? "Mpangilio haukuhifadhiwa. Hakuna kilichobadilishwa; jaribu tena." : "The preference was not saved. Nothing changed; please try again." });
+      console.error("Unable to save push preference", error);
+    } finally {
+      setSavingPreference(null);
+    }
   }
 
   const labels: Array<[keyof Preferences, string, string]> = [
@@ -122,11 +153,14 @@ export default function NotificationSettings({ owner }: { owner: boolean }) {
       </div>
       {!supported && <p className="text-xs text-amber-700">{lang === "sw" ? "Browser hii haiungi mkono alerts za push." : "This browser does not support push alerts."}</p>}
       {!configured && <p className="text-xs text-gray-500">{lang === "sw" ? "Push delivery itawashwa baada ya DukaPilot kusanidi huduma ya notifications." : "Push delivery will become available after DukaPilot configures the notification service."}</p>}
-      {message && <p className="flex items-center gap-1.5 text-xs text-brand-700"><Check className="h-3.5 w-3.5" />{message}</p>}
+      {notice && <p role={notice.tone === "error" ? "alert" : "status"} className={`flex items-start gap-1.5 text-xs leading-5 ${notice.tone === "success" ? "text-green-700" : notice.tone === "error" ? "text-red-700" : "text-gray-600"}`}>
+        {notice.tone === "success" ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : notice.tone === "error" ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+        {notice.text}
+      </p>}
       {owner && preferences && <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
         {labels.map(([key, en, sw]) => <label key={key} className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-sm text-gray-700">
           <span>{lang === "sw" ? sw : en}</span>
-          <input type="checkbox" checked={preferences[key]} onChange={() => togglePreference(key)} className="h-4 w-4 rounded border-gray-300 text-brand-600" />
+          <input type="checkbox" checked={preferences[key]} onChange={() => togglePreference(key)} disabled={savingPreference !== null} className="h-4 w-4 rounded border-gray-300 text-brand-600 disabled:cursor-not-allowed disabled:opacity-50" />
         </label>)}
       </div>}
     </div>
