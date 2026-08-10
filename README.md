@@ -360,7 +360,7 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 | `FRONTEND_URL` | Yes | Official frontend URL for CORS (`https://www.dukapilot.com`) |
 | `SMS_PROVIDER` | Yes for live OTP | `NEXTSMS` |
 | `NEXTSMS_API_KEY` | Yes for live OTP | NextSMS bearer token; Railway secret only |
-| `NEXTSMS_SENDER_ID` | Yes for live OTP | Exact approved sender ID, for example `DukaPilot` |
+| `NEXTSMS_SENDER_ID` | Yes for live OTP | Exact approved sender ID. Current approved value: `Dukapilot` |
 | `NEXTSMS_API_URL` | Optional | Defaults to `https://messaging-service.co.tz/api/sms/v2/text/single` |
 | `MAIL_FROM` | Optional | Outbound sender, for example `DukaPilot <noreply@dukapilot.com>` |
 | `MAIL_REPLY_TO` | Optional | Reply-to address, usually `support@dukapilot.com` |

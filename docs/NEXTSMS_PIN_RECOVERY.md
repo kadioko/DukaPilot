@@ -10,7 +10,7 @@ In Railway production, add these variables to the DukaPilot service:
 | --- | --- |
 | `SMS_PROVIDER` | `NEXTSMS` |
 | `NEXTSMS_API_KEY` | The secret bearer token from NextSMS **Customer Info > Customization > API Keys** |
-| `NEXTSMS_SENDER_ID` | The exact approved sender ID shown in NextSMS, for example `DukaPilot` |
+| `NEXTSMS_SENDER_ID` | The exact approved sender ID shown in NextSMS. Current approved value: `Dukapilot` |
 | `NEXTSMS_API_URL` | `https://messaging-service.co.tz/api/sms/v2/text/single` |
 
 Do not put the API key in Git, a frontend variable, or a support message. Adding/changing the variable redeploys Railway automatically.
