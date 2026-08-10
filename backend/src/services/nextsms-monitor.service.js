@@ -1,8 +1,10 @@
 const DEFAULT_NEXTSMS_MONITOR_BASE_URL = "https://messaging-service.co.tz/api/v2";
-const CACHE_TTL_MS = 15_000;
+const CACHE_TTL_MS = 60_000;
+const FORCE_REFRESH_COOLDOWN_MS = 15_000;
 
 let cachedSnapshot = null;
 let cachedAt = 0;
+let inFlightSnapshot = null;
 
 function monitorBaseUrl() {
   return String(process.env.NEXTSMS_MONITOR_BASE_URL || DEFAULT_NEXTSMS_MONITOR_BASE_URL).replace(/\/$/, "");
@@ -66,37 +68,53 @@ async function getNextSmsMonitoring({ force = false } = {}) {
     error.status = 503;
     throw error;
   }
-  if (!force && cachedSnapshot && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSnapshot;
+  const age = Date.now() - cachedAt;
+  if (cachedSnapshot && ((!force && age < CACHE_TTL_MS) || (force && age < FORCE_REFRESH_COOLDOWN_MS))) {
+    return cachedSnapshot;
+  }
+  if (inFlightSnapshot) return inFlightSnapshot;
 
-  const [balance, reportsResponse] = await Promise.all([providerGet("balance"), providerGet("reports")]);
-  const reports = Array.isArray(reportsResponse?.results) ? reportsResponse.results.slice(0, 100).map(normalizeReport) : [];
-  const summary = reports.reduce((totals, report) => {
-    totals.total += 1;
-    if (report.status === "DELIVERED") totals.delivered += 1;
-    else if (["FAILED", "REJECTED", "UNDELIVERABLE", "EXPIRED"].includes(report.status)) totals.failed += 1;
-    else totals.pending += 1;
-    return totals;
-  }, { total: 0, delivered: 0, failed: 0, pending: 0 });
+  inFlightSnapshot = (async () => {
+    const [balance, reportsResponse] = await Promise.all([providerGet("balance"), providerGet("reports")]);
+    const reports = Array.isArray(reportsResponse?.results) ? reportsResponse.results.slice(0, 100).map(normalizeReport) : [];
+    const summary = reports.reduce((totals, report) => {
+      totals.total += 1;
+      if (report.status === "DELIVERED") totals.delivered += 1;
+      else if (["FAILED", "REJECTED", "UNDELIVERABLE", "EXPIRED"].includes(report.status)) totals.failed += 1;
+      else totals.pending += 1;
+      return totals;
+    }, { total: 0, delivered: 0, failed: 0, pending: 0 });
 
-  cachedSnapshot = {
-    provider: "NEXTSMS",
-    fetchedAt: new Date().toISOString(),
-    balance: {
-      smsCredits: Number(balance?.default_balance) || 0,
-      balanceTzs: Number(balance?.sms_balance) || 0,
-      display: String(balance?.display || ""),
-      channel: String(balance?.default || ""),
-    },
-    summary,
-    reports,
-  };
-  cachedAt = Date.now();
-  return cachedSnapshot;
+    cachedSnapshot = {
+      provider: "NEXTSMS",
+      fetchedAt: new Date().toISOString(),
+      balance: {
+        smsCredits: Number(balance?.default_balance) || 0,
+        balanceTzs: Number(balance?.sms_balance) || 0,
+        display: String(balance?.display || ""),
+        channel: String(balance?.default || ""),
+      },
+      summary,
+      reports,
+    };
+    cachedAt = Date.now();
+    return cachedSnapshot;
+  })();
+
+  try {
+    return await inFlightSnapshot;
+  } catch (error) {
+    if (cachedSnapshot) return cachedSnapshot;
+    throw error;
+  } finally {
+    inFlightSnapshot = null;
+  }
 }
 
 function clearNextSmsMonitoringCache() {
   cachedSnapshot = null;
   cachedAt = 0;
+  inFlightSnapshot = null;
 }
 
 module.exports = { getNextSmsMonitoring, isNextSmsMonitoringConfigured, maskPhone, clearNextSmsMonitoringCache };

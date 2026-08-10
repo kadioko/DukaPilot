@@ -47,6 +47,9 @@ test("NextSMS monitoring uses bearer-authenticated balance and report endpoints"
     assert.equal(result.summary.pending, 1);
     assert.equal(result.reports[0].to, "********9090");
     assert.equal(result.reports[0].reference, "otp-123");
+
+    await getNextSmsMonitoring();
+    assert.equal(requests.length, 2, "a recent snapshot avoids extra provider calls");
   } finally {
     global.fetch = previousFetch;
     Object.entries(previous).forEach(([name, value]) => restore(name, value));
