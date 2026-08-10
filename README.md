@@ -88,6 +88,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Supplier verification** | Review suppliers, set verification status, add admin notes, and remove suppliers when needed |
 | **AI analytics** | Track assistant actions, opened/completed/dismissed rates, and top action types |
 | **Sync support** | View offline sync failures by shop/device, rename devices, and mark issues Open, Contacted, or Resolved |
+| **SMS monitoring** | Platform-admin-only live NextSMS balance and recent delivery status, with masked recipients and no SMS body or PIN-code access |
 | **Audit log viewer** | Searchable log of all significant actions |
 
 ---
@@ -147,7 +148,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 
 - **Login:** phone number + PIN → JWT access token (1h) + `dukapilot_refresh` cookie (30d)
 - **Refresh:** frontend silently renews the access token via `POST /api/auth/refresh` — no visible logout
-- **PIN recovery:** "Forgot PIN?" on login screen → 6-digit NextSMS code → set a new PIN. Active staff can use the same flow.
+- **PIN recovery:** "Forgot PIN?" on login screen → 6-digit NextSMS code → set a new PIN. Owners and active staff can use the same flow with `07...`, `255...`, or `+255...` phone formats.
 - **Change PIN:** authenticated users can change PIN from `/settings`
 - **Admin PIN reset:** admin can reset any user's PIN via `/admin` (audit-logged)
 - **Registration:** collects phone, PIN, name, role (MERCHANT / SUPPLIER), shop city, district, and category
@@ -164,7 +165,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - Staff can be configured as a shop attendant: `canSell`, `canManageStock`, and `canRecordExpenses` may be enabled while `canViewReports` remains off. Staff without report access receive redacted buying-cost and profit fields, while owners/managers keep full financial visibility.
 - Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
 - OTP codes expire after 10 minutes and are single-use.
-- NextSMS credentials must be verified separately in production; the production monitor does not send a real OTP. See [NextSMS PIN Recovery Setup](./docs/NEXTSMS_PIN_RECOVERY.md).
+- NextSMS credentials must be verified separately in production; the production monitor does not send a real OTP. Platform admins can review current credits and recent delivery metadata at `/admin` → **SMS**. See [NextSMS PIN Recovery Setup](./docs/NEXTSMS_PIN_RECOVERY.md).
 
 ---
 
@@ -208,7 +209,8 @@ DukaPilot/
 │   │   ├── routes/                # One file per resource
 │   │   └── services/
 │   │       ├── whatsapp.service.js   # WhatsApp message builder
-│   │       └── otp.service.js        # NextSMS PIN recovery
+│   │       ├── otp.service.js        # NextSMS PIN recovery
+│   │       └── nextsms-monitor.service.js # Admin-only NextSMS balance and delivery monitoring
 │   ├── Dockerfile                 # node:24-alpine
 │   ├── .env.example
 │   └── package.json

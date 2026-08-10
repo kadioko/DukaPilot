@@ -17,6 +17,8 @@
 - Add credit-sale due dates and cash change calculation.
 - Group navigation with AI Assistant near the top and translate the barcode entry in Kiswahili.
 - Correct zero-stock AI wording and format the WhatsApp summary for copying.
+- Connect production PIN recovery to NextSMS, accept Tanzania `07...` and `+255...` phone formats, and verify a complete owner reset flow.
+- Add platform-admin-only NextSMS monitoring for current SMS credits and recent delivery metadata, without exposing OTP content or full recipient numbers.
 
 ## Next: verify with real merchants
 
@@ -25,6 +27,7 @@
 3. Run PageSpeed Insights and a throttled mobile test; track FCP, LCP, and page weight before changing imagery or loading strategy.
 4. Configure the Vercel toolbar so it is disabled for production, then verify from an incognito browser.
 5. Have Tanzanian counsel review the Terms, Privacy Policy, consent wording, retention, and support process under the Personal Data Protection Act 2022.
+6. Decide whether to persist a DukaPilot-owned long-term SMS delivery audit. NextSMS provides a recent report feed, but it should not be the only source of historical delivery evidence.
 
 ## Next: product decisions
 

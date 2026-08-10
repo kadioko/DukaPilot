@@ -1,6 +1,6 @@
 # DukaPilot Launch Playbook
 
-Last updated: 2026-08-06
+Last updated: 2026-08-10
 
 This is the working plan for turning the live DukaPilot product into active merchants, paid shops, and supplier relationships.
 
@@ -21,7 +21,7 @@ What is strong:
 - The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog, supplier orders, AI assistant, Swahili/English, and WhatsApp support.
 - Pricing is understandable for Tanzania: free trial, TZS 15,000/month Basic, TZS 35,000/month Pro.
 - The product has a natural sales motion: WhatsApp support plus M-Pesa payment reference verification.
-- Admin support now has subscription controls, supplier verification, assistant action analytics, and offline sync resolution by shop/device.
+- Admin support now has subscription controls, supplier verification, assistant action analytics, offline sync resolution by shop/device, and protected NextSMS balance/delivery monitoring.
 - The assistant direction is stronger: DukaPilot should be sold as the app that tells a shop owner what to do next, not only as POS/inventory.
 
 What should improve before scaling ads:
@@ -31,7 +31,7 @@ What should improve before scaling ads:
 - Keep Search Console verified, submit the sitemap after public-page changes, and build trustworthy local backlinks; technical metadata and structured data are already in place.
 - Add a stronger WhatsApp CTA for people who are not ready to register: "Tuma WhatsApp tupange setup ya duka lako."
 - Add social proof as soon as the first 3-5 real merchants are onboarded.
-- Watch production support signals daily: new Sentry issues, failed logins, unpaid/expiring shops, unresolved sync failures, billing reports, and assistant actions that are opened but not completed.
+- Watch production support signals daily: new Sentry issues, failed logins, low NextSMS credits or failed SMS deliveries, unpaid/expiring shops, unresolved sync failures, billing reports, and assistant actions that are opened but not completed.
 
 ## Positioning
 
@@ -239,6 +239,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Plan leakage. Test Basic and Pro entitlements after every billing or authorization change.
 - Shared mobile IPs. Avoid repeated production login tests; use local unit/browser tests and one controlled production monitor.
 - Monitoring noise. Keep expected validation and authentication `4xx` responses out of Sentry so genuine production exceptions remain visible.
+- SMS delivery. Check **Admin Dashboard > SMS** after any PIN-recovery issue; confirm credits are available and distinguish provider delivery status from an unregistered or inactive DukaPilot phone number.
 - Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows without receiving buying costs, margins, shop-wide profit, or AI report data.
 
 ## Release Gate - 1.3.0
