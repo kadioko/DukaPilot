@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
-import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine } from "lucide-react";
+import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode } from "lucide-react";
 import NotificationSettings from "@/components/notifications/NotificationSettings";
 
 interface UserSettings {
@@ -69,6 +70,9 @@ export default function SettingsPage() {
   const [shopSaving, setShopSaving] = useState(false);
   const [shopMsg, setShopMsg] = useState("");
   const [shopError, setShopError] = useState("");
+  const [catalogOrigin, setCatalogOrigin] = useState("");
+  const [catalogShareMsg, setCatalogShareMsg] = useState("");
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Profile form
   const [displayName, setDisplayName] = useState("");
@@ -86,6 +90,7 @@ export default function SettingsPage() {
   const [barcodeSettings, setBarcodeSettings] = useState<Record<string, boolean> | null>(null);
 
   useEffect(() => {
+    setCatalogOrigin(window.location.origin);
     api.get<{ settings: UserSettings }>("/settings")
       .then((d) => {
         const s = d.settings;
@@ -132,6 +137,30 @@ export default function SettingsPage() {
     } finally {
       setShopSaving(false);
     }
+  }
+
+  const catalogUrl = settings?.shop && catalogOrigin ? `${catalogOrigin}/catalog/${settings.shop.id}` : "";
+  const catalogHasUnsavedChange = settings?.shop?.isCatalogPublished !== catalogPublished;
+
+  async function copyCatalogUrl() {
+    if (!catalogUrl) return;
+    try {
+      await navigator.clipboard.writeText(catalogUrl);
+      setCatalogShareMsg(lang === "sw" ? "Link imenakiliwa." : "Link copied.");
+    } catch {
+      setCatalogShareMsg(lang === "sw" ? "Link haikunakiliwa. Nakili kutoka kwenye kisanduku." : "Could not copy the link. Copy it from the field.");
+    }
+  }
+
+  function downloadCatalogQr() {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement("a");
+    const filename = (shopName.trim() || "dukapilot-shop").replace(/[^a-z0-9]+/gi, "-").replace(/(^-|-$)/g, "").toLowerCase();
+    link.href = canvas.toDataURL("image/png");
+    link.download = `${filename || "dukapilot-shop"}-qr.png`;
+    link.click();
+    setCatalogShareMsg(lang === "sw" ? "QR code imepakuliwa." : "QR code downloaded.");
   }
 
   async function saveProfile(e: React.FormEvent) {
@@ -279,6 +308,54 @@ export default function SettingsPage() {
                   </span>
                 </span>
               </label>
+              {catalogPublished && catalogUrl && (
+                <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700 shadow-sm">
+                      <QrCode className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">{lang === "sw" ? "Link ya duka lako" : "Your shop link"}</p>
+                      <p className="mt-0.5 text-xs leading-5 text-gray-600">
+                        {lang === "sw" ? "Wateja wanaweza kuangalia bidhaa na kutuma agizo moja kwa moja." : "Customers can browse products and send an order directly to your shop."}
+                      </p>
+                    </div>
+                  </div>
+                  {catalogHasUnsavedChange && (
+                    <p className="mt-3 rounded-md bg-amber-50 px-2.5 py-2 text-xs leading-5 text-amber-800">
+                      {lang === "sw" ? "Hifadhi mabadiliko ya duka ili link hii ianze kupokea maagizo." : "Save your shop changes before this link can receive orders."}
+                    </p>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <input
+                      aria-label={lang === "sw" ? "Link ya catalog ya duka" : "Shop catalog link"}
+                      value={catalogUrl}
+                      readOnly
+                      onFocus={(event) => event.currentTarget.select()}
+                      className="min-w-0 flex-1 rounded-lg border border-brand-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none"
+                    />
+                    <button type="button" onClick={copyCatalogUrl} title={lang === "sw" ? "Nakili link" : "Copy link"} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brand-200 bg-white text-brand-700 hover:bg-brand-100" aria-label={lang === "sw" ? "Nakili link" : "Copy link"}>
+                      <Copy className="h-4 w-4" />
+                    </button>
+                    <a href={catalogUrl} target="_blank" rel="noopener noreferrer" title={lang === "sw" ? "Fungua duka" : "Open shop"} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brand-200 bg-white text-brand-700 hover:bg-brand-100" aria-label={lang === "sw" ? "Fungua duka" : "Open shop"}>
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </div>
+                  <div className="mt-4 flex flex-col items-center gap-3 border-t border-brand-100 pt-4 sm:flex-row sm:items-center">
+                    <div className="shrink-0 rounded-lg bg-white p-2 shadow-sm">
+                      <QRCodeCanvas ref={qrCanvasRef} value={catalogUrl} size={148} level="M" includeMargin aria-label={lang === "sw" ? "QR code ya duka" : "Shop QR code"} />
+                    </div>
+                    <div className="min-w-0 text-center sm:text-left">
+                      <p className="text-xs leading-5 text-gray-600">{lang === "sw" ? "Pakua picha ya QR kwa WhatsApp Status, print au kuweka kaunta ya duka." : "Download the QR image for WhatsApp Status, print, or your shop counter."}</p>
+                      <button type="button" onClick={downloadCatalogQr} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700">
+                        <Download className="h-3.5 w-3.5" />
+                        {lang === "sw" ? "Pakua QR" : "Download QR"}
+                      </button>
+                    </div>
+                  </div>
+                  {catalogShareMsg && <p role="status" className="mt-3 flex items-center gap-1.5 text-xs text-green-700"><Check className="h-3.5 w-3.5" />{catalogShareMsg}</p>}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{t("settings.location", lang)}</label>
