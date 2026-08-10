@@ -684,6 +684,11 @@ export default function InventoryPage() {
                 </button>
               ))}
             </div>
+            {adjustForm.type === "IN" && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-blue-900">
+                {lang === "sw" ? "Hii ndiyo njia ya kupokea bidhaa mpya. Usirekodi ununuzi huu tena kwenye Matumizi; bei ya kununua itatumika kwenye faida bidhaa inapouzwa." : "Use this to receive new stock. Do not record the purchase again in Expenses; the buying price is used when the product sells."}
+              </div>
+            )}
             <Field label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)}>
               <input aria-label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)} type="number" min="0" step="1" value={adjustForm.quantity}
                 onChange={(e) => setAdjustForm({ ...adjustForm, quantity: e.target.value })}

@@ -62,6 +62,26 @@ test("expense validation uses Swahili and rejects an invalid date", async () => 
   assert.match(res.payload.error, /Tarehe/);
 });
 
+test("stock purchases are rejected from normal expenses", async () => {
+  let created = false;
+  const controller = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    expense: { create: async () => { created = true; } },
+  });
+  const req = {
+    user: { userId: "owner-1" },
+    headers: { "x-dukapilot-language": "sw" },
+    body: { title: "Mchele wa kuongezea stock", amount: 200000, spentAt: "2026-08-10", category: "STOCK" },
+  };
+  const res = response();
+
+  await controller.create(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.code, "STOCK_PURCHASES_USE_INVENTORY");
+  assert.equal(created, false);
+});
+
 test("recurring expense creation stores payment method and advances the schedule without a future ledger entry", async () => {
   let expenseData;
   let recurringData;
@@ -97,8 +117,10 @@ test("expense list applies search, vendor, category, and date range filters", as
     expense: {
       findMany: async (args) => { findManyArgs = args; return []; },
       aggregate: async (args) => { aggregateArgs = args; return { _sum: { amount: 0 }, _count: { id: 0 } }; },
+      groupBy: async () => [],
     },
     recurringExpense: { findMany: async () => [] },
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0, profit: 0 }, _count: { id: 0 } }) },
   });
   const req = {
     user: { userId: "owner-1" },
@@ -116,6 +138,33 @@ test("expense list applies search, vendor, category, and date range filters", as
   assert.equal(findManyArgs.where.spentAt.lte.toISOString(), "2026-07-31T23:59:59.999Z");
   assert.equal(findManyArgs.where.OR.length, 3);
   assert.deepEqual(aggregateArgs.where, findManyArgs.where);
+});
+
+test("expense overview excludes legacy stock entries and reports sales-based metrics", async () => {
+  let expenseWhere;
+  let salesWhere;
+  const controller = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    expense: {
+      findMany: async ({ where }) => { expenseWhere = where; return []; },
+      aggregate: async () => ({ _sum: { amount: 15000 }, _count: { id: 2 } }),
+      groupBy: async () => [{ category: "UTILITIES", _sum: { amount: 10000 } }, { category: "RENT", _sum: { amount: 5000 } }],
+    },
+    recurringExpense: { findMany: async () => [] },
+    sale: { aggregate: async ({ where }) => { salesWhere = where; return { _sum: { totalAmount: 100000, profit: 40000 }, _count: { id: 4 } }; } },
+  });
+  const req = { user: { userId: "owner-1" }, query: { period: "all" } };
+  const res = response();
+
+  await controller.list(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(expenseWhere.category, { not: "STOCK" });
+  assert.deepEqual(salesWhere, { shopId: "shop-1", status: "COMPLETED" });
+  assert.equal(res.payload.summary.expensePercentOfSales, 15);
+  assert.equal(res.payload.summary.netProfit, 25000);
+  assert.equal(res.payload.summary.previousTotal, null);
+  assert.deepEqual(res.payload.summary.topCategories, [{ category: "UTILITIES", total: 10000 }, { category: "RENT", total: 5000 }]);
 });
 
 test("recording a recurring expense creates one real ledger entry and advances its next date", async () => {

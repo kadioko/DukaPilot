@@ -80,7 +80,7 @@ test("expense history filters records and exposes edit and delete actions", asyn
   const requests: string[] = [];
   let updated: Record<string, unknown> | null = null;
   let deleted = false;
-  await page.route(/\/_api\/expenses(?:\/.*|\?.*)?$/, async (route) => {
+  await page.route(/\/(?:_api|api)\/expenses(?:\/.*|\?.*)?$/, async (route) => {
     requests.push(route.request().url());
     if (route.request().method() === "PATCH") {
       updated = route.request().postDataJSON();
@@ -109,6 +109,44 @@ test("expense history filters records and exposes edit and delete actions", asyn
   page.on("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Futa LUKU" }).click();
   await expect.poll(() => deleted).toBe(true);
+});
+
+test("expense overview follows the selected period and shows profit pressure", async ({ page }) => {
+  await mockMerchantShell(page);
+  const expenseRequests: string[] = [];
+  await page.route(/\/(?:_api|api)\/expenses(?:\/.*|\?.*)?$/, async (route) => {
+    expenseRequests.push(route.request().url());
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        expenses: [],
+        recurringExpenses: [],
+        summary: {
+          total: 25000,
+          count: 2,
+          totalSales: 200000,
+          grossProfit: 80000,
+          netProfit: 55000,
+          expensePercentOfSales: 12.5,
+          previousTotal: 15000,
+          changeAmount: 10000,
+          changePercent: 66.7,
+          salesCount: 8,
+          topCategories: [{ category: "UTILITIES", total: 15000 }, { category: "TRANSPORT", total: 10000 }],
+        },
+      }),
+    });
+  });
+
+  await page.goto("/expenses");
+  await expect(page.getByRole("button", { name: "Leo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Muda Wote" })).toBeVisible();
+  await expect(page.getByText("Faida baada ya matumizi")).toBeVisible();
+  await expect(page.getByText("Umeme na huduma")).toBeVisible();
+
+  await page.getByRole("button", { name: "Wiki" }).click();
+  await expect.poll(() => expenseRequests.some((url) => url.includes("period=week"))).toBe(true);
 });
 
 test("AI ranks proven demand above an out-of-stock product with zero sales", async ({ page }) => {

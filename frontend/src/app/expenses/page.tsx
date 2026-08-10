@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, ChevronDown, Edit3, Filter, Plus, ReceiptText, Repeat2, Search, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { BarChart3, ChevronDown, Edit3, Filter, PackagePlus, Plus, ReceiptText, Repeat2, Search, Trash2, X } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import DateSelect from "@/components/ui/DateSelect";
 import { useToast } from "@/components/ui/Toast";
@@ -49,7 +50,23 @@ interface Filters {
   to: string;
 }
 
-const categories = ["RENT", "SALARY", "UTILITIES", "TRANSPORT", "STOCK", "MARKETING", "TAX", "OTHER"];
+type Period = "today" | "week" | "month" | "all";
+
+interface ExpenseSummary {
+  total: number;
+  count: number;
+  totalSales: number;
+  grossProfit: number;
+  netProfit: number;
+  expensePercentOfSales: number | null;
+  previousTotal: number | null;
+  changeAmount: number | null;
+  changePercent: number | null;
+  salesCount: number;
+  topCategories: Array<{ category: string; total: number }>;
+}
+
+const categories = ["RENT", "SALARY", "UTILITIES", "TRANSPORT", "MARKETING", "TAX", "OTHER"];
 const INPUT = "min-w-0 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-950 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm";
 
 const CATEGORY_LABELS: Record<string, { sw: string; en: string }> = {
@@ -57,7 +74,6 @@ const CATEGORY_LABELS: Record<string, { sw: string; en: string }> = {
   SALARY: { sw: "Mishahara", en: "Salaries" },
   UTILITIES: { sw: "Umeme na huduma", en: "Utilities" },
   TRANSPORT: { sw: "Usafiri", en: "Transport" },
-  STOCK: { sw: "Ununuzi wa bidhaa", en: "Stock purchases" },
   MARKETING: { sw: "Matangazo", en: "Marketing" },
   TAX: { sw: "Kodi ya serikali", en: "Tax" },
   OTHER: { sw: "Mengine", en: "Other" },
@@ -77,6 +93,19 @@ const QUICK_EXPENSES = [
   { title: "Data ya simu", category: "UTILITIES", label: { sw: "Data", en: "Data" } },
   { title: "Matengenezo", category: "OTHER", label: { sw: "Matengenezo", en: "Repairs" } },
 ];
+
+const PERIODS: Array<{ value: Period; sw: string; en: string }> = [
+  { value: "today", sw: "Leo", en: "Today" },
+  { value: "week", sw: "Wiki", en: "Week" },
+  { value: "month", sw: "Mwezi", en: "Month" },
+  { value: "all", sw: "Muda Wote", en: "All time" },
+];
+
+const EMPTY_SUMMARY: ExpenseSummary = {
+  total: 0, count: 0, totalSales: 0, grossProfit: 0, netProfit: 0,
+  expensePercentOfSales: null, previousTotal: null, changeAmount: null,
+  changePercent: null, salesCount: 0, topCategories: [],
+};
 
 function localDateValue() {
   const now = new Date();
@@ -103,8 +132,9 @@ function toDateLabel(value: string, lang: "sw" | "en") {
   return new Date(value).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function queryFromFilters(filters: Filters) {
+function queryFromFilters(filters: Filters, period: Period) {
   const params = new URLSearchParams();
+  params.set("period", period);
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (filters.vendor.trim()) params.set("vendor", filters.vendor.trim());
   if (filters.category) params.set("category", filters.category);
@@ -119,7 +149,8 @@ export default function ExpensesPage() {
   const { toast } = useToast();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
-  const [summary, setSummary] = useState({ total: 0, count: 0 });
+  const [summary, setSummary] = useState<ExpenseSummary>(EMPTY_SUMMARY);
+  const [period, setPeriod] = useState<Period>("month");
   const [form, setForm] = useState<ExpenseForm>(emptyExpenseForm);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -145,11 +176,11 @@ export default function ExpensesPage() {
     )) || null;
   }, [amount, editingExpense, expenses, form.spentAt, form.title, form.vendor]);
 
-  async function load(nextFilters = appliedFilters) {
-    const data = await api.get<{ expenses: Expense[]; recurringExpenses: RecurringExpense[]; summary: { total: number; count: number } }>(`/expenses${queryFromFilters(nextFilters)}`, lang);
+  async function load(nextFilters = appliedFilters, nextPeriod = period) {
+    const data = await api.get<{ expenses: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
     setExpenses(data.expenses);
     setRecurringExpenses(data.recurringExpenses || []);
-    setSummary(data.summary);
+    setSummary({ ...EMPTY_SUMMARY, ...data.summary, topCategories: data.summary.topCategories || [] });
   }
 
   useEffect(() => {
@@ -273,7 +304,7 @@ export default function ExpensesPage() {
     event.preventDefault();
     setAppliedFilters(filters);
     try {
-      await load(filters);
+      await load(filters, period);
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : (lang === "sw" ? "Vichujio havikuweza kutumika." : "Filters could not be applied."), "error");
     }
@@ -283,8 +314,25 @@ export default function ExpensesPage() {
     const clean = { search: "", vendor: "", category: "", from: "", to: "" };
     setFilters(clean);
     setAppliedFilters(clean);
-    await load(clean);
+    await load(clean, period);
   }
+
+  async function selectPeriod(nextPeriod: Period) {
+    if (nextPeriod === period && !filters.from && !filters.to) return;
+    const cleanDates = { ...appliedFilters, from: "", to: "" };
+    setPeriod(nextPeriod);
+    setFilters((current) => ({ ...current, from: "", to: "" }));
+    setAppliedFilters(cleanDates);
+    try {
+      await load(cleanDates, nextPeriod);
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Kipindi hakikuweza kubadilishwa." : "Could not change the period."), "error");
+    }
+  }
+
+  const periodLabel = PERIODS.find((item) => item.value === period)?.[lang] || "";
+  const largestCategoryTotal = Math.max(...summary.topCategories.map((item) => item.total), 0);
+  const changeIsIncrease = (summary.changeAmount || 0) > 0;
 
   return (
     <AppShell>
@@ -300,11 +348,28 @@ export default function ExpensesPage() {
           </button>
         </div>
 
-        <section className="grid gap-3 sm:grid-cols-3" aria-label={lang === "sw" ? "Muhtasari wa matumizi" : "Expense overview"}>
-          <Metric label={lang === "sw" ? (filtersActive ? "Matumizi yaliyochujwa" : "Matumizi yote") : (filtersActive ? "Filtered expenses" : "All expenses")} value={formatTZS(summary.total)} tone="amber" />
-          <Metric label={lang === "sw" ? "Rekodi" : "Records"} value={String(summary.count)} tone="gray" />
-          <Metric label={lang === "sw" ? "Ratiba za kila mwezi" : "Monthly schedules"} value={String(recurringExpenses.length)} tone="brand" />
+        <section className="border-y border-gray-200 py-3" aria-label={lang === "sw" ? "Chagua kipindi" : "Select period"}>
+          <div className="grid grid-cols-4 gap-1 rounded-lg bg-gray-100 p-1">
+            {PERIODS.map((item) => <button key={item.value} type="button" onClick={() => selectPeriod(item.value)} className={`min-h-10 rounded-md px-2 text-xs font-semibold transition-colors ${period === item.value ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-950"}`}>{item[lang]}</button>)}
+          </div>
         </section>
+
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label={lang === "sw" ? "Muhtasari wa matumizi" : "Expense overview"}>
+          <Metric label={lang === "sw" ? `Matumizi: ${periodLabel}` : `Expenses: ${periodLabel}`} value={formatTZS(summary.total)} tone="amber" note={`${summary.count} ${lang === "sw" ? "rekodi" : "records"}`} />
+          <Metric label={lang === "sw" ? "Tofauti na kipindi kilichopita" : "Compared with previous period"} value={summary.changeAmount == null ? "-" : formatTZS(Math.abs(summary.changeAmount))} tone={summary.changeAmount != null && changeIsIncrease ? "red" : "green"} note={summary.changeAmount == null ? (lang === "sw" ? "Hakuna ulinganisho wa muda wote" : "No all-time comparison") : `${changeIsIncrease ? (lang === "sw" ? "Imeongezeka" : "Increased") : (lang === "sw" ? "Imepungua" : "Decreased")}${summary.changePercent == null ? "" : ` ${Math.abs(summary.changePercent).toFixed(0)}%`}`} />
+          <Metric label={lang === "sw" ? "Matumizi kwa mauzo" : "Expenses of sales"} value={summary.expensePercentOfSales == null ? "-" : `${summary.expensePercentOfSales.toFixed(1)}%`} tone="gray" note={summary.totalSales > 0 ? `${formatTZS(summary.totalSales)} ${lang === "sw" ? "mauzo" : "sales"}` : (lang === "sw" ? "Hakuna mauzo kwenye kipindi hiki" : "No sales this period")} />
+          <Metric label={lang === "sw" ? "Faida baada ya matumizi" : "Net profit after expenses"} value={formatTZS(summary.netProfit)} tone={summary.netProfit < 0 ? "red" : "green"} note={`${formatTZS(summary.grossProfit)} ${lang === "sw" ? "faida kabla ya matumizi" : "gross profit"}`} />
+        </section>
+
+        <section className="border-y border-gray-200 py-4" aria-labelledby="expense-category-heading">
+          <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-brand-700" /><div><h2 id="expense-category-heading" className="text-sm font-semibold text-gray-950">{lang === "sw" ? "Makundi yenye matumizi makubwa" : "Top spending categories"}</h2><p className="mt-0.5 text-xs text-gray-500">{lang === "sw" ? `Makundi 3 yenye matumizi makubwa: ${periodLabel}` : `Top 3 categories: ${periodLabel}`}</p></div></div>
+          {summary.topCategories.length > 0 ? <div className="mt-4 space-y-3">{summary.topCategories.map((item) => <div key={item.category} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1"><p className="truncate text-sm font-medium text-gray-800">{CATEGORY_LABELS[item.category]?.[lang] || item.category}</p><p className="text-sm font-semibold text-gray-950">{formatTZS(item.total)}</p><div className="col-span-2 h-2 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-brand-600" style={{ width: `${largestCategoryTotal ? (item.total / largestCategoryTotal) * 100 : 0}%` }} /></div></div>)}</div> : <p className="mt-4 text-sm text-gray-500">{lang === "sw" ? "Hakuna matumizi kwenye kipindi hiki bado." : "No expenses in this period yet."}</p>}
+        </section>
+
+        <Link href="/inventory" className="flex items-start gap-3 border-y border-blue-200 bg-blue-50 px-4 py-3 text-blue-950 hover:bg-blue-100">
+          <PackagePlus className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
+          <span><span className="block text-sm font-semibold">{lang === "sw" ? "Nunua bidhaa kupitia Hifadhi ya Bidhaa" : "Receive stock through Inventory"}</span><span className="mt-0.5 block text-xs leading-5 text-blue-800">{lang === "sw" ? "Ongeza stock kwenye bidhaa ili gharama yake itumike mara moja tu pale bidhaa inapouzwa." : "Restock the product so its cost is recognised once, when the product sells."}</span></span>
+        </Link>
 
         {assistantFocus && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -402,9 +467,9 @@ export default function ExpensesPage() {
   );
 }
 
-function Metric({ label, value, tone }: { label: string; value: string; tone: "amber" | "gray" | "brand" }) {
-  const colors = { amber: "border-amber-200 bg-amber-50", gray: "border-gray-200 bg-white", brand: "border-brand-200 bg-brand-50" };
-  return <div className={`rounded-lg border p-4 ${colors[tone]}`}><p className="text-xs font-medium text-gray-600">{label}</p><p className="mt-1 text-lg font-bold text-gray-950">{value}</p></div>;
+function Metric({ label, value, tone, note }: { label: string; value: string; tone: "amber" | "gray" | "brand" | "green" | "red"; note: string }) {
+  const colors = { amber: "border-amber-200 bg-amber-50", gray: "border-gray-200 bg-white", brand: "border-brand-200 bg-brand-50", green: "border-green-200 bg-green-50", red: "border-red-200 bg-red-50" };
+  return <div className={`rounded-lg border p-4 ${colors[tone]} min-w-0`}><p className="text-xs font-medium leading-5 text-gray-600">{label}</p><p className="mt-1 truncate text-lg font-bold text-gray-950">{value}</p><p className="mt-1 min-h-4 text-xs leading-4 text-gray-600">{note}</p></div>;
 }
 
 function ExpenseModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {

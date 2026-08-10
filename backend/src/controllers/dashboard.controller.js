@@ -74,7 +74,7 @@ const overview = asyncHandler(async (req, res) => {
       _sum: { totalAmount: true, profit: true },
     }),
     prisma.expense.aggregate({
-      where: salesWhere.createdAt ? { shopId, spentAt: salesWhere.createdAt } : { shopId },
+      where: salesWhere.createdAt ? { shopId, category: { not: "STOCK" }, spentAt: salesWhere.createdAt } : { shopId, category: { not: "STOCK" } },
       _sum: { amount: true },
       _count: { id: true },
     }),
@@ -148,7 +148,7 @@ const overview = asyncHandler(async (req, res) => {
       select: { totalAmount: true, profit: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.expense.aggregate({ where: { shopId }, _sum: { amount: true }, _count: { id: true } }),
+    prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" } }, _sum: { amount: true }, _count: { id: true } }),
   ]);
   const totalExpenses = expenseAgg._sum.amount || 0;
   const grossProfit = salesAgg._sum.profit || 0;
