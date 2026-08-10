@@ -31,12 +31,12 @@ async function mockMerchantShell(page: Page) {
   }));
 }
 
-test("expense form records the selected accounting date without field collisions", async ({ page }) => {
+test("expense form records a formatted amount, selected accounting date, and monthly schedule", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await mockMerchantShell(page);
 
-  let submitted: { spentAt?: unknown; amount?: unknown } = {};
-  await page.route("**/*api/expenses", async (route) => {
+  let submitted: { spentAt?: unknown; amount?: unknown; recurringMonthly?: unknown } = {};
+  await page.route("**/*api/expenses*", async (route) => {
     if (route.request().method() === "POST") {
       submitted = route.request().postDataJSON();
       return route.fulfill({
@@ -48,11 +48,13 @@ test("expense form records the selected accounting date without field collisions
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ expenses: [], summary: { total: 0, count: 0 } }),
+      body: JSON.stringify({ expenses: [], recurringExpenses: [], summary: { total: 0, count: 0 } }),
     });
   });
 
   await page.goto("/expenses");
+  await expect(page.getByText("Rekodi matumizi yako ya kwanza")).toBeVisible();
+  await page.getByRole("button", { name: "Ongeza matumizi" }).click();
   await page.getByLabel("Jina la matumizi").fill("LUKU ya wiki iliyopita");
   await page.getByLabel("Kiasi (TZS)").fill("25000");
   await page.getByLabel("Tarehe ya matumizi: siku").selectOption("29");
@@ -65,9 +67,48 @@ test("expense form records the selected accounting date without field collisions
   expect(categoryBox).not.toBeNull();
   expect(amountBox!.x + amountBox!.width).toBeLessThanOrEqual(categoryBox!.x);
 
+  await page.getByText("Rudia kila mwezi").click();
   await page.getByRole("button", { name: "Hifadhi" }).click();
   await expect.poll(() => submitted.spentAt).toBe("2026-07-29");
   expect(submitted.amount).toBe(25000);
+  expect(submitted.recurringMonthly).toBe(true);
+});
+
+test("expense history filters records and exposes edit and delete actions", async ({ page }) => {
+  await mockMerchantShell(page);
+  const expense = { id: "expense-1", title: "LUKU", amount: 25000, category: "UTILITIES", vendor: "TANESCO", note: "Meter 123", paymentMethod: "MPESA", spentAt: "2026-08-10T12:00:00.000Z" };
+  const requests: string[] = [];
+  let updated: Record<string, unknown> | null = null;
+  let deleted = false;
+  await page.route(/\/_api\/expenses(?:\/.*|\?.*)?$/, async (route) => {
+    requests.push(route.request().url());
+    if (route.request().method() === "PATCH") {
+      updated = route.request().postDataJSON();
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expense: { ...expense, ...updated } }) });
+    }
+    if (route.request().method() === "DELETE") {
+      deleted = true;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ message: "Expense deleted" }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expenses: [expense], recurringExpenses: [], summary: { total: 25000, count: 1 } }) });
+  });
+  await page.goto("/expenses");
+  await expect(page.getByText("LUKU").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Chuja" }).click();
+  await page.getByLabel("Tafuta").fill("luku");
+  await page.getByRole("button", { name: "Tumia vichujio" }).click();
+  await expect.poll(() => requests.some((url) => url.includes("search=luku"))).toBe(true);
+
+  await page.getByRole("button", { name: "Badilisha LUKU" }).click();
+  await page.getByLabel("Maelezo (hiari)").fill("LUKU ya Agosti");
+  expect(await page.locator('[role="dialog"] form').evaluate((form: HTMLFormElement) => ({ valid: form.checkValidity(), invalid: Array.from(form.querySelectorAll(":invalid")).map((field) => field.getAttribute("aria-label") || field.getAttribute("placeholder")) }))).toEqual({ valid: true, invalid: [] });
+  await page.getByRole("button", { name: "Hifadhi mabadiliko" }).click();
+  await expect.poll(() => updated?.note).toBe("LUKU ya Agosti");
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Futa LUKU" }).click();
+  await expect.poll(() => deleted).toBe(true);
 });
 
 test("AI ranks proven demand above an out-of-stock product with zero sales", async ({ page }) => {

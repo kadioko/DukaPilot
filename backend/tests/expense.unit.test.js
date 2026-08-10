@@ -61,3 +61,84 @@ test("expense validation uses Swahili and rejects an invalid date", async () => 
   assert.equal(res.payload.code, "INVALID_EXPENSE_DATE");
   assert.match(res.payload.error, /Tarehe/);
 });
+
+test("recurring expense creation stores payment method and advances the schedule without a future ledger entry", async () => {
+  let expenseData;
+  let recurringData;
+  const controller = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (callback) => callback({
+      expense: { create: async ({ data }) => { expenseData = data; return { id: "expense-1", ...data }; } },
+      recurringExpense: { create: async ({ data }) => { recurringData = data; return { id: "recurring-1", ...data }; } },
+    }),
+  });
+  const req = {
+    user: { userId: "owner-1" },
+    headers: { "x-dukapilot-language": "sw" },
+    body: { title: "Kodi", amount: 150000, category: "RENT", paymentMethod: "MPESA", spentAt: "2026-07-29", recurringMonthly: true },
+  };
+  const res = response();
+
+  await controller.create(req, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(expenseData.paymentMethod, "MPESA");
+  assert.equal(expenseData.spentAt.toISOString(), "2026-07-29T12:00:00.000Z");
+  assert.equal(recurringData.paymentMethod, "MPESA");
+  assert.equal(recurringData.spentAt, undefined);
+  assert.equal(recurringData.nextDueAt.toISOString(), "2026-08-29T12:00:00.000Z");
+});
+
+test("expense list applies search, vendor, category, and date range filters", async () => {
+  let findManyArgs;
+  let aggregateArgs;
+  const controller = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    expense: {
+      findMany: async (args) => { findManyArgs = args; return []; },
+      aggregate: async (args) => { aggregateArgs = args; return { _sum: { amount: 0 }, _count: { id: 0 } }; },
+    },
+    recurringExpense: { findMany: async () => [] },
+  });
+  const req = {
+    user: { userId: "owner-1" },
+    headers: { "x-dukapilot-language": "sw" },
+    query: { search: "luku", vendor: "TANESCO", category: "UTILITIES", from: "2026-07-01", to: "2026-07-31" },
+  };
+  const res = response();
+
+  await controller.list(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(findManyArgs.where.category, "UTILITIES");
+  assert.equal(findManyArgs.where.vendor.contains, "TANESCO");
+  assert.equal(findManyArgs.where.spentAt.gte.toISOString(), "2026-07-01T12:00:00.000Z");
+  assert.equal(findManyArgs.where.spentAt.lte.toISOString(), "2026-07-31T23:59:59.999Z");
+  assert.equal(findManyArgs.where.OR.length, 3);
+  assert.deepEqual(aggregateArgs.where, findManyArgs.where);
+});
+
+test("recording a recurring expense creates one real ledger entry and advances its next date", async () => {
+  let createdExpense;
+  let updatedSchedule;
+  const controller = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (callback) => callback({
+      recurringExpense: {
+        findFirst: async () => ({ id: "recurring-1", title: "Kodi", amount: 150000, category: "RENT", vendor: "Landlord", note: null, paymentMethod: "BANK", nextDueAt: new Date("2026-08-29T12:00:00.000Z") }),
+        update: async ({ data }) => { updatedSchedule = data; },
+      },
+      expense: { create: async ({ data }) => { createdExpense = data; return { id: "expense-2", ...data }; } },
+    }),
+  });
+  const req = { user: { userId: "owner-1" }, params: { id: "recurring-1" }, body: { spentAt: "2026-08-29" } };
+  const res = response();
+
+  await controller.recordRecurring(req, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createdExpense.title, "Kodi");
+  assert.equal(createdExpense.paymentMethod, "BANK");
+  assert.equal(createdExpense.spentAt.toISOString(), "2026-08-29T12:00:00.000Z");
+  assert.equal(updatedSchedule.nextDueAt.toISOString(), "2026-09-29T12:00:00.000Z");
+});

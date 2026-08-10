@@ -44,7 +44,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
-| **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
+| **Expense tracking** | Overview-first expense ledger with Cash/M-Pesa/Bank payment methods, notes, search and date/category/vendor filters, edit/delete controls, duplicate-entry warning, and monthly templates that record only when a merchant confirms the payment |
 | **Staff roles** | Basic includes one active staff member; Pro includes unlimited staff. Live permissions and deactivation are enforced on every request, including sell, stock, expense-entry, and report visibility |
 | **Billing page** | Merchants can see plan status, official M-Pesa/Mix by Yas payment options, submit references, and contact WhatsApp support |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |

@@ -121,6 +121,7 @@ model Shop {
   customerOrders           CustomerOrder[]
   debts                    Debt[]
   expenses                 Expense[]
+  recurringExpenses        RecurringExpense[]
   staffMembers             StaffMember[]
   subscriptionPayments     SubscriptionPayment[]
   offlineSyncEvents        OfflineSyncEvent[]
@@ -528,21 +529,41 @@ model DebtPayment {
 }
 
 model Expense {
-  id        String          @id @default(cuid())
-  title     String
-  amount    Int
-  category  ExpenseCategory @default(OTHER)
-  vendor    String?
-  note      String?
-  spentAt   DateTime        @default(now())
-  shopId    String
-  shop      Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id            String          @id @default(cuid())
+  title         String
+  amount        Int
+  category      ExpenseCategory @default(OTHER)
+  vendor        String?
+  note          String?
+  paymentMethod PaymentMethod   @default(CASH)
+  spentAt       DateTime        @default(now())
+  shopId        String
+  shop          Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   @@index([shopId, spentAt])
   @@index([shopId, category])
   @@map("expenses")
+}
+
+model RecurringExpense {
+  id            String          @id @default(cuid())
+  title         String
+  amount        Int
+  category      ExpenseCategory @default(OTHER)
+  vendor        String?
+  note          String?
+  paymentMethod PaymentMethod   @default(CASH)
+  nextDueAt     DateTime
+  isActive      Boolean         @default(true)
+  shopId        String
+  shop          Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([shopId, isActive, nextDueAt])
+  @@map("recurring_expenses")
 }
 
 model StaffMember {
