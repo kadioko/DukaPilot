@@ -17,6 +17,8 @@ import {
   ScanLine,
   Printer,
   MoreVertical,
+  Download,
+  FileUp,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
@@ -95,6 +97,9 @@ export default function InventoryPage() {
   const mutationInFlight = useRef(false);
   const [canViewFinancials, setCanViewFinancials] = useState(true);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvImporting, setCsvImporting] = useState(false);
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
   const [stockCount, setStockCount] = useState<{ id: string; items: Array<{ id: string; expected: number; counted: number; product: { id: string; name: string; barcode?: string | null; unit: string } }> } | null>(null);
   const [stockCountScannerOpen, setStockCountScannerOpen] = useState(false);
@@ -168,7 +173,7 @@ export default function InventoryPage() {
       setError(t("inventory.fieldRequired", lang));
       return;
     }
-    const numericFields = [form.sellingPrice, form.currentStock, form.minimumStock, ...(canViewFinancials ? [form.buyingPrice] : [])];
+    const numericFields = [form.sellingPrice, form.minimumStock, ...(editProduct ? [] : [form.currentStock]), ...(canViewFinancials ? [form.buyingPrice] : [])];
     if (numericFields.some((value) => !Number.isInteger(Number(value)) || Number(value) < 0)) {
       setError(lang === "sw" ? "Bei na idadi ziwe namba kamili zisizo hasi." : "Prices and quantities must be whole, non-negative numbers.");
       return;
@@ -180,12 +185,12 @@ export default function InventoryPage() {
     mutationInFlight.current = true;
     setSaving(true);
     try {
-      const body = {
+      const sharedBody = {
         name: form.name, sku: form.sku || undefined, unit: form.unit,
         ...(canViewFinancials ? { buyingPrice: Number(form.buyingPrice) } : {}), sellingPrice: Number(form.sellingPrice),
         wholesalePrice: form.wholesalePrice === "" ? null : Number(form.wholesalePrice),
         wholesaleMinQty: form.wholesaleMinQty === "" ? null : Number(form.wholesaleMinQty),
-        currentStock: Number(form.currentStock), minimumStock: Number(form.minimumStock),
+        minimumStock: Number(form.minimumStock),
         supplierId: form.supplierId || undefined,
         doesNotExpire: form.doesNotExpire,
         expiryDate: form.doesNotExpire ? null : (form.expiryDate || null),
@@ -193,6 +198,7 @@ export default function InventoryPage() {
         barcodeType: form.barcodeType || undefined,
         generateBarcode: form.generateBarcode,
       };
+      const body = editProduct ? sharedBody : { ...sharedBody, currentStock: Number(form.currentStock) };
       const response = editProduct
         ? await api.patch<{ product: Product }>(`/products/${editProduct.id}`, body)
         : await api.post<{ product: Product }>("/products", body);
@@ -258,6 +264,39 @@ export default function InventoryPage() {
     }
   }
 
+  function downloadCsvTemplate() {
+    const csv = [
+      "name,sku,unit,buyingPrice,sellingPrice,currentStock,minimumStock,barcode,expiryDate,doesNotExpire",
+      "Sukari 1kg,SKR001,pcs,2500,3000,10,5,,,true",
+      "Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true",
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "dukapilot-products-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importCsv() {
+    if (!csvFile || csvImporting) return;
+    setCsvImporting(true);
+    try {
+      const csv = await csvFile.text();
+      const result = await api.post<{ count: number }>("/products/import-csv", { csv }, lang);
+      setShowCsvImport(false);
+      setCsvFile(null);
+      toast(lang === "sw" ? `Bidhaa ${result.count} zimeongezwa.` : `${result.count} products imported.`, "success");
+      await fetchProducts();
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kuingiza CSV." : "Could not import CSV."), "error");
+    } finally {
+      setCsvImporting(false);
+    }
+  }
+
   async function startStockCount() {
     try {
       const data = await api.post<{ count: NonNullable<typeof stockCount> }>("/stock-counts", {});
@@ -292,9 +331,9 @@ export default function InventoryPage() {
     <AppShell>
       <div className="max-w-5xl mx-auto pb-24 lg:pb-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-5">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold text-gray-900">{t("inventory.title", lang)}</h1>
-          <div className="flex gap-2">{canViewFinancials && <button onClick={startStockCount} aria-label="Start stock count" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title="Stock count"><ScanLine className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={openAdd} aria-label={t("inventory.addProduct", lang)} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"><Plus className="w-4 h-4" /><span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span></button>}</div>
+          <div className="flex flex-wrap gap-2">{canViewFinancials && <button onClick={startStockCount} aria-label="Start stock count" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title="Stock count"><ScanLine className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={downloadCsvTemplate} aria-label={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} title={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:text-brand-700"><Download className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={() => { setCsvFile(null); setShowCsvImport(true); }} className="flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><FileUp className="h-4 w-4" /><span className="hidden sm:inline">{lang === "sw" ? "Ingiza CSV" : "Import CSV"}</span></button>}{canViewFinancials && <button onClick={openAdd} aria-label={t("inventory.addProduct", lang)} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"><Plus className="w-4 h-4" /><span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span></button>}</div>
         </div>
 
         {stockCount && <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 p-3"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-brand-950">{lang === "sw" ? "Uhesabuji wa stock unaendelea" : "Stock count in progress"}</p><p className="text-xs text-brand-700">{stockCount.items.reduce((sum, item) => sum + item.counted, 0)} {lang === "sw" ? "zimescanwa" : "scanned"}</p></div><button onClick={() => setStockCountScannerOpen(true)} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white">Scan</button></div><div className="mt-3 flex gap-2"><input value={stockCountCode} onChange={(event) => setStockCountCode(event.target.value)} onKeyDown={(event) => event.key === "Enter" && scanStockCount(stockCountCode)} placeholder="Barcode" className="min-w-0 flex-1 rounded-lg border border-brand-200 px-3 py-2 text-sm" /><button onClick={() => scanStockCount(stockCountCode)} className="rounded-lg border border-brand-300 px-3 text-sm font-semibold text-brand-800">Add</button></div><div className="mt-3 max-h-32 overflow-y-auto text-xs">{stockCount.items.filter((item) => item.counted > 0).map((item) => <div key={item.id} className="flex justify-between border-t border-brand-100 py-1"><span>{item.product.name}</span><span>{item.expected} / {item.counted} ({item.counted - item.expected >= 0 ? "+" : ""}{item.counted - item.expected})</span></div>)}</div><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => finishStockCount(false)} className="rounded-lg border border-brand-300 py-2 text-sm font-semibold text-brand-800">{lang === "sw" ? "Maliza bila kubadili" : "Finish only"}</button><button onClick={() => finishStockCount(true)} className="rounded-lg bg-brand-700 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Tumia tofauti" : "Apply differences"}</button></div></div>}
@@ -499,10 +538,16 @@ export default function InventoryPage() {
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label={t("inventory.currentStockLabel", lang)}>
+              {editProduct ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs font-medium text-gray-600">{t("inventory.currentStockLabel", lang)}</p>
+                  <p className="mt-1 text-sm font-bold text-gray-950">{editProduct.currentStock} {editProduct.unit}</p>
+                  <button type="button" onClick={() => { setShowForm(false); setAdjustProduct(editProduct); }} className="mt-2 text-xs font-semibold text-brand-700 hover:text-brand-900">{t("inventory.adjustStock", lang)}</button>
+                </div>
+              ) : <Field label={t("inventory.currentStockLabel", lang)}>
                 <input aria-label={t("inventory.currentStockLabel", lang)} type="number" min="0" step="1" value={form.currentStock} onChange={(e) => setForm({ ...form, currentStock: e.target.value })}
                   className={INPUT} placeholder="0" />
-              </Field>
+              </Field>}
               <Field label={t("inventory.minimumStockLabel", lang)}>
                 <input aria-label={t("inventory.minimumStockLabel", lang)} type="number" min="0" step="1" value={form.minimumStock} onChange={(e) => setForm({ ...form, minimumStock: e.target.value })}
                   className={INPUT} placeholder="5" />
@@ -662,6 +707,7 @@ export default function InventoryPage() {
         </Modal>
       )}
       {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase(), generateBarcode: false }); setBarcodeScannerOpen(false); }} />}
+      {showCsvImport && <Modal title={lang === "sw" ? "Ingiza bidhaa kwa CSV" : "Import products from CSV"} onClose={() => setShowCsvImport(false)}><div className="space-y-4"><ol className="space-y-2 text-sm leading-6 text-gray-700"><li>{lang === "sw" ? "1. Pakua template, kisha ifungue kwa Excel au Google Sheets." : "1. Download the template and open it in Excel or Google Sheets."}</li><li>{lang === "sw" ? "2. Jaza bidhaa zako. Jina, bei ya kununua na bei ya kuuza zinahitajika." : "2. Fill in products. Name, buying price, and selling price are required."}</li><li>{lang === "sw" ? "3. Hifadhi kama CSV, kisha chagua file hapa chini." : "3. Save as CSV, then choose the file below."}</li></ol><button type="button" onClick={downloadCsvTemplate} className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-900"><Download className="h-4 w-4" />{lang === "sw" ? "Pakua CSV template" : "Download CSV template"}</button><label className="grid gap-2 rounded-lg border border-dashed border-gray-300 p-4 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Chagua CSV file" : "Choose CSV file"}</span><input type="file" accept=".csv,text/csv" onChange={(event) => setCsvFile(event.target.files?.[0] || null)} className="block w-full text-sm" />{csvFile && <span className="text-xs font-normal text-gray-500">{csvFile.name}</span>}</label><p className="text-xs leading-5 text-gray-500">{lang === "sw" ? "Unaweza kuacha SKU, stock ya kuanzia, minimum stock, barcode na expiry date wazi. Mfumo utaweka stock 0 na kiwango cha chini 5." : "You may leave SKU, opening stock, minimum stock, barcode, and expiry date blank. DukaPilot uses opening stock 0 and minimum stock 5."}</p><div className="flex gap-2"><button type="button" onClick={() => setShowCsvImport(false)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700">{t("common.cancel", lang)}</button><button type="button" onClick={importCsv} disabled={!csvFile || csvImporting} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{csvImporting ? (lang === "sw" ? "Inaingiza..." : "Importing...") : (lang === "sw" ? "Ingiza bidhaa" : "Import products")}</button></div></div></Modal>}
       {stockCountScannerOpen && <BarcodeScanner onClose={() => setStockCountScannerOpen(false)} onDetected={scanStockCount} />}
       {labelProduct?.barcode && <Modal title="Barcode label" onClose={() => setLabelProduct(null)}><div className="space-y-4"><BarcodeLabel value={labelProduct.barcode} name={labelProduct.name} price={formatTZS(labelProduct.sellingPrice)} className="border" /><button onClick={() => window.print()} className="w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white">Print label</button></div></Modal>}
     </AppShell>

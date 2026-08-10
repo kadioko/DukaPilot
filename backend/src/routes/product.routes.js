@@ -14,6 +14,7 @@ router.get("/low-stock", requirePermission("canManageStock"), ctrl.getLowStock);
 router.get("/:id", requireAnyPermission("canManageStock", "canSell"), ctrl.get);
 router.post("/", requirePermission("canManageStock"), productCreateValidation, ctrl.create);
 router.use(requirePermission("canManageStock"));
+router.post("/import-csv", ctrl.importCsv);
 router.patch("/:id", productUpdateValidation, ctrl.update);
 router.delete("/:id", ctrl.remove);
 

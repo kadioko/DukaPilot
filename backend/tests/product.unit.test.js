@@ -132,3 +132,75 @@ test("product update rejects direct currentStock changes and names the supported
   assert.match(res.payload.error, /Stock haiwezi/);
   assert.equal(updateCalled, false);
 });
+
+test("product update accepts unchanged legacy currentStock while changing product details", async () => {
+  let updated;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findFirst: async () => ({ id: "prod-1", shopId: "shop-1", name: "Rice", currentStock: 5, sellingPrice: 3000, wholesalePrice: null }),
+      update: async ({ data }) => {
+        updated = data;
+        return { id: "prod-1", name: data.name, buyingPrice: data.buyingPrice, currentStock: 5, supplier: null };
+      },
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.update({
+    user: { userId: "user-1" },
+    params: { id: "prod-1" },
+    body: { name: "Premium Rice", buyingPrice: 2400, currentStock: 5 },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updated.name, "Premium Rice");
+  assert.equal(updated.buyingPrice, 2400);
+  assert.equal(res.payload.product.currentStock, 5);
+});
+
+test("CSV import creates products and an opening stock movement for each stocked item", async () => {
+  const movements = [];
+  const created = [];
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findMany: async () => [] },
+    $transaction: async (work) => work({
+      product: {
+        create: async ({ data }) => {
+          created.push(data);
+          return { id: `prod-${created.length}`, ...data, supplier: null };
+        },
+      },
+      stockMovement: { create: async ({ data }) => movements.push(data) },
+    }),
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.importCsv({
+    user: { userId: "user-1" },
+    body: { csv: "name,buyingPrice,sellingPrice,currentStock\nRice,2000,3000,8\nSalt,500,700,0" },
+  }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.payload.count, 2);
+  assert.equal(created[0].currentStock, 8);
+  assert.deepEqual(movements, [{ type: "IN", quantity: 8, note: "Opening stock from CSV import", productId: "prod-1" }]);
+});
+
+test("CSV import rejects blank required prices before writing anything", async () => {
+  const prismaMock = { shop: { findUnique: async () => ({ id: "shop-1" }) } };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.importCsv({
+    user: { userId: "user-1" },
+    body: { csv: "name,buyingPrice,sellingPrice\nRice,,3000" },
+  }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.code, "PRODUCT_CSV_INVALID");
+  assert.equal(res.payload.details[0].field, "buyingPrice");
+});

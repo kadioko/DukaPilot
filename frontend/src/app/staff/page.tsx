@@ -19,6 +19,10 @@ interface StaffMember {
   pin?: string | null;
 }
 
+interface SubscriptionStatus {
+  plan: string;
+}
+
 const roles = ["MANAGER", "CASHIER", "STOCK_CLERK", "OWNER"];
 const roleGuides = {
   OWNER: { en: "Full shop access, including staff, reports, stock, sales, and expenses.", sw: "Anaweza kila kitu: staff, ripoti, stock, mauzo na matumizi." },
@@ -30,11 +34,16 @@ const roleGuides = {
 export default function StaffPage() {
   const lang = useLang();
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "" });
 
   async function load() {
-    const data = await api.get<{ staff: StaffMember[] }>("/staff", lang);
+    const [data, subscriptionStatus] = await Promise.all([
+      api.get<{ staff: StaffMember[] }>("/staff", lang),
+      api.get<SubscriptionStatus>("/subscription/status", lang),
+    ]);
     setStaff(data.staff);
+    setSubscription(subscriptionStatus);
   }
 
   useEffect(() => {
@@ -43,6 +52,7 @@ export default function StaffPage() {
 
   async function addStaff(event: React.FormEvent) {
     event.preventDefault();
+    if (basicLimitReached) return;
     await api.post("/staff", form, lang);
     setForm({ name: "", phone: "", role: "CASHIER", pin: "" });
     await load();
@@ -60,6 +70,8 @@ export default function StaffPage() {
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",
     canRecordExpenses: lang === "sw" ? "Kurekodi matumizi" : "Record expenses",
   };
+  const activeStaffCount = staff.filter((member) => member.isActive).length;
+  const basicLimitReached = subscription?.plan === "BASIC" && activeStaffCount >= 1;
 
   return (
     <AppShell>
@@ -77,6 +89,13 @@ export default function StaffPage() {
           {roles.map((role) => <div key={role} className="rounded-lg border border-gray-200 bg-white p-3"><p className="text-xs font-bold text-brand-700">{role.replace("_", " ")}</p><p className="mt-1 text-xs leading-5 text-gray-600">{lang === "sw" ? roleGuides[role as keyof typeof roleGuides].sw : roleGuides[role as keyof typeof roleGuides].en}</p></div>)}
         </div>
 
+        {subscription?.plan === "BASIC" && (
+          <section className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-950">
+            <strong>{lang === "sw" ? "Basic:" : "Basic:"}</strong>{" "}
+            {lang === "sw" ? `Unaweza kuwa na mfanyakazi 1 active (${activeStaffCount}/1). Zima mfanyakazi wa sasa kabla ya kuweka mwingine, au upgrade kwenda Pro kwa staff wengi.` : `You can have 1 active staff member (${activeStaffCount}/1). Deactivate the current member before adding another, or upgrade to Pro for more staff.`}
+          </section>
+        )}
+
         <form onSubmit={addStaff} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-5">
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jina" : "Name"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Simu" : "Phone"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required inputMode="tel" placeholder="07... au +255..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
@@ -84,11 +103,11 @@ export default function StaffPage() {
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jukumu" : "Role"}</span><select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select></label>
-          <button className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+          <button disabled={basicLimitReached} title={basicLimitReached ? (lang === "sw" ? "Basic ina staff 1 active" : "Basic includes 1 active staff member") : undefined} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-400">
             {lang === "sw" ? "Ongeza" : "Add"}
           </button>
         </form>
-        <p className="-mt-3 text-xs text-gray-500">{lang === "sw" ? "PIN ikiachwa wazi, staff ataingia kwa 1234 na anaweza kuibadilisha kwenye Settings baada ya kuingia." : "When the PIN is blank, the staff member logs in with 1234 and can change it in Settings after signing in."}</p>
+        <p className="-mt-3 text-xs text-gray-500">{basicLimitReached ? (lang === "sw" ? "Zima staff active ili kuongeza mwingine kwenye Basic." : "Deactivate the active staff member to add another on Basic.") : (lang === "sw" ? "PIN ikiachwa wazi, staff ataingia kwa 1234 na anaweza kuibadilisha kwenye Settings baada ya kuingia." : "When the PIN is blank, the staff member logs in with 1234 and can change it in Settings after signing in.")}</p>
 
         <div className="grid gap-3">
           {staff.length === 0 ? (

@@ -53,6 +53,7 @@ const plans: Plan[] = [
       { sw: "Bidhaa zisizo na kikomo", en: "Unlimited products" },
       { sw: "Dashibodi ya faida, mauzo na malipo", en: "Profit, sales, and payment dashboard" },
       { sw: "Pakua mauzo na bidhaa (CSV)", en: "Sales and inventory export (CSV)" },
+      { sw: "Akaunti 1 ya mfanyakazi", en: "1 staff account" },
       { sw: "Msaada wa WhatsApp", en: "WhatsApp support" },
     ],
     bestFor: { sw: "Duka moja lenye bidhaa, mauzo, madeni na matumizi ya kila siku.", en: "One shop tracking products, sales, debts, and daily expenses." },
@@ -68,7 +69,7 @@ const plans: Plan[] = [
     badge: { sw: "Bora Zaidi", en: "Best Value" },
     features: [
       { sw: "Kila kitu katika Msingi", en: "Everything in Basic" },
-      { sw: "Akaunti nyingi za wafanyakazi na ruhusa", en: "Multiple staff accounts and permissions" },
+      { sw: "Akaunti za wafanyakazi zisizo na kikomo na ruhusa", en: "Unlimited staff accounts and permissions" },
       { sw: "Ufuatiliaji wa wafanyakazi na historia ya hatua za AI", en: "Staff oversight and AI action history" },
       { sw: "Vipaumbele vya kila siku kutoka kwa AI", en: "AI priority workflows for daily actions" },
       { sw: "Msaada wa kipaumbele WhatsApp", en: "Priority WhatsApp support" },

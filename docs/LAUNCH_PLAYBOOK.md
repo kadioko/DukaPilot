@@ -204,7 +204,7 @@ Week 4: Conversion
 
 - Call every trial shop before day 10.
 - Convert the most active shops to Basic.
-- Offer Pro only when staff permissions, deeper reports/export, priority WhatsApp support, or daily AI workflows are clearly valuable.
+- Offer Pro when the shop needs more than one active staff member, priority WhatsApp support, or daily AI workflows.
 - Publish first testimonial or case story.
 
 ## Metrics
@@ -246,7 +246,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Railway migration: `20260710001000_launch_hardening`.
 - Production monitor passes once after Railway and Vercel deploy.
 - Railway logs include `[sentry] Initialized`, and the backend alert drill reaches both Sentry and founder email.
-- Basic account cannot use staff or AI routes; Pro and active trial can.
+- Basic account can use one active staff account and cannot use AI routes; Pro and active trial include unlimited staff and AI.
 - Duplicate payment reference returns the existing confirmation without extending time again.
 - Customer orders follow `PENDING -> CONFIRMED -> OUT_FOR_DELIVERY -> DELIVERED`.
 - Mobile Orders has no horizontal page overflow; Sales shows the sticky cart summary.

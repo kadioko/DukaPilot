@@ -104,12 +104,13 @@ test("Tanzania business-day boundaries use UTC+3", () => {
   assert.equal(startOfTanzaniaMonth(instant).toISOString(), "2026-06-30T21:00:00.000Z");
 });
 
-test("Basic and Pro entitlements are distinct while trial keeps full access", () => {
+test("Basic includes one-staff capability while Pro and trial add AI access", () => {
   const { canUseFeature } = require("../src/lib/entitlements");
   const future = new Date(Date.now() + 86400000);
 
-  assert.equal(canUseFeature({ plan: "BASIC", subscriptionEndsAt: future, isActive: true }, "STAFF"), false);
+  assert.equal(canUseFeature({ plan: "BASIC", subscriptionEndsAt: future, isActive: true }, "STAFF"), true);
   assert.equal(canUseFeature({ plan: "BASIC", subscriptionEndsAt: future, isActive: true }, "EXPORTS"), true);
+  assert.equal(canUseFeature({ plan: "BASIC", subscriptionEndsAt: future, isActive: true }, "ASSISTANT"), false);
   assert.equal(canUseFeature({ plan: "PRO", subscriptionEndsAt: future, isActive: true }, "ASSISTANT"), true);
   assert.equal(canUseFeature({ plan: "FREE_TRIAL", trialEndsAt: future, isActive: true }, "STAFF"), true);
 });

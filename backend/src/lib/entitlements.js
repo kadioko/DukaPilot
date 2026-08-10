@@ -2,7 +2,7 @@ const prisma = require("./prisma");
 const { getShopIdForUser } = require("./shopAccess");
 
 const PLAN_FEATURES = {
-  BASIC: new Set(["CORE", "EXPORTS"]),
+  BASIC: new Set(["CORE", "EXPORTS", "STAFF"]),
   PRO: new Set(["CORE", "EXPORTS", "STAFF", "ASSISTANT"]),
 };
 

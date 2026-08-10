@@ -98,6 +98,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     }
 
     const body = JSON.parse(route.request().postData() || "{}");
+    expect(body).not.toHaveProperty("currentStock");
     if (body.name === "Failure Product") {
       await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Could not save product" }) });
       return;
@@ -130,6 +131,17 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ product, movement: { id: "move-1" } }),
+    });
+  });
+
+  await page.route("**/*api/products/import-csv", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    const body = JSON.parse(route.request().postData() || "{}");
+    expect(body.csv).toContain("Soda 300ml");
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ count: 1, products: [] }),
     });
   });
 
@@ -173,6 +185,16 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
   await expect(page.getByText(/25 pcs/)).toBeVisible();
+
+  await page.getByRole("button", { name: /import csv|ingiza csv/i }).click();
+  await expect(page.getByText(/import products from csv|ingiza bidhaa kwa csv/i)).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "products.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("name,buyingPrice,sellingPrice\nSoda 300ml,500,800\n"),
+  });
+  await page.getByRole("button", { name: /import products|ingiza bidhaa$/i }).click();
+  await expect(page.getByText(/1 products imported|bidhaa 1 zimeongezwa/i)).toBeVisible();
 
   await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
   await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();

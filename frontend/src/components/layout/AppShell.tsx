@@ -100,7 +100,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [lowStockCount, setLowStockCount] = useState(0);
-  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
+  const [subscription, setSubscription] = useState<{ daysLeft: number | null; status?: string; isActive?: boolean } | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
@@ -121,8 +121,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
       api.get<{ products: unknown[] }>("/products/low-stock")
         .then((d) => setLowStockCount(d.products.length))
         .catch(() => {});
-      api.get<{ daysLeft: number | null }>("/subscription/status")
-        .then((d) => setTrialDaysLeft(d.daysLeft ?? null))
+      api.get<{ daysLeft: number | null; status?: string; isActive?: boolean }>("/subscription/status")
+        .then((d) => setSubscription({ daysLeft: d.daysLeft ?? null, status: d.status, isActive: d.isActive }))
         .catch(() => {});
       api.get<{ unreadCount: number }>("/notifications")
         .then((d) => setNotificationCount(d.unreadCount || 0))
@@ -164,6 +164,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           (!item.feature || user?.features?.[item.feature] !== false)
         );
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
+  const subscriptionNeedsPayment = subscription?.status === "expired" || subscription?.status === "suspended" || subscription?.isActive === false;
+  const subscriptionEndingSoon = !subscriptionNeedsPayment && subscription?.daysLeft !== null && subscription?.daysLeft !== undefined && subscription.daysLeft <= 7;
   const navGroupLabel: Record<NonNullable<NavItem["group"]>, string> = {
     overview: lang === "sw" ? "Muhtasari" : "Overview",
     ai: lang === "sw" ? "Msaidizi wa AI" : "AI Assistant",
@@ -207,20 +209,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         {/* Trial / subscription status banner */}
-        {user?.role === "MERCHANT" && trialDaysLeft !== null && trialDaysLeft <= 7 && (
+        {user?.role === "MERCHANT" && (subscriptionNeedsPayment || subscriptionEndingSoon) && (
           <div className={`mx-3 mt-3 px-3 py-2 rounded-xl text-xs font-medium ${
-            trialDaysLeft <= 0
+            subscriptionNeedsPayment
               ? "bg-red-500/20 text-red-200 border border-red-500/30"
               : "bg-yellow-500/20 text-yellow-200 border border-yellow-500/30"
           }`}>
-            {trialDaysLeft <= 0
-              ? (lang === "sw" ? "Jaribio lako limeisha. Lipia kuendelea." : "Trial expired. Please subscribe.")
-              : (lang === "sw" ? `Jaribio: siku ${trialDaysLeft} zimebaki` : `Trial: ${trialDaysLeft} days left`)}
-            {" "}<Link href="/pricing" className="underline hover:no-underline">
-              {lang === "sw" ? "Lipia" : "Subscribe"}
-            </Link>
+            {subscriptionNeedsPayment
+              ? (lang === "sw" ? "Usajili wako umeisha. Lipa na tuma reference ili duka lirudi active." : "Your subscription has expired. Pay and submit the reference to reactivate your shop.")
+              : (lang === "sw" ? `Usajili wako unaisha baada ya siku ${subscription?.daysLeft}.` : `Your subscription ends in ${subscription?.daysLeft} days.`)}
             {" "}<Link href="/billing" className="underline hover:no-underline">
-              {lang === "sw" ? "Tuma malipo" : "Send payment"}
+              {subscriptionNeedsPayment ? (lang === "sw" ? "Rejesha sasa" : "Reactivate now") : (lang === "sw" ? "Lipa sasa" : "Pay now")}
             </Link>
           </div>
         )}

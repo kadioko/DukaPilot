@@ -31,3 +31,26 @@ test("new staff with a phone receive the default 1234 PIN and canonical Tanzania
   assert.equal(created.canSell, true);
   assert.equal(created.canManageStock, false);
 });
+
+test("Basic limits the owner to one active staff member", async () => {
+  let createCalled = false;
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    shop: { findUnique: async (args) => args.where.userId ? { id: "shop-1" } : { id: "shop-1", plan: "BASIC", subscriptionEndsAt: new Date(Date.now() + 86400000), trialEndsAt: null, isActive: true } },
+    user: { findFirst: async () => null },
+    staffMember: {
+      findFirst: async () => null,
+      count: async () => 1,
+      create: async () => { createCalled = true; },
+    },
+  } };
+  delete require.cache[shopAccessPath];
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const res = response();
+
+  await controller.create({ user: { userId: "owner-1" }, body: { name: "Baraka", phone: "0712345678", role: "CASHIER" } }, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.payload.code, "BASIC_STAFF_LIMIT");
+  assert.equal(createCalled, false);
+});

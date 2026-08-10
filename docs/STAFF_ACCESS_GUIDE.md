@@ -2,6 +2,12 @@
 
 When an owner adds a staff member, they enter the staff member's phone number. Tanzania formats `07...`, `255...`, and `+255...` all work. If no PIN is entered, the first PIN is `1234`. The staff member should sign in and change it immediately in **Settings > Change PIN**.
 
+## Plan limit
+
+- **Basic:** one active staff member in addition to the owner. Deactivate that staff account before activating or adding a different one.
+- **Pro:** unlimited active staff members.
+- The 14-day trial includes the Pro staff capability.
+
 ## Roles
 
 | Role | Default access | Best for |

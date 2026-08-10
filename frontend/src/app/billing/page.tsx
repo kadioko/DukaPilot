@@ -21,8 +21,8 @@ interface SubscriptionStatus {
 }
 
 const plans = [
-  { id: "BASIC", amount: 15000, label: "Basic", includes: "Sales, stock, debts, expenses, catalog" },
-  { id: "PRO", amount: 35000, label: "Pro", includes: "Everything in Basic plus staff, reports, AI priority workflows" },
+  { id: "BASIC", amount: 15000, label: "Basic", includes: "Sales, stock, debts, expenses, catalog, 1 staff member" },
+  { id: "PRO", amount: 35000, label: "Pro", includes: "Everything in Basic plus unlimited staff and AI priority workflows" },
 ];
 
 const paymentOptions = [
@@ -67,6 +67,7 @@ export default function BillingPage() {
   const selectedPlan = plans.find((item) => item.id === plan) || plans[0];
   const subscriptionActive = Boolean(status?.isActive && (status?.trialActive || status?.subActive || status?.status === "active"));
   const renewalDate = status?.validUntil || status?.subscriptionEndsAt || status?.trialEndsAt;
+  const needsReactivation = Boolean(status && !subscriptionActive && (status.status === "expired" || status.status === "suspended" || status.daysLeft === 0));
 
   async function copyPaymentNumber(value: string) {
     await navigator.clipboard.writeText(value);
@@ -131,7 +132,7 @@ export default function BillingPage() {
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{lang === "sw" ? "Hali" : "Status"}</p>
             <p className={`mt-1 text-lg font-bold ${subscriptionActive ? "text-green-700" : "text-red-700"}`}>
-              {subscriptionActive ? (lang === "sw" ? "Active" : "Active") : (lang === "sw" ? "Inahitaji malipo" : "Payment needed")}
+              {subscriptionActive ? "Active" : status?.status === "suspended" ? (lang === "sw" ? "Imesimamishwa" : "Suspended") : (lang === "sw" ? "Imeisha - rejesha" : "Expired - reactivate")}
             </p>
             <p className="text-xs text-gray-500">{status?.daysLeft !== null && status?.daysLeft !== undefined ? `${status.daysLeft} ${lang === "sw" ? "siku zimebaki" : "days left"}` : "-"}</p>
             {renewalDate && <p className="mt-1 text-xs font-medium text-gray-700">{lang === "sw" ? "Tarehe ya kuongeza muda" : "Renew by"}: {new Date(renewalDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-TZ", { day: "numeric", month: "long", year: "numeric" })}</p>}
@@ -148,6 +149,18 @@ export default function BillingPage() {
         {status?.reminderStage && (
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
             <strong>{lang === "sw" ? "Kumbusho:" : "Reminder:"}</strong> {reminderCopy[status.reminderStage] || status.reminderStage}
+          </section>
+        )}
+
+        {needsReactivation && (
+          <section className="rounded-lg border-2 border-red-200 bg-red-50 p-5 text-sm leading-6 text-red-950">
+            <h2 className="font-bold">{lang === "sw" ? "Rejesha huduma ya duka lako" : "Reactivate your shop"}</h2>
+            <p className="mt-1">{lang === "sw" ? "Usajili umeisha, hivyo mauzo mapya, stock na matumizi vimesimamishwa hadi malipo yahakikiwe. Data yako bado ipo salama na unaweza kuiona." : "The subscription has ended, so new sales, stock changes, and expenses are paused until payment is verified. Your data is still safe and available to view."}</p>
+            <ol className="mt-3 list-decimal space-y-1 pl-5">
+              <li>{lang === "sw" ? "Chagua Basic au Pro, kisha lipa kwa namba rasmi hapa chini." : "Choose Basic or Pro, then pay using an official number below."}</li>
+              <li>{lang === "sw" ? "Weka reference ya muamala kwenye fomu ya malipo." : "Enter the transaction reference in the payment form."}</li>
+              <li>{lang === "sw" ? "Admin akithibitisha, duka litarudi active na utaendelea kutumia vipengele vyako." : "Once an admin verifies it, the shop becomes active and you can continue using its features."}</li>
+            </ol>
           </section>
         )}
 

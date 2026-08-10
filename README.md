@@ -45,7 +45,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
 | **Expense tracking** | Record rent, salary, utilities, stock, transport, marketing, tax, and other costs |
-| **Staff roles (Pro)** | Add uniquely identified staff members; live permissions and deactivation are enforced on every request, including sell, stock, expense-entry, and report visibility |
+| **Staff roles** | Basic includes one active staff member; Pro includes unlimited staff. Live permissions and deactivation are enforced on every request, including sell, stock, expense-entry, and report visibility |
 | **Billing page** | Merchants can see plan status, official M-Pesa/Mix by Yas payment options, submit references, and contact WhatsApp support |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
@@ -64,7 +64,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
 | **Operational alerts** | Actionable low-stock, debt, customer-order, offline-sync, and subscription notifications |
 | **Catalog publishing** | Owners can publish or temporarily hide their public shop while cleaning products and prices |
-| **CSV export** | Download sales history or full inventory as a CSV file |
+| **CSV import and export** | Add up to 200 products from a guided CSV template, or download sales history and full inventory as CSV files |
 | **Legal pages** | Public About, Terms, and Privacy pages with English/Swahili switching |
 | **Onboarding + trust pages** | Contact, Help/FAQ, Demo accounts, and a guided five-step merchant onboarding checklist |
 
@@ -152,7 +152,8 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - **Admin PIN reset:** admin can reset any user's PIN via `/admin` (audit-logged)
 - **Registration:** collects phone, PIN, name, role (MERCHANT / SUPPLIER), shop city, district, and category
 - **Merchant trial:** new merchant shops receive a 14-day free trial on registration; existing missing trial dates are backfilled by migration.
-- **Plan access:** a valid trial includes all features; Basic includes core shop operations and CSV exports; Pro adds staff accounts and AI workflows.
+- **Plan access:** a valid trial includes all features; Basic includes core shop operations, CSV import/export, and one active staff member; Pro includes unlimited staff and AI workflows.
+- **Adding many products:** read [Product CSV Import](./docs/PRODUCT_CSV_IMPORT.md) for the template columns, simple spreadsheet steps, limits, and validation rules.
 
 ### Security Notes
 
@@ -420,7 +421,7 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 - Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, expense-entry, staff, and reports access for staff sessions. A shop attendant can sell, adjust stock, record debts, and record expenses without seeing shop-wide profit reports or buying costs.
 - Offline support includes the cached app shell, `/offline.html` fallback, a browser-local pending sales queue, merchant sync history, and admin sync failure resolution by shop/device. Broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled yet.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
-- Expired or suspended shops can still view data and contact support, but operational mutations such as new sales, stock edits, expenses, staff changes, and orders require an active trial or subscription.
+- Expired or suspended shops can still view data and open **Billing**, where they can pay, submit a reference, and see the reactivation steps. Operational changes such as new sales, stock edits, expenses, staff changes, and orders resume after an admin verifies payment.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.
 - Push notifications are opt-in per browser/device. Run `npm run push:process` in a dedicated Railway cron service once daily; it queues low-stock, overdue-debt, subscription, and opted-in AI alerts, then retries transient delivery failures. The API remains harmless until all three VAPID variables are set.

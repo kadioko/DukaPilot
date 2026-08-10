@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone, phoneLookupValues } = require("../lib/phone");
+const { activePlan } = require("../lib/entitlements");
 
 const DEFAULT_STAFF_PIN = "1234";
 
@@ -50,6 +51,24 @@ async function phoneConflict(phone, excludeStaffId = null) {
   return Boolean(user || (staff && staff.id !== excludeStaffId));
 }
 
+async function basicStaffLimitReached(shopId, excludeStaffId = null) {
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: { plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+  });
+  if (activePlan(shop) !== "BASIC") return false;
+  const where = { shopId, isActive: true };
+  if (excludeStaffId) where.id = { not: excludeStaffId };
+  return (await prisma.staffMember.count({ where })) >= 1;
+}
+
+function basicStaffLimitError(res) {
+  return res.status(403).json({
+    error: "Basic includes one active staff member. Deactivate the current staff member or upgrade to Pro for more staff.",
+    code: "BASIC_STAFF_LIMIT",
+  });
+}
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const staff = await prisma.staffMember.findMany({
@@ -71,6 +90,7 @@ const create = asyncHandler(async (req, res) => {
   if (!ROLES.has(role)) return res.status(400).json({ error: "Invalid staff role" });
   if (!validatePin(pin)) return res.status(400).json({ error: "Staff PIN must be 4 to 8 digits" });
   if (await phoneConflict(phone)) return res.status(409).json({ error: "This phone number already belongs to another DukaPilot login" });
+  if (await basicStaffLimitReached(shopId)) return basicStaffLimitError(res);
 
   const defaults = permissionsFor(role);
   const staff = await prisma.staffMember.create({
@@ -108,6 +128,10 @@ const update = asyncHandler(async (req, res) => {
   if (nextPhone && nextPhone !== existing.phone && await phoneConflict(nextPhone, existing.id)) {
     return res.status(409).json({ error: "This phone number already belongs to another DukaPilot login" });
   }
+  const nextIsActive = boolValue(req.body.isActive, existing.isActive);
+  if (nextIsActive && !existing.isActive && await basicStaffLimitReached(shopId, existing.id)) {
+    return basicStaffLimitError(res);
+  }
 
   const staff = await prisma.staffMember.update({
     where: { id: existing.id },
@@ -121,7 +145,7 @@ const update = asyncHandler(async (req, res) => {
       canManageStaff: boolValue(req.body.canManageStaff, existing.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, existing.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, existing.canRecordExpenses),
-      isActive: boolValue(req.body.isActive, existing.isActive),
+      isActive: nextIsActive,
     },
     select: SAFE_STAFF_SELECT,
   });
