@@ -379,6 +379,8 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
 | `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
 | `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
+| `META_WHATSAPP_VERIFY_TOKEN` | Required for Meta webhooks | Random secret entered both in Railway and Meta's webhook verification screen. |
+| `META_WHATSAPP_APP_SECRET` | Required for Meta webhooks | App Secret from Meta App Settings; validates signed delivery callbacks. Never commit it. |
 | `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
 | `BACKUP_RETAIN_DAYS` | Optional | Days to keep backups (default: `7`) |
 

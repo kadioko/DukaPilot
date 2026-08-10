@@ -29,6 +29,7 @@ const pushRoutes = require("./routes/push.routes");
 const usageEventRoutes = require("./routes/usageEvent.routes");
 const barcodeRoutes = require("./routes/barcode.routes");
 const stockCountRoutes = require("./routes/stockCount.routes");
+const metaWhatsAppWebhookRoutes = require("./routes/metaWhatsAppWebhook.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
@@ -87,8 +88,16 @@ app.use(helmet({
 }));
 app.use(cors(corsOptions));
 app.options("/{*path}", cors(corsOptions));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({
+  limit: "1mb",
+  verify(req, _res, buffer) {
+    if (req.originalUrl === "/api/webhooks/meta-whatsapp") req.rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(morgan("dev"));
+// Meta calls this unauthenticated endpoint. Its verification token and signed
+// POST body are validated in the controller, before API rate limits and audit logs.
+app.use("/api/webhooks", metaWhatsAppWebhookRoutes);
 app.use(setAuditContext);
 app.use(auditTrail);
 
