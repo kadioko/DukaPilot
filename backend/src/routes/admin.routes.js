@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone } = require("../controllers/admin.controller");
+const { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone, smsMonitoring } = require("../controllers/admin.controller");
 const { authenticate, requireRole } = require("../middleware/auth");
 
 router.use(authenticate);
@@ -13,5 +13,6 @@ router.delete("/users/:userId", deleteUser);
 router.post("/users/:userId/reset-pin", resetUserPin);
 router.post("/staff/:staffId/reset-pin", resetStaffPin);
 router.get("/audit-logs", listAuditLogs);
+router.get("/sms-monitoring", smsMonitoring);
 
 module.exports = router;

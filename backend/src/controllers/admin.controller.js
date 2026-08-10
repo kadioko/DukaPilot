@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
+const { getNextSmsMonitoring } = require("../services/nextsms-monitor.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -309,4 +310,11 @@ const findStaffByPhone = asyncHandler(async (req, res) => {
   res.json({ staff });
 });
 
-module.exports = { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone };
+// This route is mounted behind requireRole("ADMIN"). It deliberately exposes
+// delivery metadata only: OTP contents and full recipient numbers stay private.
+const smsMonitoring = asyncHandler(async (req, res) => {
+  const data = await getNextSmsMonitoring({ force: req.query.refresh === "true" });
+  res.json(data);
+});
+
+module.exports = { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone, smsMonitoring };

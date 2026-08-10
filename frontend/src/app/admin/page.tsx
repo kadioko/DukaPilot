@@ -23,6 +23,7 @@ import {
   BellRing,
   CreditCard,
   RefreshCw,
+  MessageSquareText,
 } from "lucide-react";
 
 interface AdminOverview {
@@ -225,6 +226,24 @@ interface AdminSyncDeviceRow {
   _max: { createdAt: string | null };
 }
 
+interface SmsMonitoring {
+  provider: "NEXTSMS";
+  fetchedAt: string;
+  balance: { smsCredits: number; balanceTzs: number; display: string; channel: string };
+  summary: { total: number; delivered: number; failed: number; pending: number };
+  reports: Array<{
+    messageId: string;
+    reference: string;
+    to: string;
+    sender: string;
+    channel: string;
+    smsCount: number;
+    status: string;
+    sentAt: string | null;
+    doneAt: string | null;
+  }>;
+}
+
 interface BillingDraft {
   plan: "BASIC" | "PRO";
   months: string;
@@ -234,7 +253,7 @@ interface BillingDraft {
   note: string;
 }
 
-type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers" | "sync";
+type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers" | "sync" | "sms";
 
 async function optionalAdminLoad<T>(label: string, request: Promise<T>, fallback: T): Promise<T> {
   try {
@@ -326,6 +345,9 @@ export default function AdminPage() {
   const [syncDeviceFilter, setSyncDeviceFilter] = useState("");
   const [syncStatusFilter, setSyncStatusFilter] = useState("");
   const [loadingSyncEvents, setLoadingSyncEvents] = useState(false);
+  const [smsMonitoring, setSmsMonitoring] = useState<SmsMonitoring | null>(null);
+  const [loadingSmsMonitoring, setLoadingSmsMonitoring] = useState(false);
+  const [smsMonitoringError, setSmsMonitoringError] = useState("");
   const [subFilter, setSubFilter] = useState("ALL");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
@@ -514,6 +536,20 @@ export default function AdminPage() {
       setSyncDevices(data.devices);
     } finally {
       setLoadingSyncEvents(false);
+    }
+  }
+
+  async function refreshSmsMonitoring(force = false) {
+    setLoadingSmsMonitoring(true);
+    setSmsMonitoringError("");
+    try {
+      const suffix = force ? "?refresh=true" : "";
+      const data = await api.get<SmsMonitoring>(`/admin/sms-monitoring${suffix}`);
+      setSmsMonitoring(data);
+    } catch (error) {
+      setSmsMonitoringError(error instanceof Error ? error.message : "Could not load SMS monitoring");
+    } finally {
+      setLoadingSmsMonitoring(false);
     }
   }
 
@@ -738,6 +774,7 @@ export default function AdminPage() {
     { id: "subscriptions", label: "Subscriptions" },
     { id: "suppliers", label: "Suppliers" },
     { id: "sync", label: "Sync History" },
+    { id: "sms", label: "SMS" },
   ];
   const activeShops = subscriptions.filter((shop) => shop.computedStatus === "active").length;
   const trialShops = subscriptions.filter((shop) => shop.computedStatus === "trial").length;
@@ -831,7 +868,10 @@ export default function AdminPage() {
           {TABS.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id);
+                if (t.id === "sms" && !smsMonitoring) refreshSmsMonitoring().catch(console.error);
+              }}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors min-h-0 ${
                 tab === t.id ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}
@@ -2127,6 +2167,102 @@ export default function AdminPage() {
                 </div>
               )}
             </section>
+          </div>
+        )}
+
+        {/* SMS MONITORING */}
+        {tab === "sms" && (
+          <div className="space-y-4">
+            <section className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <MessageSquareText className="h-4 w-4 text-brand-700" />
+                    <h2 className="text-sm font-semibold text-gray-900">NextSMS delivery monitoring</h2>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">Live provider balance and recent delivery metadata. PIN codes and full recipient numbers are never shown here.</p>
+                </div>
+                <button
+                  onClick={() => refreshSmsMonitoring(true).catch(console.error)}
+                  disabled={loadingSmsMonitoring}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingSmsMonitoring ? "animate-spin" : ""}`} />
+                  Refresh live data
+                </button>
+              </div>
+            </section>
+
+            {smsMonitoringError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{smsMonitoringError}</div>
+            )}
+
+            {loadingSmsMonitoring && !smsMonitoring && (
+              <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading NextSMS delivery data...</div>
+            )}
+
+            {smsMonitoring && (
+              <>
+                <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <MiniMetric label="SMS credits" value={smsMonitoring.balance.smsCredits} tone="border-brand-200 bg-brand-50 text-brand-800" />
+                  <MiniMetric label="Balance (TZS)" value={smsMonitoring.balance.balanceTzs} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                  <MiniMetric label="Delivered" value={smsMonitoring.summary.delivered} tone="border-green-200 bg-green-50 text-green-800" />
+                  <MiniMetric label="Pending" value={smsMonitoring.summary.pending} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                  <MiniMetric label="Failed" value={smsMonitoring.summary.failed} tone="border-red-200 bg-red-50 text-red-800" />
+                </section>
+
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="flex flex-col gap-1 border-b border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-sm font-semibold text-gray-900">Recent messages</h2>
+                      <p className="text-xs text-gray-500">{smsMonitoring.summary.total} provider records. Updated {new Date(smsMonitoring.fetchedAt).toLocaleString()}.</p>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500">{smsMonitoring.balance.channel || smsMonitoring.provider}</span>
+                  </div>
+                  {smsMonitoring.reports.length === 0 ? (
+                    <p className="p-6 text-sm text-gray-500">No SMS delivery records returned by NextSMS yet.</p>
+                  ) : (
+                    <div className="max-w-full overflow-x-auto">
+                      <table className="min-w-[760px] w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-100">
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Recipient</th>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Type / reference</th>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Sent</th>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Completed</th>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Status</th>
+                            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">SMS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {smsMonitoring.reports.map((message) => {
+                            const failed = ["FAILED", "REJECTED", "UNDELIVERABLE", "EXPIRED"].includes(message.status);
+                            const delivered = message.status === "DELIVERED";
+                            return (
+                              <tr key={`${message.messageId}-${message.sentAt || "pending"}`} className="border-b border-gray-50">
+                                <td className="px-4 py-3 font-mono text-xs text-gray-700">{message.to}</td>
+                                <td className="px-4 py-3">
+                                  <p className="font-medium text-gray-900">{message.reference || "Provider message"}</p>
+                                  <p className="mt-0.5 text-xs text-gray-500">{message.sender || "-"} - {message.channel || "SMS"}</p>
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-600">{message.sentAt ? new Date(message.sentAt).toLocaleString() : "-"}</td>
+                                <td className="px-4 py-3 text-xs text-gray-600">{message.doneAt ? new Date(message.doneAt).toLocaleString() : "-"}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                    delivered ? "bg-green-100 text-green-700" : failed ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                                  }`}>{message.status}</span>
+                                </td>
+                                <td className="px-4 py-3 text-right text-gray-700">{message.smsCount}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
           </div>
         )}
 

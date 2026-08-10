@@ -362,6 +362,7 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 | `NEXTSMS_API_KEY` | Yes for live OTP | NextSMS bearer token; Railway secret only |
 | `NEXTSMS_SENDER_ID` | Yes for live OTP | Exact approved sender ID. Current approved value: `Dukapilot` |
 | `NEXTSMS_API_URL` | Optional | Defaults to `https://messaging-service.co.tz/api/sms/v2/text/single` |
+| `NEXTSMS_MONITOR_BASE_URL` | Optional | Platform-admin SMS balance and delivery reports. Defaults to `https://messaging-service.co.tz/api/v2` |
 | `MAIL_FROM` | Optional | Outbound sender, for example `DukaPilot <noreply@dukapilot.com>` |
 | `MAIL_REPLY_TO` | Optional | Reply-to address, usually `support@dukapilot.com` |
 | `MAILTRAP_API_TOKEN` | Optional | Mailtrap Email API token for outbound email |
