@@ -53,6 +53,25 @@ test("push subscription rejects incomplete browser subscription data", async () 
   assert.match(res.payload.error, /valid device subscription/);
 });
 
+test("push config reads the VAPID key from the Node environment", async () => {
+  const previousPublicKey = process.env.VAPID_PUBLIC_KEY;
+  process.env.VAPID_PUBLIC_KEY = "test-public-key";
+  try {
+    mockPrisma({});
+    delete require.cache[pushControllerPath];
+    const controller = require(pushControllerPath);
+    const res = response();
+
+    await controller.config({}, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.publicKey, "test-public-key");
+  } finally {
+    if (previousPublicKey === undefined) delete process.env.VAPID_PUBLIC_KEY;
+    else process.env.VAPID_PUBLIC_KEY = previousPublicKey;
+  }
+});
+
 test("push subscription saves a valid browser device for the authenticated shop", async () => {
   let saved;
   mockPrisma({

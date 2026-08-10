@@ -61,9 +61,9 @@ const listDeliveries = asyncHandler(async (req, res) => {
   res.json({ deliveries });
 });
 
-const process = asyncHandler(async (_req, res) => {
+const processQueue = asyncHandler(async (_req, res) => {
   const result = await processPushDeliveries();
   res.json(result);
 });
 
-module.exports = { config, getPreferences, updatePreferences, subscribe, unsubscribe, listDeliveries, process };
+module.exports = { config, getPreferences, updatePreferences, subscribe, unsubscribe, listDeliveries, processQueue };

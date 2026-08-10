@@ -10,6 +10,6 @@ router.patch("/preferences", controller.updatePreferences);
 router.post("/subscribe", controller.subscribe);
 router.post("/unsubscribe", controller.unsubscribe);
 router.get("/deliveries", controller.listDeliveries);
-router.post("/process", controller.process);
+router.post("/process", controller.processQueue);
 
 module.exports = router;
