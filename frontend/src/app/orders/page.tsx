@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
@@ -65,6 +66,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function OrdersPage() {
+  const router = useRouter();
   const lang = useLang();
   const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -199,10 +201,8 @@ export default function OrdersPage() {
     }
   }
 
-  async function confirmDelivery(orderId: string) {
-    if (!confirm(t("orders.confirmDeliveryPrompt", lang))) return;
-    await api.patch(`/orders/${orderId}/confirm-delivery`, {});
-    fetchOrders();
+  function confirmDelivery(orderId: string) {
+    router.push(`/receiving?order=${encodeURIComponent(orderId)}`);
   }
 
   async function handleReorder(orderId: string) {

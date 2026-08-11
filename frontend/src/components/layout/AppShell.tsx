@@ -22,6 +22,8 @@ import {
   Settings,
   ShoppingBag,
   ScanLine,
+  WalletCards,
+  PackageCheck,
 } from "lucide-react";
 import { clearToken, api, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -66,9 +68,11 @@ const merchantNav: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports", group: "overview" },
   { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports", feature: "assistant", group: "ai" },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell", group: "sell" },
+  { href: "/daily-close", labelKey: "nav.dailyClose", icon: WalletCards, permission: "canSell", group: "sell" },
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell", group: "sell" },
   { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell", group: "sell" },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
+  { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", group: "stock" },
   { href: "/barcodes", labelKey: "nav.barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },

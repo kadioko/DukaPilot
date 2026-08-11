@@ -133,43 +133,21 @@ const cancel = asyncHandler(async (req, res) => {
   res.json({ order: updated });
 });
 
-// Confirm received delivery: record stock movements
+// Receiving needs buying and landed costs, so old clients must move into the dedicated flow.
 const confirmDelivery = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
   const order = await prisma.order.findFirst({
     where: { id: req.params.id, shopId: shop.id },
-    include: { items: true },
+    select: { id: true, status: true },
   });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (order.status !== "OUT_FOR_DELIVERY" && order.status !== "CONFIRMED") {
     return res.status(400).json({ error: "Order is not out for delivery or confirmed" });
   }
-
-  await prisma.$transaction(async (tx) => {
-    const statusUpdate = await tx.order.updateMany({
-      where: { id: order.id, status: order.status },
-      data: { status: "DELIVERED" },
-    });
-    if (statusUpdate.count !== 1) {
-      throw Object.assign(new Error("Order status changed. Refresh and try again."), { status: 409 });
-    }
-    for (const item of order.items) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { currentStock: { increment: item.quantity } },
-      });
-      await tx.stockMovement.create({
-        data: {
-          type: "IN",
-          quantity: item.quantity,
-          note: `Order delivery #${order.id.slice(-6)}`,
-          productId: item.productId,
-        },
-      });
-    }
+  res.status(409).json({
+    code: "USE_STOCK_RECEIPT",
+    error: "Use Receive Stock to record buying cost, transport, and stock history before confirming delivery",
   });
-
-  res.json({ message: "Delivery confirmed and stock updated" });
 });
 
 // One-tap reorder based on previous order

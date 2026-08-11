@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTime");
 const { normalizePhone } = require("../lib/phone");
+const { findOpenCashSession } = require("../lib/cashSession");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -146,6 +147,7 @@ const create = asyncHandler(async (req, res) => {
   let sale;
   try {
     sale = await prisma.$transaction(async (tx) => {
+    const cashSession = normalizedPaymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     const shopCounter = await tx.shop.update({
       where: { id: shopId },
       data: { nextSaleNumber: { increment: 1 } },
@@ -164,6 +166,7 @@ const create = asyncHandler(async (req, res) => {
         note,
         clientReference: normalizedClientReference,
         receiptNumber,
+        cashSessionId: cashSession?.id || null,
         shopId,
         items: { create: saleItemsData },
       },

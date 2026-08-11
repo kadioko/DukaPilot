@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Bot, ClipboardList, CreditCard, MessageCircle, PackageCheck, ReceiptText } from "lucide-react";
+import { Bot, ClipboardList, CreditCard, MessageCircle, PackageCheck, ReceiptText, QrCode } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 
 const proofCards = [
@@ -34,6 +34,12 @@ const proofCards = [
     title: { sw: "Msaidizi wa AI", en: "AI Assistant" },
     body: { sw: "Pata hatua za leo: agiza, fuatilia deni, punguza gharama.", en: "See today's actions: restock, collect debt, reduce costs." },
     rows: [{ sw: "1. Agiza sukari", en: "1. Reorder sugar" }, { sw: "2. Fuatilia deni la Asha", en: "2. Follow up Asha's debt" }, { sw: "3. Tangaza bidhaa yenye faida", en: "3. Promote a high-margin product" }],
+  },
+  {
+    icon: QrCode,
+    title: { sw: "QR ya kuagiza", en: "QR ordering" },
+    body: { sw: "Shiriki QR au link; mteja aone bidhaa na atume agizo.", en: "Share a QR or link so customers can browse and place an order." },
+    rows: [{ sw: "Link ya duka", en: "Shop link" }, { sw: "Weka kwenye WhatsApp Status", en: "Share to WhatsApp Status" }, { sw: "Agizo linaingia dukani", en: "Order reaches the shop" }],
   },
 ];
 

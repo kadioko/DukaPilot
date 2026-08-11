@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { getRequestLanguage } = require("../lib/requestLanguage");
 const { startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, addTanzaniaMonths } = require("../lib/businessTime");
+const { findOpenCashSession } = require("../lib/cashSession");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -208,15 +209,22 @@ const create = asyncHandler(async (req, res) => {
   if (!validateExpenseData(req, res, data)) return;
 
   const recurringMonthly = req.body.recurringMonthly === true;
-  const result = recurringMonthly
-    ? await prisma.$transaction(async (tx) => {
-      const expense = await tx.expense.create({ data: { ...data, shopId } });
+  let result;
+  if (!recurringMonthly && data.paymentMethod !== "CASH") {
+    result = { expense: await prisma.expense.create({ data: { ...data, shopId, cashSessionId: null } }), recurringExpense: null };
+  } else {
+    result = await prisma.$transaction(async (tx) => {
+      const cashSession = data.paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
+      const expense = await tx.expense.create({ data: { ...data, shopId, cashSessionId: cashSession?.id || null } });
+      if (recurringMonthly) {
       const recurringExpense = await tx.recurringExpense.create({
         data: { ...recurringTemplateData(data), nextDueAt: advanceOneMonth(data.spentAt), shopId },
       });
       return { expense, recurringExpense };
-    })
-    : { expense: await prisma.expense.create({ data: { ...data, shopId } }), recurringExpense: null };
+      }
+      return { expense, recurringExpense: null };
+    });
+  }
 
   req.audit = { action: "expense.create", resourceType: "expense", resourceId: result.expense.id, metadata: { recurringMonthly } };
   res.status(201).json(result);
@@ -249,6 +257,7 @@ const recordRecurring = asyncHandler(async (req, res) => {
     }
     const spentAt = parseSpentAt(req.body.spentAt, recurringExpense.nextDueAt);
     if (!spentAt) throw Object.assign(new Error("Expense date is invalid"), { status: 400 });
+    const cashSession = recurringExpense.paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     const expense = await tx.expense.create({
       data: {
         title: recurringExpense.title,
@@ -259,6 +268,7 @@ const recordRecurring = asyncHandler(async (req, res) => {
         paymentMethod: recurringExpense.paymentMethod,
         spentAt,
         shopId,
+        cashSessionId: cashSession?.id || null,
       },
     });
     const nextDueAt = advanceOneMonth(recurringExpense.nextDueAt);

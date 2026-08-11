@@ -41,6 +41,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | Feature | Description |
 | --- | --- |
 | **Inventory tracking** | Add products, set buying/selling/wholesale prices, track stock levels |
+| **Receive stock with true cost** | Record supplier, invoice, items, transport and other costs; DukaPilot allocates landed cost and preserves stock history |
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
@@ -52,8 +53,10 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
 | **Supplier ordering** | Browse supplier catalog products, import them into inventory with a chosen retail price, then order and restock them safely |
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
+| **Daily Close / Z-report** | Cashiers open and close their own cash session; sales, cash debt collections, and cash expenses reconcile to expected cash and variance |
+| **Receipt files and printing** | Share a receipt as WhatsApp text, PNG, or PDF, or print via the device print dialog to a paired Bluetooth thermal printer |
 | **One-tap reorder** | Repeat any previous order with a single button |
-| **Delivery confirmation** | Confirm goods received and auto-restock inventory |
+| **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |

@@ -29,6 +29,11 @@ enum StockMovementType {
   ADJUSTMENT
 }
 
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -130,8 +135,10 @@ model Shop {
   notificationPreference   NotificationPreference?
   pushDeliveries           PushDelivery[]
   appUsageEvents           AppUsageEvent[]
-  barcodeScans             BarcodeScan[]
-  stockCounts              StockCount[]
+    barcodeScans             BarcodeScan[]
+    stockCounts              StockCount[]
+    cashSessions             CashSession[]
+    stockReceipts            StockReceipt[]
   createdSuppliers         Supplier[]              @relation("SupplierCreatedByShop")
   // Subscription / trial
   plan                     String                  @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
@@ -337,8 +344,9 @@ model Supplier {
   userId             String?                  @unique
   user               User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   products           Product[]
-  catalogProducts    SupplierCatalogProduct[]
-  orders             Order[]
+    catalogProducts    SupplierCatalogProduct[]
+    orders             Order[]
+    stockReceipts      StockReceipt[]
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
@@ -373,7 +381,8 @@ model Product {
   saleItems                SaleItem[]
   orderItems               OrderItem[]
   customerOrderItems       CustomerOrderItem[]
-  stockMovements           StockMovement[]
+    stockMovements           StockMovement[]
+    stockReceiptItems        StockReceiptItem[]
   barcodeScans             BarcodeScan[]
   stockCountItems          StockCountItem[]
   createdAt                DateTime                @default(now())
@@ -455,9 +464,11 @@ model StockMovement {
   type      StockMovementType
   quantity  Int
   note      String?
-  productId String
-  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdAt DateTime          @default(now())
+    productId String
+    product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+    stockReceiptId String?
+    stockReceipt   StockReceipt? @relation(fields: [stockReceiptId], references: [id], onDelete: SetNull)
+    createdAt DateTime          @default(now())
 
   @@map("stock_movements")
 }
@@ -477,7 +488,9 @@ model Sale {
   status          String        @default("COMPLETED")
   voidedAt        DateTime?
   voidReason      String?
-  voidedBy        String?
+    voidedBy        String?
+    cashSessionId   String?
+    cashSession     CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   shopId          String
   shop            Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   items           SaleItem[]
@@ -521,7 +534,9 @@ model DebtPayment {
   paymentMethod PaymentMethod @default(CASH)
   paymentRef    String?
   note          String?
-  recordedBy    String?
+    recordedBy    String?
+    cashSessionId String?
+    cashSession   CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   createdAt     DateTime      @default(now())
 
   @@index([debtId, createdAt])
@@ -537,8 +552,10 @@ model Expense {
   note          String?
   paymentMethod PaymentMethod   @default(CASH)
   spentAt       DateTime        @default(now())
-  shopId        String
-  shop          Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+    shopId        String
+    shop          Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+    cashSessionId String?
+    cashSession   CashSession?    @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -613,12 +630,80 @@ model Order {
   shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
   supplierId  String
   supplier    Supplier    @relation(fields: [supplierId], references: [id])
-  items       OrderItem[]
+    items       OrderItem[]
+    stockReceipt StockReceipt?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   @@index([shopId, status])
   @@map("orders")
+}
+
+model CashSession {
+  id             String            @id @default(cuid())
+  status         CashSessionStatus @default(OPEN)
+  openingCash    Int               @default(0)
+  expectedCash   Int?
+  countedCash    Int?
+  variance       Int?
+  note           String?
+  openedById     String
+  openedByName   String
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  shopId         String
+  shop           Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  sales          Sale[]
+  expenses       Expense[]
+  debtPayments   DebtPayment[]
+
+  @@index([shopId, status, openedAt])
+  @@index([shopId, openedById, status])
+  @@map("cash_sessions")
+}
+
+model StockReceipt {
+  id                 String             @id @default(cuid())
+  invoiceNumber      String?
+  paymentMethod      PaymentMethod      @default(CASH)
+  transportCost      Int                @default(0)
+  otherCost          Int                @default(0)
+  totalProductCost   Int
+  totalLandedCost    Int
+  note               String?
+  receivedBy         String?
+  receivedAt         DateTime           @default(now())
+  shopId             String
+  shop               Shop               @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplierId         String?
+  supplier           Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  sourceOrderId      String?            @unique
+  sourceOrder        Order?             @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  items              StockReceiptItem[]
+  stockMovements     StockMovement[]
+  createdAt          DateTime           @default(now())
+
+  @@index([shopId, receivedAt])
+  @@index([supplierId, receivedAt])
+  @@map("stock_receipts")
+}
+
+model StockReceiptItem {
+  id                     String       @id @default(cuid())
+  quantity               Int
+  unitCost               Int
+  productCost            Int
+  allocatedAdditionalCost Int
+  landedTotalCost        Int
+  landedUnitCost         Int
+  stockReceiptId         String
+  stockReceipt           StockReceipt @relation(fields: [stockReceiptId], references: [id], onDelete: Cascade)
+  productId              String
+  product                Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([stockReceiptId])
+  @@index([productId])
+  @@map("stock_receipt_items")
 }
 
 model OrderItem {

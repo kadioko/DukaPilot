@@ -4,7 +4,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
-import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode } from "lucide-react";
+import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode, Share2 } from "lucide-react";
 import NotificationSettings from "@/components/notifications/NotificationSettings";
 
 interface UserSettings {
@@ -149,6 +149,20 @@ export default function SettingsPage() {
       setCatalogShareMsg(lang === "sw" ? "Link imenakiliwa." : "Link copied.");
     } catch {
       setCatalogShareMsg(lang === "sw" ? "Link haikunakiliwa. Nakili kutoka kwenye kisanduku." : "Could not copy the link. Copy it from the field.");
+    }
+  }
+
+  async function shareCatalogUrl() {
+    if (!catalogUrl) return;
+    const text = lang === "sw"
+      ? `Karibu ${shopName}. Angalia bidhaa na tuma agizo hapa: ${catalogUrl}`
+      : `Welcome to ${shopName}. Browse products and place an order here: ${catalogUrl}`;
+    try {
+      if (navigator.share) await navigator.share({ title: shopName, text, url: catalogUrl });
+      else await copyCatalogUrl();
+      setCatalogShareMsg(lang === "sw" ? "Link iko tayari kushare." : "Shop link ready to share.");
+    } catch (error) {
+      if ((error as Error)?.name !== "AbortError") setCatalogShareMsg(lang === "sw" ? "Imeshindikana kushare link." : "Could not share the shop link.");
     }
   }
 
@@ -341,6 +355,10 @@ export default function SettingsPage() {
                       <ExternalLink className="h-4 w-4" />
                     </a>
                   </div>
+                  <button type="button" onClick={shareCatalogUrl} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800 hover:bg-green-100">
+                    <Share2 className="h-4 w-4" />
+                    {lang === "sw" ? "Shiriki link ya kuagiza" : "Share ordering link"}
+                  </button>
                   <div className="mt-4 flex flex-col items-center gap-3 border-t border-brand-100 pt-4 sm:flex-row sm:items-center">
                     <div className="shrink-0 rounded-lg bg-white p-2 shadow-sm">
                       <QRCodeCanvas ref={qrCanvasRef} value={catalogUrl} size={148} level="M" includeMargin aria-label={lang === "sw" ? "QR code ya duka" : "Shop QR code"} />

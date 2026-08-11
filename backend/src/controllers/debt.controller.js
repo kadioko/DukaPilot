@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone } = require("../lib/phone");
+const { findOpenCashSession } = require("../lib/cashSession");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -133,8 +134,9 @@ const recordPayment = asyncHandler(async (req, res) => {
       throw Object.assign(new Error("Debt changed before this payment was saved. Refresh and try again."), { status: 409 });
     }
 
+    const cashSession = paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     await tx.debtPayment.create({
-      data: { debtId: debt.id, amount, paymentMethod, paymentRef, note, recordedBy: req.user.userId },
+      data: { debtId: debt.id, amount, paymentMethod, paymentRef, note, recordedBy: req.user.staffId || req.user.userId, cashSessionId: cashSession?.id || null },
     });
     return tx.debt.findUnique({
       where: { id: debt.id },

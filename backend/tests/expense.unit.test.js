@@ -23,7 +23,7 @@ function loadController(prismaMock) {
 
 test("expense creation accepts the public name field and a backdated spentAt date", async () => {
   let captured;
-  const controller = loadController({
+  const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1" }) },
     expense: {
       create: async ({ data }) => {
@@ -31,7 +31,9 @@ test("expense creation accepts the public name field and a backdated spentAt dat
         return { id: "expense-1", ...data };
       },
     },
-  });
+  };
+  prismaMock.$transaction = async (work) => work(prismaMock);
+  const controller = loadController(prismaMock);
   const req = {
     user: { userId: "owner-1" },
     headers: { "x-dukapilot-language": "sw" },

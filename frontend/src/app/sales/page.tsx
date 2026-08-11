@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
 import DateSelect from "@/components/ui/DateSelect";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
+import ReceiptActions from "@/components/sales/ReceiptActions";
 
 interface Product {
   id: string;
@@ -198,6 +199,7 @@ export default function SalesPage() {
   const [restocking, setRestocking] = useState(false);
   const [voidingSaleId, setVoidingSaleId] = useState<string | null>(null);
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const [shopName, setShopName] = useState("DukaPilot");
   const scannerBuffer = useRef("");
   const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -213,6 +215,9 @@ export default function SalesPage() {
     api.get<{ customers: CustomerRecord[] }>("/debts/customers")
       .then((d) => setCustomers(d.customers))
       .catch(() => setCustomers([]));
+    api.get<{ settings: { shop?: { name?: string } } }>("/settings")
+      .then((data) => setShopName(data.settings.shop?.name || "DukaPilot"))
+      .catch(() => {});
   }, []);
 
   const syncPendingSales = useCallback(async () => {
@@ -958,6 +963,7 @@ export default function SalesPage() {
                     {sale.status !== "VOIDED" && (
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
                         <button onClick={() => shareReceipt(sale)} className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"><MessageCircle className="h-4 w-4" />{lang === "sw" ? "Tuma risiti" : "Share receipt"}</button>
+                        <ReceiptActions sale={sale} shopName={shopName} lang={lang} compact />
                         {canViewFinancials && <button onClick={() => voidSale(sale)} disabled={voidingSaleId === sale.id} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />{voidingSaleId === sale.id ? (lang === "sw" ? "Inafuta..." : "Voiding...") : (lang === "sw" ? "Futa mauzo" : "Void sale")}</button>}
                       </div>
                     )}
@@ -991,6 +997,8 @@ export default function SalesPage() {
               {completedChange != null && completedChange > 0 && <div className="mt-2 flex justify-between text-green-800"><span>{lang === "sw" ? "Chenji" : "Change"}</span><strong>{formatTZS(completedChange)}</strong></div>}
             </div>
             <button onClick={() => shareReceipt(completedSale, completedChange)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-700"><MessageCircle className="h-5 w-5" />{lang === "sw" ? "Tuma risiti kwa WhatsApp" : "Share receipt on WhatsApp"}</button>
+            <ReceiptActions sale={completedSale} shopName={shopName} lang={lang} change={completedChange} />
+            <p className="mt-2 text-center text-xs text-gray-500">{lang === "sw" ? "Kwa printer ya Bluetooth, chagua printer yako kwenye print dialog." : "For a Bluetooth printer, choose your paired printer in the print dialog."}</p>
             <button onClick={() => { setCompletedSale(null); setCompletedChange(null); setView("history"); }} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700"><ReceiptText className="h-4 w-4" />{lang === "sw" ? "Fungua historia" : "View sale history"}</button>
           </div>
         </div>
