@@ -14,9 +14,14 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
 
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
+    const nativeOpen = window.open.bind(window);
     (window as typeof window & { __openedWhatsAppUrl?: string }).open = ((url?: string | URL) => {
-      (window as typeof window & { __openedWhatsAppUrl?: string }).__openedWhatsAppUrl = String(url || "");
-      return null;
+      const target = String(url || "");
+      if (target.startsWith("https://wa.me/")) {
+        (window as typeof window & { __openedWhatsAppUrl?: string }).__openedWhatsAppUrl = target;
+        return null;
+      }
+      return nativeOpen(url);
     }) as typeof window.open;
   });
 
@@ -29,6 +34,7 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
   await page.route("**/*api/subscription/status", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) }));
   await page.route("**/*api/notifications", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) }));
   await page.route("**/*api/debts/customers", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ customers: [] }) }));
+  await page.route("**/*api/settings", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { shop: { name: "Duka la Jaribio" } } }) }));
   await page.route("**/*api/products", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [product] }) }));
   await page.route("**/*api/sales", async (route) => {
     if (route.request().method() !== "POST") {
@@ -71,6 +77,14 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
   const pdfFile = await pdfDownload;
   expect(pdfFile.suggestedFilename()).toBe("risiti-dp-000007.pdf");
   expect(await pdfFile.failure()).toBeNull();
+
+  const printedReceipt = page.waitForEvent("popup");
+  await page.getByRole("button", { name: /chapisha; chagua printer ya Bluetooth|print; choose the paired Bluetooth printer/i }).click();
+  const printPage = await printedReceipt;
+  await expect(printPage.getByText("Duka la Jaribio", { exact: true })).toBeVisible();
+  await expect(printPage.getByText("DP-000007", { exact: false })).toBeVisible();
+  await expect(printPage.getByText("Jumla", { exact: true })).toBeVisible();
+  await printPage.close();
 
   page.once("dialog", async (dialog) => {
     expect(dialog.type()).toBe("prompt");

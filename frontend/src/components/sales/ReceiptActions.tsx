@@ -202,8 +202,9 @@ export default function ReceiptActions({ sale, shopName = "DukaPilot", lang, cha
   }
 
   function printReceipt() {
-    const popup = window.open("", "_blank", "noopener,noreferrer,width=420,height=640");
+    const popup = window.open("", "_blank", "popup,width=420,height=640");
     if (!popup) return;
+    popup.opener = null;
     popup.document.open();
     popup.document.write(printableMarkup(data));
     popup.document.close();
