@@ -56,10 +56,12 @@ Do not show every feature. Show the workflow that matches the shop.
 4. Record one sale.
 5. Show the dashboard update.
 6. Show debt tracking if they sell on credit.
-7. Show supplier WhatsApp order if they reorder often.
-8. Show AI Assistant as the "what should I do today?" page.
-9. Open Pricing and explain the 14-day free trial.
-10. Ask if they want setup now.
+7. Show Receive Stock if buying cost, transport, or supplier invoices are a concern.
+8. Show Daily Close if the owner asks whether cashiers' money is correct at the end of the day.
+9. Show the shop QR/link if customers order through WhatsApp Status or remotely.
+10. Show AI Assistant as the "what should I do today?" page for a Pro conversation.
+11. Open Pricing and explain the 14-day free trial.
+12. Ask if they want setup now.
 
 ## Setup Checklist
 
@@ -75,7 +77,9 @@ During first setup:
 - Record at least 1 real or sample sale.
 - Add one debt example if they sell on credit.
 - Add one supplier if they reorder by WhatsApp.
-- Show catalog link if customers order remotely.
+- Show the catalog link and QR if customers order remotely; place the QR on WhatsApp Status or near the counter.
+- Explain that stock purchases belong in Receive Stock, not ordinary Expenses, so profit stays meaningful.
+- For a cashier-operated shop, show Daily Close and agree who opens and closes the cash session.
 - Save owner on WhatsApp with `DukaPilot - <Shop Name>`.
 - Schedule day-3 follow-up.
 
@@ -130,4 +134,3 @@ Day 10:
 ## WhatsApp Follow-Up Template
 
 > Habari <Name>, hapa ni DukaPilot. Leo lengo ni kumalizia setup ya <Shop Name>: bidhaa 10, mauzo 10, na kurudi siku ya pili. Nikusaidie hatua gani sasa?
-

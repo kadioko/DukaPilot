@@ -18,6 +18,8 @@ It helps a shop owner:
 - Track expenses
 - Create supplier orders
 - See daily business performance
+- Close the cash day and see any cash difference
+- Share a shop QR so customers can send orders
 - Use the app in Kiswahili
 
 The product is live at https://www.dukapilot.com/
@@ -40,7 +42,7 @@ DukaPilot is live.
 
 It is a POS and inventory app for Tanzanian shop owners who want to track stock, sales, debts, expenses, and supplier orders from their phone.
 
-The app supports Kiswahili, WhatsApp workflows, M-Pesa payment follow-up, staff roles, catalog links, and an AI Assistant that turns shop data into next actions.
+The app supports Kiswahili, WhatsApp workflows, M-Pesa payment follow-up, staff roles, Daily Close, landed-cost stock receiving, catalog QR links, shareable receipts, and an AI Assistant that turns shop data into next actions.
 
 We are onboarding the first shops with guided setup and a 14-day free trial.
 
@@ -110,7 +112,7 @@ Slide 8:
 
 For an image or screenshot upload:
 
-> DukaPilot turns daily shop activity into a clear view of stock, sales, debts, expenses, and next actions.
+> DukaPilot turns daily shop activity into a clear view of stock, sales, debts, expenses, cash close, and next actions.
 
 ## Hashtags
 
@@ -129,4 +131,3 @@ Use 3-5 only:
 If you know a shop owner in Tanzania who tracks sales or stock in a notebook, send them this setup link:
 
 https://wa.me/255743910580?text=Habari%20DukaPilot%2C%20nimeletwa%20na%20LinkedIn%20na%20nataka%20setup%20ya%20duka%20langu.%20Aina%20ya%20duka%3A%20
-

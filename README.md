@@ -29,6 +29,9 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Email:** Mailtrap for outbound app email; ImprovMX for inbound forwarding on `dukapilot.com`
 - **Error monitoring:** Backend Sentry alerts are live; see [docs/SENTRY_MONITORING.md](./docs/SENTRY_MONITORING.md)
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
+- **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and the multi-branch roadmap
+- **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
+- **Product test gate:** [TESTING.md](./TESTING.md)
 - **Android release build:** [docs/ANDROID_RELEASE_BUILD.md](./docs/ANDROID_RELEASE_BUILD.md)
 - **Marketing assets:** [marketing/README.md](./marketing/README.md)
 
@@ -67,6 +70,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Language switching** | Full Kiswahili interface with an in-app English/Swahili toggle |
 | **Operational alerts** | Actionable low-stock, debt, customer-order, offline-sync, and subscription notifications |
 | **Catalog publishing** | Owners can publish or temporarily hide their public shop while cleaning products and prices |
+| **QR shop ordering** | Published shops can share a catalog link or QR code; customers browse and place orders that appear in the merchant order queue |
 | **CSV import and export** | Add up to 200 products from a guided CSV template, or download sales history and full inventory as CSV files |
 | **Legal pages** | Public About, Terms, and Privacy pages with English/Swahili switching |
 | **Onboarding + trust pages** | Contact, Help/FAQ, Demo accounts, and a guided five-step merchant onboarding checklist |
@@ -158,6 +162,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - **Merchant trial:** new merchant shops receive a 14-day free trial on registration; existing missing trial dates are backfilled by migration.
 - **Plan access:** a valid trial includes all features; Basic includes core shop operations, CSV import/export, and one active staff member; Pro includes unlimited staff and AI workflows.
 - **Adding many products:** read [Product CSV Import](./docs/PRODUCT_CSV_IMPORT.md) for the template columns, simple spreadsheet steps, limits, and validation rules.
+- **Running the shop day:** read [Operations Upgrade](./docs/OPERATIONS_UPGRADE.md) for Daily Close, stock receiving, receipt sharing, QR ordering, and the deliberate one-shop scope.
 
 ### Security Notes
 
@@ -264,10 +269,12 @@ DukaPilot/
 
 ```text
 User ──────── Shop ──────────── Product ──────── StockMovement
-               │                    │
-               ├──── Sale ──────────┘ (SaleItem)
+               │                    │                 │
+               ├──── Sale ──────────┘ (SaleItem)      └──── StockReceipt
+               │       │                                      └──── (StockReceiptItem)
+               │       └──── CashSession
                ├──── Order ──── Supplier
-               │       └────── (OrderItem)
+               │       └──── (OrderItem)
                └──── CustomerOrder
                          └──── (CustomerOrderItem)
 ```
@@ -275,7 +282,7 @@ User ──────── Shop ──────────── Product 
 **Core models:**
 
 - `User` — merchant, supplier, or admin; identified by phone + PIN
-- `Shop` — one shop per merchant (extensible to multi-shop); has name, location, district, category
+- `Shop` — one live shop per merchant; has name, location, district, category, and published catalog settings. Multi-branch is intentionally a future Pro roadmap.
 - `Supplier` — can optionally have a User account (supplier portal)
 - `Product` — SKU, buying/selling/wholesale price, stock level, minimum threshold, expiry date
 - `Sale` + `SaleItem` — each sale records profit per line item; supports POS and ONLINE channels
@@ -283,6 +290,8 @@ User ──────── Shop ──────────── Product 
 - `Expense` — merchant cost tracking by category and date
 - `StaffMember` — staff roster with optional PIN login and role permission flags
 - `StockMovement` — full audit trail of every stock change (IN / OUT / ADJUSTMENT)
+- `StockReceipt` + `StockReceiptItem` — landed-cost receiving with supplier, invoice, costs, items, and linked stock movements
+- `CashSession` — per-cashier Daily Close opening cash, expected cash, counted cash, and variance
 - `Order` + `OrderItem` — merchant-to-supplier purchase orders with status lifecycle
 - `CustomerOrder` + `CustomerOrderItem` — customer-to-merchant orders from public catalog
 - `AuditLog` — records significant actions with user, method, path, IP, and metadata

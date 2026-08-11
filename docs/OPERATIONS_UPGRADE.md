@@ -15,6 +15,8 @@ At close, the cashier enters the cash physically counted. DukaPilot calculates:
 
 Owners can see all of today's sessions; staff can see and close only their own session. Historic transactions made before this release are intentionally not backfilled into a session.
 
+Only **cash** activity recorded while that cashier's session is open contributes to its expected cash. M-Pesa, bank, credit, and transactions recorded before opening a session stay outside the close figure. This makes the close a clear accountability tool, not a retroactive accounting adjustment.
+
 ## Receive Stock
 
 Use **Receive Stock** instead of recording product purchases in Expenses. A receipt stores:
@@ -27,6 +29,8 @@ Use **Receive Stock** instead of recording product purchases in Expenses. A rece
 Additional costs are distributed across the received items by their product cost. The resulting landed unit cost becomes the product's buying price for future sale-profit calculations, while completed sales keep their original historical buying cost.
 
 Receiving an existing supplier order from **Orders** opens a prefilled receipt and marks the order delivered only after the stock receipt is saved.
+
+For an order-linked receipt, the supplier and products must match the selected order. The merchant may record the actual delivered quantity and actual cost, which can differ from what was originally ordered.
 
 ## Receipt Sharing And Printing
 
@@ -42,6 +46,8 @@ For a portable Bluetooth thermal printer, pair it with the Android device first,
 ## QR Ordering Position
 
 Every published shop has a shareable catalog link and downloadable QR code in **Settings > Shop Details**. The new share action prepares a customer-ordering message. Customers can browse the catalog, place an order, and the order appears in DukaPilot for the shop to handle.
+
+Use the QR on WhatsApp Status, a counter sign, packaging, or a customer-facing receipt. Before sharing, verify the shop is published and prices/products are ready for customers to see.
 
 ## Multi-Branch Pro Roadmap
 

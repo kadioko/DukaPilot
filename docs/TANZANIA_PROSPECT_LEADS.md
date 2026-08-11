@@ -38,7 +38,7 @@ Use this as a starter list for founder-led outreach. Verify each contact before 
 
 | Priority | Business | Segment | Location | Public contact | Source | First angle |
 |---|---|---|---|---|---|---|
-| High | Shoppers Supermarket - Mikocheni | Supermarket | Dar es Salaam | 0764285446, mikochenibranch@shoppers.co.tz | https://shoppers.co.tz/ | Multi-branch stock and daily sales visibility |
+| High | Shoppers Supermarket - Mikocheni | Supermarket | Dar es Salaam | 0764285446, mikochenibranch@shoppers.co.tz | https://shoppers.co.tz/ | Inventory, daily sales visibility, and a discovery conversation about future multi-branch needs |
 | High | Shoppers Supermarket - Masaki | Supermarket | Dar es Salaam | 0652774668, masakibranch@shoppers.co.tz | https://shoppers.co.tz/ | Branch-level stock and sales reporting |
 | High | Shoppers Supermarket - Mbezi | Supermarket | Dar es Salaam | 0682311234, mbezibranch@shoppers.co.tz | https://shoppers.co.tz/ | Fast phone-based stock checks |
 | High | Shoppers Supermarket - Mlimani City | Supermarket | Dar es Salaam | 0719382382, mlimanibranch@shoppers.co.tz | https://shoppers.co.tz/ | Daily branch performance |

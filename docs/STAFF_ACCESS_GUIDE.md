@@ -14,10 +14,16 @@ When an owner adds a staff member, they enter the staff member's phone number. T
 | --- | --- | --- |
 | Owner | Sales, stock, staff, reports, expenses | A trusted senior person running the whole shop |
 | Manager | Sales, stock, staff, reports, expenses | Day-to-day shop manager |
-| Cashier | Sales and POS only | Counter cashier |
-| Stock Clerk | Inventory, receiving, stock count | Storekeeper or stock assistant |
+| Cashier | Sales, POS, their own Daily Close session when Sell is enabled | Counter cashier |
+| Stock Clerk | Inventory, Receive Stock, barcode labels, stock count | Storekeeper or stock assistant |
 
 The owner can fine-tune permissions per individual after creating them. Deactivating a staff member immediately blocks their next authenticated request and future login.
+
+## Cashier Daily Close
+
+When a cashier has **Sell** permission, they can open a Daily Close cash session, record the opening cash, and close only their own session. DukaPilot reconciles that session's cash sales, cash debt collections, and cash expenses against the amount they count in the drawer. A cashier cannot close another staff member's session. Owners can review every session for the day.
+
+Cashiers without **Reports** still do not receive buying cost, profit, margin, or shop-wide financial analytics.
 
 ## Share With Staff
 

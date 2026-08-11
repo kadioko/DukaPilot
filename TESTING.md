@@ -32,7 +32,7 @@ npm run build
 
 ## Migration Gate
 
-Railway must apply `20260711001000_financial_integrity_and_supplier_catalog` before the matching frontend is considered fully deployed. Verify:
+Railway must apply `20260811090000_cash_close_and_stock_receipts` (and every earlier migration) before the matching frontend is considered fully deployed. Verify:
 
 - staff phone identities are unique;
 - staff language is stored per staff member;
@@ -46,6 +46,8 @@ Railway must apply `20260711001000_financial_integrity_and_supplier_catalog` bef
 - `20260722001000_push_notifications_and_app_usage` is applied before enabling push; after Railway VAPID secrets are set, run `npm run push:process` once and confirm it reports `configured: true`.
 - `20260712002000_staff_expense_permissions` is applied; owner/manager expense access is preserved and staff expense access is explicit.
 - A staff session without report permission does not receive buying prices, sale profit, or profit analytics data.
+- A cash sale, cash debt collection, and cash expense made during an open cash session are attached to that session.
+- A supplier delivery is received through `Receive Stock`; product cost, transport, other cost, and stock-movement history are saved together before the order becomes `DELIVERED`.
 
 ## High-Risk Regression Checks
 
@@ -62,9 +64,12 @@ Railway must apply `20260711001000_financial_integrity_and_supplier_catalog` bef
 11. Long-press the DukaPilot launcher icon and confirm Sale, Stock, and Debts open their matching authenticated screens.
 12. On Android 15 or 16, test launch on a slow connection, app back navigation, sign-in, offline recovery, sales, inventory, and debt entry from a Play internal-testing install.
 13. Confirm mobile homepage navigation is a compact drawer at 390px width and `/catalog` has a visible H1.
-14. Confirm a supplier catalog product can be imported into inventory, added to an order, and stocked only after delivery confirmation.
+14. Confirm a supplier catalog product can be imported into inventory, added to an order, and received only through Receive Stock with a buying cost.
 15. Enable alerts from Settings, disable them again, and confirm the device no longer appears active in the admin Push and Android activity panel.
 16. Open Sale, Stock, and Debts from Android long-press shortcuts; confirm the matching authenticated shop alone records the shortcut event.
+17. Open a cashier session, record a cash sale, cash debt payment, and cash expense, then close it with a counted cash value. Confirm expected cash and variance are correct.
+18. From an `OUT_FOR_DELIVERY` supplier order, choose Receive Stock, change a delivered quantity if needed, add transport cost, save, and confirm the order is delivered with linked `IN` movements.
+19. Complete a sale and verify the receipt can be shared as WhatsApp text, PNG, PDF, and printed through the device print dialog. On Android, test a paired Bluetooth thermal printer where available.
 
 ## Live URLs
 
@@ -261,10 +266,11 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 5. Open the supplier portal — confirm the PENDING order from Amina appears.
 6. Advance it to CONFIRMED — confirm status updates for both supplier and merchant.
 7. Advance to OUT_FOR_DELIVERY.
-8. Log back in as Amina — find the OUT_FOR_DELIVERY order and click Confirm Delivery.
-9. Confirm the order moves to DELIVERED and stock is incremented.
-10. Create a new order from Amina — then cancel it. Confirm status shows CANCELLED.
-11. Use the reorder button on the DELIVERED order — confirm a new PENDING order is created.
+8. Log back in as Amina — find the OUT_FOR_DELIVERY order and choose Receive Stock.
+9. Confirm the prefilled receipt includes the supplier and products. Enter actual buying cost and any transport/other cost, then save.
+10. Confirm the order moves to DELIVERED, stock is incremented, and the stock receipt history has linked `IN` movements.
+11. Create a new order from Amina — then cancel it. Confirm status shows CANCELLED.
+12. Use the reorder button on the DELIVERED order — confirm a new PENDING order is created.
 
 ### Customer orders — all statuses (use Mama Amina)
 
@@ -510,6 +516,9 @@ Manual post-deploy checks:
 - Offline sales queue syncs after connection returns
 - `/contact`, `/help`, `/demo`, and `/onboarding` render without console errors
 - `/catalog` empty/search state shows merchant education, demo shops, and WhatsApp/register CTAs
+- `/daily-close` lets a cashier reconcile an open cash session, while an owner can review today's sessions
+- `/receiving` records landed cost and linked supplier-order delivery without a direct stock increment bypass
+- Completed sales offer WhatsApp text, PNG, PDF, and browser-print receipt actions
 
 Current sprint checks:
 

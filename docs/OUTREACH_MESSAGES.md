@@ -8,7 +8,7 @@ Habari [Shop Name],
 
 Nimeona duka lenu mtandaoni. Naitwa [Your Name], natengeneza DukaPilot - mfumo wa duka kwenye simu kwa Kiswahili.
 
-DukaPilot inasaidia kufuatilia stock, mauzo, madeni, matumizi na order za supplier. Tunasaidia pia kufanya setup ya mwanzo.
+DukaPilot inasaidia kufuatilia stock, mauzo, madeni, matumizi na order za supplier. Pia ina Daily Close ya kuangalia pesa ya siku na QR/link ya duka kwa oda za wateja. Tunasaidia kufanya setup ya mwanzo.
 
 Kwa sasa tunatafuta maduka machache Tanzania ya kujaribu bure siku 14.
 
@@ -27,6 +27,8 @@ Nimeona mnafanya biashara ya [shop type]. DukaPilot inaweza kusaidia kuona:
 - madeni ya wateja
 - matumizi ya duka
 - order za supplier
+- pesa ya cash mwisho wa siku
+- link au QR ya wateja kuagiza
 
 Ni app ya Kiswahili kwenye simu. Tunafanya guided setup bure kwa maduka ya mwanzo.
 
@@ -60,7 +62,7 @@ Hello [Name/Team],
 
 I found [Shop Name] online and thought DukaPilot could be useful for your shop operations.
 
-DukaPilot is a Kiswahili-first shop management app for Tanzanian merchants. It helps shop owners track stock, sales, customer debts, expenses, supplier orders, and daily business performance from a phone.
+DukaPilot is a Kiswahili-first shop management app for Tanzanian merchants. It helps shop owners track stock, sales, customer debts, expenses, supplier orders, daily cash reconciliation, and customer QR orders from a phone.
 
 We are onboarding the first shops with guided setup and a 14-day free trial. The first setup goal is simple:
 
@@ -84,7 +86,7 @@ Habari [Name/Team],
 
 Nimeona [Shop Name] mtandaoni na ningependa kuwatambulisha DukaPilot.
 
-DukaPilot ni mfumo wa duka kwenye simu unaosaidia kufuatilia stock, mauzo, madeni, matumizi na order za supplier kwa Kiswahili.
+DukaPilot ni mfumo wa duka kwenye simu unaosaidia kufuatilia stock, mauzo, madeni, matumizi, pesa ya siku na order za supplier kwa Kiswahili.
 
 Kwa maduka ya mwanzo tunatoa guided setup na jaribio bure siku 14. Lengo la kwanza ni rahisi: bidhaa 10, mauzo 10, na kurudi kutumia app siku ya pili.
 

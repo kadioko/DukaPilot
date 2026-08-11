@@ -19,6 +19,7 @@
 - Correct zero-stock AI wording and format the WhatsApp summary for copying.
 - Connect production PIN recovery to NextSMS, accept Tanzania `07...` and `+255...` phone formats, and verify a complete owner reset flow.
 - Add platform-admin-only NextSMS monitoring for current SMS credits and recent delivery metadata, without exposing OTP content or full recipient numbers.
+- Add Daily Close / Z-report, landed-cost Receive Stock, shareable receipt files, Bluetooth-printer print path, and visible QR ordering.
 
 ## Next: verify with real merchants
 
@@ -33,9 +34,10 @@
 
 1. Define a separate POS-only permission if cashiers must not see sales history, debt totals, or customer orders.
 2. Add customer lookup/autocomplete and merge rules for repeat credit customers.
-3. Add receipt sharing after a sale and an undo/void process with a clear audit trail.
+3. Validate Daily Close and Receive Stock with 20-30 active single-shop merchants before expanding the accounting model.
 4. Rank AI stock actions by recent sales velocity and margin contribution, not only stock level.
 5. Decide whether expired products should be hidden in POS or shown as blocked with a clear explanation.
+6. Keep multi-branch as a Pro roadmap until real merchants show the branch, transfer, and reporting workflows they need.
 
 ## Next: usability polish
 

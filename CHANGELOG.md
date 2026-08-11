@@ -28,6 +28,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.5.0] - 2026-08-11 - Shop Operations And Customer Ordering
+
+### Added
+
+- Added Daily Close / Z-report cash sessions. Cashiers can record opening cash and close their own session against cash sales, debt collections, and cash expenses; owners can review today's sessions and variance.
+- Added Receive Stock with supplier, invoice, received date, unit buying cost, transport, other costs, landed-cost allocation, and immutable stock-history links.
+- Added PNG and PDF receipt files plus thermal-friendly printing through the browser/device print dialog, including paired Bluetooth printers on Android.
+- Added a share action for published shop links and made QR ordering visible across public product proof.
+- Rebuilt the public About page around the real merchant operating loop, current safeguards, QR ordering, and the one-shop scope.
+
+### Changed
+
+- Supplier-order delivery now hands merchants into Receive Stock rather than directly increasing stock, so landed cost and history are captured before an order becomes delivered.
+- Documented multi-branch as a future Pro roadmap, not a live capability.
+
+---
+
 ## [1.4.1] - 2026-07-12 - Shop Attendant Privacy Controls
 
 ### Added

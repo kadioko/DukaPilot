@@ -11,6 +11,8 @@ The seeder uses Prisma directly to:
 - preserve sale totals, items, receipts, and linked credit-debt dates for existing sales;
 - mark the target as a demo shop and remove it from the public catalog.
 
+The history seed does not create Daily Close sessions or stock receipts. Demonstrate those workflows with a fresh controlled entry during a demo so the opening cash, counted cash, variance, landed cost, and stock history match the values you explain.
+
 It does not change current product stock when it creates synthetic historical sales. This avoids corrupting the demo shop's present-day inventory balance.
 
 ## Safety Guard

@@ -1,6 +1,6 @@
 # DukaPilot Launch Playbook
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 This is the working plan for turning the live DukaPilot product into active merchants, paid shops, and supplier relationships.
 
@@ -18,7 +18,7 @@ What is strong:
 - Backend Sentry monitoring is live on Railway with founder email alerts; the alert path was tested on 2026-08-06.
 - Frontend browser and Next.js server monitoring are live through Vercel and the `javascript-nextjs` Sentry project.
 - Push launch: deploy migration `20260722001000_push_notifications_and_app_usage`, set `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` in Railway, then create a dedicated Railway cron service with start command `npm run push:process` and schedule `0 5 * * *` UTC. Do not expose or commit the private VAPID key.
-- The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog, supplier orders, AI assistant, Swahili/English, and WhatsApp support.
+- The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog/QR customer orders, supplier orders with landed-cost receiving, Daily Close, receipt sharing/printing, AI assistant, Swahili/English, and WhatsApp support.
 - Pricing is understandable for Tanzania: free trial, TZS 15,000/month Basic, TZS 35,000/month Pro.
 - The product has a natural sales motion: WhatsApp support plus M-Pesa payment reference verification.
 - Admin support now has subscription controls, supplier verification, assistant action analytics, offline sync resolution by shop/device, and protected NextSMS balance/delivery monitoring.
@@ -27,7 +27,7 @@ What is strong:
 What should improve before scaling ads:
 
 - The homepage is currently login-first. That is good for returning users, but cold visitors need a clearer promise before the form: "Track stock, sales, debts, and supplier orders in Kiswahili from your phone."
-- Public pages should show screenshots or short videos of dashboard, sales, inventory, catalog, and AI Assistant.
+- Public product proof now shows the daily workflows and QR ordering. Replace illustrative proof with approved real merchant evidence as soon as it is available.
 - Keep Search Console verified, submit the sitemap after public-page changes, and build trustworthy local backlinks; technical metadata and structured data are already in place.
 - Add a stronger WhatsApp CTA for people who are not ready to register: "Tuma WhatsApp tupange setup ya duka lako."
 - Add social proof as soon as the first 3-5 real merchants are onboarded.
@@ -43,6 +43,13 @@ Short Swahili version:
 
 > DukaPilot hukusaidia kufuatilia stock, mauzo, madeni, matumizi na maagizo ya bidhaa kwa Kiswahili kwenye simu.
 
+Operational proof points, used only when they match the merchant's workflow:
+
+- Daily Close answers, "Je, pesa ya leo iko sawa?"
+- Receive Stock captures buying cost, transport, and invoice details before stock is added.
+- A published shop QR turns WhatsApp Status or a counter sign into customer orders.
+- A completed sale can produce a WhatsApp, PNG, PDF, or printed receipt.
+
 Primary buyer:
 
 - Owner-operated shops in Dar es Salaam and other Tanzanian towns.
@@ -56,6 +63,8 @@ Primary pain:
 - "Madeni yanasahaulika."
 - "Order za supplier na customer ziko WhatsApp tu."
 - "Mfanyakazi anaweza kuuza lakini owner haoni vizuri."
+- "Pesa ya droo haifanani na mauzo ya leo."
+- "Gharama ya usafiri na stock haionekani kwenye faida."
 
 Primary hook:
 
@@ -78,7 +87,8 @@ Founder-led close:
 3. Add 10-20 first products together.
 4. Record one sample sale.
 5. Show dashboard, low-stock alert, debt entry, and supplier WhatsApp order.
-6. Schedule a 7-day check-in before trial ends.
+6. Choose one proof point that fits: Daily Close for a cashier-operated shop, Receive Stock for invoice/transport concerns, or QR ordering for remote customers.
+7. Schedule a 7-day check-in before trial ends.
 
 ## Acquisition Channels
 
@@ -171,6 +181,10 @@ Record short phone-screen videos:
 - Create customer debt and mark paid.
 - Low-stock item to supplier WhatsApp order.
 - AI Assistant daily actions.
+- Daily Close: open cash, expected cash, and variance at close.
+- Receive Stock with transport cost and the resulting landed cost.
+- Share the shop QR from Settings and place a customer order from a second phone.
+- Share or print a completed receipt.
 
 Post each video with a single CTA:
 
@@ -242,14 +256,17 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - SMS delivery. Check **Admin Dashboard > SMS** after any PIN-recovery issue; confirm credits are available and distinguish provider delivery status from an unregistered or inactive DukaPilot phone number.
 - Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows without receiving buying costs, margins, shop-wide profit, or AI report data.
 
-## Release Gate - 1.3.0
+## Release Gate - 1.5.0
 
-- Railway migration: `20260710001000_launch_hardening`.
+- Railway migration: `20260811090000_cash_close_and_stock_receipts` (and all prior migrations).
 - Production monitor passes once after Railway and Vercel deploy.
 - Railway logs include `[sentry] Initialized`, and the backend alert drill reaches both Sentry and founder email.
 - Basic account can use one active staff account and cannot use AI routes; Pro and active trial include unlimited staff and AI.
 - Duplicate payment reference returns the existing confirmation without extending time again.
 - Customer orders follow `PENDING -> CONFIRMED -> OUT_FOR_DELIVERY -> DELIVERED`.
+- Supplier orders are received through Receive Stock, which records supplier, costs, stock movements, and marks the order delivered in one transaction.
+- A cashier can close only their own Daily Close session; owner review shows expected cash, counted cash, and variance.
+- Receipt file sharing and browser printing work after a completed sale; test a paired Android Bluetooth printer where a merchant uses one.
 - Mobile Orders has no horizontal page overflow; Sales shows the sticky cart summary.
 - Public catalog contains only published, non-demo shops and supports pagination.
 - Android `1.0.3` / version code `4` targets API 36 and is signed with the existing upload key before Play Console upload.
@@ -259,8 +276,8 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 
 Highest impact for acquisition:
 
-1. Public landing section above login that explains the value in Swahili and English.
-2. Screenshot/video strip on homepage and pricing page.
-3. WhatsApp lead CTA that pre-fills shop type and location.
-4. Admin export or simple CRM notes for trial follow-up.
-5. Public case-study/testimonial section once real merchants are onboarded.
+1. Collect and publish three approved merchant testimonials, shop photos, and specific proof points.
+2. Run short field tests of Daily Close, Receive Stock, QR ordering, and receipt printing with active merchants; record what confuses them.
+3. Add lightweight trial follow-up reporting for activation, second-day return, and conversion.
+4. Test QR shop ordering as a WhatsApp Status and counter-sign campaign with one clear offer per merchant.
+5. Hold multi-branch until 20-30 active single-shop merchants show which transfer, branch, and reporting needs are real.

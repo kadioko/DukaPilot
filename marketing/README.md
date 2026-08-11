@@ -36,6 +36,8 @@ Swahili:
 
 > DukaPilot hukusaidia kufuatilia stock, mauzo, madeni, matumizi na maagizo ya bidhaa kwa Kiswahili kwenye simu.
 
+Use these supporting proof points only when they fit the campaign: Daily Close answers whether the day's cash is correct; Receive Stock captures supplier and landed cost; a shop QR/link takes customer orders; receipts can be shared or printed.
+
 ## Google Play Listing
 
 - App name: `DukaPilot`
@@ -69,6 +71,8 @@ Upload these verified assets:
 - Rekodi mauzo kwa sekunde.
 - Matumizi ya duka yaonekane wazi.
 - Uliza AI Assistant bidhaa gani zinaisha.
+- Je, pesa ya leo iko sawa?
+- Wateja waagize kwa QR ya duka lako.
 
 ## Screenshot Priorities
 
@@ -81,6 +85,9 @@ For ads and store listings, prioritize screenshots that show real merchant value
 5. Supplier WhatsApp order.
 6. AI Assistant daily actions.
 7. Billing and M-Pesa reference flow.
+8. Daily Close with expected cash and variance.
+9. Receive Stock with transport cost and landed cost.
+10. A merchant shop QR and customer-order confirmation.
 
 ## Usage Notes
 

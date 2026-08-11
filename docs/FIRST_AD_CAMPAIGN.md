@@ -185,6 +185,48 @@ CTA:
 
 > Jaribu bure siku 14.
 
+### Ad 11: Cash Close Hook
+
+Headline:
+
+> Je, pesa ya leo iko sawa?
+
+Body:
+
+> DukaPilot Daily Close inaleta pamoja opening cash, mauzo ya cash, makusanyo ya deni na matumizi ya cash. Funga siku ukiwa na jibu wazi.
+
+CTA:
+
+> Tuma WhatsApp tupange demo.
+
+### Ad 12: Shop QR Hook
+
+Headline:
+
+> Wateja waagize kwa QR ya duka lako.
+
+Body:
+
+> Shiriki QR au link ya DukaPilot kwenye WhatsApp Status. Mteja aone bidhaa na atume oda moja kwa moja dukani.
+
+CTA:
+
+> Ongea na DukaPilot.
+
+### Ad 13: True Cost Hook
+
+Headline:
+
+> Bei ya kununua si invoice tu.
+
+Body:
+
+> Pokea stock, weka usafiri na gharama nyingine, kisha ujue gharama halisi ya bidhaa yako kabla ya kupanga faida.
+
+CTA:
+
+> Tuma WhatsApp.
+
 ## Image Creatives
 
 Editable SVG files:
@@ -199,6 +241,8 @@ Editable SVG files:
 - `marketing/ad-creatives/dukapilot-expenses-square.svg`
 - `marketing/ad-creatives/dukapilot-mpesa-story.svg`
 - `marketing/ad-creatives/dukapilot-setup-story.svg`
+
+Next production briefs: create a Daily Close creative from an approved cashier-close screenshot, and a QR-ordering creative from an approved published merchant shop. Do not use a merchant's shop name, QR, sales, or customer information without permission.
 
 Ready-to-share exports:
 
