@@ -59,6 +59,19 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
   await page.getByRole("button", { name: /kamilisha|complete/i }).click();
 
   await expect(page.getByText("DP-000007", { exact: true })).toBeVisible();
+
+  const imageDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: /tuma au pakua risiti kama picha|share or download receipt image/i }).click();
+  const imageFile = await imageDownload;
+  expect(imageFile.suggestedFilename()).toBe("risiti-dp-000007.png");
+  expect(await imageFile.failure()).toBeNull();
+
+  const pdfDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: /tuma au pakua risiti kama PDF|share or download receipt PDF/i }).click();
+  const pdfFile = await pdfDownload;
+  expect(pdfFile.suggestedFilename()).toBe("risiti-dp-000007.pdf");
+  expect(await pdfFile.failure()).toBeNull();
+
   page.once("dialog", async (dialog) => {
     expect(dialog.type()).toBe("prompt");
     await dialog.accept("0712345678");
