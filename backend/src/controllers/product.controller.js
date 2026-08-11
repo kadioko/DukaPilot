@@ -17,6 +17,9 @@ const PRODUCT_IMPORT_COLUMNS = {
   barcode: "barcode",
   expirydate: "expiryDate",
   doesnotexpire: "doesNotExpire",
+  wholesaleenabled: "wholesaleEnabled",
+  wholesaleprice: "wholesalePrice",
+  wholesaleminqty: "wholesaleMinQty",
 };
 
 function asyncHandler(fn) {
@@ -73,12 +76,12 @@ function parseImportDate(value, row, errors) {
   return date;
 }
 
-function parseImportBoolean(value, row, errors) {
+function parseImportBoolean(value, row, errors, field = "doesNotExpire") {
   if (value === undefined || value === null || String(value).trim() === "") return false;
   const normalized = String(value).trim().toLowerCase();
   if (["true", "yes", "1", "ndio"].includes(normalized)) return true;
   if (["false", "no", "0", "hapana"].includes(normalized)) return false;
-  errors.push({ row, field: "doesNotExpire", message: "doesNotExpire must be true or false" });
+  errors.push({ row, field, message: `${field} must be true or false` });
   return false;
 }
 
@@ -139,6 +142,20 @@ function parseProductImport(csv) {
     const minimumStock = parseImportInteger(get("minimumStock"), { row, field: "minimumStock", fallback: 5, errors });
     const doesNotExpire = parseImportBoolean(get("doesNotExpire"), row, errors);
     const expiryDate = doesNotExpire ? null : parseImportDate(get("expiryDate"), row, errors);
+    const wholesaleEnabled = parseImportBoolean(get("wholesaleEnabled"), row, errors, "wholesaleEnabled");
+    const wholesaleValuesProvided = [get("wholesalePrice"), get("wholesaleMinQty")]
+      .some((value) => value !== undefined && value !== null && String(value).trim() !== "");
+    let wholesalePrice = null;
+    let wholesaleMinQty = null;
+    if (wholesaleEnabled) {
+      wholesalePrice = parseImportInteger(get("wholesalePrice"), { row, field: "wholesalePrice", fallback: 0, required: true, errors });
+      wholesaleMinQty = parseImportInteger(get("wholesaleMinQty"), { row, field: "wholesaleMinQty", fallback: 5, minimum: 1, errors });
+      if (wholesalePrice > sellingPrice) {
+        errors.push({ row, field: "wholesalePrice", message: "wholesalePrice cannot be higher than sellingPrice" });
+      }
+    } else if (wholesaleValuesProvided) {
+      errors.push({ row, field: "wholesaleEnabled", message: "Set wholesaleEnabled to true before adding wholesalePrice or wholesaleMinQty" });
+    }
     const barcodeCheck = validateBarcode(get("barcode"));
     if (barcodeCheck.error) errors.push({ row, field: "barcode", message: barcodeCheck.error });
     if (barcodeCheck.value && localBarcodes.has(barcodeCheck.value)) {
@@ -146,7 +163,7 @@ function parseProductImport(csv) {
     }
     if (barcodeCheck.value) localBarcodes.add(barcodeCheck.value);
 
-    products.push({ name, sku, unit, buyingPrice, sellingPrice, currentStock, minimumStock, doesNotExpire, expiryDate, barcode: barcodeCheck.value });
+    products.push({ name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, doesNotExpire, expiryDate, barcode: barcodeCheck.value });
   }
   return { errors, products };
 }

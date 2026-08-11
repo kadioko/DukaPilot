@@ -190,6 +190,45 @@ test("CSV import creates products and an opening stock movement for each stocked
   assert.deepEqual(movements, [{ type: "IN", quantity: 8, note: "Opening stock from CSV import", productId: "prod-1" }]);
 });
 
+test("CSV import keeps wholesale off by default and enables it only when explicitly requested", async () => {
+  const created = [];
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findMany: async () => [] },
+    $transaction: async (work) => work({
+      product: { create: async ({ data }) => { created.push(data); return { id: `prod-${created.length}`, ...data, supplier: null }; } },
+      stockMovement: { create: async () => {} },
+    }),
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.importCsv({
+    user: { userId: "user-1" },
+    body: { csv: "name,buyingPrice,sellingPrice,wholesaleEnabled,wholesalePrice,wholesaleMinQty\nRice,2000,3000,,,\nBeans,1500,2400,true,2000," },
+  }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(created[0].wholesalePrice, null);
+  assert.equal(created[0].wholesaleMinQty, null);
+  assert.equal(created[1].wholesalePrice, 2000);
+  assert.equal(created[1].wholesaleMinQty, 5);
+});
+
+test("CSV import rejects a wholesale price until wholesale is explicitly enabled", async () => {
+  const prismaMock = { shop: { findUnique: async () => ({ id: "shop-1" }) } };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.importCsv({
+    user: { userId: "user-1" },
+    body: { csv: "name,buyingPrice,sellingPrice,wholesaleEnabled,wholesalePrice\nRice,2000,3000,false,2500" },
+  }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.details[0].field, "wholesaleEnabled");
+});
+
 test("CSV import rejects blank required prices before writing anything", async () => {
   const prismaMock = { shop: { findUnique: async () => ({ id: "shop-1" }) } };
   const ctrl = loadController(prismaMock);

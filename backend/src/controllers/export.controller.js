@@ -73,7 +73,7 @@ const exportInventoryCsv = asyncHandler(async (req, res) => {
     take: 1000,
   });
 
-  const rows = [["productId", "shop", "name", "sku", "unit", "buyingPrice", "sellingPrice", "currentStock", "minimumStock", "supplier", "supplierPhone"]];
+  const rows = [["productId", "shop", "name", "sku", "unit", "buyingPrice", "sellingPrice", "wholesaleEnabled", "wholesalePrice", "wholesaleMinQty", "currentStock", "minimumStock", "supplier", "supplierPhone"]];
   for (const product of products) {
     rows.push([
       product.id,
@@ -83,6 +83,9 @@ const exportInventoryCsv = asyncHandler(async (req, res) => {
       product.unit,
       product.buyingPrice,
       product.sellingPrice,
+      product.wholesalePrice != null ? "true" : "false",
+      product.wholesalePrice ?? "",
+      product.wholesaleMinQty ?? "",
       product.currentStock,
       product.minimumStock,
       product.supplier?.name || "",
