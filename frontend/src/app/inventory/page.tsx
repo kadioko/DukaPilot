@@ -19,6 +19,8 @@ import {
   MoreVertical,
   Download,
   FileUp,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
@@ -50,6 +52,15 @@ interface Supplier {
   phone: string;
 }
 
+interface ProductPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+const PRODUCTS_PER_PAGE = 50;
+
 function expiryStatus(p: Product, lang: string): { label: string; color: string } | null {
   if (p.doesNotExpire) return { label: lang === "en" ? "Does not expire" : "Haiishi muda", color: "bg-gray-100 text-gray-500" };
   if (!p.expiryDate) return null;
@@ -78,6 +89,14 @@ export default function InventoryPage() {
     return new URLSearchParams(window.location.search).get("action") || "";
   });
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState<ProductPagination>({
+    page: 1,
+    limit: PRODUCTS_PER_PAGE,
+    total: 0,
+    totalPages: 0,
+  });
+  const [stockSummary, setStockSummary] = useState({ lowStock: 0, outOfStock: 0 });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -112,11 +131,32 @@ export default function InventoryPage() {
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
-      const data = await api.get<{ products: Product[] }>(`/products?${params}`);
+      params.set("page", String(currentPage));
+      params.set("limit", String(PRODUCTS_PER_PAGE));
+      if (lowStockOnly) params.set("lowStock", "true");
+      const [data, lowStockData] = await Promise.all([
+        api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?${params}`),
+        api.get<{ products: Product[] }>("/products/low-stock").catch(() => null),
+      ]);
       if (requestId !== latestLoad.current) return;
-      let list = data.products;
-      if (lowStockOnly) list = list.filter((p) => p.currentStock <= p.minimumStock);
-      setProducts(list);
+      const nextPagination = data.pagination || {
+        page: currentPage,
+        limit: PRODUCTS_PER_PAGE,
+        total: data.products.length,
+        totalPages: data.products.length ? 1 : 0,
+      };
+      if (nextPagination.totalPages > 0 && currentPage > nextPagination.totalPages) {
+        setCurrentPage(nextPagination.totalPages);
+        return;
+      }
+      setProducts(data.products);
+      setPagination(nextPagination);
+      if (lowStockData) {
+        setStockSummary({
+          lowStock: lowStockData.products.filter((product) => product.currentStock > 0).length,
+          outOfStock: lowStockData.products.filter((product) => product.currentStock === 0).length,
+        });
+      }
     } catch (value: unknown) {
       if (requestId === latestLoad.current) {
         toast(value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia bidhaa." : "Could not load products."), "error");
@@ -124,7 +164,7 @@ export default function InventoryPage() {
     } finally {
       if (requestId === latestLoad.current) setLoading(false);
     }
-  }, [search, lowStockOnly, toast, lang]);
+  }, [search, lowStockOnly, currentPage, toast, lang]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => {
@@ -367,14 +407,14 @@ export default function InventoryPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
               aria-label={t("inventory.search", lang)}
               placeholder={t("inventory.search", lang)}
               className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
           <button
-            onClick={() => setLowStockOnly(!lowStockOnly)}
+            onClick={() => { setLowStockOnly((current) => !current); setCurrentPage(1); }}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
               lowStockOnly
                 ? "bg-amber-50 border-amber-300 text-amber-700"
@@ -389,9 +429,9 @@ export default function InventoryPage() {
         {/* Summary stats */}
         <div className="grid grid-cols-3 gap-2 mb-4">
           {[
-            { label: t("inventory.allProducts", lang), value: products.length },
-            { label: t("inventory.lowStockCount", lang), value: products.filter((p) => p.currentStock <= p.minimumStock && p.currentStock > 0).length, color: "text-amber-600" },
-            { label: t("inventory.outOfStockCount", lang), value: products.filter((p) => p.currentStock === 0).length, color: "text-red-600" },
+            { label: t("inventory.allProducts", lang), value: pagination.total },
+            { label: t("inventory.lowStockCount", lang), value: stockSummary.lowStock, color: "text-amber-600" },
+            { label: t("inventory.outOfStockCount", lang), value: stockSummary.outOfStock, color: "text-red-600" },
           ].map((stat) => (
             <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
               <p className={`text-lg font-bold ${stat.color || "text-gray-900"}`}>{stat.value}</p>
@@ -410,6 +450,7 @@ export default function InventoryPage() {
             <p className="text-gray-400 text-sm mt-1">{t("inventory.noProductsHint", lang)}</p>
           </div>
         ) : (
+          <>
           <div className="space-y-2">
             {products.map((p) => {
               const isLow = p.currentStock <= p.minimumStock && p.currentStock > 0;
@@ -503,6 +544,38 @@ export default function InventoryPage() {
               );
             })}
           </div>
+          {pagination.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-200 pt-3">
+              <p className="text-xs text-gray-500" aria-live="polite">
+                {lang === "sw"
+                  ? `Bidhaa ${((pagination.page - 1) * pagination.limit) + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)} kati ya ${pagination.total}`
+                  : `${((pagination.page - 1) * pagination.limit) + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)} of ${pagination.total} products`}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={pagination.page <= 1}
+                  aria-label={lang === "sw" ? "Ukurasa uliopita" : "Previous page"}
+                  title={lang === "sw" ? "Ukurasa uliopita" : "Previous page"}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(pagination.totalPages, page + 1))}
+                  disabled={pagination.page >= pagination.totalPages}
+                  aria-label={lang === "sw" ? "Ukurasa unaofuata" : "Next page"}
+                  title={lang === "sw" ? "Ukurasa unaofuata" : "Next page"}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 

@@ -59,6 +59,34 @@ test("product list returns paginated results", async () => {
   assert.equal(res.payload.products.length, 1);
 });
 
+test("low-stock pagination filters the whole catalogue before selecting a page", async () => {
+  let findManyArgs;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findMany: async (args) => {
+        findManyArgs = args;
+        return [
+          { id: "prod-1", name: "Enough stock", currentStock: 9, minimumStock: 5 },
+          { id: "prod-2", name: "Low stock first", currentStock: 5, minimumStock: 5 },
+          { id: "prod-3", name: "Low stock later", currentStock: 1, minimumStock: 5 },
+        ];
+      },
+      count: async () => { throw new Error("low-stock results should be counted after filtering"); },
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.list({ user: { userId: "user-1" }, query: { lowStock: "true", page: "2", limit: "1" } }, res);
+
+  assert.equal(findManyArgs.skip, undefined);
+  assert.equal(findManyArgs.take, undefined);
+  assert.equal(res.payload.pagination.total, 2);
+  assert.equal(res.payload.pagination.totalPages, 2);
+  assert.deepEqual(res.payload.products.map((item) => item.id), ["prod-3"]);
+});
+
 test("getLowStock filters products in JavaScript using minimumStock", async () => {
   const prismaMock = {
     shop: {

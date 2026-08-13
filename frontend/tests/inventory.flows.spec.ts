@@ -230,3 +230,69 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(hasHorizontalOverflow).toBe(false);
 });
+
+test("inventory shows the real total and lets merchants reach later product pages", async ({ page }) => {
+  const products = Array.from({ length: 101 }, (_, index) => ({
+    id: `prod-${index + 1}`,
+    name: `Product ${String(index + 1).padStart(3, "0")}`,
+    sku: `SKU${index + 1}`,
+    unit: "pcs",
+    buyingPrice: 1000,
+    sellingPrice: 1500,
+    currentStock: 10,
+    minimumStock: 5,
+    isActive: true,
+    expiryDate: null,
+    doesNotExpire: true,
+  }));
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
+  });
+
+  await page.route("**/*api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: { name: "Test Merchant", role: "MERCHANT", language: "en", shop: { name: "Test Shop" } } }),
+    });
+  });
+  await page.route("**/*api/products/low-stock", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
+  });
+  await page.route("**/*api/suppliers", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ suppliers: [] }) });
+  });
+  await page.route("**/*api/subscription/status", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
+  });
+  await page.route("**/*api/notifications", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) });
+  });
+  await page.route("**/*api/products?*", async (route) => {
+    const url = new URL(route.request().url());
+    const currentPage = Number(url.searchParams.get("page") || "1");
+    const limit = Number(url.searchParams.get("limit") || "50");
+    const start = (currentPage - 1) * limit;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        products: products.slice(start, start + limit),
+        pagination: { page: currentPage, limit, total: products.length, totalPages: Math.ceil(products.length / limit) },
+      }),
+    });
+  });
+
+  await page.goto("/inventory");
+
+  await expect(page.getByText("101", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Product 001")).toBeVisible();
+  await expect(page.getByText("Product 101")).not.toBeVisible();
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page.getByText("Product 051")).toBeVisible();
+  await expect(page.getByText("51-100 of 101 products")).toBeVisible();
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page.getByText("Product 101")).toBeVisible();
+  await expect(page.getByText("101-101 of 101 products")).toBeVisible();
+});

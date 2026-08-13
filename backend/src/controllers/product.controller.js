@@ -190,23 +190,29 @@ const list = asyncHandler(async (req, res) => {
     { barcode: { contains: String(search).trim().toUpperCase() } },
   ];
 
-  const [products, total] = await Promise.all([
-    prisma.product.findMany({
-      where,
-      include: { supplier: { select: { id: true, name: true, phone: true } } },
-      orderBy: { name: "asc" },
-      skip,
-      take: limitNumber,
-    }),
-    prisma.product.count({ where }),
-  ]);
-
-  const result = lowStock === "true"
-    ? products.filter((p) => p.currentStock <= p.minimumStock)
-    : products;
+  // Low stock compares two product fields, so filter before slicing the result
+  // into pages. Filtering after `take` made products beyond page one invisible.
+  const productsQuery = {
+    where,
+    include: { supplier: { select: { id: true, name: true, phone: true } } },
+    orderBy: { name: "asc" },
+  };
+  let products;
+  let total;
+  if (lowStock === "true") {
+    const lowStockProducts = (await prisma.product.findMany(productsQuery))
+      .filter((product) => product.currentStock <= product.minimumStock);
+    total = lowStockProducts.length;
+    products = lowStockProducts.slice(skip, skip + limitNumber);
+  } else {
+    [products, total] = await Promise.all([
+      prisma.product.findMany({ ...productsQuery, skip, take: limitNumber }),
+      prisma.product.count({ where }),
+    ]);
+  }
 
   res.json({
-    products: result.map((product) => redactProduct(product, req)),
+    products: products.map((product) => redactProduct(product, req)),
     pagination: {
       page: pageNumber,
       limit: limitNumber,
