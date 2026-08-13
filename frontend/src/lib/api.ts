@@ -4,6 +4,24 @@ const PROD_API_URL = "https://dukapilotproduction.up.railway.app/api";
 const BROWSER_API_PATH = "/_api";
 const REQUEST_TIMEOUT_MS = 20000;
 
+export interface ApiErrorDetail {
+  row?: number;
+  field?: string;
+  message: string;
+}
+
+export class ApiError extends Error {
+  code?: string;
+  details?: ApiErrorDetail[];
+
+  constructor(message: string, payload?: { code?: string; details?: ApiErrorDetail[] }) {
+    super(message);
+    this.name = "ApiError";
+    this.code = payload?.code;
+    this.details = payload?.details;
+  }
+}
+
 function normalizeBaseUrl(url: string): string {
   const normalized = url.trim().replace(/\n/g, "").replace(/\/$/, "");
   const staleHost = ["dukaos", "production.up.railway.app"].join("-");
@@ -142,7 +160,7 @@ async function request<T>(
         ? payload || `Request failed with status ${res.status}`
         : payload?.error || `Request failed with status ${res.status}`;
 
-    throw new Error(getFriendlyErrorMessage(rawMessage, lang));
+    throw new ApiError(getFriendlyErrorMessage(rawMessage, lang), typeof payload === "string" ? undefined : payload);
   }
 
   if (!isJson) {

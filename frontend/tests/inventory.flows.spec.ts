@@ -137,6 +137,18 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.route("**/*api/products/import-csv", async (route) => {
     expect(route.request().method()).toBe("POST");
     const body = JSON.parse(route.request().postData() || "{}");
+    if (body.csv.includes("Broken price")) {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "The CSV has errors. Fix them and import again.",
+          code: "PRODUCT_CSV_INVALID",
+          details: [{ row: 2, field: "buyingPrice", message: "buyingPrice is required" }],
+        }),
+      });
+      return;
+    }
     expect(body.csv).toContain("Soda 300ml");
     await route.fulfill({
       status: 201,
@@ -195,6 +207,17 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   });
   await page.getByRole("button", { name: /import products|ingiza bidhaa$/i }).click();
   await expect(page.getByText(/1 products imported|bidhaa 1 zimeongezwa/i)).toBeVisible();
+
+  await page.getByRole("button", { name: /import csv|ingiza csv/i }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "broken-products.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("name,buyingPrice,sellingPrice\nBroken price,,800\n"),
+  });
+  await page.getByRole("button", { name: /import products|ingiza bidhaa$/i }).click();
+  await expect(page.getByText(/row 2 - buyingPrice/i)).toBeVisible();
+  await expect(page.getByText("buyingPrice is required")).toBeVisible();
+  await page.getByRole("button", { name: /^cancel$|^ghairi$/i }).click();
 
   await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
   await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();

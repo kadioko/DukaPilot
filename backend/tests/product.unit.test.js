@@ -243,3 +243,41 @@ test("CSV import rejects blank required prices before writing anything", async (
   assert.equal(res.payload.code, "PRODUCT_CSV_INVALID");
   assert.equal(res.payload.details[0].field, "buyingPrice");
 });
+
+test("CSV import accepts whole TZS amounts formatted with commas or spaces", async () => {
+  const created = [];
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findMany: async () => [] },
+    $transaction: async (work) => work({
+      product: { create: async ({ data }) => { created.push(data); return { id: `prod-${created.length}`, ...data, supplier: null }; } },
+      stockMovement: { create: async () => {} },
+    }),
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.importCsv({
+    user: { userId: "user-1" },
+    body: { csv: "name,buyingPrice,sellingPrice,wholesaleEnabled,wholesalePrice\nBrake pad,\"1,600\",\"3 000\",true,TZS 2300" },
+  }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(created[0].buyingPrice, 1600);
+  assert.equal(created[0].sellingPrice, 3000);
+  assert.equal(created[0].wholesalePrice, 2300);
+});
+
+test("CSV import rejects malformed grouped TZS amounts", async () => {
+  const prismaMock = { shop: { findUnique: async () => ({ id: "shop-1" }) } };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.importCsv({
+    user: { userId: "user-1" },
+    body: { csv: "name,buyingPrice,sellingPrice\nRice,\"1,23,4\",3000" },
+  }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.details[0].field, "buyingPrice");
+});

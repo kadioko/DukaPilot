@@ -8,7 +8,7 @@ Use **Inventory > Import CSV** when you already have a product list in Excel or 
 4. Save or download the sheet as **CSV**.
 5. Select the CSV file in DukaPilot and choose **Import products**.
 
-The required columns are `name`, `buyingPrice`, and `sellingPrice`. Prices must be whole TZS amounts. The template also includes optional `sku`, `unit`, `currentStock`, `minimumStock`, `barcode`, `expiryDate`, and `doesNotExpire` columns.
+The required columns are `name`, `buyingPrice`, and `sellingPrice`. Prices must be whole TZS amounts. You can write a price as `12500`, `12,500`, `12 500`, or `TZS 12,500`; DukaPilot reads all four as TZS 12,500. The template also includes optional `sku`, `unit`, `currentStock`, `minimumStock`, `barcode`, `expiryDate`, and `doesNotExpire` columns.
 
 Wholesale is explicitly **off by default** for every imported product. To enable it for one product, use these optional columns:
 
@@ -22,4 +22,4 @@ For example: `Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true,true,2500,5`. Do not en
 
 Leave optional cells blank when they do not apply. DukaPilot uses opening stock `0` and minimum stock `5` when those values are blank. For a product with an expiry date, write it as `YYYY-MM-DD`, for example `2026-12-31`. Use `true` in `doesNotExpire` for items that never expire.
 
-Each import accepts up to 200 products. DukaPilot checks every row before adding anything; if there is an error, correct the stated row and import the file again. Opening stock added by import is recorded in stock history.
+Each import accepts up to 200 products. DukaPilot checks every row before adding anything, so a partially wrong file never creates only some products. If there is an error, the import window shows the row number, column, and reason. Common corrections are adding a missing `buyingPrice`, and making sure `wholesalePrice` is not higher than `sellingPrice`. Opening stock added by import is recorded in stock history.

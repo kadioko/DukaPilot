@@ -53,7 +53,15 @@ function parseImportInteger(value, { row, field, fallback, minimum = 0, required
     if (required) errors.push({ row, field, message: `${field} is required` });
     return fallback;
   }
-  const parsed = Number(String(value).trim());
+  const raw = String(value).trim();
+  // CSVs opened in Excel commonly format TZS as 12,500 or 12 500. Keep the
+  // import friendly while still refusing decimals and malformed text.
+  const amount = raw.replace(/^TZS\s*/i, "").trim();
+  const validAmount = /^\d+$/.test(amount)
+    || /^\d{1,3}(?:,\d{3})+$/.test(amount)
+    || /^\d{1,3}(?:\s\d{3})+$/.test(amount);
+  const normalized = validAmount ? amount.replace(/[\s,]/g, "") : "";
+  const parsed = normalized ? Number(normalized) : Number.NaN;
   if (!Number.isInteger(parsed) || parsed < minimum) {
     errors.push({ row, field, message: `${field} must be a whole number${minimum > 0 ? ` of at least ${minimum}` : " of 0 or more"}` });
     return fallback;
