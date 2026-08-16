@@ -14,6 +14,18 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (value: st
     let controls: { stop: () => void } | undefined;
     let stopped = false;
     const stop = () => { stopped = true; controls?.stop(); };
+    const handleCameraCapabilityRejection = (event: PromiseRejectionEvent) => {
+      const message = event.reason instanceof Error ? event.reason.message : String(event.reason || "");
+      if (!message.includes("setPhotoOptions failed")) return;
+
+      // Facebook's Android in-app browser can reject a camera capability ZXing probes for.
+      // Keep the manual entry fallback usable and prevent this known browser limitation from reaching Sentry.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      stop();
+      setMessage("Camera settings are not supported here. Enter the barcode below.");
+    };
+    window.addEventListener("unhandledrejection", handleCameraCapabilityRejection, true);
     (async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
         setMessage("This browser cannot open the camera. Enter the barcode below.");
@@ -46,7 +58,10 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (value: st
         setMessage("Camera permission was not granted. Enter the barcode below.");
       }
     })();
-    return stop;
+    return () => {
+      window.removeEventListener("unhandledrejection", handleCameraCapabilityRejection, true);
+      stop();
+    };
   }, [onDetected]);
 
   const submit = () => {
