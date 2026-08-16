@@ -390,15 +390,18 @@ export default function SalesPage() {
   }
 
   const handleBarcode = useCallback(async (value: string) => {
-    setScannerOpen(false);
     const normalized = value.trim().toUpperCase();
     try {
       const data = await api.get<{ product: Product }>(`/barcodes/lookup/${encodeURIComponent(normalized)}?context=POS`, lang);
       addToCart(data.product);
       signalScanSuccess();
       toast(lang === "sw" ? `${data.product.name} imeongezwa.` : `${data.product.name} added.`, "success");
+      setScannerOpen(false);
     } catch (error: unknown) {
-      if (error instanceof Error && error.message === "This barcode was not found.") setUnknownBarcode(normalized);
+      if (error instanceof Error && error.message === "This barcode was not found.") {
+        setScannerOpen(false);
+        setUnknownBarcode(normalized);
+      }
       else toast(error instanceof Error ? error.message : "Unable to scan barcode", "error");
     }
   }, [lang, toast]);
