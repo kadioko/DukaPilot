@@ -24,6 +24,7 @@ import {
   ScanLine,
   WalletCards,
   PackageCheck,
+  Gift,
 } from "lucide-react";
 import { clearToken, api, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -62,6 +63,7 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses";
   feature?: "staff" | "assistant" | "exports";
+  ownerOnly?: boolean;
   group?: "overview" | "ai" | "sell" | "stock" | "money" | "manage";
 }
 
@@ -81,6 +83,7 @@ const merchantNav: NavItem[] = [
   { href: "/profit", labelKey: "nav.profit", icon: ChartNoAxesCombined, permission: "canViewReports", group: "money" },
   { href: "/billing", labelKey: "nav.billing", icon: CreditCard, permission: "canManageStaff", group: "money" },
   { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff", feature: "staff", group: "manage" },
+  { href: "/referrals", labelKey: "nav.referrals", icon: Gift, ownerOnly: true, group: "manage" },
   { href: "/settings", labelKey: "nav.settings", icon: Settings, group: "manage" },
   { href: "/reports", labelKey: "nav.reportIssue", icon: AlertTriangle, group: "manage" },
 ];
@@ -166,7 +169,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
       ? supplierNav
       : merchantNav.filter((item) =>
           (!user?.staff || !item.permission || user.staff.permissions[item.permission]) &&
-          (!item.feature || user?.features?.[item.feature] !== false)
+          (!item.feature || user?.features?.[item.feature] !== false) &&
+          (!item.ownerOnly || !user?.staff)
         );
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
   const subscriptionNeedsPayment = subscription?.status === "expired" || subscription?.status === "suspended" || subscription?.isActive === false;

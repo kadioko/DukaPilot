@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 const SALES_REQUIRED = 10;
 const REWARD_DAYS = 7;
@@ -25,6 +26,63 @@ async function completeSaleCounts(client, shopIds) {
   return new Map(rows.map((row) => [row.shopId, row._count.id]));
 }
 
+async function qualifyPendingReferrals(client, referrals) {
+  const saleCounts = await completeSaleCounts(client, referrals.map((referral) => referral.referredShopId));
+  const newlyQualifiedIds = referrals
+    .filter((referral) => referral.status === "PENDING" && (saleCounts.get(referral.referredShopId) || 0) >= SALES_REQUIRED)
+    .map((referral) => referral.id);
+
+  if (newlyQualifiedIds.length) {
+    await client.shopReferral.updateMany({
+      where: { id: { in: newlyQualifiedIds }, status: "PENDING" },
+      data: { status: "QUALIFIED", qualifiedAt: new Date() },
+    });
+  }
+
+  return { saleCounts, newlyQualifiedIds };
+}
+
+const getMyReferrals = asyncHandler(async (req, res) => {
+  if (req.user.staffId) return res.status(403).json({ error: "Only the shop owner can view referral rewards" });
+
+  const shopId = await getShopIdForUser(req.user);
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: {
+      id: true,
+      referralCode: true,
+      referralsMade: {
+        include: {
+          referredShop: { select: { id: true, name: true, createdAt: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      },
+    },
+  });
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const { saleCounts, newlyQualifiedIds } = await qualifyPendingReferrals(prisma, shop.referralsMade);
+  res.json({
+    referralCode: shop.referralCode,
+    salesRequired: SALES_REQUIRED,
+    rewardDays: REWARD_DAYS,
+    referrals: shop.referralsMade.map((referral) => {
+      const salesCount = saleCounts.get(referral.referredShopId) || 0;
+      const status = newlyQualifiedIds.includes(referral.id) ? "QUALIFIED" : referral.status;
+      return {
+        id: referral.id,
+        status,
+        salesCount,
+        salesRemaining: Math.max(0, SALES_REQUIRED - salesCount),
+        qualifiedAt: referral.qualifiedAt,
+        rewardedAt: referral.rewardedAt,
+        referredShop: referral.referredShop,
+      };
+    }),
+  });
+});
+
 // Admin: a truthful queue of referrals and their qualification progress.
 const adminListReferrals = asyncHandler(async (req, res) => {
   const status = String(req.query.status || "ALL").toUpperCase();
@@ -42,18 +100,7 @@ const adminListReferrals = asyncHandler(async (req, res) => {
     take: 300,
   });
 
-  const saleCounts = await completeSaleCounts(prisma, referrals.map((referral) => referral.referredShopId));
-  const now = new Date();
-  const newlyQualifiedIds = referrals
-    .filter((referral) => referral.status === "PENDING" && (saleCounts.get(referral.referredShopId) || 0) >= SALES_REQUIRED)
-    .map((referral) => referral.id);
-
-  if (newlyQualifiedIds.length) {
-    await prisma.shopReferral.updateMany({
-      where: { id: { in: newlyQualifiedIds }, status: "PENDING" },
-      data: { status: "QUALIFIED", qualifiedAt: now },
-    });
-  }
+  const { saleCounts, newlyQualifiedIds } = await qualifyPendingReferrals(prisma, referrals);
 
   res.json({
     salesRequired: SALES_REQUIRED,
@@ -157,4 +204,4 @@ const adminRejectReferral = asyncHandler(async (req, res) => {
   res.json({ message: "Referral marked not valid" });
 });
 
-module.exports = { adminListReferrals, adminRewardReferral, adminRejectReferral, SALES_REQUIRED, REWARD_DAYS };
+module.exports = { getMyReferrals, adminListReferrals, adminRewardReferral, adminRejectReferral, SALES_REQUIRED, REWARD_DAYS };

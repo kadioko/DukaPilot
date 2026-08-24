@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
+const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
 const authPath = path.resolve(__dirname, "../src/controllers/auth.controller.js");
 const referralPath = path.resolve(__dirname, "../src/controllers/referral.controller.js");
 
@@ -100,4 +101,35 @@ test("admin referral reward extends an active paid subscription once", async () 
   assert.equal(referralUpdate.rewardedBy, "admin-1");
   assert.equal(shopUpdate.subscriptionEndsAt.toISOString(), "2030-01-17T00:00:00.000Z");
   assert.equal(req.audit.action, "admin.referral.rewarded");
+});
+
+test("shop owners can read only their own referral link and progress", async () => {
+  mockPrisma({
+    shop: {
+      findUnique: async ({ where }) => where.userId
+        ? { id: "shop-owner" }
+        : { id: "shop-owner", referralCode: "DP-S-SHOP-OWNER", referralsMade: [] },
+    },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[referralPath];
+  const { getMyReferrals } = require(referralPath);
+  const res = response();
+
+  await getMyReferrals({ user: { userId: "owner-1", role: "MERCHANT" } }, res, (error) => { throw error; });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.referralCode, "DP-S-SHOP-OWNER");
+  assert.deepEqual(res.payload.referrals, []);
+});
+
+test("staff cannot view the shop owner's referral rewards", async () => {
+  mockPrisma({});
+  delete require.cache[referralPath];
+  const { getMyReferrals } = require(referralPath);
+  const res = response();
+
+  await getMyReferrals({ user: { userId: "owner-1", staffId: "staff-1", role: "MERCHANT" } }, res, (error) => { throw error; });
+
+  assert.equal(res.statusCode, 403);
 });

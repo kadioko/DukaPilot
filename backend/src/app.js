@@ -31,6 +31,7 @@ const barcodeRoutes = require("./routes/barcode.routes");
 const stockCountRoutes = require("./routes/stockCount.routes");
 const cashSessionRoutes = require("./routes/cashSession.routes");
 const stockReceiptRoutes = require("./routes/stockReceipt.routes");
+const referralRoutes = require("./routes/referral.routes");
 const metaWhatsAppWebhookRoutes = require("./routes/metaWhatsAppWebhook.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
@@ -154,6 +155,7 @@ app.use("/api/barcodes", barcodeRoutes);
 app.use("/api/stock-counts", stockCountRoutes);
 app.use("/api/cash-sessions", cashSessionRoutes);
 app.use("/api/stock-receipts", stockReceiptRoutes);
+app.use("/api/referrals", referralRoutes);
 
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "API route not found" });
