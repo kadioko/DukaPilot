@@ -85,13 +85,21 @@ export function clearReferralCode() {
   }
 }
 
-export function trackMarketingEvent(eventName: "page_view" | "cta_click" | "whatsapp_click" | "registration_started", details: Record<string, string> = {}) {
+export type MarketingEventName = "store_click" | "signup_started" | "trial_started" | "whatsapp_started";
+
+export function trackMarketingEvent(eventName: MarketingEventName) {
   if (typeof window === "undefined") return;
   const attribution = captureAttribution();
   fetch("/_api/public/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     keepalive: true,
-    body: JSON.stringify({ eventName, ...attribution, details }),
+    body: JSON.stringify({
+      eventName,
+      sessionId: attribution.sessionId,
+      product: "dukapilot_web",
+      source: attribution.source,
+      campaign: attribution.campaign,
+    }),
   }).catch(() => {});
 }

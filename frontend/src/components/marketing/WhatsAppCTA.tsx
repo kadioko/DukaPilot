@@ -56,7 +56,7 @@ export default function WhatsAppCTA({
     <a
       href={href}
       onClick={(event) => {
-        trackMarketingEvent("whatsapp_click", { intent });
+        trackMarketingEvent("whatsapp_started");
         const attribution = getAttribution();
         if (!attribution.source || attribution.source === "direct") return;
         event.preventDefault();

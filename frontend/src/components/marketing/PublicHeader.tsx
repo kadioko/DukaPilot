@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
 import { setLanguage, useLang, type Lang } from "@/lib/i18n";
+import { trackMarketingEvent } from "@/lib/marketing";
 import clsx from "clsx";
 
 const navItems = [
@@ -30,6 +31,7 @@ export default function PublicHeader({ lang: langProp, onLanguageChange, onStart
   const changeLanguage = onLanguageChange || setLanguage;
   const handleStart = () => {
     setMobileOpen(false);
+    trackMarketingEvent("store_click");
     onStart?.();
   };
 
@@ -38,7 +40,7 @@ export default function PublicHeader({ lang: langProp, onLanguageChange, onStart
       {lang === "sw" ? "Anza bure" : "Start free"}
     </button>
   ) : (
-    <Link prefetch={false} href="/register" onClick={() => setMobileOpen(false)} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-bold text-brand-800 hover:bg-brand-50">
+    <Link prefetch={false} href="/register" onClick={handleStart} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-bold text-brand-800 hover:bg-brand-50">
       {lang === "sw" ? "Anza bure" : "Start free"}
     </Link>
   );

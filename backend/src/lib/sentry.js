@@ -16,6 +16,7 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV || "development",
+    sendDefaultPii: false,
     tracesSampleRate: 0.1, // 10% of transactions
     ignoreErrors: [
       "Unauthorized",

@@ -63,30 +63,57 @@ test("merchant registration saves sanitized campaign attribution on the new shop
   assert.equal(createdShop.acquisitionContent, "status-01");
 });
 
-test("public marketing events persist only the approved anonymous fields", async () => {
-  let createdEvent;
+test("public marketing events accept only the four anonymous funnel events", async () => {
+  const createdEvents = [];
   mockPrisma({
-    marketingEvent: { create: async ({ data }) => { createdEvent = data; return { id: "event-1", ...data }; } },
+    marketingEvent: { create: async ({ data }) => { createdEvents.push(data); return { id: `event-${createdEvents.length}`, ...data }; } },
   });
   delete require.cache[publicRoutesPath];
   const router = require(publicRoutesPath);
   const eventsLayer = router.stack.find((layer) => layer.route?.path === "/events" && layer.route.methods.post);
   const handler = eventsLayer.route.stack[0].handle;
-  const req = {
-    body: {
-      eventName: "whatsapp_click",
-      sessionId: "session-12345",
-      source: "instagram",
-      campaign: "launch-july",
-      details: { intent: "setup", unexpected: "do-not-store" },
-    },
-  };
-  const res = response();
+  for (const eventName of ["store_click", "signup_started", "trial_started", "whatsapp_started"]) {
+    const res = response();
+    await handler({
+      body: {
+        eventName,
+        sessionId: "a0b1c2d3-e4f5-6789-abcd-ef0123456789",
+        product: "dukapilot_web",
+        source: "instagram",
+        campaign: "launch-august",
+        phone: "+255700000001",
+        email: "amina@example.com",
+        details: { path: "/sales", customerName: "Amina" },
+      },
+    }, res, (error) => { throw error; });
+    assert.equal(res.statusCode, 201);
+  }
 
-  await handler(req, res, (error) => { throw error; });
+  assert.deepEqual(createdEvents.map((event) => event.eventName), ["store_click", "signup_started", "trial_started", "whatsapp_started"]);
+  for (const event of createdEvents) {
+    assert.equal(event.sessionId, "a0b1c2d3-e4f5-6789-abcd-ef0123456789");
+    assert.equal(event.source, "instagram");
+    assert.equal(event.campaign, "launch-august");
+    assert.deepEqual(event.details, { product: "dukapilot_web" });
+    assert.equal(event.phone, undefined);
+    assert.equal(event.email, undefined);
+    assert.equal(event.pagePath, undefined);
+  }
+});
 
-  assert.equal(res.statusCode, 201);
-  assert.equal(createdEvent.source, "instagram");
-  assert.deepEqual(createdEvent.details, { placement: null, intent: "setup" });
-  assert.equal(createdEvent.details.unexpected, undefined);
+test("public marketing events reject legacy names and invalid product payloads", async () => {
+  mockPrisma({ marketingEvent: { create: async () => { throw new Error("must not write"); } } });
+  delete require.cache[publicRoutesPath];
+  const router = require(publicRoutesPath);
+  const eventsLayer = router.stack.find((layer) => layer.route?.path === "/events" && layer.route.methods.post);
+  const handler = eventsLayer.route.stack[0].handle;
+
+  for (const body of [
+    { eventName: "whatsapp_click", sessionId: "a0b1c2d3-e4f5-6789-abcd-ef0123456789", product: "dukapilot_web" },
+    { eventName: "store_click", sessionId: "a0b1c2d3-e4f5-6789-abcd-ef0123456789", product: "other_product" },
+  ]) {
+    const res = response();
+    await handler({ body }, res, (error) => { throw error; });
+    assert.equal(res.statusCode, 400);
+  }
 });

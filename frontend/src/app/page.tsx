@@ -211,6 +211,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
       return;
     }
 
+    if (view === "register") trackMarketingEvent("signup_started");
     setLoading(true);
 
     try {
@@ -246,6 +247,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
       }>(endpoint, body, lang);
       markSessionActive();
       if (view === "register") clearReferralCode();
+      if (view === "register" && data.user.role === "MERCHANT") trackMarketingEvent("trial_started");
 
       if (data.user.role === "SUPPLIER") {
         router.push("/supplier");
@@ -357,7 +359,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
               href="/register"
-              onClick={() => trackMarketingEvent("registration_started", { placement: "hero" })}
+              onClick={() => trackMarketingEvent("store_click")}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-brand-800 shadow-lg shadow-black/10 transition-colors hover:bg-brand-50"
             >
               {lang === "sw" ? "Anza bure siku 14" : "Start free for 14 days"}

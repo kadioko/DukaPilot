@@ -69,9 +69,10 @@ interface AdminOverview {
     noteCoverage: number;
   };
   marketingAnalytics?: {
-    pageViews30d: number;
-    whatsappClicks30d: number;
-    registrationStarts30d: number;
+    storeClicks30d: number;
+    signupsStarted30d: number;
+    trialsStarted30d: number;
+    whatsappStarted30d: number;
     topSources: Array<{ source: string; registrations: number; activated: number }>;
   };
   assistantAnalytics?: {
@@ -1179,14 +1180,15 @@ export default function AdminPage() {
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-sm font-semibold text-indigo-950">Campaign Funnel</h2>
-                  <p className="text-xs text-indigo-800">Anonymous web interest, then registrations and activation by saved source.</p>
+                  <p className="text-xs text-indigo-800">Anonymous web funnel events, then registrations and activation by saved source.</p>
                 </div>
                 <span className="text-xs text-indigo-700">Last 30 days</span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <MiniMetric label="Page views" value={overview.marketingAnalytics?.pageViews30d || 0} tone="border-indigo-200 bg-white text-indigo-800" />
-                <MiniMetric label="WhatsApp clicks" value={overview.marketingAnalytics?.whatsappClicks30d || 0} tone="border-green-200 bg-white text-green-800" />
-                <MiniMetric label="Registration starts" value={overview.marketingAnalytics?.registrationStarts30d || 0} tone="border-blue-200 bg-white text-blue-800" />
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                <MiniMetric label="Store clicks" value={overview.marketingAnalytics?.storeClicks30d || 0} tone="border-indigo-200 bg-white text-indigo-800" />
+                <MiniMetric label="Signups started" value={overview.marketingAnalytics?.signupsStarted30d || 0} tone="border-blue-200 bg-white text-blue-800" />
+                <MiniMetric label="Trials started" value={overview.marketingAnalytics?.trialsStarted30d || 0} tone="border-amber-200 bg-white text-amber-800" />
+                <MiniMetric label="WhatsApp started" value={overview.marketingAnalytics?.whatsappStarted30d || 0} tone="border-green-200 bg-white text-green-800" />
               </div>
               {(overview.marketingAnalytics?.topSources || []).length > 0 && (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

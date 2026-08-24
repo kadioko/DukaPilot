@@ -9,18 +9,24 @@ export default function PrivacyPage() {
 
   const sections = lang === "sw"
     ? [
-        ["Taarifa tunazokusanya", "Tunakusanya jina, nambari ya simu, taarifa za duka, bidhaa, mauzo, matumizi, madeni, maagizo, na rekodi za matumizi ya mfumo."],
-        ["Tunavyotumia taarifa", "Tunatumia taarifa hizi kuendesha akaunti yako, kuonyesha ripoti, kulinda mfumo, kuboresha huduma, na kuwasiliana kuhusu akaunti yako."],
-        ["Ulinzi wa taarifa", "Tunatumia udhibiti wa ufikiaji, vidakuzi salama vya kuingia, na ukaguzi wa shughuli ili kupunguza matumizi yasiyoruhusiwa."],
-        ["Ujumbe na washirika", "Vipengele kama WhatsApp au SMS vinaweza kutuma maelezo uliyochagua kupitia huduma za wahusika wengine."],
-        ["Haki zako", "Unaweza kuomba kusahihisha, kuuza nje, au kufuta taarifa zako kwa kuwasiliana nasi kupitia nambari ya biashara iliyopo kwenye tovuti."],
+        ["DukaPilot ni nani", "DukaPilot ni bidhaa inayoendeshwa na Necuva Group Limited kwa wamiliki wa maduka, wasimamizi, staff na suppliers nchini Tanzania."],
+        ["Taarifa tunazokusanya", "Tunapokea jina na nambari ya simu ya akaunti yako; jina, eneo na aina ya duka; bidhaa na stock; mauzo, madeni, matumizi, maagizo, malipo na receipt; na majina, namba za simu na ruhusa za staff. Madeni, wateja na maagizo yanaweza kuwa na jina au namba ya simu unayoingiza. Pia tunahifadhi ujumbe wa support unaotutumia, logi za usalama na audit, na taarifa ndogo za kifaa zinazohitajika kwa notifications."],
+        ["Tunavyotumia taarifa", "Tunatumia taarifa hizi kuendesha akaunti na catalog yako, kurekodi shughuli za biashara, kuonyesha ripoti na mapendekezo ya AI, kutekeleza ruhusa za staff, kutoa support, kuzuia matumizi mabaya, na kutimiza wajibu wa kisheria."],
+        ["Vipimo vya tovuti", "Tovuti yetu hukusanya matukio manne ya kipimo yasiyo na jina: store_click, signup_started, trial_started na whatsapp_started. Kila tukio lina kitambulisho cha muda wa browser pamoja na product, source na campaign. Hatutumii jina, simu, barua pepe, majina ya wateja, au maelezo ya mauzo kwa vipimo hivi."],
+        ["Huduma za wahusika wengine", "Tunatumia watoa miundombinu kuhifadhi na kuendesha huduma. SMS ya uthibitisho inaweza kutumwa kupitia NextSMS. Ukichagua kuwasiliana au kutuma taarifa kwa WhatsApp, WhatsApp hupokea namba na ujumbe unaotumwa; notification ya oda inaweza pia kutumwa kupitia WhatsApp pale duka limeiwezesha. Tunatumia Sentry kwa taarifa za hitilafu pale imewezeshwa. Hatuuzi taarifa zako wala hatutumii matangazo ya wahusika wengine."],
+        ["Ulinzi wa taarifa", "Tovuti na API za uzalishaji hutumia HTTPS. Tunatumia session cookies salama, ruhusa kulingana na role, PIN zilizohifadhiwa kwa hash, na audit logs. Hatuahidi kiwango cha usimbaji wa hifadhidata ambacho hakijaelezwa na mtoa miundombinu; tafadhali usitume taarifa nyeti isiyohitajika kupitia WhatsApp au support."],
+        ["Kuhifadhi na kufuta", "Tunahifadhi data ya akaunti na biashara wakati akaunti iko hai. Baada ya ombi lililothibitishwa, tunafuta data ya akaunti na duka ndani ya siku 30. Rekodi ndogo za usalama, audit, malipo, kodi au uthibitisho wa ombi zinaweza kubaki hadi siku 90, au zaidi inapohitajika kisheria. Backups zinaweza kuchukua hadi siku 90 kusafishwa."],
+        ["Haki zako na mawasiliano", "Unaweza kuomba kurekebisha, kuuza nje, kufuta akaunti yote, au kufuta sehemu ya data yako. Tumia ukurasa wetu wa ufutaji au wasiliana na support@dukapilot.com / WhatsApp +255 743 910 580."],
       ]
     : [
-        ["Information we collect", "We collect name, phone number, shop details, products, sales, expenses, debts, orders, and system activity records."],
-        ["How we use information", "We use this information to run your account, show reports, protect the platform, improve the service, and contact you about your account."],
-        ["Data protection", "We use access controls, secure login cookies, and activity auditing to reduce unauthorized use."],
-        ["Messaging and partners", "Features such as WhatsApp or SMS may send information you choose through third-party services."],
-        ["Your rights", "You can request correction, export, or deletion of your information by contacting us through the business number on the site."],
+        ["Who operates DukaPilot", "DukaPilot is a product operated by Necuva Group Limited for shop owners, managers, staff, and suppliers in Tanzania."],
+        ["Information we collect", "We receive your account name and phone number; shop name, location, and category; products and stock; sales, debts, expenses, orders, payments, and receipts; and staff names, phone numbers, and permissions. Debt, customer, and order records may include names or phone numbers that you enter. We also keep support messages you send, security and audit logs, and limited device information needed for notifications."],
+        ["How we use information", "We use this information to operate your account and catalog, record business activity, show reports and AI recommendations, enforce staff permissions, provide support, prevent misuse, and meet legal obligations."],
+        ["Website measurement", "Our website records four anonymous measurement events: store_click, signup_started, trial_started, and whatsapp_started. Each event contains a browser-session identifier plus product, source, and campaign. These events do not include names, phone numbers, email addresses, customer names, or sales details."],
+        ["Third-party services", "We use infrastructure providers to host and store the service. Verification SMS may be sent through NextSMS. When you choose to contact or send information through WhatsApp, WhatsApp receives the phone number and message sent; order notifications can also be sent through WhatsApp when a shop enables them. We use Sentry for error diagnostics when configured. We do not sell your data or use third-party advertising SDKs."],
+        ["Protecting information", "Production website and API traffic use HTTPS. We use secure session cookies, role-based permissions, hashed PINs, and audit logs. We do not make an unverified claim about database-at-rest encryption; please do not send unnecessary sensitive information through WhatsApp or support channels."],
+        ["Retention and deletion", "We retain account and business data while the account is active. After a verified request, we delete account and shop data within 30 days. Limited security, audit, payment, tax, or request-confirmation records may be kept for up to 90 days, or longer where required by law. Backups can take up to 90 days to age out."],
+        ["Your choices and contact", "You can ask to correct, export, delete your full account, or delete some of your data. Use our deletion page or contact support@dukapilot.com / WhatsApp +255 743 910 580."],
       ];
 
   return (
@@ -28,7 +34,7 @@ export default function PrivacyPage() {
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-950">{lang === "sw" ? "Sera ya Faragha" : "Privacy Policy"}</h1>
-          <p className="mt-3 text-sm text-gray-500">{lang === "sw" ? "Ilisasishwa Juni 7, 2026" : "Updated June 7, 2026"}</p>
+          <p className="mt-3 text-sm text-gray-500">{lang === "sw" ? "Ilisasishwa Agosti 25, 2026" : "Updated August 25, 2026"}</p>
         </div>
         <div className="space-y-6">
           {sections.map(([title, body]) => (

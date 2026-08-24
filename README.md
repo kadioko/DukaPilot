@@ -33,6 +33,8 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
 - **Product test gate:** [TESTING.md](./TESTING.md)
 - **Android release build:** [docs/ANDROID_RELEASE_BUILD.md](./docs/ANDROID_RELEASE_BUILD.md)
+- **Play Data Safety record:** [docs/PLAY_CONSOLE_DATA_SAFETY.md](./docs/PLAY_CONSOLE_DATA_SAFETY.md)
+- **Deletion-process test:** [docs/DATA_DELETION_REQUEST_TEST.md](./docs/DATA_DELETION_REQUEST_TEST.md)
 - **Marketing assets:** [marketing/README.md](./marketing/README.md)
 
 ---

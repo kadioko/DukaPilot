@@ -22,34 +22,34 @@ function isPublicShopActive(shop, now = new Date()) {
   );
 }
 
-function cleanMarketingValue(value) {
-  return typeof value === "string" ? value.trim().slice(0, 120) || null : null;
-}
+const MARKETING_EVENTS = new Set(["store_click", "signup_started", "trial_started", "whatsapp_started"]);
+const MARKETING_PRODUCT = "dukapilot_web";
 
-const MARKETING_EVENTS = new Set(["page_view", "cta_click", "whatsapp_click", "registration_started"]);
+function cleanMarketingValue(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return /^[a-z][a-z0-9._-]{0,63}$/.test(normalized) ? normalized : null;
+}
 
 router.post("/events", async (req, res, next) => {
   try {
-    const { eventName, sessionId, source, medium, campaign, content, details } = req.body || {};
-    if (!MARKETING_EVENTS.has(eventName) || typeof sessionId !== "string" || sessionId.length < 8 || sessionId.length > 80) {
+    const { eventName, sessionId, product, source, campaign } = req.body || {};
+    if (
+      !MARKETING_EVENTS.has(eventName) ||
+      product !== MARKETING_PRODUCT ||
+      typeof sessionId !== "string" ||
+      !/^[a-f0-9-]{8,80}$/i.test(sessionId)
+    ) {
       return res.status(400).json({ error: "Invalid marketing event" });
     }
-
-    const pagePath = cleanMarketingValue(details?.path);
-    const safeDetails = eventName === "page_view" || eventName === "registration_started" || eventName === "whatsapp_click"
-      ? { placement: cleanMarketingValue(details?.placement), intent: cleanMarketingValue(details?.intent) }
-      : null;
 
     await prisma.marketingEvent.create({
       data: {
         eventName,
         sessionId,
-        pagePath,
         source: cleanMarketingValue(source),
-        medium: cleanMarketingValue(medium),
         campaign: cleanMarketingValue(campaign),
-        content: cleanMarketingValue(content),
-        details: safeDetails,
+        details: { product: MARKETING_PRODUCT },
       },
     });
     res.status(201).json({ ok: true });

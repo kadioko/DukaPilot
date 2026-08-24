@@ -114,9 +114,10 @@ const overview = asyncHandler(async (req, res) => {
       noteCoverage: shops ? Math.round((shopsWithNotes / shops) * 100) : 0,
     },
     marketingAnalytics: {
-      pageViews30d: eventsByName.page_view || 0,
-      whatsappClicks30d: eventsByName.whatsapp_click || 0,
-      registrationStarts30d: eventsByName.registration_started || 0,
+      storeClicks30d: eventsByName.store_click || 0,
+      signupsStarted30d: eventsByName.signup_started || 0,
+      trialsStarted30d: eventsByName.trial_started || 0,
+      whatsappStarted30d: eventsByName.whatsapp_started || 0,
       topSources: sourceSummary,
     },
     pushAnalytics: {
