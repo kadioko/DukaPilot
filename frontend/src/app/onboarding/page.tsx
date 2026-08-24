@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, Languages, MessageCircle, PackagePlus, Settings, Share2, ShoppingCart, Users } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
+import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
 const steps = [
@@ -60,6 +61,7 @@ const steps = [
 export default function OnboardingPage() {
   const lang = useLang();
   const [done, setDone] = useState<Record<string, boolean>>({});
+  const [referralCode, setReferralCode] = useState("");
 
   useEffect(() => {
     try {
@@ -67,6 +69,12 @@ export default function OnboardingPage() {
     } catch {
       setDone({});
     }
+  }, []);
+
+  useEffect(() => {
+    api.get<{ user: { shop?: { referralCode?: string } | null } }>("/auth/me")
+      .then(({ user }) => setReferralCode(user.shop?.referralCode || ""))
+      .catch(() => {});
   }, []);
 
   function toggleDone(href: string) {
@@ -78,10 +86,11 @@ export default function OnboardingPage() {
   }
 
   const completeCount = steps.filter((step) => done[step.href]).length;
+  const referralUrl = referralCode ? `https://www.dukapilot.com/?ref=${encodeURIComponent(referralCode)}` : "";
   const referralText = encodeURIComponent(
     lang === "sw"
-      ? "Nimeanza kutumia DukaPilot kufuatilia stock, mauzo na madeni ya duka. Kama una duka, jaribu hapa: https://www.dukapilot.com/ au tuma WhatsApp kwa support: https://wa.me/255743910580?text=Habari%20DukaPilot%2C%20nimeletwa%20na%20rafiki%20na%20nataka%20setup%20ya%20duka%20langu.%20Aina%20ya%20duka%3A%20"
-      : "I started using DukaPilot to track shop stock, sales, and customer debts. If you run a shop, try it here: https://www.dukapilot.com/ or WhatsApp support: https://wa.me/255743910580?text=Hello%20DukaPilot%2C%20a%20friend%20referred%20me%20and%20I%20want%20shop%20setup%20help.%20Shop%20type%3A%20"
+      ? `Nimeanza kutumia DukaPilot kufuatilia stock, mauzo na madeni ya duka. Kama una duka, jiunge kupitia link yangu: ${referralUrl}. Ukirekodi mauzo 10, nitapata wiki 1 bure.`
+      : `I started using DukaPilot to track shop stock, sales, and customer debts. If you run a shop, join through my link: ${referralUrl}. After 10 completed sales, I receive one free week.`
   );
 
   return (
@@ -157,18 +166,22 @@ export default function OnboardingPage() {
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-gray-600">
                   {lang === "sw"
-                    ? "Ukimaliza setup, share ujumbe huu kwa rafiki mwenye duka. Akirekodi mauzo 10, unaweza kupata wiki 1 bure."
-                    : "After setup, share this message with a shop owner friend. If they record 10 sales, you can get 1 free week."}
+                    ? "Link yako inaweka referral moja kwa moja. Rafiki yako akijiandikisha kwa link hii na kurekodi mauzo 10, admin ataona na kukupa wiki 1 bure."
+                    : "Your link tracks the referral automatically. When your friend registers with it and records 10 sales, an admin can see it and give you one free week."}
                 </p>
               </div>
             </div>
-            <a
-              href={`https://wa.me/?text=${referralText}`}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white hover:bg-brand-800"
-            >
-              <MessageCircle className="h-4 w-4" />
-              {lang === "sw" ? "Share WhatsApp" : "Share on WhatsApp"}
-            </a>
+            {referralUrl ? (
+              <a
+                href={`https://wa.me/?text=${referralText}`}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white hover:bg-brand-800"
+              >
+                <MessageCircle className="h-4 w-4" />
+                {lang === "sw" ? "Share WhatsApp" : "Share on WhatsApp"}
+              </a>
+            ) : (
+              <span className="inline-flex items-center justify-center rounded-xl bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-500">{lang === "sw" ? "Inaandaa link..." : "Preparing link..."}</span>
+            )}
           </div>
         </section>
       </div>

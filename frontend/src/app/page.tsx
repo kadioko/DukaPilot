@@ -26,7 +26,7 @@ import PublicHeader from "@/components/marketing/PublicHeader";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import clsx from "clsx";
-import { getAttribution, trackMarketingEvent } from "@/lib/marketing";
+import { clearReferralCode, getAttribution, getReferralCode, trackMarketingEvent } from "@/lib/marketing";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import PublicFAQSection from "@/components/marketing/PublicFAQSection";
 
@@ -227,6 +227,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               shopDistrict: shopDistrict.trim() || undefined,
               shopCategory,
               acquisition: getAttribution(),
+              referralCode: getReferralCode(),
             }
           : { phone: normalizedPhone, pin: normalizedPin };
 
@@ -244,6 +245,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         };
       }>(endpoint, body, lang);
       markSessionActive();
+      if (view === "register") clearReferralCode();
 
       if (data.user.role === "SUPPLIER") {
         router.push("/supplier");

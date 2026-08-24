@@ -8,6 +8,7 @@ type Attribution = {
 
 const ATTRIBUTION_KEY = "dukapilot_marketing_attribution";
 const SESSION_KEY = "dukapilot_marketing_session";
+const REFERRAL_CODE_KEY = "dukapilot_referral_code";
 const MAX_VALUE_LENGTH = 120;
 
 function clean(value: string | null): string | null {
@@ -60,6 +61,28 @@ export function captureAttribution(): Attribution {
 
 export function getAttribution(): Attribution {
   return captureAttribution();
+}
+
+export function captureReferralCode(): string | null {
+  if (typeof window === "undefined") return null;
+  const incoming = clean(new URLSearchParams(window.location.search).get("ref"))?.toUpperCase() || null;
+  if (incoming && /^DP-[A-Z0-9-]{8,80}$/.test(incoming)) {
+    window.localStorage.setItem(REFERRAL_CODE_KEY, incoming);
+    return incoming;
+  }
+
+  const saved = clean(window.localStorage.getItem(REFERRAL_CODE_KEY))?.toUpperCase() || null;
+  return saved && /^DP-[A-Z0-9-]{8,80}$/.test(saved) ? saved : null;
+}
+
+export function getReferralCode(): string | null {
+  return captureReferralCode();
+}
+
+export function clearReferralCode() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(REFERRAL_CODE_KEY);
+  }
 }
 
 export function trackMarketingEvent(eventName: "page_view" | "cta_click" | "whatsapp_click" | "registration_started", details: Record<string, string> = {}) {

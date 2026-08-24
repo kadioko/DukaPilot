@@ -32,6 +32,11 @@ function normalizeAttribution(value) {
   };
 }
 
+function normalizeReferralCode(value) {
+  const code = normalizeText(value).toUpperCase();
+  return /^DP-[A-Z0-9-]{8,80}$/.test(code) ? code : "";
+}
+
 function validatePhone(phone) {
   return isValidPhone(phone);
 }
@@ -162,6 +167,7 @@ const register = asyncHandler(async (req, res) => {
   const shopCategory = normalizeText(req.body.shopCategory);
   const shopDistrict = normalizeText(req.body.shopDistrict);
   const attribution = normalizeAttribution(req.body.acquisition);
+  const referralCode = normalizeReferralCode(req.body.referralCode);
 
   if (!phone || !pin || !name) {
     return res.status(400).json({ error: "Phone, PIN, and name are required" });
@@ -189,6 +195,17 @@ const register = asyncHandler(async (req, res) => {
 
   const hashedPin = await bcrypt.hash(pin, 10);
 
+  let referrerShop = null;
+  if (role === "MERCHANT" && referralCode) {
+    referrerShop = await prisma.shop.findUnique({
+      where: { referralCode },
+      select: { id: true, referralCode: true },
+    });
+    if (!referrerShop) {
+      return res.status(400).json({ error: "This referral link is no longer valid. Ask your friend to share it again." });
+    }
+  }
+
   const user = await prisma.user.create({
     data: {
       phone,
@@ -210,7 +227,16 @@ const register = asyncHandler(async (req, res) => {
         category: shopCategory || "general",
         trialEndsAt,
         userId: user.id,
+        referralCode: `DP-U-${user.id.toUpperCase()}`,
         ...attribution,
+        ...(referrerShop ? {
+          referralReceived: {
+            create: {
+              referrerShopId: referrerShop.id,
+              referralCode: referrerShop.referralCode,
+            },
+          },
+        } : {}),
       },
     });
   }
@@ -426,7 +452,7 @@ async function getProfile(userId) {
       name: true,
       role: true,
       language: true,
-      shop: { select: { id: true, name: true, location: true, district: true, category: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true, isCatalogPublished: true } },
+      shop: { select: { id: true, name: true, location: true, district: true, category: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true, isCatalogPublished: true, referralCode: true } },
       supplier: { select: { id: true, name: true, phone: true, address: true } },
       createdAt: true,
     },

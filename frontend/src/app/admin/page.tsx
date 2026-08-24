@@ -22,6 +22,7 @@ import {
   BadgeCheck,
   BellRing,
   CreditCard,
+  Gift,
   RefreshCw,
   MessageSquareText,
 } from "lucide-react";
@@ -159,6 +160,32 @@ interface Subscription {
   lastPayment?: { amount: number; method: string; reference?: string | null; paidAt: string } | null;
 }
 
+interface AdminReferral {
+  id: string;
+  status: "PENDING" | "QUALIFIED" | "REWARDED" | "REJECTED";
+  salesCount: number;
+  salesRemaining: number;
+  rewardEligible: boolean;
+  createdAt: string;
+  qualifiedAt?: string | null;
+  rewardedAt?: string | null;
+  note?: string | null;
+  referrerShop: {
+    id: string;
+    name: string;
+    plan: string;
+    trialEndsAt?: string | null;
+    subscriptionEndsAt?: string | null;
+    user?: { name: string; phone: string } | null;
+  };
+  referredShop: {
+    id: string;
+    name: string;
+    createdAt: string;
+    user?: { name: string; phone: string } | null;
+  };
+}
+
 interface AdminMetric {
   label: string;
   value: number;
@@ -253,7 +280,7 @@ interface BillingDraft {
   note: string;
 }
 
-type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "suppliers" | "sync" | "sms";
+type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "referrals" | "suppliers" | "sync" | "sms";
 
 async function optionalAdminLoad<T>(label: string, request: Promise<T>, fallback: T): Promise<T> {
   try {
@@ -337,6 +364,7 @@ export default function AdminPage() {
   const [reportFilter, setReportFilter] = useState("OPEN");
   const [updatingReport, setUpdatingReport] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [referrals, setReferrals] = useState<AdminReferral[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [syncSummaries, setSyncSummaries] = useState<SyncShopSummary[]>([]);
   const [syncEvents, setSyncEvents] = useState<AdminSyncEvent[]>([]);
@@ -350,6 +378,7 @@ export default function AdminPage() {
   const [smsMonitoringError, setSmsMonitoringError] = useState("");
   const [subFilter, setSubFilter] = useState("ALL");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
+  const [updatingReferral, setUpdatingReferral] = useState<string | null>(null);
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
   const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
@@ -377,19 +406,21 @@ export default function AdminPage() {
       optionalAdminLoad("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }),
       optionalAdminLoad("reports", api.get<{ reports: Report[] }>("/reports/admin?limit=200"), { reports: [] }),
       optionalAdminLoad("subscriptions", api.get<{ shops: Subscription[] }>("/subscription/admin"), { shops: [] }),
+      optionalAdminLoad("referrals", api.get<{ referrals: AdminReferral[] }>("/admin/referrals"), { referrals: [] }),
       optionalAdminLoad("suppliers", api.get<{ suppliers: Supplier[] }>("/suppliers"), { suppliers: [] }),
       optionalAdminLoad("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }),
       optionalAdminLoad("sync events", api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"), { events: [], devices: [] }),
       optionalAdminLoad<NonNullable<AdminOverview["assistantAnalytics"]> | null>("assistant analytics", api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"), null),
         ]);
       })
-      .then(([ov, u, al, rp, sub, supplierData, syncData, syncEventsData, assistantAnalytics]) => {
+      .then(([ov, u, al, rp, sub, referralData, supplierData, syncData, syncEventsData, assistantAnalytics]) => {
         if (cancelled) return;
         setOverview(ov && assistantAnalytics ? { ...ov, assistantAnalytics } : ov);
         setUsers(u.users);
         setAuditLogs(al.logs);
         setReports(rp.reports);
         setSubscriptions(sub.shops);
+        setReferrals(referralData.referrals);
         setSuppliers(supplierData.suppliers);
         setSyncSummaries(syncData.shops);
         setSyncEvents(syncEventsData.events);
@@ -513,6 +544,44 @@ export default function AdminPage() {
     const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
     setSubscriptions(data.shops);
     setFollowUpDrafts(Object.fromEntries(data.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
+  }
+
+  async function refreshReferrals() {
+    const data = await api.get<{ referrals: AdminReferral[] }>("/admin/referrals");
+    setReferrals(data.referrals);
+  }
+
+  async function handleRewardReferral(referral: AdminReferral) {
+    const confirmed = window.confirm(
+      `Give ${referral.referrerShop.name} one free week for referring ${referral.referredShop.name}?\n\nThis reward can only be granted once.`
+    );
+    if (!confirmed) return;
+
+    setUpdatingReferral(referral.id);
+    try {
+      const data = await api.post<{ message: string }>(`/admin/referrals/${referral.id}/reward`, {});
+      window.alert(data.message);
+      await Promise.all([refreshReferrals(), refreshSubscriptions()]);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not grant referral reward");
+    } finally {
+      setUpdatingReferral(null);
+    }
+  }
+
+  async function handleRejectReferral(referral: AdminReferral) {
+    const confirmed = window.confirm(`Mark the referral from ${referral.referrerShop.name} to ${referral.referredShop.name} as not valid?`);
+    if (!confirmed) return;
+
+    setUpdatingReferral(referral.id);
+    try {
+      await api.post(`/admin/referrals/${referral.id}/reject`, {});
+      await refreshReferrals();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not update referral");
+    } finally {
+      setUpdatingReferral(null);
+    }
   }
 
   async function refreshSuppliers() {
@@ -772,6 +841,7 @@ export default function AdminPage() {
     { id: "audit", label: "Audit Log" },
     { id: "reports", label: "Reports" },
     { id: "subscriptions", label: "Subscriptions" },
+    { id: "referrals", label: "Referrals" },
     { id: "suppliers", label: "Suppliers" },
     { id: "sync", label: "Sync History" },
     { id: "sms", label: "SMS" },
@@ -798,6 +868,7 @@ export default function AdminPage() {
   const stalledTrials = subscriptions.filter((shop) => !shop.activation?.activated && shop.computedStatus === "trial").length;
   const suppliersNeedingReview = suppliers.filter((supplier) => supplier.verificationStatus !== "VERIFIED").length;
   const verifiedSuppliers = suppliers.filter((supplier) => supplier.verificationStatus === "VERIFIED").length;
+  const qualifiedReferrals = referrals.filter((referral) => referral.status === "QUALIFIED").length;
   const shopsNeedingFollowUp = subscriptions
     .filter((shop) =>
       shop.computedStatus === "expired" ||
@@ -1618,6 +1689,104 @@ export default function AdminPage() {
                 ))
               )}
             </div>
+          </div>
+        )}
+
+        {/* REFERRALS */}
+        {tab === "referrals" && (
+          <div className="space-y-4">
+            <section className="rounded-xl border border-brand-200 bg-brand-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-700 text-white">
+                    <Gift className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold text-brand-950">Referral rewards</h2>
+                    <p className="mt-1 max-w-2xl text-xs leading-5 text-brand-800">
+                      A shop is linked automatically when the new owner registers through its referral link. After 10 completed sales, grant the referrer one free week exactly once.
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => refreshReferrals().catch(console.error)} className="inline-flex items-center justify-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-brand-700 shadow-sm hover:bg-brand-100">
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+                <span className="rounded-full bg-white px-2.5 py-1 text-gray-700">{referrals.length} tracked</span>
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{qualifiedReferrals} ready to reward</span>
+                <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-800">{referrals.filter((referral) => referral.status === "REWARDED").length} rewarded</span>
+              </div>
+            </section>
+
+            {referrals.length === 0 ? (
+              <section className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
+                <Gift className="mx-auto h-7 w-7 text-brand-600" />
+                <h2 className="mt-3 text-sm font-semibold text-gray-900">No tracked referrals yet</h2>
+                <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-gray-500">When an owner shares their onboarding referral link and a new shop registers through it, the record appears here.</p>
+              </section>
+            ) : (
+              <div className="grid gap-3">
+                {referrals.map((referral) => {
+                  const statusTone = referral.status === "REWARDED"
+                    ? "bg-green-100 text-green-700"
+                    : referral.status === "QUALIFIED"
+                      ? "bg-amber-100 text-amber-800"
+                      : referral.status === "REJECTED"
+                        ? "bg-gray-100 text-gray-600"
+                        : "bg-blue-100 text-blue-700";
+                  return (
+                    <article key={referral.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-sm font-semibold text-gray-950">{referral.referrerShop.name}</h2>
+                            <ArrowRight className="h-4 w-4 text-gray-400" />
+                            <h3 className="text-sm font-semibold text-gray-950">{referral.referredShop.name}</h3>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone}`}>{referral.status}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Referrer: {referral.referrerShop.user?.name || "Owner"} ({referral.referrerShop.user?.phone || "No phone"})
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            New owner: {referral.referredShop.user?.name || "Owner"} ({referral.referredShop.user?.phone || "No phone"}) - Joined {formatDate(referral.createdAt)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => handleRewardReferral(referral)}
+                            disabled={!referral.rewardEligible || updatingReferral === referral.id}
+                            className="inline-flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Gift className="h-3.5 w-3.5" /> {updatingReferral === referral.id ? "Saving..." : "Reward 7 days"}
+                          </button>
+                          {(referral.status === "PENDING" || referral.status === "QUALIFIED") && (
+                            <button onClick={() => handleRejectReferral(referral)} disabled={updatingReferral === referral.id} className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50">
+                              Not valid
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2 rounded-lg bg-gray-50 p-3 text-xs sm:grid-cols-3">
+                        <div>
+                          <p className="font-semibold text-gray-900">Qualification</p>
+                          <p className={referral.salesRemaining === 0 ? "text-green-700" : "text-gray-600"}>{referral.salesCount}/10 completed sales{referral.salesRemaining ? ` - ${referral.salesRemaining} left` : " - ready"}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">Reward applies to</p>
+                          <p className="text-gray-600">{referral.referrerShop.subscriptionEndsAt ? "Current paid/trial validity" : "Free-trial validity"}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">Reward status</p>
+                          <p className="text-gray-600">{referral.rewardedAt ? `Granted ${formatDate(referral.rewardedAt)}` : referral.qualifiedAt ? `Qualified ${formatDate(referral.qualifiedAt)}` : "Waiting for sales"}</p>
+                        </div>
+                      </div>
+                      {referral.note && <p className="mt-2 text-xs text-gray-500">Admin note: {referral.note}</p>}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

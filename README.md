@@ -73,7 +73,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **QR shop ordering** | Published shops can share a catalog link or QR code; customers browse and place orders that appear in the merchant order queue |
 | **CSV import and export** | Add up to 200 products from a guided CSV template, or download sales history and full inventory as CSV files |
 | **Legal pages** | Public About, Terms, and Privacy pages with English/Swahili switching |
-| **Onboarding + trust pages** | Contact, Help/FAQ, Demo accounts, and a guided five-step merchant onboarding checklist |
+| **Onboarding + trust pages** | Contact, Help/FAQ, Demo accounts, a guided merchant onboarding checklist, and tracked referral links with one-week admin rewards |
 
 ### For Suppliers (Wasambazaji)
 

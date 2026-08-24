@@ -135,11 +135,13 @@ model Shop {
   notificationPreference   NotificationPreference?
   pushDeliveries           PushDelivery[]
   appUsageEvents           AppUsageEvent[]
-    barcodeScans             BarcodeScan[]
-    stockCounts              StockCount[]
-    cashSessions             CashSession[]
-    stockReceipts            StockReceipt[]
+  barcodeScans             BarcodeScan[]
+  stockCounts              StockCount[]
+  cashSessions             CashSession[]
+  stockReceipts            StockReceipt[]
   createdSuppliers         Supplier[]              @relation("SupplierCreatedByShop")
+  referralsMade            ShopReferral[]          @relation("ShopReferralReferrer")
+  referralReceived         ShopReferral?           @relation("ShopReferralReferred")
   // Subscription / trial
   plan                     String                  @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
   trialEndsAt              DateTime?
@@ -162,10 +164,31 @@ model Shop {
   acquisitionMedium        String?
   acquisitionCampaign      String?
   acquisitionContent       String?
+  referralCode             String                  @unique
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
   @@map("shops")
+}
+
+model ShopReferral {
+  id             String   @id @default(cuid())
+  referrerShopId String
+  referrerShop   Shop     @relation("ShopReferralReferrer", fields: [referrerShopId], references: [id], onDelete: Cascade)
+  referredShopId String   @unique
+  referredShop   Shop     @relation("ShopReferralReferred", fields: [referredShopId], references: [id], onDelete: Cascade)
+  referralCode   String
+  status         String   @default("PENDING")
+  qualifiedAt    DateTime?
+  rewardedAt     DateTime?
+  rewardedBy     String?
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([referrerShopId, createdAt])
+  @@index([status, createdAt])
+  @@map("shop_referrals")
 }
 
 model MarketingEvent {
