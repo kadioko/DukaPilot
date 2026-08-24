@@ -29,6 +29,7 @@ import { clearToken, api, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
 import ShortcutUsageTracker from "@/components/analytics/ShortcutUsageTracker";
+import QuickStartGuide from "@/components/onboarding/QuickStartGuide";
 import clsx from "clsx";
 
 interface User {
@@ -320,6 +321,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" />
             </div>
           ) : user ? children : null}
+          {user?.role === "MERCHANT" && <QuickStartGuide lang={lang} />}
         </main>
       </div>
     </div>
