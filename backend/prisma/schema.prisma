@@ -503,6 +503,7 @@ model Quotation {
   taxAmount                  Int               @default(0)
   totalAmount                Int               @default(0)
   amountPaid                 Int               @default(0)
+  depositPercent             Int               @default(0)
   depositRequiredAmount      Int               @default(0)
   depositDueDate             DateTime?
   sentAt                     DateTime?

@@ -1,0 +1,1 @@
+ALTER TABLE "quotations" ADD COLUMN "depositPercent" INTEGER NOT NULL DEFAULT 0;
