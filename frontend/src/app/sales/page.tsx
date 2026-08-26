@@ -42,7 +42,7 @@ interface SaleRecord {
   voidReason?: string | null;
   customerPhone?: string | null;
   shop?: { name: string };
-  items: Array<{ quantity: number; unitPrice: number; totalPrice: number; product: { name: string; unit: string } }>;
+  items: Array<{ quantity: number; unitPrice: number; totalPrice: number; name?: string | null; unit?: string | null; product?: { id: string; name: string; unit: string } | null }>;
 }
 
 interface PendingSale {
@@ -459,7 +459,7 @@ export default function SalesPage() {
       `${lang === "sw" ? "Risiti" : "Receipt"}: ${receiptLabel(sale)}`,
       new Date(sale.createdAt).toLocaleString(lang === "sw" ? "sw-TZ" : "en-TZ"),
       "",
-      ...sale.items.map((item) => `${item.product.name} x${item.quantity} - ${formatTZS(item.totalPrice)}`),
+      ...sale.items.map((item) => `${item.product?.name || item.name || "Custom service"} x${item.quantity} - ${formatTZS(item.totalPrice)}`),
       "",
       `${lang === "sw" ? "Jumla" : "Total"}: ${formatTZS(sale.totalAmount)}`,
       `${lang === "sw" ? "Malipo" : "Payment"}: ${t(PAYMENT_METHODS.find((method) => method.value === sale.paymentMethod)?.labelKey || "sales.cash", lang)}`,
@@ -958,7 +958,7 @@ export default function SalesPage() {
                     <div className="divide-y divide-gray-50">
                       {sale.items.map((item, i) => (
                         <p key={i} className="text-xs text-gray-500 py-0.5">
-                          {item.product.name} x {item.quantity} @ {formatTZS(item.unitPrice)}
+                          {item.product?.name || item.name || "Custom service"} x {item.quantity} @ {formatTZS(item.unitPrice)}
                         </p>
                       ))}
                     </div>

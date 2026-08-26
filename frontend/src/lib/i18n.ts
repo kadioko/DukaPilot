@@ -29,6 +29,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "staff.recordExpenses": { sw: "Kurekodi matumizi", en: "Record expenses" },
   "nav.settings": { sw: "Mipangilio", en: "Settings" },
   "nav.customerOrders": { sw: "Maagizo ya Wateja", en: "Customer Orders" },
+  "nav.quotations": { sw: "Nukuu za Bei", en: "Quotations" },
   "nav.billing": { sw: "Malipo na Plan", en: "Billing" },
   "nav.supplierPortal": { sw: "Portal ya Msambazaji", en: "Supplier Portal" },
   "nav.reportIssue": { sw: "Ripoti Tatizo", en: "Report Issue" },

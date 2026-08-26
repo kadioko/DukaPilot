@@ -95,6 +95,43 @@ enum BarcodeType {
   INTERNAL
 }
 
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+  ARCHIVED
+  CANCELLED
+}
+
+enum QuotationItemCategory {
+  MATERIAL
+  LABOUR
+  TRANSPORT
+  DESIGN
+  INSTALLATION
+  SUBCONTRACTOR
+  SERVICE
+  OTHER
+}
+
+enum QuotationShareMethod {
+  PDF
+  PRINT
+  LINK
+  WHATSAPP
+  EMAIL
+}
+
+enum QuotationPaymentStage {
+  DEPOSIT
+  MILESTONE
+  FINAL
+  OTHER
+}
+
 model User {
   id        String     @id @default(cuid())
   phone     String     @unique
@@ -139,6 +176,10 @@ model Shop {
   stockCounts              StockCount[]
   cashSessions             CashSession[]
   stockReceipts            StockReceipt[]
+  customers                Customer[]
+  services                 Service[]
+  quotations               Quotation[]
+  quotationSettings        QuotationSettings?
   createdSuppliers         Supplier[]              @relation("SupplierCreatedByShop")
   referralsMade            ShopReferral[]          @relation("ShopReferralReferrer")
   referralReceived         ShopReferral?           @relation("ShopReferralReferred")
@@ -160,6 +201,7 @@ model Shop {
   barcodeVibrate           Boolean                 @default(true)
   barcodeAutoAddToCart     Boolean                 @default(true)
   nextSaleNumber           Int                     @default(1)
+  nextQuotationNumber      Int                     @default(1)
   acquisitionSource        String?
   acquisitionMedium        String?
   acquisitionCampaign      String?
@@ -367,6 +409,7 @@ model Supplier {
   userId             String?                  @unique
   user               User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   products           Product[]
+  quotationItems     QuotationItem[]
     catalogProducts    SupplierCatalogProduct[]
     orders             Order[]
     stockReceipts      StockReceipt[]
@@ -374,6 +417,229 @@ model Supplier {
   updatedAt          DateTime                 @updatedAt
 
   @@map("suppliers")
+}
+
+model Customer {
+  id          String      @id @default(cuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  shopId      String
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  quotations  Quotation[]
+  sales       Sale[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([shopId, name])
+  @@index([shopId, phone])
+  @@index([shopId, email])
+  @@map("customers")
+}
+
+model Service {
+  id                       String          @id @default(cuid())
+  name                     String
+  description              String?
+  unit                     String          @default("service")
+  defaultSellingPrice      Int             @default(0)
+  defaultEstimatedUnitCost Int             @default(0)
+  isActive                 Boolean         @default(true)
+  shopId                   String
+  shop                     Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  quotationItems           QuotationItem[]
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  @@index([shopId, isActive, name])
+  @@map("services")
+}
+
+model QuotationSettings {
+  id                         String   @id @default(cuid())
+  shopId                     String   @unique
+  shop                       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  prefix                     String   @default("QT")
+  numberingFormat            String   @default("{prefix}-{number}")
+  defaultValidityDays         Int      @default(14)
+  defaultCurrency             String   @default("TZS")
+  defaultTaxRateBasisPoints   Int      @default(0)
+  defaultPaymentTerms         String?
+  defaultTerms                String?
+  defaultCustomerNote         String?
+  signatureName               String?
+  signatureUrl                String?
+  showQuantities              Boolean  @default(true)
+  showUnitPrices              Boolean  @default(true)
+  showItemDiscounts           Boolean  @default(true)
+  showSections                Boolean  @default(true)
+  defaultDepositPercent       Int      @default(0)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@map("quotation_settings")
+}
+
+model Quotation {
+  id                         String            @id @default(cuid())
+  quotationNumber            String
+  currentRevisionNumber      Int               @default(1)
+  status                     QuotationStatus   @default(DRAFT)
+  issueDate                  DateTime          @default(now())
+  expiryDate                 DateTime?
+  projectTitle               String
+  projectType                String?
+  scopeOfWork                String?
+  currency                   String            @default("TZS")
+  customerNote               String?
+  internalNote               String?
+  termsAndConditions         String?
+  paymentTerms               String?
+  discountAmount             Int               @default(0)
+  taxRateBasisPoints         Int               @default(0)
+  subtotalAmount             Int               @default(0)
+  taxAmount                  Int               @default(0)
+  totalAmount                Int               @default(0)
+  amountPaid                 Int               @default(0)
+  depositRequiredAmount      Int               @default(0)
+  depositDueDate             DateTime?
+  sentAt                     DateTime?
+  acceptedAt                 DateTime?
+  acceptedByName             String?
+  acceptanceComment          String?
+  acceptanceSignature        String?
+  rejectedAt                 DateTime?
+  rejectionReason            String?
+  archivedAt                 DateTime?
+  cancelledAt                DateTime?
+  cancellationReason         String?
+  createdById                String
+  lastEditedById             String
+  customerId                 String
+  customer                   Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  shopId                     String
+  shop                       Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  sections                   QuotationSection[]
+  items                      QuotationItem[]
+  revisions                  QuotationRevision[]
+  shares                     QuotationShare[]
+  payments                   QuotationPayment[]
+  convertedSale              Sale?
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+
+  @@unique([shopId, quotationNumber])
+  @@index([shopId, status, issueDate])
+  @@index([shopId, customerId, createdAt])
+  @@index([shopId, expiryDate])
+  @@map("quotations")
+}
+
+model QuotationSection {
+  id                String          @id @default(cuid())
+  quotationId       String
+  quotation         Quotation       @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  name              String
+  position          Int
+  visibleToCustomer Boolean         @default(true)
+  items             QuotationItem[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([quotationId, position])
+  @@map("quotation_sections")
+}
+
+model QuotationItem {
+  id                        String                @id @default(cuid())
+  quotationId               String
+  quotation                 Quotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  sectionId                 String?
+  section                   QuotationSection?     @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  position                  Int
+  category                  QuotationItemCategory @default(OTHER)
+  name                      String
+  description               String?
+  quantityMilli             Int                   @default(1000)
+  unit                      String                @default("pcs")
+  unitPrice                 Int
+  discountAmount            Int                   @default(0)
+  taxRateBasisPoints        Int                   @default(0)
+  lineSubtotal              Int
+  taxAmount                 Int                   @default(0)
+  totalSellingPrice         Int
+  visibleToCustomer         Boolean               @default(true)
+  productId                 String?
+  product                   Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  serviceId                 String?
+  service                   Service?              @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  estimatedUnitCost         Int                   @default(0)
+  estimatedTotalCost        Int                   @default(0)
+  supplierId                String?
+  supplier                  Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  internalNote              String?
+  markupBasisPoints         Int                   @default(0)
+  estimatedProfit           Int                   @default(0)
+  estimatedProfitMarginBps  Int                   @default(0)
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  @@index([quotationId, position])
+  @@index([productId])
+  @@map("quotation_items")
+}
+
+model QuotationRevision {
+  id                String   @id @default(cuid())
+  quotationId       String
+  quotation         Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  revisionNumber    Int
+  snapshot          Json
+  publicSnapshot    Json
+  changeSummary     String?
+  changedById       String
+  createdAt         DateTime @default(now())
+
+  @@unique([quotationId, revisionNumber])
+  @@index([quotationId, createdAt])
+  @@map("quotation_revisions")
+}
+
+model QuotationShare {
+  id                String                @id @default(cuid())
+  quotationId       String
+  quotation         Quotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  revisionNumber    Int
+  token             String                @unique
+  method            QuotationShareMethod
+  sentTo            String?
+  createdById       String
+  createdAt         DateTime              @default(now())
+  viewedAt          DateTime?
+  acceptedAt        DateTime?
+
+  @@index([quotationId, revisionNumber])
+  @@map("quotation_shares")
+}
+
+model QuotationPayment {
+  id                String                  @id @default(cuid())
+  quotationId       String
+  quotation         Quotation               @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  amount            Int
+  stage             QuotationPaymentStage   @default(OTHER)
+  paymentMethod     PaymentMethod            @default(CASH)
+  paymentRef        String?
+  note              String?
+  paidAt            DateTime                 @default(now())
+  recordedById      String
+  debtPaymentId     String?                  @unique
+  createdAt         DateTime                 @default(now())
+
+  @@index([quotationId, paidAt])
+  @@map("quotation_payments")
 }
 
 model Product {
@@ -402,6 +668,7 @@ model Product {
   supplierCatalogProductId String?
   supplierCatalogProduct   SupplierCatalogProduct? @relation("SupplierCatalogProductInventoryMapping", fields: [supplierCatalogProductId], references: [id], onDelete: SetNull)
   saleItems                SaleItem[]
+  quotationItems           QuotationItem[]
   orderItems               OrderItem[]
   customerOrderItems       CustomerOrderItem[]
     stockMovements           StockMovement[]
@@ -505,6 +772,11 @@ model Sale {
   channel         SaleChannel   @default(POS)
   pricingTier     PricingTier   @default(RETAIL)
   customerPhone   String?
+  customerName    String?
+  customerId      String?
+  customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quotationId     String?       @unique
+  quotation       Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
   note            String?
   clientReference String?
   receiptNumber   Int?
@@ -524,6 +796,7 @@ model Sale {
   @@unique([shopId, receiptNumber])
   @@index([shopId, createdAt])
   @@index([shopId, status, createdAt])
+  @@index([shopId, customerId, createdAt])
   @@map("sales")
 }
 
@@ -618,6 +891,17 @@ model StaffMember {
   canManageStaff    Boolean   @default(false)
   canViewReports    Boolean   @default(false)
   canRecordExpenses Boolean   @default(false)
+  canViewQuotations Boolean   @default(false)
+  canCreateQuotations Boolean @default(false)
+  canEditSentQuotations Boolean @default(false)
+  canViewQuotationCosts Boolean @default(false)
+  canApproveQuotationDiscounts Boolean @default(false)
+  canSendQuotations Boolean @default(false)
+  canAcceptQuotations Boolean @default(false)
+  canConvertQuotations Boolean @default(false)
+  canRecordQuotationPayments Boolean @default(false)
+  canArchiveQuotations Boolean @default(false)
+  canDeleteQuotationDrafts Boolean @default(false)
   isActive          Boolean   @default(true)
   shopId            String
   shop              Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
@@ -636,8 +920,12 @@ model SaleItem {
   totalPrice  Int
   saleId      String
   sale        Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product @relation(fields: [productId], references: [id])
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name        String?
+  description String?
+  unit        String?
+  quotedQuantityMilli Int?
 
   @@index([saleId])
   @@index([productId])

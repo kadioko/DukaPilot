@@ -15,6 +15,17 @@ interface StaffMember {
   canManageStaff: boolean;
   canViewReports: boolean;
   canRecordExpenses: boolean;
+  canViewQuotations: boolean;
+  canCreateQuotations: boolean;
+  canEditSentQuotations: boolean;
+  canViewQuotationCosts: boolean;
+  canApproveQuotationDiscounts: boolean;
+  canSendQuotations: boolean;
+  canAcceptQuotations: boolean;
+  canConvertQuotations: boolean;
+  canRecordQuotationPayments: boolean;
+  canArchiveQuotations: boolean;
+  canDeleteQuotationDrafts: boolean;
   isActive: boolean;
   pin?: string | null;
 }
@@ -58,7 +69,7 @@ export default function StaffPage() {
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
     await load();
   }
@@ -69,6 +80,17 @@ export default function StaffPage() {
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",
     canRecordExpenses: lang === "sw" ? "Kurekodi matumizi" : "Record expenses",
+    canViewQuotations: lang === "sw" ? "Kuona nukuu" : "View quotations",
+    canCreateQuotations: lang === "sw" ? "Kutengeneza nukuu" : "Create quotations",
+    canEditSentQuotations: lang === "sw" ? "Kurekebisha zilizotumwa" : "Revise sent quotations",
+    canViewQuotationCosts: lang === "sw" ? "Kuona gharama/faida" : "View costs/profit",
+    canApproveQuotationDiscounts: lang === "sw" ? "Kuidhinisha punguzo" : "Approve discounts",
+    canSendQuotations: lang === "sw" ? "Kutuma nukuu" : "Send quotations",
+    canAcceptQuotations: lang === "sw" ? "Kukubali/kukataa" : "Accept/reject quotations",
+    canConvertQuotations: lang === "sw" ? "Kubadilisha kuwa mauzo" : "Convert to sales",
+    canRecordQuotationPayments: lang === "sw" ? "Kurekodi malipo" : "Record quotation payments",
+    canArchiveQuotations: lang === "sw" ? "Kuweka jalada" : "Archive quotations",
+    canDeleteQuotationDrafts: lang === "sw" ? "Kufuta rasimu" : "Delete drafts",
   };
   const activeStaffCount = staff.filter((member) => member.isActive).length;
   const basicLimitReached = subscription?.plan === "BASIC" && activeStaffCount >= 1;

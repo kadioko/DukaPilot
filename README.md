@@ -30,6 +30,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Error monitoring:** Backend Sentry alerts are live; see [docs/SENTRY_MONITORING.md](./docs/SENTRY_MONITORING.md)
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
 - **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and the multi-branch roadmap
+- **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, and deployment checks
 - **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
 - **Product test gate:** [TESTING.md](./TESTING.md)
 - **Android release build:** [docs/ANDROID_RELEASE_BUILD.md](./docs/ANDROID_RELEASE_BUILD.md)

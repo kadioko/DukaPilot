@@ -269,6 +269,8 @@ const voidSale = asyncHandler(async (req, res) => {
 
     const receiptLabel = existing.receiptNumber ? `#${String(existing.receiptNumber).padStart(6, "0")}` : `#${existing.id.slice(-6)}`;
     for (const item of existing.items) {
+      // Service quotation lines have no stock to return.
+      if (!item.productId) continue;
       await tx.product.update({ where: { id: item.productId }, data: { currentStock: { increment: item.quantity } } });
       await tx.stockMovement.create({
         data: { type: "IN", quantity: item.quantity, note: `Voided sale ${receiptLabel}: ${reason}`, productId: item.productId },

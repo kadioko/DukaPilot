@@ -10,7 +10,7 @@ export interface ReceiptSale {
   paymentMethod: string;
   createdAt: string;
   receiptNumber?: number | null;
-  items: Array<{ quantity: number; unitPrice: number; totalPrice: number; product: { name: string; unit: string } }>;
+  items: Array<{ quantity: number; unitPrice: number; totalPrice: number; name?: string | null; unit?: string | null; product?: { name: string; unit: string } | null }>;
 }
 
 interface ReceiptActionsProps {
@@ -68,7 +68,7 @@ function receiptData(sale: ReceiptSale, shopName: string, lang: "sw" | "en", cha
       change: isSwahili ? "Chenji" : "Change",
       thanks: isSwahili ? "Asante kwa kununua. Karibu tena!" : "Thank you for your purchase. Please come again!",
     },
-    items: sale.items.map((item) => ({ name: item.product.name, quantity: item.quantity, unitPrice: formatTZS(item.unitPrice), totalPrice: formatTZS(item.totalPrice) })),
+    items: sale.items.map((item) => ({ name: item.product?.name || item.name || "Custom service", quantity: item.quantity, unitPrice: formatTZS(item.unitPrice), totalPrice: formatTZS(item.totalPrice) })),
   };
 }
 

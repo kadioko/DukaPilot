@@ -25,6 +25,7 @@ import {
   WalletCards,
   PackageCheck,
   Gift,
+  FileText,
 } from "lucide-react";
 import { clearToken, api, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -47,6 +48,7 @@ interface User {
       canManageStaff: boolean;
       canViewReports: boolean;
       canRecordExpenses: boolean;
+      canViewQuotations: boolean;
     };
   };
   features?: {
@@ -61,7 +63,7 @@ interface NavItem {
   labelKey?: string;
   label?: string;
   icon: typeof LayoutDashboard;
-  permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses";
+  permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canViewQuotations";
   feature?: "staff" | "assistant" | "exports";
   ownerOnly?: boolean;
   group?: "overview" | "ai" | "sell" | "stock" | "money" | "manage";
@@ -74,6 +76,7 @@ const merchantNav: NavItem[] = [
   { href: "/daily-close", labelKey: "nav.dailyClose", icon: WalletCards, permission: "canSell", group: "sell" },
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell", group: "sell" },
   { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell", group: "sell" },
+  { href: "/quotations", labelKey: "nav.quotations", icon: FileText, permission: "canViewQuotations", group: "sell" },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
   { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", group: "stock" },
   { href: "/barcodes", labelKey: "nav.barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },

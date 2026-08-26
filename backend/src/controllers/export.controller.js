@@ -49,7 +49,7 @@ const exportSalesCsv = asyncHandler(async (req, res) => {
       sale.paymentMethod,
       sale.totalAmount,
       sale.profit,
-      sale.items.map((item) => `${item.product.name} (${item.quantity} ${item.product.unit})`).join("; "),
+      sale.items.map((item) => `${item.product?.name || item.name || "Custom service"} (${item.quantity} ${item.product?.unit || item.unit || "service"})`).join("; "),
     ]);
   }
 

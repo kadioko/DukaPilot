@@ -32,6 +32,8 @@ const stockCountRoutes = require("./routes/stockCount.routes");
 const cashSessionRoutes = require("./routes/cashSession.routes");
 const stockReceiptRoutes = require("./routes/stockReceipt.routes");
 const referralRoutes = require("./routes/referral.routes");
+const quotationRoutes = require("./routes/quotation.routes");
+const publicQuotationRoutes = require("./routes/publicQuotation.routes");
 const metaWhatsAppWebhookRoutes = require("./routes/metaWhatsAppWebhook.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
@@ -130,6 +132,7 @@ app.get("/status", async (req, res) => {
 
 app.use("/api", apiRateLimiter);
 app.use("/api/public", publicRateLimiter, publicRoutes);
+app.use("/api/public/quotations", publicRateLimiter, publicQuotationRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/sales", saleRoutes);
@@ -156,6 +159,7 @@ app.use("/api/stock-counts", stockCountRoutes);
 app.use("/api/cash-sessions", cashSessionRoutes);
 app.use("/api/stock-receipts", stockReceiptRoutes);
 app.use("/api/referrals", referralRoutes);
+app.use("/api/quotations", quotationRoutes);
 
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "API route not found" });

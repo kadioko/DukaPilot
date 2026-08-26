@@ -126,6 +126,17 @@ function staffPermissions(staff) {
     canManageStaff: Boolean(staff.canManageStaff),
     canViewReports: Boolean(staff.canViewReports),
     canRecordExpenses: Boolean(staff.canRecordExpenses),
+    canViewQuotations: Boolean(staff.canViewQuotations),
+    canCreateQuotations: Boolean(staff.canCreateQuotations),
+    canEditSentQuotations: Boolean(staff.canEditSentQuotations),
+    canViewQuotationCosts: Boolean(staff.canViewQuotationCosts),
+    canApproveQuotationDiscounts: Boolean(staff.canApproveQuotationDiscounts),
+    canSendQuotations: Boolean(staff.canSendQuotations),
+    canAcceptQuotations: Boolean(staff.canAcceptQuotations),
+    canConvertQuotations: Boolean(staff.canConvertQuotations),
+    canRecordQuotationPayments: Boolean(staff.canRecordQuotationPayments),
+    canArchiveQuotations: Boolean(staff.canArchiveQuotations),
+    canDeleteQuotationDrafts: Boolean(staff.canDeleteQuotationDrafts),
   };
 }
 

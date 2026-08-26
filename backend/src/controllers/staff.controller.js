@@ -21,16 +21,28 @@ const SAFE_STAFF_SELECT = {
   canManageStaff: true,
   canViewReports: true,
   canRecordExpenses: true,
+  canViewQuotations: true,
+  canCreateQuotations: true,
+  canEditSentQuotations: true,
+  canViewQuotationCosts: true,
+  canApproveQuotationDiscounts: true,
+  canSendQuotations: true,
+  canAcceptQuotations: true,
+  canConvertQuotations: true,
+  canRecordQuotationPayments: true,
+  canArchiveQuotations: true,
+  canDeleteQuotationDrafts: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
 };
 
 function permissionsFor(role) {
-  if (role === "OWNER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true };
-  if (role === "MANAGER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true };
-  if (role === "STOCK_CLERK") return { canSell: false, canManageStock: true, canManageStaff: false, canViewReports: false, canRecordExpenses: false };
-  return { canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false };
+  const quotationManager = { canViewQuotations: true, canCreateQuotations: true, canEditSentQuotations: true, canViewQuotationCosts: true, canApproveQuotationDiscounts: true, canSendQuotations: true, canAcceptQuotations: true, canConvertQuotations: true, canRecordQuotationPayments: true, canArchiveQuotations: true, canDeleteQuotationDrafts: true };
+  if (role === "OWNER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true, ...quotationManager };
+  if (role === "MANAGER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true, ...quotationManager };
+  if (role === "STOCK_CLERK") return { canSell: false, canManageStock: true, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canViewQuotations: true, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false, canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false, canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false };
+  return { canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canViewQuotations: false, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false, canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false, canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false };
 }
 
 function boolValue(value, fallback) {
@@ -104,6 +116,17 @@ const create = asyncHandler(async (req, res) => {
       canManageStaff: boolValue(req.body.canManageStaff, defaults.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, defaults.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, defaults.canRecordExpenses),
+      canViewQuotations: boolValue(req.body.canViewQuotations, defaults.canViewQuotations),
+      canCreateQuotations: boolValue(req.body.canCreateQuotations, defaults.canCreateQuotations),
+      canEditSentQuotations: boolValue(req.body.canEditSentQuotations, defaults.canEditSentQuotations),
+      canViewQuotationCosts: boolValue(req.body.canViewQuotationCosts, defaults.canViewQuotationCosts),
+      canApproveQuotationDiscounts: boolValue(req.body.canApproveQuotationDiscounts, defaults.canApproveQuotationDiscounts),
+      canSendQuotations: boolValue(req.body.canSendQuotations, defaults.canSendQuotations),
+      canAcceptQuotations: boolValue(req.body.canAcceptQuotations, defaults.canAcceptQuotations),
+      canConvertQuotations: boolValue(req.body.canConvertQuotations, defaults.canConvertQuotations),
+      canRecordQuotationPayments: boolValue(req.body.canRecordQuotationPayments, defaults.canRecordQuotationPayments),
+      canArchiveQuotations: boolValue(req.body.canArchiveQuotations, defaults.canArchiveQuotations),
+      canDeleteQuotationDrafts: boolValue(req.body.canDeleteQuotationDrafts, defaults.canDeleteQuotationDrafts),
       shopId,
     },
     select: SAFE_STAFF_SELECT,
@@ -145,6 +168,17 @@ const update = asyncHandler(async (req, res) => {
       canManageStaff: boolValue(req.body.canManageStaff, existing.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, existing.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, existing.canRecordExpenses),
+      canViewQuotations: boolValue(req.body.canViewQuotations, existing.canViewQuotations),
+      canCreateQuotations: boolValue(req.body.canCreateQuotations, existing.canCreateQuotations),
+      canEditSentQuotations: boolValue(req.body.canEditSentQuotations, existing.canEditSentQuotations),
+      canViewQuotationCosts: boolValue(req.body.canViewQuotationCosts, existing.canViewQuotationCosts),
+      canApproveQuotationDiscounts: boolValue(req.body.canApproveQuotationDiscounts, existing.canApproveQuotationDiscounts),
+      canSendQuotations: boolValue(req.body.canSendQuotations, existing.canSendQuotations),
+      canAcceptQuotations: boolValue(req.body.canAcceptQuotations, existing.canAcceptQuotations),
+      canConvertQuotations: boolValue(req.body.canConvertQuotations, existing.canConvertQuotations),
+      canRecordQuotationPayments: boolValue(req.body.canRecordQuotationPayments, existing.canRecordQuotationPayments),
+      canArchiveQuotations: boolValue(req.body.canArchiveQuotations, existing.canArchiveQuotations),
+      canDeleteQuotationDrafts: boolValue(req.body.canDeleteQuotationDrafts, existing.canDeleteQuotationDrafts),
       isActive: nextIsActive,
     },
     select: SAFE_STAFF_SELECT,
