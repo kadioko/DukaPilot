@@ -60,6 +60,24 @@ test("product list returns paginated results", async () => {
   assert.equal(res.payload.products.length, 1);
 });
 
+test("product list caps a requested page to a safe catalogue size", async () => {
+  let findManyArgs;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findMany: async (args) => { findManyArgs = args; return []; },
+      count: async () => 0,
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.list({ user: { userId: "user-1" }, query: { limit: "5000" } }, res);
+
+  assert.equal(findManyArgs.take, 200);
+  assert.equal(res.payload.pagination.limit, 200);
+});
+
 test("low-stock pagination filters the whole catalogue before selecting a page", async () => {
   let findManyArgs;
   const prismaMock = {

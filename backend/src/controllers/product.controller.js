@@ -179,8 +179,8 @@ function parseProductImport(csv) {
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const { lowStock, search, page = 1, limit = 50 } = req.query;
-  const pageNumber = Number(page);
-  const limitNumber = Number(limit);
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const limitNumber = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const skip = (pageNumber - 1) * limitNumber;
 
   const where = { shopId, isActive: true };

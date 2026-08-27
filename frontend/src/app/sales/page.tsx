@@ -169,6 +169,10 @@ export default function SalesPage() {
   const syncingRef = useRef(false);
   const cartPanelRef = useRef<HTMLDivElement>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productPage, setProductPage] = useState(1);
+  const [productTotal, setProductTotal] = useState(0);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productRevision, setProductRevision] = useState(0);
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
@@ -210,14 +214,47 @@ export default function SalesPage() {
         setCanManageStock(data.user.role === "ADMIN" || !data.user.staff || Boolean(data.user.staff.permissions?.canManageStock));
       })
       .catch(() => setCanViewFinancials(false));
-    api.get<{ products: Product[] }>("/products")
-      .then((d) => setProducts(d.products));
     api.get<{ customers: CustomerRecord[] }>("/debts/customers")
       .then((d) => setCustomers(d.customers))
       .catch(() => setCustomers([]));
     api.get<{ settings: { shop?: { name?: string } } }>("/settings")
       .then((data) => setShopName(data.settings.shop?.name || "DukaPilot"))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLoadingProducts(true);
+      try {
+        const query = new URLSearchParams({ page: String(productPage), limit: "100" });
+        if (search.trim()) query.set("search", search.trim());
+        const data = await api.get<{ products: Product[]; pagination: { total: number } }>(`/products?${query.toString()}`);
+        if (cancelled) return;
+        setProducts((current) => {
+          if (productPage === 1) return data.products;
+          const known = new Set(current.map((product) => product.id));
+          return [...current, ...data.products.filter((product) => !known.has(product.id))];
+        });
+        setProductTotal(data.pagination.total);
+      } catch {
+        if (!cancelled) {
+          setProducts([]);
+          setProductTotal(0);
+        }
+      } finally {
+        if (!cancelled) setLoadingProducts(false);
+      }
+    }, search.trim() ? 250 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [productPage, productRevision, search]);
+
+  const refreshProducts = useCallback(() => {
+    setProductPage(1);
+    setProductRevision((current) => current + 1);
   }, []);
 
   const syncPendingSales = useCallback(async () => {
@@ -273,15 +310,13 @@ export default function SalesPage() {
       setLastSyncAt(new Date().toISOString());
       if (remaining.length < pending.length) {
         toast(lang === "sw" ? "Mauzo ya bila intaneti yamesawazishwa." : "Offline sales synced.", "success");
-        api.get<{ products: Product[] }>("/products")
-          .then((d) => setProducts(d.products))
-          .catch(() => {});
+        refreshProducts();
       }
     } finally {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [lang, toast]);
+  }, [lang, refreshProducts, toast]);
 
   useEffect(() => {
     setPendingSales(readPendingSales());
@@ -353,7 +388,7 @@ export default function SalesPage() {
 
   const hiddenOutOfStock = products.filter((p) => p.currentStock <= 0).length;
   const hiddenExpired = products.filter((p) => p.currentStock > 0 && isExpired(p)).length;
-  const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search.trim().toUpperCase()));
+  const filtered = products;
 
   function defaultPriceFor(product: Product): number {
     if (saleMode === "WHOLESALE" && product.wholesalePrice != null) {
@@ -491,8 +526,7 @@ export default function SalesPage() {
       await api.patch(`/sales/${sale.id}/void`, { reason: reason.trim() }, lang);
       toast(lang === "sw" ? `Mauzo ${receiptLabel(sale)} yamefutwa na stock imerudishwa.` : `Sale ${receiptLabel(sale)} was voided and stock restored.`, "success");
       await fetchHistory();
-      const data = await api.get<{ products: Product[] }>("/products");
-      setProducts(data.products);
+      refreshProducts();
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : t("common.error", lang), "error");
     } finally {
@@ -537,9 +571,8 @@ export default function SalesPage() {
       setCustomerPhone("");
       setCreditDueDate("");
       setAmountTendered("");
-      // Refresh products stock
-      api.get<{ products: Product[] }>("/products")
-        .then((d) => setProducts(d.products));
+      // Refresh the currently browsed inventory page after stock changes.
+      refreshProducts();
       if (paymentMethod === "CREDIT") {
         api.get<{ customers: CustomerRecord[] }>("/debts/customers").then((d) => setCustomers(d.customers)).catch(() => {});
       }
@@ -661,7 +694,7 @@ export default function SalesPage() {
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
               <p>
-                {lang === "sw" ? "Bidhaa zisizoweza kuuzwa sasa:" : "Currently unavailable to sell:"}{" "}
+                {lang === "sw" ? "Bidhaa zinazoonyeshwa sasa zisizoweza kuuzwa:" : "Unavailable among the products shown:"}{" "}
                 {hiddenOutOfStock > 0 && `${hiddenOutOfStock} ${lang === "sw" ? "bidhaa ambazo stock imeisha" : "out of stock"}`}
                 {hiddenOutOfStock > 0 && hiddenExpired > 0 ? ", " : ""}
                 {hiddenExpired > 0 && `${hiddenExpired} ${lang === "sw" ? "zimeisha muda" : "expired"}`}.
@@ -784,7 +817,7 @@ export default function SalesPage() {
               <div className="mb-3 flex gap-2">
                 <div className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)}
+                <input value={search} onChange={(e) => { setSearch(e.target.value); setProductPage(1); }}
                   placeholder={t("inventory.search", lang)}
                   className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
                 </div>
@@ -816,6 +849,14 @@ export default function SalesPage() {
                     </div>
                   );
                 })}
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500">
+                <span>{lang === "sw" ? `Inaonyesha ${products.length} kati ya bidhaa ${productTotal}` : `Showing ${products.length} of ${productTotal} products`}</span>
+                {products.length < productTotal && (
+                  <button disabled={loadingProducts} onClick={() => setProductPage((current) => current + 1)} className="font-semibold text-brand-700 disabled:opacity-50">
+                    {loadingProducts ? "..." : (lang === "sw" ? "Onyesha zaidi" : "Load more")}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1018,7 +1059,7 @@ export default function SalesPage() {
           </div>
         </div>
       )}
-      {unknownBarcode && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"><h2 className="font-bold text-gray-900">{lang === "sw" ? "Barcode haijapatikana" : "This barcode was not found."}</h2><p className="mt-2 text-sm text-gray-600">{unknownBarcode}</p><div className="mt-4 flex gap-2"><button onClick={() => { setSearch(unknownBarcode); setUnknownBarcode(null); }} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-semibold">{lang === "sw" ? "Tafuta" : "Search manually"}</button><button onClick={() => { window.location.href = `/inventory?barcode=${encodeURIComponent(unknownBarcode)}&action=add`; }} className="flex-1 rounded-lg bg-brand-600 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Ongeza bidhaa" : "Add new product"}</button></div><button onClick={() => setUnknownBarcode(null)} className="mt-3 w-full text-sm text-gray-500">{t("common.cancel", lang)}</button></div></div>}
+      {unknownBarcode && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"><h2 className="font-bold text-gray-900">{lang === "sw" ? "Barcode haijapatikana" : "This barcode was not found."}</h2><p className="mt-2 text-sm text-gray-600">{unknownBarcode}</p><div className="mt-4 flex gap-2"><button onClick={() => { setSearch(unknownBarcode); setProductPage(1); setUnknownBarcode(null); }} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-semibold">{lang === "sw" ? "Tafuta" : "Search manually"}</button><button onClick={() => { window.location.href = `/inventory?barcode=${encodeURIComponent(unknownBarcode)}&action=add`; }} className="flex-1 rounded-lg bg-brand-600 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Ongeza bidhaa" : "Add new product"}</button></div><button onClick={() => setUnknownBarcode(null)} className="mt-3 w-full text-sm text-gray-500">{t("common.cancel", lang)}</button></div></div>}
     </AppShell>
   );
 }
