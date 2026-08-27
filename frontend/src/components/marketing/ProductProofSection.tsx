@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Bot, ClipboardList, CreditCard, MessageCircle, PackageCheck, ReceiptText, QrCode } from "lucide-react";
+import { Bot, ClipboardList, CreditCard, FileText, MessageCircle, PackageCheck, ReceiptText, QrCode } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 
 const proofCards = [
@@ -41,6 +41,12 @@ const proofCards = [
     body: { sw: "Shiriki QR au link; mteja aone bidhaa na atume agizo.", en: "Share a QR or link so customers can browse and place an order." },
     rows: [{ sw: "Link ya duka", en: "Shop link" }, { sw: "Weka kwenye WhatsApp Status", en: "Share to WhatsApp Status" }, { sw: "Agizo linaingia dukani", en: "Order reaches the shop" }],
   },
+  {
+    icon: FileText,
+    title: { sw: "Nukuu za bei", en: "Quotations" },
+    body: { sw: "Tengeneza bei za huduma, kazi, vifaa na miradi kabla ya mauzo kuthibitishwa.", en: "Price services, labour, materials, and projects before a sale is confirmed." },
+    rows: [{ sw: "Rasimu au tuma link salama", en: "Draft or share a secure link" }, { sw: "Amana na malipo ya hatua", en: "Deposits and milestone payments" }, { sw: "Gharama za ndani hubaki private", en: "Internal costs stay private" }],
+  },
 ];
 
 export default function ProductProofSection({ compact = false }: { compact?: boolean }) {
@@ -56,8 +62,8 @@ export default function ProductProofSection({ compact = false }: { compact?: boo
           </h2>
           <p className="mt-3 text-sm leading-6 text-gray-600 sm:text-base">
             {lang === "sw"
-              ? "DukaPilot si bei tu. Hizi ndizo sehemu ambazo mfanyabiashara hutumia kila siku: dashibodi, mauzo, bidhaa dukani, madeni, maagizo kwa wasambazaji na msaidizi wa AI."
-              : "DukaPilot is more than pricing. These are the daily workflows a shop owner uses: dashboard, sales, inventory, debts, supplier orders, and the AI Assistant."}
+              ? "DukaPilot si bei tu. Hizi ndizo sehemu ambazo mfanyabiashara hutumia kila siku: dashibodi, mauzo, bidhaa dukani, madeni, nukuu za bei, maagizo kwa wasambazaji na msaidizi wa AI."
+              : "DukaPilot is more than pricing. These are the daily workflows a business owner uses: dashboard, sales, inventory, debts, quotations, supplier orders, and the AI Assistant."}
           </p>
 
           <div className="mt-5 flex justify-center overflow-hidden rounded-lg border border-brand-100 bg-brand-50 p-3">

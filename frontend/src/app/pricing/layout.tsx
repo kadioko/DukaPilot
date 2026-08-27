@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "DukaPilot Pricing - POS Tanzania, Inventory App, Mfumo wa Duka",
   description:
-    "Simple DukaPilot pricing for Tanzanian shops. POS Tanzania, inventory app Tanzania, duka stock management, debts, expenses, supplier orders, and programu ya stock in Kiswahili.",
+    "Simple DukaPilot pricing for Tanzanian shops and service businesses. POS Tanzania, inventory, quotations, projects, debts, expenses, supplier orders, and programu ya stock in Kiswahili.",
   keywords: [
     "POS Tanzania",
     "inventory app Tanzania",
@@ -12,6 +12,8 @@ export const metadata: Metadata = {
     "programu ya stock",
     "DukaPilot pricing",
     "shop management Tanzania",
+    "quotation software Tanzania",
+    "estimate app Tanzania",
   ],
   alternates: {
     canonical: "/pricing",
@@ -19,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "DukaPilot Pricing - POS and Inventory App Tanzania",
     description:
-      "Track stock, sales, debts, expenses, and supplier orders for Tanzanian shops. Start free, then pay by M-Pesa.",
+      "Track stock, sales, quotations, debts, expenses, and supplier orders for Tanzanian shops and service businesses. Start free, then pay by M-Pesa.",
     url: "/pricing",
     siteName: "DukaPilot",
     type: "website",

@@ -20,6 +20,17 @@ DukaPilot quotations support service, project, and stock businesses. A quotation
 5. A deposit/milestone is held as a quotation payment. On conversion, it is linked into the existing debt-payment flow without a second sale.
 6. Only product-linked lines use DukaPilot's existing stock decrement and stock-history transaction. Service/custom lines do not touch inventory.
 
+## AI Assistant priorities
+
+On DukaPilot Pro, the AI Assistant includes quotation pipeline work in the daily command list. It can flag:
+
+- an accepted quotation waiting for the business to convert it into one sale;
+- a deposit that is still unpaid or past its due date;
+- a sent quotation that will expire within three days; and
+- an expired quotation that needs follow-up, a new revision, or a clean close-out.
+
+The assistant reads only the shop-scoped quotation status, customer, title, dates, totals, payment progress, and deposit requirement required for these actions. It does not expose internal costs, supplier details, private notes, markup, or estimated profit. It also never treats a quotation, acceptance, or deposit as realised revenue by itself.
+
 ## Roles
 
 Owners retain access. Staff can be granted independently: view quotations, create drafts, revise shared quotations, view internal costs, approve discounts, send, accept/reject, convert to sales, record payments, archive, and delete unshared drafts. The staff page exposes these switches.

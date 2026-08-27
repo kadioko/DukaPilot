@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "About DukaPilot - POS, Daily Close and QR Orders for Tanzania",
+  title: "About DukaPilot - POS, Quotations, Daily Close and QR Orders for Tanzania",
   description:
-    "Learn how DukaPilot helps Tanzanian shop owners manage stock, sales, debts, expenses, Daily Close, landed-cost receiving, receipts, and QR customer orders from a phone.",
+    "Learn how DukaPilot helps Tanzanian shops and service businesses manage stock, sales, quotations, debts, expenses, Daily Close, landed-cost receiving, receipts, and QR customer orders from a phone.",
   keywords: [
     "about DukaPilot",
     "DukaPilot Tanzania",
@@ -14,6 +14,8 @@ export const metadata: Metadata = {
     "mfumo wa duka",
     "Daily Close Tanzania",
     "QR shop ordering Tanzania",
+    "quotation software Tanzania",
+    "service business software Tanzania",
   ],
   alternates: {
     canonical: "/about",
@@ -21,7 +23,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "About DukaPilot",
     description:
-      "DukaPilot helps Tanzanian shop owners manage stock, sales, debts, daily cash, true stock cost, QR orders, and next actions.",
+      "DukaPilot helps Tanzanian shops and service businesses manage stock, sales, quotations, debts, daily cash, QR orders, and next actions.",
     url: "/about",
     siteName: "DukaPilot",
     type: "website",

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: "%s | DukaPilot",
   },
   description:
-    "DukaPilot is an AI-powered POS and inventory app for Tanzanian shops. Track stock, sales, debts, expenses, supplier orders, and duka stock management in Kiswahili.",
+    "DukaPilot is an AI-powered POS, inventory, and quotation app for Tanzanian shops and service businesses. Track stock, sales, debts, expenses, supplier orders, projects, and estimates in Kiswahili.",
   applicationName: "DukaPilot",
   authors: [{ name: "Necuva Group Limited", url: "https://www.dukapilot.com" }],
   creator: "Necuva Group Limited",
@@ -33,6 +33,9 @@ export const metadata: Metadata = {
     "shop POS Tanzania",
     "stock management app Tanzania",
     "shop management Tanzania",
+    "quotation software Tanzania",
+    "estimate app Tanzania",
+    "service business software Tanzania",
   ],
   manifest: "/manifest.json",
   icons: {
@@ -53,7 +56,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "DukaPilot - POS and Inventory App for Tanzanian Shops",
     description:
-      "AI-powered POS for Tanzanian shops. Track stock, sales, debts, expenses, supplier orders, and profit in Kiswahili from your phone.",
+      "AI-powered POS, inventory, and quotation app for Tanzanian shops and service businesses. Track stock, sales, debts, expenses, projects, estimates, and profit in Kiswahili from your phone.",
     url: "/",
     siteName: "DukaPilot",
     type: "website",
@@ -72,7 +75,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "DukaPilot - POS Tanzania, Inventory App, Mfumo wa Duka",
     description:
-      "AI-powered POS and inventory app for Tanzanian shops. Track stock, sales, debts, expenses, and supplier orders in Kiswahili.",
+      "AI-powered POS, inventory, and quotation app for Tanzanian shops and service businesses. Track stock, sales, debts, expenses, and estimates in Kiswahili.",
     images: ["/marketing/phone-dashboard.png"],
   },
   robots: {
@@ -126,7 +129,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       url: "https://www.dukapilot.com",
       image: "https://www.dukapilot.com/marketing/phone-dashboard.png",
       description:
-        "AI-powered POS and inventory app for Tanzanian shops. Track stock, sales, debts, expenses, supplier orders, and profit in Kiswahili.",
+        "AI-powered POS, inventory, and quotation app for Tanzanian shops and service businesses. Track stock, sales, debts, expenses, projects, estimates, and profit in Kiswahili.",
       offers: [
         {
           "@type": "Offer",

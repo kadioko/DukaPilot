@@ -64,9 +64,10 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **One-tap reorder** | Repeat any previous order with a single button |
 | **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
+| **Quotations and estimates** | Build customer-safe quotations for services, projects, labour, materials, and stock; track deposits, acceptance, revisions, and conversion to one sale without counting a quote as revenue |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
-| **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations, why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
+| **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations for stock, debts, expenses, orders, accepted quotations, deposits, and expiring estimates, with why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
 | **AI action history** | Merchants can review opened, completed, and dismissed AI actions from `/assistant/history` |
 | **Offline sales queue** | Sales entered during connection loss are saved locally with an idempotent reference, show sync history/errors, and retry safely when the browser comes back online |
 | **PIN recovery** | "Forgot PIN?" sends a 6-digit SMS code through NextSMS for owners and active staff |

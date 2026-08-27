@@ -182,9 +182,44 @@ test("AI ranks proven demand above an out-of-stock product with zero sales", asy
     contentType: "application/json",
     body: JSON.stringify({ actions: [] }),
   }));
+  await page.route(/\/(?:_api|api)\/quotations\?limit=200$/, async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ quotations: [] }),
+  }));
 
   await page.goto("/assistant");
 
   await expect(page.getByRole("heading", { name: "Agiza Unga wa Sembe kabla stock haijaisha" })).toBeVisible();
   await expect(page.getByText(/Kagua mahitaji ya Dawa ya Mswaki/)).toHaveCount(0);
+});
+
+test("AI prioritizes accepted, deposit, expiring, and expired quotation work without treating it as revenue", async ({ page }) => {
+  await mockMerchantShell(page);
+  const today = new Date();
+  const inTwoDays = new Date(today);
+  inTwoDays.setDate(today.getDate() + 2);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const quotes = [
+    { id: "accepted", quotationNumber: "QT-0042", status: "ACCEPTED", projectTitle: "Ufungaji wa pazia", totalAmount: 200000, amountPaid: 0, depositRequiredAmount: 100000, depositDueDate: inTwoDays.toISOString(), expiryDate: inTwoDays.toISOString(), customer: { name: "Asha" } },
+    { id: "sent", quotationNumber: "QT-0043", status: "SENT", projectTitle: "Ubunifu wa ofisi", totalAmount: 80000, amountPaid: 0, depositRequiredAmount: 0, expiryDate: inTwoDays.toISOString(), customer: { name: "Salum" } },
+    { id: "expired", quotationNumber: "QT-0044", status: "EXPIRED", projectTitle: "Matengenezo ya fremu", totalAmount: 55000, amountPaid: 0, depositRequiredAmount: 0, expiryDate: yesterday.toISOString(), customer: { name: "Neema" } },
+  ];
+  const summary = { totalSales: 0, totalProfit: 0, totalExpenses: 0, netProfit: 0, lowStockCount: 0, outOfStockCount: 0, pendingOrders: 0, salesCount: 0 };
+  await page.route("**/*api/dashboard?period=today", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ summary, lowStockAlerts: [], topProducts: [] }) }));
+  await page.route("**/*api/dashboard?period=all", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ summary, lowStockAlerts: [], topProducts: [] }) }));
+  await page.route("**/*api/debts", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ debts: [], summary: { openCount: 0, totalOwed: 0 } }) }));
+  await page.route("**/*api/expenses", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expenses: [], summary: { total: 0, count: 0 } }) }));
+  await page.route("**/*api/assistant/actions", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ actions: [] }) }));
+  await page.route(/\/(?:_api|api)\/quotations\?limit=200$/, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ quotations: quotes }) }));
+
+  await page.goto("/assistant");
+
+  await expect(page.getByRole("heading", { name: "Badilisha QT-0042 kuwa mauzo" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kumbuka amana ya QT-0042" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "QT-0043 inaisha hivi karibuni" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Amua hatua kwa QT-0044" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Fungua nukuu zilizokubaliwa" })).toHaveAttribute("href", "/quotations?status=ACCEPTED");
+  await expect(page.getByText("bado si mauzo wala mapato")).toBeVisible();
 });

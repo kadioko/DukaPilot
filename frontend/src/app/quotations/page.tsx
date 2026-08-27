@@ -37,11 +37,16 @@ function emptyForm(settings?: Settings | null) { return { customerId: "", custom
 function money(value: number) { return formatTZS(Number(value || 0)); }
 function label(status: Status, lang: "sw" | "en") { return STATUSES.find((item) => item.value === status)?.[lang] || status; }
 function badge(status: Status) { return ({ DRAFT: "bg-gray-100 text-gray-700", SENT: "bg-blue-100 text-blue-800", ACCEPTED: "bg-emerald-100 text-emerald-800", REJECTED: "bg-red-100 text-red-800", EXPIRED: "bg-amber-100 text-amber-800", CONVERTED: "bg-violet-100 text-violet-800", ARCHIVED: "bg-gray-200 text-gray-700", CANCELLED: "bg-gray-200 text-gray-700" } as Record<Status, string>)[status]; }
+function initialFilter(): "ALL" | Status {
+  if (typeof window === "undefined") return "ALL";
+  const status = new URLSearchParams(window.location.search).get("status")?.toUpperCase();
+  return STATUSES.some((item) => item.value === status) ? status as Status : "ALL";
+}
 
 export default function QuotationsPage() {
   const lang = useLang(); const { toast } = useToast();
   const [quotes, setQuotes] = useState<Quote[]>([]); const [products, setProducts] = useState<Product[]>([]); const [services, setServices] = useState<SavedService[]>([]); const [customers, setCustomers] = useState<Customer[]>([]); const [settings, setSettings] = useState<Settings | null>(null); const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [filter, setFilter] = useState<"ALL" | Status>("ALL"); const [selected, setSelected] = useState<Quote | null>(null); const [form, setForm] = useState(emptyForm()); const [editorOpen, setEditorOpen] = useState(false); const [saving, setSaving] = useState(false); const [busy, setBusy] = useState<string | null>(null); const [shareUrl, setShareUrl] = useState(""); const [revisions, setRevisions] = useState<Array<{ revisionNumber: number; changedById?: string | null; changeSummary?: string | null; createdAt: string }>>([]); const [showCosts, setShowCosts] = useState(true);
+  const [filter, setFilter] = useState<"ALL" | Status>(initialFilter); const [selected, setSelected] = useState<Quote | null>(null); const [form, setForm] = useState(emptyForm()); const [editorOpen, setEditorOpen] = useState(false); const [saving, setSaving] = useState(false); const [busy, setBusy] = useState<string | null>(null); const [shareUrl, setShareUrl] = useState(""); const [revisions, setRevisions] = useState<Array<{ revisionNumber: number; changedById?: string | null; changeSummary?: string | null; createdAt: string }>>([]); const [showCosts, setShowCosts] = useState(true);
 
   const load = useCallback(async () => {
     const query = filter === "ALL" ? "" : `?status=${filter}`;

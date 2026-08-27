@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "DukaPilot Demo - POS Tanzania and Duka Stock Management",
   description:
-    "Try the DukaPilot demo for Tanzanian shop owners. See POS sales, inventory, debts, expenses, supplier orders, AI Assistant, and mfumo wa duka workflows.",
+    "Try the DukaPilot demo for Tanzanian shops and service businesses. See POS sales, inventory, quotations, debts, expenses, supplier orders, and AI Assistant workflows.",
   keywords: [
     "DukaPilot demo",
     "POS Tanzania",
@@ -12,6 +12,7 @@ export const metadata: Metadata = {
     "mfumo wa duka",
     "programu ya stock",
     "shop POS demo Tanzania",
+    "quotation software Tanzania",
   ],
   alternates: {
     canonical: "/demo",
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Try the DukaPilot Demo",
     description:
-      "Use demo accounts to see sales, stock, debts, supplier orders, staff, billing, and AI Assistant workflows.",
+      "Use demo accounts to see sales, stock, quotations, deposits, debts, supplier orders, staff, billing, and AI Assistant workflows.",
     url: "/demo",
     siteName: "DukaPilot",
     type: "website",

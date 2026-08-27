@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Check, PackageCheck, QrCode, ReceiptText, ShieldCheck, WalletCards } from "lucide-react";
+import { ArrowRight, Check, FileText, PackageCheck, QrCode, ReceiptText, ShieldCheck, WalletCards } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { useLang } from "@/lib/i18n";
@@ -28,6 +28,11 @@ const daySteps = [
     sw: { title: "Geuza link kuwa oda", body: "Shiriki link au QR ya duka lako. Mteja anaona bidhaa na kutuma oda ambayo inaingia moja kwa moja dukani." },
     en: { title: "Turn a link into orders", body: "Share your shop link or QR. Customers browse products and send an order straight to the shop." },
   },
+  {
+    icon: FileText,
+    sw: { title: "Anza kazi kwa nukuu iliyo wazi", body: "Kwa huduma na miradi, tengeneza nukuu yenye kazi, vifaa, labour, amana na masharti. Gharama na faida ya makadirio hubaki ndani ya biashara." },
+    en: { title: "Start work with a clear quotation", body: "For services and projects, create a quotation with work, materials, labour, deposits, and terms. Estimated costs and profit stay inside the business." },
+  },
 ];
 
 export default function AboutPage() {
@@ -46,8 +51,8 @@ export default function AboutPage() {
               </h1>
               <p className="mt-5 max-w-xl text-base leading-7 text-brand-100 sm:text-lg">
                 {isSwahili
-                  ? "DukaPilot ni mfumo wa simu kwa wamiliki wa maduka Tanzania wanaotaka kuona stock, mauzo, madeni, matumizi, pesa ya siku na oda za wateja bila kutegemea daftari au kumbukumbu za WhatsApp pekee."
-                  : "DukaPilot is a phone-first system for Tanzanian shop owners who need a clear view of stock, sales, debts, expenses, daily cash, and customer orders without relying on notebooks or WhatsApp memory alone."}
+                  ? "DukaPilot ni mfumo wa simu kwa wamiliki wa maduka na biashara za huduma Tanzania wanaotaka kuona stock, mauzo, madeni, matumizi, pesa ya siku, oda za wateja na nukuu za bei bila kutegemea daftari au kumbukumbu za WhatsApp pekee."
+                  : "DukaPilot is a phone-first system for Tanzanian shops and service businesses that need a clear view of stock, sales, debts, expenses, daily cash, customer orders, and quotations without relying on notebooks or WhatsApp memory alone."}
               </p>
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link href="/register" className="inline-flex min-h-11 items-center justify-center gap-2 bg-white px-5 py-3 text-sm font-bold text-brand-800 hover:bg-brand-50">

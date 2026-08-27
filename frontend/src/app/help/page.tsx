@@ -18,7 +18,7 @@ export default function HelpPage() {
     [lang === "sw" ? "Mfumo hufanya kazi bila intaneti?" : "Does offline work?", lang === "sw" ? "Ukurasa wa Mauzo unaweza kuhifadhi mauzo kwenye simu bila intaneti na kuyasawazisha intaneti ikirudi. Kagua historia ya usawazishaji kwa hitilafu za kiasi cha bidhaa." : "The Sales page can save sales locally while offline and sync them when internet returns. Check sync history for stock conflict errors."],
     [lang === "sw" ? "Ninalipaje mpango wangu?" : "How do I pay for subscription?", lang === "sw" ? "Njia ya kwanza: M-Pesa Lipa Namba 52806296 jina Necuva Group Limited. Njia ya pili: Mix by Yas Lipa Namba 18214626 jina Necuva. Njia ya tatu: tuma pesa 0743910580. Baada ya kulipa, weka namba ya kumbukumbu kwenye Malipo au tuma WhatsApp 0743910580." : "First option: M-Pesa Lipa Number 52806296, name Necuva Group Limited. Second option: Mix by Yas Lipa Number 18214626, name Necuva. Third option: send money to 0743910580. After paying, submit the reference in Billing or WhatsApp 0743910580."],
     [lang === "sw" ? "Nitajuaje malipo yamekubaliwa?" : "How do I know payment was confirmed?", lang === "sw" ? "Ukurasa wa Malipo unaonyesha maombi yako na hali yake. Msimamizi akithibitisha, mpango utaonekana umeanza." : "Billing shows your payment requests and status. Once admin confirms, your plan shows active."],
-    [lang === "sw" ? "Msaidizi wa AI ananisaidiaje?" : "How does the AI Assistant help?", lang === "sw" ? "Anapanga hatua za leo kama kuagiza bidhaa, kufuatilia madeni, kupunguza gharama na kushughulikia maagizo." : "It ranks today's actions like restocking, following up debts, reducing costs, and handling orders."],
+    [lang === "sw" ? "Msaidizi wa AI ananisaidiaje?" : "How does the AI Assistant help?", lang === "sw" ? "Anapanga hatua za leo kama kuagiza bidhaa, kufuatilia madeni, kupunguza gharama, kushughulikia maagizo, kufuatilia nukuu inayokaribia kuisha, amana inayochelewa, au nukuu iliyokubaliwa inayosubiri kubadilishwa kuwa mauzo." : "It ranks today's actions like restocking, following up debts, reducing costs, handling orders, following up an expiring quotation, a late deposit, or an accepted quotation waiting to become a sale."],
     [lang === "sw" ? "Ninatengenezaje nukuu ya bei?" : "How do I create a quotation?", lang === "sw" ? "Fungua Nukuu za Bei, chagua Nukuu mpya, weka mteja na kazi, kisha ongeza bidhaa za stock au mistari ya huduma, kazi, usafiri na gharama nyingine. Hifadhi rasimu, kagua PDF, halafu tuma link salama kwa mteja." : "Open Quotations, choose New quotation, add the customer and project, then add stock products or custom service, labour, transport, and other lines. Save a draft, review the PDF, then share the secure link."],
     [lang === "sw" ? "Nukuu ikikubaliwa, mauzo yanaanza moja kwa moja?" : "Does an accepted quotation automatically become a sale?", lang === "sw" ? "Hapana. Nukuu ni makadirio tu. Baada ya mteja kukubali, mmiliki huchagua Badilisha kuwa mauzo. Hapo ndipo bidhaa zilizolinkiwa hupunguzwa stock na salio linaweza kurekodiwa kama deni." : "No. A quotation is only an estimate. Once accepted, the owner chooses Convert to sale. Only then do linked products reduce stock and any balance become a receivable."],
     [lang === "sw" ? "Gharama na faida ya makadirio vinaonekana kwa mteja?" : "Can a customer see estimated costs or profit?", lang === "sw" ? "Hapana. Gharama za kununua, supplier, markup, faida ya makadirio na dokezo la ndani hubaki kwa biashara. Link, PDF na print ya mteja hutumia taarifa za mteja tu." : "No. Buying costs, suppliers, markup, estimated profit, and private notes remain inside the business. Customer links, PDFs, and print views use customer-safe information only."],
@@ -41,11 +41,11 @@ export default function HelpPage() {
   const aiThinking = [
     [
       lang === "sw" ? "1. Inasoma data" : "1. Reads shop data",
-      lang === "sw" ? "Mauzo, bidhaa, madeni, matumizi, maagizo na shughuli za wafanyakazi." : "Sales, stock, debts, expenses, orders, and staff activity.",
+      lang === "sw" ? "Mauzo, bidhaa, madeni, matumizi, nukuu za bei, maagizo na shughuli za wafanyakazi." : "Sales, stock, debts, expenses, quotations, orders, and staff activity.",
     ],
     [
       lang === "sw" ? "2. Inatafuta hatari" : "2. Finds risk",
-      lang === "sw" ? "Bidhaa kuisha, deni kukaa muda mrefu, matumizi kupanda, au siku bila mauzo." : "Low stock, old debts, rising expenses, or quiet sales days.",
+      lang === "sw" ? "Bidhaa kuisha, deni kukaa muda mrefu, matumizi kupanda, nukuu kuisha muda, au siku bila mauzo." : "Low stock, old debts, rising expenses, expiring quotations, or quiet sales days.",
     ],
     [
       lang === "sw" ? "3. Inapanga kipaumbele" : "3. Ranks priority",
@@ -53,7 +53,7 @@ export default function HelpPage() {
     ],
     [
       lang === "sw" ? "4. Inapendekeza hatua" : "4. Suggests action",
-      lang === "sw" ? "Fuatilia deni, agiza bidhaa, punguza gharama au shughulikia agizo." : "Collect debt, restock, reduce costs, or handle pending orders.",
+      lang === "sw" ? "Fuatilia deni au amana, agiza bidhaa, punguza gharama, shughulikia agizo, au badilisha nukuu iliyokubaliwa kuwa mauzo." : "Collect a debt or deposit, restock, reduce costs, handle an order, or convert an accepted quotation to a sale.",
     ],
   ];
 

@@ -25,8 +25,8 @@ export default function DemoPage() {
           lang={lang}
           headline={lang === "sw" ? "Jaribu onyesho kabla ya kuanza" : "Try the demo before you start"}
           body={lang === "sw"
-            ? "Tumia akaunti za demo kuona mauzo, stock, maagizo, madeni, matumizi, staff, billing na AI Assistant. PIN zote ni 1234."
-            : "Use demo accounts to see sales, stock, orders, debts, expenses, staff, billing, and the AI Assistant. All PINs are 1234."}
+            ? "Tumia akaunti za demo kuona mauzo, stock, maagizo, madeni, matumizi, nukuu za bei, staff, billing na AI Assistant. PIN zote ni 1234."
+            : "Use demo accounts to see sales, stock, orders, debts, expenses, quotations, staff, billing, and the AI Assistant. All PINs are 1234."}
           primaryCta={{ href: "/", label: lang === "sw" ? "Fungua login" : "Open login" }}
           secondaryCta={{
             href: "https://wa.me/255743910580?text=Nataka%20kusaidiwa%20kuweka%20mfumo%20baada%20ya%20onyesho%20la%20DukaPilot",
@@ -37,6 +37,7 @@ export default function DemoPage() {
             { title: lang === "sw" ? "Muuzaji" : "Cashier", description: lang === "sw" ? "Jaribu jukumu la kuuza bila ruhusa ya kubadilisha bidhaa au mipangilio." : "Try a sales role without stock/settings access." },
             { title: lang === "sw" ? "Msambazaji" : "Supplier", description: lang === "sw" ? "Ona upande wa msambazaji na bidhaa za jumla." : "See the supplier side and wholesale products." },
             { title: lang === "sw" ? "Msaidizi wa AI" : "AI Assistant", description: lang === "sw" ? "Fungua mapendekezo ya hatua za leo." : "Open the recommended actions for today." },
+            { title: lang === "sw" ? "Nukuu za Bei" : "Quotations", description: lang === "sw" ? "Ona rasimu, zilizotumwa, zilizokubaliwa na zilizokataliwa bila kubadilisha mauzo ya demo." : "See draft, sent, accepted, and rejected examples without changing demo sales." },
           ]}
         />
         <div>
@@ -51,6 +52,7 @@ export default function DemoPage() {
             <p>{lang === "sw" ? "2. Fungua Msaidizi wa AI uone hatua za leo." : "2. Open AI Assistant to see today's actions."}</p>
             <p>{lang === "sw" ? "3. Jaribu akaunti ya muuzaji kuona mipaka ya ruhusa." : "3. Try cashier to see role limits."}</p>
             <p>{lang === "sw" ? "4. Angalia Malipo na namba ya kumbukumbu." : "4. Check Billing and payment reference."}</p>
+            <p>{lang === "sw" ? "5. Fungua Nukuu za Bei kuona kazi za huduma na mzunguko wa amana." : "5. Open Quotations to see service work and the deposit flow."}</p>
           </div>
         </section>
         <ProductProofSection />

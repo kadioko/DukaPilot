@@ -6,7 +6,7 @@ import AppShell from "@/components/layout/AppShell";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { ArrowRight, CheckCircle2, ClipboardCopy, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCopy, FileText, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 
 interface DashboardData {
   summary: { totalSales: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
@@ -22,6 +22,19 @@ interface DebtSummary {
 interface ExpenseSummary {
   summary: { total: number; count: number };
   expenses?: Array<{ title: string; amount: number; category: string; spentAt: string }>;
+}
+
+interface QuotationSummary {
+  id: string;
+  quotationNumber: string;
+  status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CONVERTED" | "ARCHIVED" | "CANCELLED";
+  projectTitle: string;
+  totalAmount: number;
+  amountPaid: number;
+  depositRequiredAmount: number;
+  depositDueDate?: string | null;
+  expiryDate?: string | null;
+  customer: { name: string };
 }
 
 interface Recommendation {
@@ -55,6 +68,7 @@ export default function AssistantPage() {
   const [allTime, setAllTime] = useState<DashboardData | null>(null);
   const [debts, setDebts] = useState<DebtSummary | null>(null);
   const [expenses, setExpenses] = useState<ExpenseSummary | null>(null);
+  const [quotations, setQuotations] = useState<QuotationSummary[]>([]);
   const [actions, setActions] = useState<AssistantAction[]>([]);
   const [copied, setCopied] = useState(false);
 
@@ -64,11 +78,12 @@ export default function AssistantPage() {
       api.get<DashboardData>("/dashboard?period=all", lang).then(setAllTime).catch(() => null),
       api.get<DebtSummary>("/debts", lang).then(setDebts).catch(() => null),
       api.get<ExpenseSummary>("/expenses", lang).then(setExpenses).catch(() => null),
+      api.get<{ quotations: QuotationSummary[] }>("/quotations?limit=200", lang).then((data) => setQuotations(data.quotations)).catch(() => null),
       api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang).then((data) => setActions(data.actions)).catch(() => null),
     ]).catch(console.error);
-  }, []);
+  }, [lang]);
 
-  const recommendations = buildRecommendations({ dashboard, allTime, debts, expenses, lang });
+  const recommendations = buildRecommendations({ dashboard, allTime, debts, expenses, quotations, lang });
   const ownerSummary = buildOwnerSummary(recommendations, lang);
   const urgentCount = recommendations.filter((item) => item.rank >= 80).length;
   const actionCount = recommendations.length;
@@ -114,8 +129,8 @@ export default function AssistantPage() {
                 </h1>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
                   {lang === "sw"
-                    ? "Kila siku inachambua mauzo, bidhaa, madeni na matumizi kisha inapanga hatua za kufanya kwanza."
-                    : "Every day it reads sales, inventory, debts, and expenses, then ranks what to do first."}
+                    ? "Kila siku inachambua mauzo, bidhaa, madeni, matumizi na nukuu za bei kisha inapanga hatua za kufanya kwanza."
+                    : "Every day it reads sales, inventory, debts, expenses, and quotations, then ranks what to do first."}
                 </p>
               </div>
             </div>
@@ -158,7 +173,7 @@ export default function AssistantPage() {
           </div>
           <div className="mt-4 grid gap-3">
             {recommendations.length === 0 ? (
-              <p className="text-sm text-gray-500">{lang === "sw" ? "Ongeza mauzo, bidhaa, madeni au matumizi ili msaidizi aanze kutoa mapendekezo." : "Add sales, inventory, debts, or expenses so the assistant can start producing recommendations."}</p>
+              <p className="text-sm text-gray-500">{lang === "sw" ? "Ongeza mauzo, bidhaa, madeni, matumizi au nukuu za bei ili msaidizi aanze kutoa mapendekezo." : "Add sales, inventory, debts, expenses, or quotations so the assistant can start producing recommendations."}</p>
             ) : recommendations.map((item, index) => {
               const status = actionStatus(item);
               return (
@@ -231,8 +246,8 @@ export default function AssistantPage() {
 
         <section className="grid gap-3 md:grid-cols-3">
           {[
-            [lang === "sw" ? "Tambua hatari" : "Spot risk", lang === "sw" ? "Bidhaa kuisha, madeni kuchelewa, na matumizi kupanda." : "Low stock, slow collections, and rising expenses."],
-            [lang === "sw" ? "Panga hatua" : "Plan action", lang === "sw" ? "Pendekeza cha kuagiza, nani wa kumpigia, na gharama zipi kupunguza." : "Suggest what to reorder, who to follow up with, and which costs to review."],
+            [lang === "sw" ? "Tambua hatari" : "Spot risk", lang === "sw" ? "Bidhaa kuisha, madeni kuchelewa, matumizi kupanda, au nukuu kuisha muda." : "Low stock, slow collections, rising expenses, or quotations nearing expiry."],
+            [lang === "sw" ? "Panga hatua" : "Plan action", lang === "sw" ? "Pendekeza cha kuagiza, nani wa kumpigia, nukuu ipi ifuatiliwe, na gharama zipi kupunguza." : "Suggest what to reorder, who to follow up with, which quotation needs action, and which costs to review."],
             [lang === "sw" ? "Ongea kwa lugha mbili" : "Work bilingually", lang === "sw" ? "Kiingereza na Kiswahili kwenye kurasa zote muhimu." : "English and Swahili across the important product surfaces."],
           ].map(([title, body]) => (
             <div key={title} className="rounded-lg border border-gray-200 p-4">
@@ -251,12 +266,14 @@ function buildRecommendations({
   allTime,
   debts,
   expenses,
+  quotations,
   lang,
 }: {
   dashboard: DashboardData | null;
   allTime: DashboardData | null;
   debts: DebtSummary | null;
   expenses: ExpenseSummary | null;
+  quotations: QuotationSummary[];
   lang: "sw" | "en";
 }): Recommendation[] {
   const items: Recommendation[] = [];
@@ -283,6 +300,107 @@ function buildRecommendations({
   const mostUrgentStock = lowStock[0];
   const todaySalesCount = dashboard?.summary.salesCount || 0;
   const hasBusinessHistory = Boolean((allTime?.summary.salesCount || 0) > 0 || (allTime?.summary.totalSales || 0) > 0);
+
+  const acceptedQuotation = quotations
+    .filter((quotation) => quotation.status === "ACCEPTED")
+    .sort((a, b) => (b.totalAmount - b.amountPaid) - (a.totalAmount - a.amountPaid))[0];
+  if (acceptedQuotation) {
+    const outstanding = Math.max(0, acceptedQuotation.totalAmount - acceptedQuotation.amountPaid);
+    items.push({
+      id: `quotation-convert-${acceptedQuotation.id}`,
+      rank: 93,
+      icon: FileText,
+      tone: "bg-emerald-50 text-emerald-700",
+      title: lang === "sw"
+        ? `Badilisha ${acceptedQuotation.quotationNumber} kuwa mauzo`
+        : `Convert ${acceptedQuotation.quotationNumber} to a sale`,
+      body: lang === "sw"
+        ? `${acceptedQuotation.customer.name} amekubali ${acceptedQuotation.projectTitle}. Nukuu ina salio la ${formatTZS(outstanding)}.`
+        : `${acceptedQuotation.customer.name} accepted ${acceptedQuotation.projectTitle}. The quotation has ${formatTZS(outstanding)} outstanding.`,
+      action: lang === "sw" ? "Fungua nukuu zilizokubaliwa" : "Open accepted quotations",
+      href: "/quotations?status=ACCEPTED",
+      why: lang === "sw"
+        ? "Nukuu iliyokubaliwa bado si mauzo wala mapato mpaka ibadilishwe kwa uthibitisho wa biashara."
+        : "An accepted quotation is still not a sale or revenue until the business confirms conversion.",
+      impact: lang === "sw"
+        ? "Rekodi mauzo mara moja, weka salio kama deni ikihitajika, na punguza stock ya mistari iliyolinkiwa tu."
+        : "Record the sale once, keep any balance as a receivable, and deduct stock only for linked inventory lines.",
+    });
+  }
+
+  const depositFollowUp = quotations
+    .filter((quotation) => ["SENT", "ACCEPTED"].includes(quotation.status) && quotation.depositRequiredAmount > quotation.amountPaid)
+    .sort((a, b) => quotationDate(a.depositDueDate || a.expiryDate) - quotationDate(b.depositDueDate || b.expiryDate))[0];
+  if (depositFollowUp) {
+    const remainingDeposit = Math.max(0, depositFollowUp.depositRequiredAmount - depositFollowUp.amountPaid);
+    const dueDate = depositFollowUp.depositDueDate ? new Date(depositFollowUp.depositDueDate) : null;
+    const overdue = dueDate ? daysUntil(depositFollowUp.depositDueDate!) < 0 : false;
+    items.push({
+      id: `quotation-deposit-${depositFollowUp.id}`,
+      rank: overdue ? 91 : 79,
+      icon: HandCoins,
+      tone: overdue ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700",
+      title: lang === "sw"
+        ? `${overdue ? "Fuatilia amana ya" : "Kumbuka amana ya"} ${depositFollowUp.quotationNumber}`
+        : `${overdue ? "Follow up the deposit for" : "Track the deposit for"} ${depositFollowUp.quotationNumber}`,
+      body: lang === "sw"
+        ? `${depositFollowUp.customer.name} anahitaji kulipa ${formatTZS(remainingDeposit)} kabla ya kazi kuendelea.`
+        : `${depositFollowUp.customer.name} still needs to pay ${formatTZS(remainingDeposit)} before work proceeds.`,
+      action: lang === "sw" ? "Fungua nukuu na rekodi malipo" : "Open quotation and record payment",
+      href: `/quotations?status=${depositFollowUp.status}`,
+      why: lang === "sw"
+        ? "Amana hulinda cash ya kuanza kazi; malipo yasiwekwe kama mauzo mara mbili."
+        : "A deposit protects the cash needed to start work; it must not be counted as revenue twice.",
+      impact: lang === "sw"
+        ? "Kuweka malipo kwenye nukuu, kisha salio libaki wazi mpaka mauzo yathibitishwe."
+        : "Keep the payment on the quotation and leave the balance clear until the sale is confirmed.",
+    });
+  }
+
+  const expiringQuotation = quotations
+    .filter((quotation) => quotation.status === "SENT" && quotation.expiryDate && daysUntil(quotation.expiryDate) >= 0 && daysUntil(quotation.expiryDate) <= 3)
+    .sort((a, b) => quotationDate(a.expiryDate) - quotationDate(b.expiryDate))[0];
+  if (expiringQuotation) {
+    const days = daysUntil(expiringQuotation.expiryDate!);
+    items.push({
+      id: `quotation-expiring-${expiringQuotation.id}`,
+      rank: 84,
+      icon: FileText,
+      tone: "bg-amber-50 text-amber-700",
+      title: lang === "sw"
+        ? `${expiringQuotation.quotationNumber} inaisha ${days === 0 ? "leo" : "hivi karibuni"}`
+        : `${expiringQuotation.quotationNumber} ${days === 0 ? "expires today" : "is expiring soon"}`,
+      body: lang === "sw"
+        ? `Fuatilia ${expiringQuotation.customer.name} kuhusu ${expiringQuotation.projectTitle} kabla bei haijaisha muda.`
+        : `Follow up with ${expiringQuotation.customer.name} about ${expiringQuotation.projectTitle} before the price expires.`,
+      action: lang === "sw" ? "Fungua nukuu zilizotumwa" : "Open sent quotations",
+      href: "/quotations?status=SENT",
+      why: lang === "sw"
+        ? "Nukuu iliyotumwa ikikaa bila mawasiliano inaweza kupoteza mradi bila sababu."
+        : "A sent quotation without follow-up can lose a project for no good reason.",
+      impact: lang === "sw"
+        ? "Pata jibu, rekebisha toleo kama scope imebadilika, au ruhusu nukuu iishe kwa kumbukumbu sahihi."
+        : "Get an answer, issue a revision if scope changed, or let the quotation expire with a clean record.",
+    });
+  }
+
+  const expiredQuotation = quotations.find((quotation) => quotation.status === "EXPIRED");
+  if (expiredQuotation) {
+    items.push({
+      id: `quotation-expired-${expiredQuotation.id}`,
+      rank: 64,
+      icon: FileText,
+      tone: "bg-gray-100 text-gray-700",
+      title: lang === "sw" ? `Amua hatua kwa ${expiredQuotation.quotationNumber}` : `Decide what to do with ${expiredQuotation.quotationNumber}`,
+      body: lang === "sw"
+        ? `${expiredQuotation.customer.name} hajakubali ${expiredQuotation.projectTitle} kabla ya tarehe ya mwisho.`
+        : `${expiredQuotation.customer.name} did not accept ${expiredQuotation.projectTitle} before its expiry date.`,
+      action: lang === "sw" ? "Fungua nukuu zilizoisha" : "Open expired quotations",
+      href: "/quotations?status=EXPIRED",
+      why: lang === "sw" ? "Nukuu zilizoisha zinahitaji follow-up, toleo jipya, au kufungwa kwa kumbukumbu sahihi." : "Expired quotations need follow-up, a fresh revision, or a clean close-out.",
+      impact: lang === "sw" ? "Orodha ya mauzo ya baadaye ibaki sahihi, si mkusanyiko wa kazi zilizokwama." : "Keep the future-sales pipeline meaningful instead of filling it with stale work.",
+    });
+  }
 
   if ((dashboard?.summary.totalSales || 0) > 0 && (dashboard?.summary.netProfit || 0) < 0) {
     items.push({
@@ -482,6 +600,20 @@ function buildOwnerSummary(recommendations: Recommendation[], lang: "sw" | "en")
 
 function mostUrgStockMinimum(product: { minimumStock: number }) {
   return product.minimumStock;
+}
+
+function quotationDate(value?: string | null) {
+  if (!value) return Number.MAX_SAFE_INTEGER;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
+}
+
+function daysUntil(value: string) {
+  const target = new Date(value);
+  const today = new Date();
+  target.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
 }
 
 function getExpenseTrend(expenses: Array<{ amount: number; spentAt: string }>) {

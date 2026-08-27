@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  FileText,
   Lock,
   MapPin,
   MessageCircle,
@@ -65,16 +66,16 @@ const heroFeatures = [
     en: "Record sales, debts, expenses, and profit.",
   },
   {
-    icon: MessageCircle,
-    sw: "Tengeneza agizo la msambazaji tayari kwa WhatsApp.",
-    en: "Create supplier orders ready for WhatsApp.",
+    icon: FileText,
+    sw: "Tengeneza nukuu za bei za kazi, huduma na miradi.",
+    en: "Create quotations for services, work, and projects.",
   },
 ];
 
 const heroProofPoints = [
   { sw: "AI inapanga kipaumbele cha leo", en: "AI ranks today's priorities" },
-  { sw: "Mauzo, bidhaa, madeni na matumizi", en: "Sales, stock, debts, and expenses" },
-  { sw: "Imejengwa kwa maduka Tanzania", en: "Built for Tanzanian shops" },
+  { sw: "Mauzo, stock, madeni, matumizi na nukuu", en: "Sales, stock, debts, expenses, and quotations" },
+  { sw: "Kwa maduka na biashara za huduma Tanzania", en: "For Tanzanian shops and service businesses" },
 ];
 
 const aiThinkingCards = [
@@ -82,8 +83,8 @@ const aiThinkingCards = [
     icon: Brain,
     swTitle: "AI inayosoma duka",
     enTitle: "AI that reads the shop",
-    swBody: "Inaangalia mauzo, bidhaa, madeni, matumizi na maagizo ili kuelewa kinachotokea.",
-    enBody: "It reads sales, stock, debts, expenses, and orders to understand what is happening.",
+    swBody: "Inaangalia mauzo, bidhaa, madeni, matumizi, nukuu na maagizo ili kuelewa kinachotokea.",
+    enBody: "It reads sales, stock, debts, expenses, quotations, and orders to understand what is happening.",
   },
   {
     icon: TrendingUp,
@@ -340,8 +341,8 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-brand-50 sm:text-lg">
               {lang === "sw"
-                ? "DukaPilot husaidia wafanyabiashara Tanzania kujua bidhaa zilizobaki, faida ya leo, madeni ya wateja na muda wa kuagiza tena kwa Kiswahili."
-                : "DukaPilot helps Tanzanian merchants track what is in stock, today's profit, customer debts, and when to reorder in Swahili or English."}
+                ? "DukaPilot husaidia wafanyabiashara Tanzania kufuatilia stock, mauzo, faida, madeni na kutengeneza nukuu za bei za kazi au huduma kwa Kiswahili."
+                : "DukaPilot helps Tanzanian businesses track stock, sales, profit, customer debts, and quotations for custom work or services in Swahili or English."}
             </p>
           </div>
 
@@ -801,8 +802,8 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               </h2>
               <p className="mt-4 text-sm leading-6 text-brand-100 sm:text-base">
                 {lang === "sw"
-                  ? "Si sehemu ya mauzo tu. DukaPilot inageuza taarifa za kila siku kuwa orodha ya vipaumbele: nini uagize, nani umfuatilie, na gharama zipi zipunguzwe."
-                  : "It is not just POS. DukaPilot turns daily data into a priority list: what to restock, who to follow up, and which costs to reduce."}
+                  ? "Si sehemu ya mauzo tu. DukaPilot inageuza taarifa za kila siku kuwa orodha ya vipaumbele: nini uagize, nani umfuatilie, nukuu ipi ifuatiliwe, na gharama zipi zipunguzwe."
+                  : "It is not just POS. DukaPilot turns daily data into a priority list: what to restock, who to follow up with, which quotation needs action, and which costs to reduce."}
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link href="/assistant" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-brand-800 hover:bg-brand-50">
