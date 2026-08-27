@@ -281,6 +281,11 @@ interface BillingDraft {
   note: string;
 }
 
+interface BillingFeedback {
+  tone: "success" | "error";
+  message: string;
+}
+
 type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "referrals" | "suppliers" | "sync" | "sms";
 
 async function optionalAdminLoad<T>(label: string, request: Promise<T>, fallback: T): Promise<T> {
@@ -383,6 +388,7 @@ export default function AdminPage() {
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
   const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
+  const [billingFeedback, setBillingFeedback] = useState<Record<string, BillingFeedback>>({});
   const [supplierNotes, setSupplierNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -499,11 +505,13 @@ export default function AdminPage() {
 
   async function handleExtendTrial(shopId: string, days: number) {
     setUpdatingSub(shopId);
+    setBillingFeedback((prev) => ({ ...prev, [shopId]: { tone: "success", message: "" } }));
     try {
-      await api.post(`/subscription/admin/${shopId}/extend-trial`, { days });
+      const data = await api.post<{ message: string }>(`/subscription/admin/${shopId}/extend-trial`, { days });
       await refreshSubscriptions();
+      setBillingFeedback((prev) => ({ ...prev, [shopId]: { tone: "success", message: data.message } }));
     } catch (err) {
-      console.error("Failed to extend trial:", err);
+      setBillingFeedback((prev) => ({ ...prev, [shopId]: { tone: "error", message: err instanceof Error ? err.message : "Could not extend the trial." } }));
     } finally {
       setUpdatingSub(null);
     }
@@ -511,14 +519,16 @@ export default function AdminPage() {
 
   async function handleExtendSubscription(shop: Subscription, days: number) {
     setUpdatingSub(shop.id);
+    setBillingFeedback((prev) => ({ ...prev, [shop.id]: { tone: "success", message: "" } }));
     try {
-      await api.post(`/subscription/admin/${shop.id}/extend-subscription`, {
+      const data = await api.post<{ message: string; shop: Subscription }>(`/subscription/admin/${shop.id}/extend-subscription`, {
         days,
         plan: shop.plan === "PRO" ? "PRO" : "BASIC",
       });
       await refreshSubscriptions();
+      setBillingFeedback((prev) => ({ ...prev, [shop.id]: { tone: "success", message: `${data.message}. ${data.shop.name} is now active.` } }));
     } catch (err) {
-      console.error("Failed to extend subscription:", err);
+      setBillingFeedback((prev) => ({ ...prev, [shop.id]: { tone: "error", message: err instanceof Error ? err.message : "Could not grant paid access." } }));
     } finally {
       setUpdatingSub(null);
     }
@@ -700,12 +710,16 @@ export default function AdminPage() {
     const selectedPlan = plan || draft.plan;
     let reference = draft.reference.trim();
     if (!reference) {
-      reference = window.prompt("Enter the M-Pesa, Mix by Yas, or transfer reference before confirming payment:")?.trim() || "";
+      setBillingFeedback((prev) => ({
+        ...prev,
+        [shop.id]: { tone: "error", message: "Enter the payment reference above before recording a paid plan. For a support or demo renewal, use Grant 30-day access instead." },
+      }));
+      return;
     }
-    if (!reference) return;
     setUpdatingSub(shop.id);
+    setBillingFeedback((prev) => ({ ...prev, [shop.id]: { tone: "success", message: "" } }));
     try {
-      await api.post(`/subscription/admin/${shop.id}/payments`, {
+      const data = await api.post<{ message?: string; reused?: boolean; shop: Subscription }>(`/subscription/admin/${shop.id}/payments`, {
         plan: selectedPlan,
         months: Number(draft.months) || 1,
         amount: Number(draft.amount) || (selectedPlan === "PRO" ? 35000 : 15000),
@@ -715,8 +729,12 @@ export default function AdminPage() {
       });
       await refreshSubscriptions();
       setBillingDrafts((prev) => ({ ...prev, [shop.id]: defaultBillingDraft(selectedPlan) }));
+      setBillingFeedback((prev) => ({
+        ...prev,
+        [shop.id]: { tone: "success", message: data.reused ? "That payment reference was already recorded. The subscription is active." : `${shop.name} is now active on ${selectedPlan}.` },
+      }));
     } catch (err) {
-      console.error("Failed to record subscription payment:", err);
+      setBillingFeedback((prev) => ({ ...prev, [shop.id]: { tone: "error", message: err instanceof Error ? err.message : "Could not record this payment." } }));
     } finally {
       setUpdatingSub(null);
     }
@@ -1821,6 +1839,7 @@ export default function AdminPage() {
                   <div className="rounded-lg bg-white p-4 text-sm text-gray-500">No shops match this filter.</div>
                 ) : filteredSubscriptions.map((shop) => {
                   const draft = billingDraftFor(shop);
+                  const feedback = billingFeedback[shop.id];
                   return (
                     <div key={shop.id} className="rounded-lg border border-brand-100 bg-white p-3 shadow-sm">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -1907,21 +1926,30 @@ export default function AdminPage() {
                           disabled={updatingSub === shop.id}
                           className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-800 disabled:opacity-50 sm:col-span-2"
                         >
-                          {updatingSub === shop.id ? "Saving..." : "Activate / Renew"}
+                          {updatingSub === shop.id ? "Saving..." : "Record payment & activate"}
                         </button>
                       </div>
+                      {feedback?.message && (
+                        <p role="status" className={`mt-2 rounded-lg border px-2.5 py-2 text-xs font-medium ${
+                          feedback.tone === "success"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-red-200 bg-red-50 text-red-800"
+                        }`}>
+                          {feedback.message}
+                        </p>
+                      )}
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         <button onClick={() => handleRecordPayment(shop, "BASIC")} disabled={updatingSub === shop.id} className="rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-200 disabled:opacity-50">
-                          Quick Basic 1mo
+                          Record Basic 1mo
                         </button>
                         <button onClick={() => handleRecordPayment(shop, "PRO")} disabled={updatingSub === shop.id} className="rounded bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-200 disabled:opacity-50">
-                          Quick Pro 1mo
+                          Record Pro 1mo
                         </button>
                         <button onClick={() => handleExtendTrial(shop.id, 14)} disabled={updatingSub === shop.id} className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50">
                           +14d trial
                         </button>
                         <button onClick={() => handleExtendSubscription(shop, 30)} disabled={updatingSub === shop.id} className="rounded bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 disabled:opacity-50">
-                          +30d paid
+                          Grant 30-day access
                         </button>
                         <button onClick={() => handleToggleShopActive(shop)} disabled={updatingSub === shop.id} className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-50 ${shop.isActive ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-green-100 text-green-700 hover:bg-green-200"}`}>
                           {shop.isActive ? "Suspend" : "Activate shop"}
