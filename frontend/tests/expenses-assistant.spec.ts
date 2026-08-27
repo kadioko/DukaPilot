@@ -212,7 +212,17 @@ test("AI prioritizes accepted, deposit, expiring, and expired quotation work wit
   await page.route("**/*api/debts", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ debts: [], summary: { openCount: 0, totalOwed: 0 } }) }));
   await page.route("**/*api/expenses", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expenses: [], summary: { total: 0, count: 0 } }) }));
   await page.route("**/*api/assistant/actions", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ actions: [] }) }));
-  await page.route(/\/(?:_api|api)\/quotations\?limit=200$/, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ quotations: quotes }) }));
+  await page.route("**/*api/assistant/quotations", async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ actions: [
+      { id: "quotation-convert-accepted", rank: 93, href: "/quotations?status=ACCEPTED", title: "Badilisha QT-0042 kuwa mauzo", body: "Asha amekubali Ufungaji wa pazia.", action: "Fungua nukuu zilizokubaliwa" },
+      { id: "quotation-deposit-accepted", rank: 79, href: "/quotations?status=ACCEPTED", title: "Kumbuka amana ya QT-0042", body: "Asha bado anadaiwa TZS 100,000 ya amana.", action: "Fungua nukuu na rekodi malipo" },
+      { id: "quotation-expiring-sent", rank: 84, href: "/quotations?status=SENT", title: "QT-0043 inaisha hivi karibuni", body: "Fuatilia Salum kuhusu Ubunifu wa ofisi.", action: "Fungua nukuu zilizotumwa" },
+      { id: "quotation-expired-expired", rank: 64, href: "/quotations?status=EXPIRED", title: "Amua hatua kwa QT-0044", body: "Neema hajakubali Matengenezo ya fremu.", action: "Fungua nukuu zilizoisha" },
+    ] }),
+  }));
+  await page.route(/\/(?:_api|api)\/quotations(?:\?.*)?$/, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ quotations: quotes }) }));
 
   await page.goto("/assistant");
 
@@ -221,5 +231,5 @@ test("AI prioritizes accepted, deposit, expiring, and expired quotation work wit
   await expect(page.getByRole("heading", { name: "QT-0043 inaisha hivi karibuni" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Amua hatua kwa QT-0044" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Fungua nukuu zilizokubaliwa" })).toHaveAttribute("href", "/quotations?status=ACCEPTED");
-  await expect(page.getByText("bado si mauzo wala mapato")).toBeVisible();
+  await expect(page.getByText("bila kuchanganya nukuu na mapato yaliyothibitishwa").first()).toBeVisible();
 });

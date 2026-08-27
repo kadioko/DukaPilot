@@ -21,15 +21,20 @@ function quotationAction(type, quote, language) {
   const sw = language === "sw";
   const outstanding = Math.max(0, quote.totalAmount - quote.amountPaid);
   if (type === "CONVERT") return { id: `quotation-convert-${quote.id}`, rank: 93, href: "/quotations?status=ACCEPTED", title: sw ? `Badilisha ${quote.quotationNumber} kuwa mauzo` : `Convert ${quote.quotationNumber} to a sale`, body: sw ? `${quote.customer.name} amekubali ${quote.projectTitle}. Salio ni TZS ${outstanding.toLocaleString("en-TZ")}.` : `${quote.customer.name} accepted ${quote.projectTitle}. Outstanding: TZS ${outstanding.toLocaleString("en-TZ")}.`, action: sw ? "Fungua nukuu zilizokubaliwa" : "Open accepted quotations" };
-  if (type === "DEPOSIT") return { id: `quotation-deposit-${quote.id}`, rank: quote.depositDueDate && quotationDaysUntil(quote.depositDueDate) < 0 ? 91 : 79, href: `/quotations?status=${quote.status}`, title: sw ? `Fuatilia amana ya ${quote.quotationNumber}` : `Follow up the deposit for ${quote.quotationNumber}`, body: sw ? `${quote.customer.name} bado anadaiwa TZS ${Math.max(0, quote.depositRequiredAmount - quote.amountPaid).toLocaleString("en-TZ")} ya amana.` : `${quote.customer.name} still owes TZS ${Math.max(0, quote.depositRequiredAmount - quote.amountPaid).toLocaleString("en-TZ")} of the deposit.`, action: sw ? "Fungua nukuu na rekodi malipo" : "Open quotation and record payment" };
+  if (type === "DEPOSIT") {
+    const overdue = quote.depositDueDate && quotationDaysUntil(quote.depositDueDate) < 0;
+    return { id: `quotation-deposit-${quote.id}`, rank: overdue ? 91 : 79, href: `/quotations?status=${quote.status}`, title: sw ? `${overdue ? "Fuatilia" : "Kumbuka"} amana ya ${quote.quotationNumber}` : `${overdue ? "Follow up the deposit for" : "Track the deposit for"} ${quote.quotationNumber}`, body: sw ? `${quote.customer.name} bado anadaiwa TZS ${Math.max(0, quote.depositRequiredAmount - quote.amountPaid).toLocaleString("en-TZ")} ya amana.` : `${quote.customer.name} still owes TZS ${Math.max(0, quote.depositRequiredAmount - quote.amountPaid).toLocaleString("en-TZ")} of the deposit.`, action: sw ? "Fungua nukuu na rekodi malipo" : "Open quotation and record payment" };
+  }
+  if (type === "EXPIRED") return { id: `quotation-expired-${quote.id}`, rank: 64, href: "/quotations?status=EXPIRED", title: sw ? `Amua hatua kwa ${quote.quotationNumber}` : `Decide what to do with ${quote.quotationNumber}`, body: sw ? `${quote.customer.name} hajakubali ${quote.projectTitle} kabla ya tarehe ya mwisho.` : `${quote.customer.name} did not accept ${quote.projectTitle} before its expiry date.`, action: sw ? "Fungua nukuu zilizoisha" : "Open expired quotations" };
   return { id: `quotation-expiring-${quote.id}`, rank: 84, href: "/quotations?status=SENT", title: sw ? `${quote.quotationNumber} inaisha hivi karibuni` : `${quote.quotationNumber} expires soon`, body: sw ? `Fuatilia ${quote.customer.name} kuhusu ${quote.projectTitle} kabla ya bei kuisha.` : `Follow up with ${quote.customer.name} about ${quote.projectTitle} before it expires.`, action: sw ? "Fungua nukuu zilizotumwa" : "Open sent quotations" };
 }
 
 const quotationSummary = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const language = req.user.language === "en" ? "en" : "sw";
+  const requestedLanguage = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase();
+  const language = requestedLanguage === "en" ? "en" : "sw";
   const quotations = await prisma.quotation.findMany({
-    where: { shopId, status: { in: ["SENT", "ACCEPTED"] } },
+    where: { shopId, status: { in: ["SENT", "ACCEPTED", "EXPIRED"] } },
     select: { id: true, quotationNumber: true, status: true, projectTitle: true, totalAmount: true, amountPaid: true, depositRequiredAmount: true, depositDueDate: true, expiryDate: true, customer: { select: { name: true } } },
     orderBy: { updatedAt: "desc" }, take: 200,
   });
@@ -40,6 +45,8 @@ const quotationSummary = asyncHandler(async (req, res) => {
   if (deposit) actions.push(quotationAction("DEPOSIT", deposit, language));
   const expiring = quotations.filter((quote) => quote.status === "SENT" && quote.expiryDate && quotationDaysUntil(quote.expiryDate) >= 0 && quotationDaysUntil(quote.expiryDate) <= 3).sort((a, b) => Number(a.expiryDate) - Number(b.expiryDate))[0];
   if (expiring) actions.push(quotationAction("EXPIRING", expiring, language));
+  const expired = quotations.find((quote) => quote.status === "EXPIRED");
+  if (expired) actions.push(quotationAction("EXPIRED", expired, language));
   res.json({ actions: actions.sort((a, b) => b.rank - a.rank), generatedAt: new Date().toISOString() });
 });
 
