@@ -36,6 +36,19 @@ Open **Quotations > Quotation settings** to set defaults for future quotations. 
 - **Customer visibility:** Toggle quantities, unit prices, item discounts, and section headings. These toggles control the public link, PDF, and print document only. Internal cost and profit fields are never customer-visible.
 - **Default deposit:** The percentage used to calculate the deposit required on a new quote. It is a request, not proof of payment. Record received money separately as a deposit, milestone, or final payment.
 
+## Live demo examples
+
+The featured **Duka la Amina** demo shop contains eight quotation examples. They demonstrate the pipeline without changing revenue, payment, debt, or stock records.
+
+| Status | Quotations | What they demonstrate |
+| --- | --- | --- |
+| Draft | `QT-0001` Kifurushi cha bidhaa za ofisi | An unfinished product quotation that can still be edited freely |
+| Sent | `QT-0002` Usambazaji wa bidhaa kwa sherehe; `QT-0005` Kifurushi cha vinywaji kwa kikao; `QT-0006` Huduma ya kupeleka mahitaji ya nyumbani | Quotes ready to share or follow up with a customer |
+| Accepted | `QT-0003` Kifurushi cha chakula kwa ofisi; `QT-0007` Kifurushi cha chakula kwa familia; `QT-0008` Huduma ya kufunga na kusafirisha oda | Accepted work that can later be converted to a sale when the merchant confirms it |
+| Rejected | `QT-0004` Kifurushi cha hafla ya Jumamosi | A declined quote and rejection workflow |
+
+All eight are intentionally unconverted and have no recorded payment. Keep them that way when demonstrating the quotation pipeline; create a fresh controlled quote for conversion, deposit, payment, or stock-deduction demonstrations.
+
 ## Deploying
 
 1. Back up production as normal.

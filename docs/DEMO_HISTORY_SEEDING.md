@@ -15,6 +15,12 @@ The history seed does not create Daily Close sessions or stock receipts. Demonst
 
 It does not change current product stock when it creates synthetic historical sales. This avoids corrupting the demo shop's present-day inventory balance.
 
+## Quotation demo data
+
+The history seeder does not create or alter quotations. The featured demo shop has a deliberate quotation pipeline recorded in [QUOTATIONS.md](./QUOTATIONS.md#live-demo-examples): one draft, three sent, three accepted, and one rejected quotation. Those records are unconverted and unpaid, so they do not affect the seeded sale history, stock, debts, or reports.
+
+Use a new controlled quotation when demonstrating acceptance, conversion, deposits, payments, or stock-linked line-item deductions. Do not convert the display quotations during an ordinary product demo.
+
 ## Safety Guard
 
 The default target is the featured `Duka la Amina` seed account (`+255700000002`). Any other target must already have `Shop.isDemo = true`. The command refuses to run without an exact confirmation value and refuses to partially redistribute a window containing more than 80 completed sales.
