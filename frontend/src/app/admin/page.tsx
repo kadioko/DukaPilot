@@ -161,6 +161,15 @@ interface Subscription {
   lastPayment?: { amount: number; method: string; reference?: string | null; paidAt: string } | null;
 }
 
+interface SubscriptionListResponse {
+  shops: Subscription[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  statusCounts: Record<"trial" | "active" | "expired" | "suspended", number>;
+}
+
 interface AdminReferral {
   id: string;
   status: "PENDING" | "QUALIFIED" | "REWARDED" | "REJECTED";
@@ -370,6 +379,11 @@ export default function AdminPage() {
   const [reportFilter, setReportFilter] = useState("OPEN");
   const [updatingReport, setUpdatingReport] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [subscriptionTotal, setSubscriptionTotal] = useState(0);
+  const [subscriptionPage, setSubscriptionPage] = useState(1);
+  const [subscriptionPageSize, setSubscriptionPageSize] = useState(24);
+  const [subscriptionTotalPages, setSubscriptionTotalPages] = useState(1);
+  const [subscriptionStatusCounts, setSubscriptionStatusCounts] = useState<SubscriptionListResponse["statusCounts"]>({ trial: 0, active: 0, expired: 0, suspended: 0 });
   const [referrals, setReferrals] = useState<AdminReferral[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [syncSummaries, setSyncSummaries] = useState<SyncShopSummary[]>([]);
@@ -383,6 +397,7 @@ export default function AdminPage() {
   const [loadingSmsMonitoring, setLoadingSmsMonitoring] = useState(false);
   const [smsMonitoringError, setSmsMonitoringError] = useState("");
   const [subFilter, setSubFilter] = useState("ALL");
+  const [subscriptionSearch, setSubscriptionSearch] = useState("");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [updatingReferral, setUpdatingReferral] = useState<string | null>(null);
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
@@ -412,7 +427,7 @@ export default function AdminPage() {
       optionalAdminLoad("users", api.get<{ users: AdminUser[] }>("/admin/users"), { users: [] }),
       optionalAdminLoad("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }),
       optionalAdminLoad("reports", api.get<{ reports: Report[] }>("/reports/admin?limit=200"), { reports: [] }),
-      optionalAdminLoad("subscriptions", api.get<{ shops: Subscription[] }>("/subscription/admin"), { shops: [] }),
+      optionalAdminLoad<SubscriptionListResponse>("subscriptions", api.get<SubscriptionListResponse>("/subscription/admin?page=1&limit=24"), { shops: [], total: 0, page: 1, limit: 24, totalPages: 1, statusCounts: { trial: 0, active: 0, expired: 0, suspended: 0 } }),
       optionalAdminLoad("referrals", api.get<{ referrals: AdminReferral[] }>("/admin/referrals"), { referrals: [] }),
       optionalAdminLoad("suppliers", api.get<{ suppliers: Supplier[] }>("/suppliers"), { suppliers: [] }),
       optionalAdminLoad("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }),
@@ -427,6 +442,11 @@ export default function AdminPage() {
         setAuditLogs(al.logs);
         setReports(rp.reports);
         setSubscriptions(sub.shops);
+        setSubscriptionTotal(sub.total);
+        setSubscriptionPage(sub.page);
+        setSubscriptionPageSize(sub.limit);
+        setSubscriptionTotalPages(sub.totalPages);
+        setSubscriptionStatusCounts(sub.statusCounts);
         setReferrals(referralData.referrals);
         setSuppliers(supplierData.suppliers);
         setSyncSummaries(syncData.shops);
@@ -551,10 +571,31 @@ export default function AdminPage() {
     }
   }
 
-  async function refreshSubscriptions() {
-    const data = await api.get<{ shops: Subscription[] }>("/subscription/admin");
+  async function refreshSubscriptions(options: { page?: number; status?: string; search?: string } = {}) {
+    const page = options.page ?? subscriptionPage;
+    const status = options.status ?? subFilter;
+    const search = options.search ?? subscriptionSearch;
+    const params = new URLSearchParams({ page: String(page), limit: String(subscriptionPageSize) });
+    if (status !== "ALL") params.set("status", status);
+    if (search.trim()) params.set("search", search.trim());
+    const data = await api.get<SubscriptionListResponse>(`/subscription/admin?${params.toString()}`);
     setSubscriptions(data.shops);
+    setSubscriptionTotal(data.total);
+    setSubscriptionPage(data.page);
+    setSubscriptionPageSize(data.limit);
+    setSubscriptionTotalPages(data.totalPages);
+    setSubscriptionStatusCounts(data.statusCounts);
     setFollowUpDrafts(Object.fromEntries(data.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
+  }
+
+  function updateSubscriptionFilter(status: string) {
+    setSubFilter(status);
+    refreshSubscriptions({ status, page: 1 }).catch(console.error);
+  }
+
+  function submitSubscriptionSearch(event: React.FormEvent) {
+    event.preventDefault();
+    refreshSubscriptions({ page: 1 }).catch(console.error);
   }
 
   async function refreshReferrals() {
@@ -865,10 +906,10 @@ export default function AdminPage() {
     { id: "sync", label: "Sync History" },
     { id: "sms", label: "SMS" },
   ];
-  const activeShops = subscriptions.filter((shop) => shop.computedStatus === "active").length;
-  const trialShops = subscriptions.filter((shop) => shop.computedStatus === "trial").length;
-  const unpaidShops = subscriptions.filter((shop) => shop.computedStatus === "expired").length;
-  const suspendedShops = subscriptions.filter((shop) => shop.computedStatus === "suspended").length;
+  const activeShops = subscriptionStatusCounts.active;
+  const trialShops = subscriptionStatusCounts.trial;
+  const unpaidShops = subscriptionStatusCounts.expired;
+  const suspendedShops = subscriptionStatusCounts.suspended;
   const expiringTrials = subscriptions.filter((shop) => shop.computedStatus === "trial" && shop.daysLeft !== null && shop.daysLeft <= 3).length;
   const activatedTrials = subscriptions.filter((shop) => shop.activation?.activated).length;
   const supportIssues = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS").length;
@@ -929,9 +970,9 @@ export default function AdminPage() {
     if (!shop.activation?.activated) return "Needs activation help";
     return "Follow up";
   }
-  const filteredSubscriptions = subFilter === "ALL"
-    ? subscriptions
-    : subscriptions.filter((shop) => shop.computedStatus === subFilter);
+  const filteredSubscriptions = subscriptions;
+  const subscriptionFrom = subscriptionTotal ? ((subscriptionPage - 1) * subscriptionPageSize) + 1 : 0;
+  const subscriptionTo = Math.min(subscriptionPage * subscriptionPageSize, subscriptionTotal);
 
   if (loading) {
     return (
@@ -1813,16 +1854,33 @@ export default function AdminPage() {
         {/* SUBSCRIPTIONS */}
         {tab === "subscriptions" && (
           <div>
-            <div className="flex gap-2 mb-4 flex-wrap">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <form onSubmit={submitSubscriptionSearch} className="flex w-full max-w-xl gap-2">
+                <label className="sr-only" htmlFor="subscription-search">Search subscriptions</label>
+                <input
+                  id="subscription-search"
+                  value={subscriptionSearch}
+                  onChange={(event) => setSubscriptionSearch(event.target.value)}
+                  placeholder="Search shop, owner, or phone"
+                  className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <button type="submit" className="inline-flex items-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800">
+                  <Search className="h-4 w-4" />
+                  Search
+                </button>
+              </form>
+              <p className="text-xs font-medium text-gray-500">{subscriptionTotal.toLocaleString()} shops found</p>
+            </div>
+            <div className="mb-4 flex gap-2 flex-wrap">
               {["ALL", "trial", "active", "expired", "suspended"].map((s) => (
                 <button
                   key={s}
-                  onClick={() => setSubFilter(s)}
+                  onClick={() => updateSubscriptionFilter(s)}
                   className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                     subFilter === s ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                   }`}
                 >
-                  {s.toUpperCase()} ({s === "ALL" ? subscriptions.length : subscriptions.filter((x) => x.computedStatus === s).length})
+                  {s.toUpperCase()} ({s === "ALL" ? subscriptionTotal : subscriptionStatusCounts[s as keyof typeof subscriptionStatusCounts]})
                 </button>
               ))}
             </div>
@@ -1832,7 +1890,7 @@ export default function AdminPage() {
                   <h2 className="text-sm font-semibold text-brand-950">Plan & renewal controls</h2>
                   <p className="text-xs text-brand-800">Set a shop plan, record M-Pesa/manual payment, and renew for 1-24 months.</p>
                 </div>
-                <span className="text-xs font-semibold text-brand-700">{filteredSubscriptions.length} shops shown</span>
+                <span className="text-xs font-semibold text-brand-700">{subscriptionFrom}-{subscriptionTo} of {subscriptionTotal} shops</span>
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
                 {filteredSubscriptions.length === 0 ? (
@@ -1966,6 +2024,27 @@ export default function AdminPage() {
                 })}
               </div>
             </section>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border border-gray-200 bg-white px-4 py-3">
+              <p className="text-xs text-gray-600">Page {subscriptionPage} of {subscriptionTotalPages}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => refreshSubscriptions({ page: subscriptionPage - 1 }).catch(console.error)}
+                  disabled={subscriptionPage <= 1}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => refreshSubscriptions({ page: subscriptionPage + 1 }).catch(console.error)}
+                  disabled={subscriptionPage >= subscriptionTotalPages}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50 px-4 py-2">
                 <p className="text-xs font-semibold text-gray-700">Subscription detail table</p>

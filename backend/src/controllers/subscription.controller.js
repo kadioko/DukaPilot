@@ -58,6 +58,29 @@ function subscriptionSnapshot(shop, now = new Date()) {
   };
 }
 
+function subscriptionStatusWhere(status, now) {
+  if (status === "trial") return { isActive: true, plan: "FREE_TRIAL", trialEndsAt: { gt: now } };
+  if (status === "active") return { isActive: true, subscriptionEndsAt: { gt: now } };
+  if (status === "suspended") return { isActive: false };
+  if (status === "expired") {
+    return {
+      isActive: true,
+      NOT: {
+        OR: [
+          { plan: "FREE_TRIAL", trialEndsAt: { gt: now } },
+          { subscriptionEndsAt: { gt: now } },
+        ],
+      },
+    };
+  }
+  return null;
+}
+
+function withSubscriptionStatus(baseWhere, status, now) {
+  const statusWhere = subscriptionStatusWhere(status, now);
+  return statusWhere ? { AND: [baseWhere, statusWhere] } : baseWhere;
+}
+
 // Get current shop's subscription status
 const getStatus = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
@@ -85,10 +108,35 @@ const getStatus = asyncHandler(async (req, res) => {
 
 // Admin: list all subscriptions
 const adminListSubscriptions = asyncHandler(async (req, res) => {
-  const { plan, status } = req.query;
+  const plan = String(req.query.plan || "").toUpperCase();
+  const status = String(req.query.status || "").toLowerCase();
+  const search = String(req.query.search || "").trim().slice(0, 120);
+  const limit = Math.max(10, Math.min(100, Number(req.query.limit) || 24));
+  const requestedPage = Math.max(1, Number(req.query.page) || 1);
   const now = new Date();
 
+  const baseWhere = {};
+  if (["FREE_TRIAL", "BASIC", "PRO"].includes(plan)) baseWhere.plan = plan;
+  if (search) {
+    baseWhere.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { user: { name: { contains: search, mode: "insensitive" } } },
+      { user: { phone: { contains: search, mode: "insensitive" } } },
+    ];
+  }
+
+  const selectedStatus = ["trial", "active", "expired", "suspended"].includes(status) ? status : null;
+  const pageWhere = withSubscriptionStatus(baseWhere, selectedStatus, now);
+  const statusNames = ["trial", "active", "expired", "suspended"];
+  const [total, ...statusCounts] = await Promise.all([
+    prisma.shop.count({ where: pageWhere }),
+    ...statusNames.map((name) => prisma.shop.count({ where: withSubscriptionStatus(baseWhere, name, now) })),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, totalPages);
+
   const shops = await prisma.shop.findMany({
+    where: pageWhere,
     select: {
       id: true,
       name: true,
@@ -111,7 +159,8 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 500,
+    take: limit,
+    skip: (page - 1) * limit,
   });
 
   const shopIds = shops.map((s) => s.id);
@@ -145,12 +194,14 @@ const adminListSubscriptions = asyncHandler(async (req, res) => {
     return { ...s, ...snapshot, lastPayment: s.subscriptionPayments[0] || null, activation };
   });
 
-  // Filter
-  let filtered = enriched;
-  if (plan) filtered = filtered.filter((s) => s.plan === plan);
-  if (status) filtered = filtered.filter((s) => s.computedStatus === status);
-
-  res.json({ shops: filtered, total: filtered.length });
+  res.json({
+    shops: enriched,
+    total,
+    page,
+    limit,
+    totalPages,
+    statusCounts: Object.fromEntries(statusNames.map((name, index) => [name, statusCounts[index]])),
+  });
 });
 
 // Admin: update a shop's subscription
