@@ -15,7 +15,7 @@ const list = asyncHandler(async (req, res) => {
     canViewReports: true,
   };
 
-  const [shop, products, debts, customerOrders, syncFailures] = await Promise.all([
+  const [shop, products, debts, customerOrders, syncFailures, quotations] = await Promise.all([
     prisma.shop.findUnique({
       where: { id: shopId },
       select: { id: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
@@ -31,6 +31,9 @@ const list = asyncHandler(async (req, res) => {
       : [],
     permissions.canViewReports
       ? prisma.offlineSyncEvent.findMany({ where: { shopId, status: "FAILED", resolutionStatus: { not: "RESOLVED" } }, orderBy: { createdAt: "desc" }, take: 20 })
+      : [],
+    permissions.canViewQuotations || !req.user.staffId
+      ? prisma.quotation.findMany({ where: { shopId, status: { in: ["SENT", "ACCEPTED"] } }, select: { id: true, quotationNumber: true, status: true, expiryDate: true, depositDueDate: true, depositRequiredAmount: true, amountPaid: true }, orderBy: { updatedAt: "desc" }, take: 100 })
       : [],
   ]);
 
@@ -92,6 +95,16 @@ const list = asyncHandler(async (req, res) => {
       href: "/sales?sync=history",
       count: syncFailures.length,
     });
+  }
+
+  const now = new Date();
+  const expiringQuotes = quotations.filter((quote) => quote.status === "SENT" && quote.expiryDate && quote.expiryDate >= now && quote.expiryDate <= new Date(now.getTime() + 3 * 86400000));
+  const overdueDeposits = quotations.filter((quote) => quote.depositDueDate && quote.depositDueDate < now && quote.depositRequiredAmount > quote.amountPaid);
+  if (overdueDeposits.length) {
+    items.push({ id: "quotation-deposits", type: "QUOTATION", severity: "URGENT", title: `${overdueDeposits.length} quotation deposit${overdueDeposits.length === 1 ? " is" : "s are"} overdue`, titleSw: `Amana ${overdueDeposits.length} za nukuu zimechelewa`, description: "Open quotations to record payment or follow up with the customer.", descriptionSw: "Fungua nukuu kurekodi malipo au kufuatilia mteja.", href: "/quotations?status=ACCEPTED", count: overdueDeposits.length });
+  }
+  if (expiringQuotes.length) {
+    items.push({ id: "quotation-expiring", type: "QUOTATION", severity: "WARNING", title: `${expiringQuotes.length} quotation${expiringQuotes.length === 1 ? "" : "s"} expire soon`, titleSw: `Nukuu ${expiringQuotes.length} zinaisha muda hivi karibuni`, description: "Follow up before the quoted price expires.", descriptionSw: "Fuatilia kabla muda wa bei kuisha.", href: "/quotations?status=SENT", count: expiringQuotes.length });
   }
 
   if (!req.user.staffId && shop && !isSubscriptionActive(shop)) {

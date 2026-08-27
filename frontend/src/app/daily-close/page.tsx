@@ -10,9 +10,11 @@ import { useToast } from "@/components/ui/Toast";
 interface SessionSummary {
   cashSales: number;
   debtCollections: number;
+  quotationCash: number;
   cashExpenses: number;
   saleCount: number;
   debtPaymentCount: number;
+  quotationPaymentCount: number;
   expenseCount: number;
   expectedCash: number;
 }
@@ -152,6 +154,7 @@ function SessionSummaryCard({ summary, openingCash, lang, compact = false }: { s
     [lang === "sw" ? "Pesa ya kuanzia" : "Opening cash", openingCash],
     [lang === "sw" ? `Mauzo ya taslimu (${summary.saleCount})` : `Cash sales (${summary.saleCount})`, summary.cashSales],
     [lang === "sw" ? `Malipo ya madeni (${summary.debtPaymentCount})` : `Debt collections (${summary.debtPaymentCount})`, summary.debtCollections],
+    [lang === "sw" ? `Amana/malipo ya nukuu (${summary.quotationPaymentCount})` : `Quotation deposits/payments (${summary.quotationPaymentCount})`, summary.quotationCash],
     [lang === "sw" ? `Matumizi ya taslimu (${summary.expenseCount})` : `Cash expenses (${summary.expenseCount})`, -summary.cashExpenses],
   ];
   return <div className={`mt-4 grid gap-2 ${compact ? "sm:grid-cols-2" : "sm:grid-cols-4"}`}>{rows.map(([label, value]) => <div key={String(label)} className="border border-gray-100 bg-gray-50 p-3"><p className="text-xs text-gray-500">{label}</p><p className={`mt-1 text-sm font-bold ${Number(value) < 0 ? "text-red-700" : "text-gray-950"}`}>{Number(value) < 0 ? "-" : ""}{formatTZS(Math.abs(Number(value)))}</p></div>)}<div className="border border-brand-200 bg-brand-50 p-3"><p className="text-xs text-brand-700">{lang === "sw" ? "Pesa inayotarajiwa" : "Expected cash"}</p><p className="mt-1 text-sm font-bold text-brand-950">{formatTZS(summary.expectedCash)}</p></div></div>;

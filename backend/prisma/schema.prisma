@@ -132,6 +132,17 @@ enum QuotationPaymentStage {
   OTHER
 }
 
+enum QuotationPaymentKind {
+  PAYMENT
+  REFUND
+}
+
+enum QuotationReminderType {
+  EXPIRING_SOON
+  DEPOSIT_OVERDUE
+  VIEWED_NOT_ACCEPTED
+}
+
 model User {
   id        String     @id @default(cuid())
   phone     String     @unique
@@ -529,6 +540,7 @@ model Quotation {
   revisions                  QuotationRevision[]
   shares                     QuotationShare[]
   payments                   QuotationPayment[]
+  reminders                  QuotationReminder[]
   convertedSale              Sale?
   createdAt                  DateTime          @default(now())
   updatedAt                  DateTime          @updatedAt
@@ -632,17 +644,36 @@ model QuotationPayment {
   quotationId       String
   quotation         Quotation               @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   amount            Int
+  kind              QuotationPaymentKind    @default(PAYMENT)
   stage             QuotationPaymentStage   @default(OTHER)
   paymentMethod     PaymentMethod            @default(CASH)
   paymentRef        String?
+  idempotencyKey    String?
   note              String?
   paidAt            DateTime                 @default(now())
   recordedById      String
   debtPaymentId     String?                  @unique
+  cashSessionId     String?
+  cashSession       CashSession?             @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   createdAt         DateTime                 @default(now())
 
+  @@unique([quotationId, idempotencyKey])
   @@index([quotationId, paidAt])
+  @@index([cashSessionId, paymentMethod])
   @@map("quotation_payments")
+}
+
+model QuotationReminder {
+  id                String                  @id @default(cuid())
+  quotationId       String
+  quotation         Quotation               @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  type              QuotationReminderType
+  revisionNumber    Int
+  sentAt            DateTime                @default(now())
+
+  @@unique([quotationId, type, revisionNumber])
+  @@index([sentAt])
+  @@map("quotation_reminders")
 }
 
 model Product {
@@ -970,6 +1001,7 @@ model CashSession {
   sales          Sale[]
   expenses       Expense[]
   debtPayments   DebtPayment[]
+  quotationPayments QuotationPayment[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])

@@ -48,6 +48,17 @@ test("schema keeps quotation conversion one-to-one and service sale lines stock-
   assert.match(schema, /productId\s+String\?/);
   assert.match(schema, /serviceId\s+String\?/);
   assert.match(schema, /model Service/);
+  assert.match(schema, /enum QuotationPaymentKind/);
+  assert.match(schema, /@@unique\(\[quotationId, idempotencyKey\]\)/);
+  assert.match(schema, /model QuotationReminder/);
+});
+
+test("quotation operations guard amendments below paid value and preserve idempotent payment handling", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../src/controllers/quotation.controller.js"), "utf8");
+  assert.match(source, /amended total cannot be below/);
+  assert.match(source, /idempotencyKey/);
+  assert.match(source, /const refundPayment/);
+  assert.match(source, /quotation\.payment\.reused/);
 });
 
 test("migration contains tenant indexes and the public-share token uniqueness boundary", () => {

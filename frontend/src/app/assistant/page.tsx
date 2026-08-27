@@ -62,6 +62,15 @@ interface AssistantAction {
   updatedAt: string;
 }
 
+interface QuotationAssistantAction {
+  id: string;
+  rank: number;
+  href: string;
+  title: string;
+  body: string;
+  action: string;
+}
+
 export default function AssistantPage() {
   const lang = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -69,6 +78,7 @@ export default function AssistantPage() {
   const [debts, setDebts] = useState<DebtSummary | null>(null);
   const [expenses, setExpenses] = useState<ExpenseSummary | null>(null);
   const [quotations, setQuotations] = useState<QuotationSummary[]>([]);
+  const [quotationActions, setQuotationActions] = useState<QuotationAssistantAction[]>([]);
   const [actions, setActions] = useState<AssistantAction[]>([]);
   const [copied, setCopied] = useState(false);
 
@@ -79,11 +89,15 @@ export default function AssistantPage() {
       api.get<DebtSummary>("/debts", lang).then(setDebts).catch(() => null),
       api.get<ExpenseSummary>("/expenses", lang).then(setExpenses).catch(() => null),
       api.get<{ quotations: QuotationSummary[] }>("/quotations?limit=200", lang).then((data) => setQuotations(data.quotations)).catch(() => null),
+      api.get<{ actions: QuotationAssistantAction[] }>("/assistant/quotations", lang).then((data) => setQuotationActions(data.actions)).catch(() => null),
       api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang).then((data) => setActions(data.actions)).catch(() => null),
     ]).catch(console.error);
   }, [lang]);
 
-  const recommendations = buildRecommendations({ dashboard, allTime, debts, expenses, quotations, lang });
+  const recommendations = [
+    ...quotationActions.map((item) => ({ ...item, icon: FileText, tone: item.rank >= 90 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii imetolewa na server kwa ruhusa za akaunti yako na data ya nukuu za duka lako." : "This is generated on the server from quotation data your account is allowed to view.", impact: lang === "sw" ? "Kamilisha hatua bila kuchanganya nukuu na mapato yaliyothibitishwa." : "Complete the next step without confusing quotation value with confirmed revenue." })),
+    ...buildRecommendations({ dashboard, allTime, debts, expenses, quotations, lang }).filter((item) => !item.id.startsWith("quotation-")),
+  ].sort((a, b) => b.rank - a.rank).slice(0, 5);
   const ownerSummary = buildOwnerSummary(recommendations, lang);
   const urgentCount = recommendations.filter((item) => item.rank >= 80).length;
   const actionCount = recommendations.length;

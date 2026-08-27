@@ -35,6 +35,7 @@ const referralRoutes = require("./routes/referral.routes");
 const quotationRoutes = require("./routes/quotation.routes");
 const publicQuotationRoutes = require("./routes/publicQuotation.routes");
 const metaWhatsAppWebhookRoutes = require("./routes/metaWhatsAppWebhook.routes");
+const cronRoutes = require("./routes/cron.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
@@ -131,6 +132,7 @@ app.get("/status", async (req, res) => {
 });
 
 app.use("/api", apiRateLimiter);
+app.use("/api/cron", cronRoutes);
 app.use("/api/public", publicRateLimiter, publicRoutes);
 app.use("/api/public/quotations", publicRateLimiter, publicQuotationRoutes);
 app.use("/api/auth", authRoutes);

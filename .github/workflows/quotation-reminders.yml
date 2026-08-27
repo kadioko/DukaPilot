@@ -1,0 +1,22 @@
+name: Quotation Reminders
+
+on:
+  schedule:
+    - cron: "15 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run quotation reminder scan
+        env:
+          REMINDER_SECRET: ${{ secrets.QUOTATION_REMINDER_CRON_SECRET }}
+        run: |
+          test -n "$REMINDER_SECRET"
+          curl --fail --silent --show-error --request POST \
+            --header "Authorization: Bearer $REMINDER_SECRET" \
+            https://dukapilotproduction.up.railway.app/api/cron/quotation-reminders

@@ -139,4 +139,4 @@ async function processPushDeliveries(limit = 100) {
   return { configured: true, processed: deliveries.length, sent, failed };
 }
 
-module.exports = { configured, queueShopAlerts, processPushDeliveries };
+module.exports = { configured, queueForShop, queueShopAlerts, processPushDeliveries };

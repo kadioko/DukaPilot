@@ -20,6 +20,40 @@ DukaPilot quotations support service, project, and stock businesses. A quotation
 5. A deposit/milestone is held as a quotation payment. On conversion, it is linked into the existing debt-payment flow without a second sale.
 6. Only product-linked lines use DukaPilot's existing stock decrement and stock-history transaction. Service/custom lines do not touch inventory.
 
+## Payments, refunds, and Daily Close
+
+- Every quotation payment can carry an idempotency key. Retrying the same request returns the original result instead of recording money twice.
+- Before conversion, a refund is a separate immutable quotation-payment entry. It reduces the quotation's collected amount and, for cash, reduces the open cashier session. It never deletes history.
+- A paid quotation cannot be amended below the amount already collected. Refund first, then create the revision; a sent or accepted revision must be shared and accepted again.
+- Once converted, the quotation is a sale. Use the sale void/refund workflow for corrections so revenue, stock, and receivables remain together.
+- Cash deposits, milestones, and refunds are included in **Daily Close / Z-report**. After an unpaid quotation converts, its earlier cash entries are represented through the linked receivable payment rather than counted twice.
+
+## Reporting and follow-up
+
+The quotation overview deliberately separates five different numbers:
+
+- **Pipeline:** draft and sent quotations; not revenue.
+- **Accepted work:** accepted quotations waiting to become one confirmed sale.
+- **Converted sales:** quotation value that has become a DukaPilot sale.
+- **Collected cash:** net quotation payments recorded, including refunds.
+- **Receivables:** unpaid balance on converted quotation sales.
+
+The list is paginated in groups of 20 quotations. Status filters reset to the first page.
+
+The AI Assistant retrieves quotation actions from a permission-checked server endpoint. It can suggest conversion of accepted work, overdue deposit follow-up, and sent quotations near expiry without exposing internal costs or private notes to staff who cannot see them.
+
+## Automated quotation reminders
+
+Every day, the reminder job scans for:
+
+- sent quotations expiring within three days;
+- overdue required deposits; and
+- a current shared version viewed for more than 24 hours without acceptance.
+
+It creates one durable AI action per quotation, reminder type, and revision, so the same reminder is not sent repeatedly. It also queues a push notification when the shop has an enabled device.
+
+Set the same strong random value as `QUOTATION_REMINDER_CRON_SECRET` in Railway and as the `QUOTATION_REMINDER_CRON_SECRET` GitHub Actions secret. The [quotation reminder workflow](../.github/workflows/quotation-reminders.yml) calls the protected production endpoint daily at 07:15 East Africa Time. It can also be run manually from GitHub Actions.
+
 ## AI Assistant priorities
 
 On DukaPilot Pro, the AI Assistant includes quotation pipeline work in the daily command list. It can flag:

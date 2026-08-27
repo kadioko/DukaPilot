@@ -80,6 +80,12 @@ function documentLanguage(value, fallback = "sw") {
   return language;
 }
 
+function idempotencyKey(req) {
+  const key = cleanText(req.get?.("Idempotency-Key") || req.body.idempotencyKey, 120);
+  if (key && !/^[A-Za-z0-9._:-]{8,120}$/.test(key)) throw Object.assign(new Error("Idempotency key is invalid"), { status: 400 });
+  return key;
+}
+
 function publicItem(item, settings) {
   const row = {
     category: item.category,
@@ -579,6 +585,7 @@ const update = asyncHandler(async (req, res) => {
     const customer = await resolveCustomer(tx, shopId, req.body.customer, req.body.customerId ? String(req.body.customerId) : existing.customerId);
     const { sections, lines } = await buildLines(tx, shopId, req.body.items, req.body.sections, { ...settings, defaultTaxRateBasisPoints: header.taxRateBasisPoints });
     const totals = calculateTotals(lines, wholeTzs(req.body.discountAmount, 0, "Quotation discount"));
+    if (totals.totalAmount < existing.amountPaid) throw Object.assign(new Error(`The amended total cannot be below the ${existing.amountPaid} TZS already collected. Record a refund first, or keep the total at least that amount.`), { status: 409 });
     const revisionNumber = needsRevision ? existing.currentRevisionNumber + 1 : existing.currentRevisionNumber;
     await tx.quotation.update({
       where: { id: existing.id },
@@ -620,6 +627,7 @@ const duplicate = asyncHandler(async (req, res) => {
     projectType: source.projectType,
     scopeOfWork: source.scopeOfWork,
     currency: source.currency,
+    documentLanguage: source.documentLanguage,
     customerNote: source.customerNote,
     internalNote: source.internalNote,
     termsAndConditions: source.termsAndConditions,
@@ -752,29 +760,70 @@ const recordPayment = asyncHandler(async (req, res) => {
   const amount = positiveTzs(req.body.amount, "Payment amount");
   const method = String(req.body.paymentMethod || "CASH").toUpperCase();
   const stage = String(req.body.stage || "OTHER").toUpperCase();
+  const requestKey = idempotencyKey(req);
   if (!PAYMENT_METHODS.has(method) || !PAYMENT_STAGES.has(stage)) return res.status(400).json({ error: "Invalid payment method or payment stage" });
-  const quote = await prisma.$transaction(async (tx) => {
+  const paymentRef = cleanText(req.body.paymentRef, 160);
+  const note = cleanText(req.body.note, 2000);
+  let result;
+  try { result = await prisma.$transaction(async (tx) => {
     const quotation = await fetchQuotation(tx, req.params.id, shopId);
+    if (requestKey && quotation.payments.some((payment) => payment.idempotencyKey === requestKey)) return { quote: quotation, reused: true };
     if (!["SENT", "ACCEPTED", "CONVERTED"].includes(quotation.status)) throw Object.assign(new Error("Payments can be recorded after a quotation is sent"), { status: 409 });
     const outstanding = quotation.totalAmount - quotation.amountPaid;
     if (amount > outstanding) throw Object.assign(new Error(`Payment exceeds the outstanding balance of ${outstanding} TZS`), { status: 400 });
-    const payment = await tx.quotationPayment.create({ data: { quotationId: quotation.id, amount, stage, paymentMethod: method, paymentRef: cleanText(req.body.paymentRef, 160), note: cleanText(req.body.note, 2000), recordedById: actorId(req) } });
+    const cashSession = method === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
+    const payment = await tx.quotationPayment.create({ data: { quotationId: quotation.id, amount, kind: "PAYMENT", stage, paymentMethod: method, paymentRef, idempotencyKey: requestKey, note, recordedById: actorId(req), cashSessionId: cashSession?.id || null } });
     if (quotation.convertedSale) {
       const debt = await tx.debt.findFirst({ where: { saleId: quotation.convertedSale.id, shopId } });
       if (debt) {
         const paid = debt.amountPaid + amount;
         const guarded = await tx.debt.updateMany({ where: { id: debt.id, amountPaid: debt.amountPaid }, data: { amountPaid: paid, status: paid >= debt.amount ? "PAID" : "PARTIAL" } });
         if (guarded.count !== 1) throw Object.assign(new Error("Payment changed before it could be saved. Refresh and try again."), { status: 409 });
-        const cashSession = method === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
-        const debtPayment = await tx.debtPayment.create({ data: { debtId: debt.id, amount, paymentMethod: method, paymentRef: cleanText(req.body.paymentRef, 160), note: cleanText(req.body.note, 2000), recordedBy: actorId(req), cashSessionId: cashSession?.id || null } });
+        const debtPayment = await tx.debtPayment.create({ data: { debtId: debt.id, amount, paymentMethod: method, paymentRef, note, recordedBy: actorId(req), cashSessionId: cashSession?.id || null } });
         await tx.quotationPayment.update({ where: { id: payment.id }, data: { debtPaymentId: debtPayment.id } });
       }
     }
-    await tx.quotation.update({ where: { id: quotation.id }, data: { amountPaid: { increment: amount }, lastEditedById: actorId(req) } });
-    return fetchQuotation(tx, quotation.id, shopId);
-  });
-  req.audit = { action: "quotation.payment.record", resourceType: "quotation", resourceId: quote.id, metadata: { amount, method, stage } };
-  res.status(201).json({ quotation: redactQuotation(quote, req) });
+    const guarded = await tx.quotation.updateMany({ where: { id: quotation.id, amountPaid: quotation.amountPaid }, data: { amountPaid: { increment: amount }, lastEditedById: actorId(req) } });
+    if (guarded.count !== 1) throw Object.assign(new Error("Payment changed before it could be saved. Refresh and try again."), { status: 409 });
+    return { quote: await fetchQuotation(tx, quotation.id, shopId), reused: false };
+  }); } catch (error) {
+    if (error.code !== "P2002" || !requestKey) throw error;
+    const quote = await fetchQuotation(prisma, req.params.id, shopId);
+    if (!quote.payments.some((payment) => payment.idempotencyKey === requestKey)) throw error;
+    result = { quote, reused: true };
+  }
+  req.audit = { action: result.reused ? "quotation.payment.reused" : "quotation.payment.record", resourceType: "quotation", resourceId: result.quote.id, metadata: { amount, method, stage, idempotencyKey: requestKey } };
+  res.status(result.reused ? 200 : 201).json({ quotation: redactQuotation(result.quote, req), reused: result.reused });
+});
+
+const refundPayment = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const amount = positiveTzs(req.body.amount, "Refund amount");
+  const method = String(req.body.paymentMethod || "CASH").toUpperCase();
+  const stage = String(req.body.stage || "OTHER").toUpperCase();
+  const requestKey = idempotencyKey(req);
+  if (!PAYMENT_METHODS.has(method) || !PAYMENT_STAGES.has(stage)) return res.status(400).json({ error: "Invalid payment method or payment stage" });
+  const paymentRef = cleanText(req.body.paymentRef, 160);
+  const note = cleanText(req.body.note, 2000);
+  let result;
+  try { result = await prisma.$transaction(async (tx) => {
+    const quotation = await fetchQuotation(tx, req.params.id, shopId);
+    if (requestKey && quotation.payments.some((payment) => payment.idempotencyKey === requestKey)) return { quote: quotation, reused: true };
+    if (quotation.status === "CONVERTED") throw Object.assign(new Error("This quotation is already a sale. Use the sale void/refund process so revenue, stock, and receivables stay correct."), { status: 409 });
+    if (amount > quotation.amountPaid) throw Object.assign(new Error(`Refund exceeds the ${quotation.amountPaid} TZS currently collected on this quotation`), { status: 400 });
+    const cashSession = method === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
+    await tx.quotationPayment.create({ data: { quotationId: quotation.id, amount, kind: "REFUND", stage, paymentMethod: method, paymentRef, idempotencyKey: requestKey, note, recordedById: actorId(req), cashSessionId: cashSession?.id || null } });
+    const guarded = await tx.quotation.updateMany({ where: { id: quotation.id, amountPaid: { gte: amount } }, data: { amountPaid: { decrement: amount }, lastEditedById: actorId(req) } });
+    if (guarded.count !== 1) throw Object.assign(new Error("Payment changed before the refund could be saved. Refresh and try again."), { status: 409 });
+    return { quote: await fetchQuotation(tx, quotation.id, shopId), reused: false };
+  }); } catch (error) {
+    if (error.code !== "P2002" || !requestKey) throw error;
+    const quote = await fetchQuotation(prisma, req.params.id, shopId);
+    if (!quote.payments.some((payment) => payment.idempotencyKey === requestKey)) throw error;
+    result = { quote, reused: true };
+  }
+  req.audit = { action: result.reused ? "quotation.refund.reused" : "quotation.refund.record", resourceType: "quotation", resourceId: result.quote.id, metadata: { amount, method, stage, idempotencyKey: requestKey } };
+  res.status(result.reused ? 200 : 201).json({ quotation: redactQuotation(result.quote, req), reused: result.reused });
 });
 
 const convert = asyncHandler(async (req, res) => {
@@ -836,7 +885,7 @@ const convert = asyncHandler(async (req, res) => {
     if (outstanding > 0) {
       const debt = await tx.debt.create({ data: { customerName: quotation.customer.name, customerPhone: quotation.customer.phone, amount: quotation.totalAmount, amountPaid: quotation.amountPaid, status: quotation.amountPaid > 0 ? "PARTIAL" : "OPEN", dueDate: quotation.depositDueDate, note: `Quotation ${quotation.quotationNumber}`, saleId: sale.id, shopId } });
       for (const payment of quotation.payments) {
-        const debtPayment = await tx.debtPayment.create({ data: { debtId: debt.id, amount: payment.amount, paymentMethod: payment.paymentMethod, paymentRef: payment.paymentRef, note: `Quotation payment: ${payment.note || payment.stage}`, recordedBy: payment.recordedById } });
+        const debtPayment = await tx.debtPayment.create({ data: { debtId: debt.id, amount: payment.kind === "REFUND" ? -payment.amount : payment.amount, paymentMethod: payment.paymentMethod, paymentRef: payment.paymentRef, note: `Quotation ${payment.kind === "REFUND" ? "refund" : "payment"}: ${payment.note || payment.stage}`, recordedBy: payment.recordedById, cashSessionId: payment.cashSessionId || null } });
         await tx.quotationPayment.update({ where: { id: payment.id }, data: { debtPaymentId: debtPayment.id } });
       }
     }
@@ -869,9 +918,14 @@ const metrics = asyncHandler(async (req, res) => {
   }
   const sentOrDecided = byStatus.SENT.count + byStatus.ACCEPTED.count + byStatus.CONVERTED.count + byStatus.REJECTED.count + byStatus.EXPIRED.count;
   const acceptedOrConverted = byStatus.ACCEPTED.count + byStatus.CONVERTED.count;
-  const response = { totalValue, byStatus, conversionRate: sentOrDecided ? Number(((acceptedOrConverted / sentOrDecided) * 100).toFixed(1)) : 0, averageQuotationValue: quotations.length ? Math.round(totalValue / quotations.length) : 0, outstandingBalance: outstanding, quotationCount: quotations.length };
+  const pipelineValue = byStatus.DRAFT.value + byStatus.SENT.value;
+  const acceptedWorkValue = byStatus.ACCEPTED.value;
+  const convertedSalesValue = byStatus.CONVERTED.value;
+  const receivables = quotations.filter((quotation) => quotation.status === "CONVERTED").reduce((sum, quotation) => sum + Math.max(0, quotation.totalAmount - quotation.amountPaid), 0);
+  const collectedCash = quotations.reduce((sum, quotation) => sum + quotation.amountPaid, 0);
+  const response = { totalValue, byStatus, conversionRate: sentOrDecided ? Number(((acceptedOrConverted / sentOrDecided) * 100).toFixed(1)) : 0, averageQuotationValue: quotations.length ? Math.round(totalValue / quotations.length) : 0, outstandingBalance: outstanding, quotationCount: quotations.length, pipeline: { value: pipelineValue, count: byStatus.DRAFT.count + byStatus.SENT.count }, acceptedWork: { value: acceptedWorkValue, count: byStatus.ACCEPTED.count }, convertedSales: { value: convertedSalesValue, count: byStatus.CONVERTED.count }, collectedCash, receivables };
   if (canViewCosts(req)) Object.assign(response, { estimatedCost, estimatedProfit, estimatedMargin: totalValue ? Number(((estimatedProfit / totalValue) * 100).toFixed(1)) : 0 });
   res.json({ metrics: response });
 });
 
-module.exports = { list, get, customers, services, createService, getSettings, updateSettings, create, update, duplicate, revisions, restoreRevision, send, markShared, accept, reject, archive, cancel, removeDraft, recordPayment, convert, metrics, quotationSnapshot, fetchQuotation, redactQuotation };
+module.exports = { list, get, customers, services, createService, getSettings, updateSettings, create, update, duplicate, revisions, restoreRevision, send, markShared, accept, reject, archive, cancel, removeDraft, recordPayment, refundPayment, convert, metrics, quotationSnapshot, fetchQuotation, redactQuotation };

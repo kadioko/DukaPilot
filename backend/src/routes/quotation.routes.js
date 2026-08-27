@@ -28,6 +28,7 @@ router.post("/:id/archive", requirePermission("canArchiveQuotations"), ctrl.arch
 router.post("/:id/cancel", requirePermission("canArchiveQuotations"), ctrl.cancel);
 router.delete("/:id", requirePermission("canDeleteQuotationDrafts"), ctrl.removeDraft);
 router.post("/:id/payments", requirePermission("canRecordQuotationPayments"), ctrl.recordPayment);
+router.post("/:id/refunds", requirePermission("canRecordQuotationPayments"), ctrl.refundPayment);
 router.post("/:id/convert", requirePermission("canConvertQuotations"), ctrl.convert);
 
 module.exports = router;

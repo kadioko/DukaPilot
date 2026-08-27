@@ -21,22 +21,32 @@ async function actorName(user) {
 }
 
 async function summarizeSession(tx, session) {
-  const [sales, debtPayments, expenses] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, quotationRefunds, expenses] = await Promise.all([
     tx.sale.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", status: "COMPLETED" }, _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
+    tx.quotationPayment?.aggregate
+      ? tx.quotationPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", debtPaymentId: null, kind: "PAYMENT" }, _sum: { amount: true }, _count: { id: true } })
+      : Promise.resolve({ _sum: { amount: 0 }, _count: { id: 0 } }),
+    tx.quotationPayment?.aggregate
+      ? tx.quotationPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", debtPaymentId: null, kind: "REFUND" }, _sum: { amount: true }, _count: { id: true } })
+      : Promise.resolve({ _sum: { amount: 0 }, _count: { id: 0 } }),
     tx.expense.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
   ]);
   const cashSales = sales._sum.totalAmount || 0;
   const debtCollections = debtPayments._sum.amount || 0;
+  const quotationCash = (quotationPayments._sum.amount || 0) - (quotationRefunds._sum.amount || 0);
+  const quotationPaymentCount = (quotationPayments._count.id || 0) + (quotationRefunds._count.id || 0);
   const cashExpenses = expenses._sum.amount || 0;
   return {
     cashSales,
     debtCollections,
+    quotationCash,
     cashExpenses,
     saleCount: sales._count.id,
     debtPaymentCount: debtPayments._count.id,
+    quotationPaymentCount,
     expenseCount: expenses._count.id,
-    expectedCash: session.openingCash + cashSales + debtCollections - cashExpenses,
+    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashExpenses,
   };
 }
 

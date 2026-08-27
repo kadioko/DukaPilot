@@ -10,7 +10,7 @@ async function mockShell(page: Page) {
   await page.route("**/*api/quotations/services", (route) => route.fulfill(json({ services: [] })));
   await page.route("**/*api/quotations/settings", (route) => route.fulfill(json({ settings: { prefix: "QT", numberingFormat: "{prefix}-{number}", defaultValidityDays: 14, defaultCurrency: "TZS", defaultDocumentLanguage: "sw", defaultTaxRateBasisPoints: 0, showQuantities: true, showUnitPrices: true, showItemDiscounts: true, showSections: true, defaultDepositPercent: 50, business: { name: "Duka la Amina" } } })));
   await page.route("**/*api/quotations/metrics", (route) => route.fulfill(json({ metrics: { totalValue: 500000, averageQuotationValue: 500000, conversionRate: 50, outstandingBalance: 250000, quotationCount: 1, estimatedCost: 300000, estimatedProfit: 200000, estimatedMargin: 40, byStatus: { DRAFT: { count: 1, value: 500000 }, SENT: { count: 0, value: 0 }, ACCEPTED: { count: 0, value: 0 }, REJECTED: { count: 0, value: 0 }, EXPIRED: { count: 0, value: 0 }, CONVERTED: { count: 0, value: 0 }, ARCHIVED: { count: 0, value: 0 }, CANCELLED: { count: 0, value: 0 } } } })));
-  await page.route(/.*\/api\/quotations(?:\?.*)?$/, (route) => route.fulfill(json({ quotations: [{ id: "quote-1", quotationNumber: "QT-0001", currentRevisionNumber: 1, status: "DRAFT", issueDate: "2026-08-27T09:00:00.000Z", projectTitle: "Kupamba ofisi", currency: "TZS", discountAmount: 0, taxRateBasisPoints: 0, subtotalAmount: 500000, taxAmount: 0, totalAmount: 500000, amountPaid: 0, depositPercent: 50, depositRequiredAmount: 250000, customer: { id: "customer-1", name: "Amina" } }] })));
+  await page.route(/.*\/api\/quotations(?:\?.*)?$/, (route) => route.fulfill(json({ total: 41, quotations: [{ id: "quote-1", quotationNumber: "QT-0001", currentRevisionNumber: 1, status: "DRAFT", issueDate: "2026-08-27T09:00:00.000Z", projectTitle: "Kupamba ofisi", currency: "TZS", discountAmount: 0, taxRateBasisPoints: 0, subtotalAmount: 500000, taxAmount: 0, totalAmount: 500000, amountPaid: 0, depositPercent: 50, depositRequiredAmount: 250000, customer: { id: "customer-1", name: "Amina" } }] })));
 }
 
 test("quotation workspace is usable on a mobile viewport", async ({ page }) => {
@@ -19,6 +19,7 @@ test("quotation workspace is usable on a mobile viewport", async ({ page }) => {
   await page.goto("/quotations");
   await expect(page.getByRole("heading", { name: "Nukuu za Bei" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Nukuu mpya" })).toBeVisible();
+  await expect(page.getByText("1-20 ya 41")).toBeVisible();
   await expect(page.getByText("Kupamba ofisi")).toBeVisible();
   await page.getByRole("button", { name: "Nukuu mpya" }).click();
   await expect(page.getByText("Nukuu mpya ya bei")).toBeVisible();

@@ -22,6 +22,7 @@ test("cash session summary reconciles opening cash, sales, collections, and expe
   const tx = {
     sale: { aggregate: async () => ({ _sum: { totalAmount: 150000 }, _count: { id: 7 } }) },
     debtPayment: { aggregate: async () => ({ _sum: { amount: 20000 }, _count: { id: 2 } }) },
+    quotationPayment: { aggregate: async ({ where }) => where.kind === "REFUND" ? ({ _sum: { amount: 0 }, _count: { id: 0 } }) : ({ _sum: { amount: 30000 }, _count: { id: 2 } }) },
     expense: { aggregate: async () => ({ _sum: { amount: 18000 }, _count: { id: 1 } }) },
   };
   const summary = await summarizeSession(tx, { id: "session-1", openingCash: 10000 });
@@ -29,10 +30,25 @@ test("cash session summary reconciles opening cash, sales, collections, and expe
   assert.deepEqual(summary, {
     cashSales: 150000,
     debtCollections: 20000,
+    quotationCash: 30000,
     cashExpenses: 18000,
     saleCount: 7,
     debtPaymentCount: 2,
+    quotationPaymentCount: 2,
     expenseCount: 1,
-    expectedCash: 162000,
+    expectedCash: 192000,
   });
+});
+
+test("cash session treats a quotation refund as cash leaving the drawer", async () => {
+  const tx = {
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    quotationPayment: { aggregate: async ({ where }) => where.kind === "REFUND" ? ({ _sum: { amount: 10000 }, _count: { id: 1 } }) : ({ _sum: { amount: 50000 }, _count: { id: 1 } }) },
+    expense: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+  };
+  const summary = await summarizeSession(tx, { id: "session-1", openingCash: 5000 });
+  assert.equal(summary.quotationCash, 40000);
+  assert.equal(summary.quotationPaymentCount, 2);
+  assert.equal(summary.expectedCash, 45000);
 });
