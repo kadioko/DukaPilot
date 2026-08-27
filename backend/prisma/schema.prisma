@@ -465,6 +465,7 @@ model QuotationSettings {
   numberingFormat            String   @default("{prefix}-{number}")
   defaultValidityDays         Int      @default(14)
   defaultCurrency             String   @default("TZS")
+  defaultDocumentLanguage     String   @default("sw")
   defaultTaxRateBasisPoints   Int      @default(0)
   defaultPaymentTerms         String?
   defaultTerms                String?
@@ -493,6 +494,7 @@ model Quotation {
   projectType                String?
   scopeOfWork                String?
   currency                   String            @default("TZS")
+  documentLanguage           String            @default("sw")
   customerNote               String?
   internalNote               String?
   termsAndConditions         String?

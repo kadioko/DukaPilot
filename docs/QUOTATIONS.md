@@ -42,6 +42,7 @@ Open **Quotations > Quotation settings** to set defaults for future quotations. 
 - **Prefix and number format:** For example, `QT-0001`. The format accepts `{prefix}`, `{number}`, and `{year}`. Numbers are sequential per shop and remain unique.
 - **Validity period:** The default number of days before a quote expires. A user can choose another expiry date on an individual quote.
 - **Currency and tax:** TZS is the default. Tax is stored as a percentage and calculated in whole TZS on the server, line by line.
+- **Customer document language:** Choose **Kiswahili** or **English** for new customer documents. The chosen default is saved on every new quotation and revision, so its public link, PDF, printout, and WhatsApp share message stay in that language. Existing shared quotations keep their current English presentation.
 - **Payment terms, customer note, and terms:** Reusable wording inserted into each new quote. These can be edited for one project without changing the default.
 - **Signature name:** The text below the customer document signature line. The current release uses a typed signature area; an uploaded/drawn signature is a future enhancement.
 - **Customer visibility:** Toggle quantities, unit prices, item discounts, and section headings. These toggles control the public link, PDF, and print document only. Internal cost and profit fields are never customer-visible.

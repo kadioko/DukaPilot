@@ -74,6 +74,12 @@ function statusLabel(status) {
   return String(status || "DRAFT").toUpperCase();
 }
 
+function documentLanguage(value, fallback = "sw") {
+  const language = String(value === undefined || value === null || value === "" ? fallback : value).trim().toLowerCase();
+  if (!["sw", "en"].includes(language)) throw Object.assign(new Error("Document language must be Swahili or English"), { status: 400 });
+  return language;
+}
+
 function publicItem(item, settings) {
   const row = {
     category: item.category,
@@ -132,6 +138,7 @@ function quotationSnapshot(quotation, settings) {
     projectType: quotation.projectType || null,
     scopeOfWork: quotation.scopeOfWork || null,
     currency: quotation.currency,
+    documentLanguage: documentLanguage(quotation.documentLanguage, settings.defaultDocumentLanguage),
     customer: quotation.customer ? {
       name: quotation.customer.name,
       phone: quotation.customer.phone || null,
@@ -170,6 +177,7 @@ function quotationSnapshot(quotation, settings) {
       projectType: base.projectType,
       scopeOfWork: base.scopeOfWork,
       currency: base.currency,
+      documentLanguage: base.documentLanguage,
       business: settings.business,
       customer: base.customer,
       customerNote: base.customerNote,
@@ -459,11 +467,12 @@ const getSettings = asyncHandler(async (req, res) => {
 
 const updateSettings = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const allowed = ["prefix", "numberingFormat", "defaultValidityDays", "defaultCurrency", "defaultTaxRateBasisPoints", "defaultPaymentTerms", "defaultTerms", "defaultCustomerNote", "signatureName", "signatureUrl", "showQuantities", "showUnitPrices", "showItemDiscounts", "showSections", "defaultDepositPercent"];
+  const allowed = ["prefix", "numberingFormat", "defaultValidityDays", "defaultCurrency", "defaultDocumentLanguage", "defaultTaxRateBasisPoints", "defaultPaymentTerms", "defaultTerms", "defaultCustomerNote", "signatureName", "signatureUrl", "showQuantities", "showUnitPrices", "showItemDiscounts", "showSections", "defaultDepositPercent"];
   const data = {};
   for (const key of allowed) {
     if (req.body[key] === undefined) continue;
     if (["defaultValidityDays", "defaultTaxRateBasisPoints", "defaultDepositPercent"].includes(key)) data[key] = wholeTzs(req.body[key], 0, key);
+    else if (key === "defaultDocumentLanguage") data[key] = documentLanguage(req.body[key]);
     else if (["showQuantities", "showUnitPrices", "showItemDiscounts", "showSections"].includes(key)) data[key] = Boolean(req.body[key]);
     else {
       const text = cleanText(req.body[key], key === "numberingFormat" ? 80 : 500);
@@ -497,6 +506,7 @@ function inputHeader(body, settings) {
     projectType: cleanText(body.projectType, 120),
     scopeOfWork: cleanText(body.scopeOfWork, 10_000),
     currency,
+    documentLanguage: documentLanguage(body.documentLanguage, settings.defaultDocumentLanguage),
     customerNote: cleanText(body.customerNote === undefined ? settings.defaultCustomerNote : body.customerNote, 10_000),
     internalNote: cleanText(body.internalNote, 10_000),
     termsAndConditions: cleanText(body.termsAndConditions === undefined ? settings.defaultTerms : body.termsAndConditions, 10_000),

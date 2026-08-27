@@ -7,7 +7,7 @@ const quotation = require("../src/controllers/quotation.controller");
 
 function sampleQuote() {
   return {
-    quotationNumber: "QT-0001", currentRevisionNumber: 2, status: "SENT", issueDate: new Date("2026-08-01"), expiryDate: new Date("2026-08-15"), projectTitle: "Kitchen fitting", projectType: "Installation", scopeOfWork: "Fit cabinets", currency: "TZS",
+    quotationNumber: "QT-0001", currentRevisionNumber: 2, status: "SENT", issueDate: new Date("2026-08-01"), expiryDate: new Date("2026-08-15"), projectTitle: "Kitchen fitting", projectType: "Installation", scopeOfWork: "Fit cabinets", currency: "TZS", documentLanguage: "en",
     customer: { name: "Amina", phone: "+255700000001", email: "amina@example.com", address: "Mwanza" }, customerNote: "Thank you", internalNote: "Ask supplier for a better price", termsAndConditions: "50% deposit", paymentTerms: "Pay by M-Pesa",
     discountAmount: 10000, taxRateBasisPoints: 1800, subtotalAmount: 100000, taxAmount: 16200, totalAmount: 106200, amountPaid: 20000, depositRequiredAmount: 53100, depositDueDate: new Date("2026-08-05"),
     sections: [{ id: "materials", name: "Materials", position: 0, visibleToCustomer: true }],
@@ -29,6 +29,7 @@ test("public quotation snapshot omits all internal costs, margins, suppliers, an
   assert.equal(rendered.includes("markupBasisPoints"), false);
   assert.equal(snapshot.publicSnapshot.items[0].unitPrice, 50000);
   assert.equal(snapshot.publicSnapshot.outstandingAmount, 86200);
+  assert.equal(snapshot.publicSnapshot.documentLanguage, "en");
 });
 
 test("customer visibility and document settings remove hidden lines and optional pricing fields", () => {
