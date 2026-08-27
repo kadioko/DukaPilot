@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "DukaPilot Help - Programu ya Stock, POS Tanzania, Mfumo wa Duka",
   description:
-    "Help for using DukaPilot: setup, POS sales, inventory, duka stock management, catalog links, staff, offline sales, subscription payments, and AI Assistant.",
+    "Help for using DukaPilot: setup, POS sales, inventory, service quotations, estimates, catalog links, staff, offline sales, subscription payments, and AI Assistant.",
   keywords: [
     "DukaPilot help",
     "programu ya stock",
@@ -12,6 +12,8 @@ export const metadata: Metadata = {
     "mfumo wa duka",
     "duka stock management",
     "shop management help",
+    "quotation software Tanzania",
+    "estimate app Tanzania",
   ],
   alternates: {
     canonical: "/help",

@@ -24,6 +24,18 @@ DukaPilot quotations support service, project, and stock businesses. A quotation
 
 Owners retain access. Staff can be granted independently: view quotations, create drafts, revise shared quotations, view internal costs, approve discounts, send, accept/reject, convert to sales, record payments, archive, and delete unshared drafts. The staff page exposes these switches.
 
+## Quotation settings
+
+Open **Quotations > Quotation settings** to set defaults for future quotations. Existing quotations and their shared revisions are not silently changed.
+
+- **Prefix and number format:** For example, `QT-0001`. The format accepts `{prefix}`, `{number}`, and `{year}`. Numbers are sequential per shop and remain unique.
+- **Validity period:** The default number of days before a quote expires. A user can choose another expiry date on an individual quote.
+- **Currency and tax:** TZS is the default. Tax is stored as a percentage and calculated in whole TZS on the server, line by line.
+- **Payment terms, customer note, and terms:** Reusable wording inserted into each new quote. These can be edited for one project without changing the default.
+- **Signature name:** The text below the customer document signature line. The current release uses a typed signature area; an uploaded/drawn signature is a future enhancement.
+- **Customer visibility:** Toggle quantities, unit prices, item discounts, and section headings. These toggles control the public link, PDF, and print document only. Internal cost and profit fields are never customer-visible.
+- **Default deposit:** The percentage used to calculate the deposit required on a new quote. It is a request, not proof of payment. Record received money separately as a deposit, milestone, or final payment.
+
 ## Deploying
 
 1. Back up production as normal.

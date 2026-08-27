@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Bot, CircleHelp, MessageCircle, PackagePlus, Settings, Share2, ShoppingCart, Sparkles, X } from "lucide-react";
+import { ArrowRight, Bot, CircleHelp, FileText, MessageCircle, PackagePlus, Settings, Share2, ShoppingCart, Sparkles, X } from "lucide-react";
 import type { Lang } from "@/lib/i18n";
 
 interface QuickStartGuideProps {
@@ -25,6 +25,14 @@ const steps = [
     sw: "Ongeza bidhaa",
     enBody: "Enter stock, buying price, selling price, and low-stock level.",
     swBody: "Weka stock, bei ya kununua, bei ya kuuza na kiwango cha chini.",
+  },
+  {
+    href: "/quotations",
+    icon: FileText,
+    en: "Create a quotation",
+    sw: "Tengeneza nukuu ya bei",
+    enBody: "For custom jobs, services, materials, transport, and deposits. Share a secure link, then convert an accepted quote to a sale.",
+    swBody: "Kwa kazi maalumu, huduma, vifaa, usafiri na amana. Tuma kiungo salama, kisha badilisha nukuu iliyokubaliwa kuwa mauzo.",
   },
   {
     href: "/sales",
@@ -101,8 +109,8 @@ export default function QuickStartGuide({ lang }: QuickStartGuideProps) {
               </div>
               <p className="relative mt-4 max-w-sm text-sm leading-6 text-brand-100">
                 {isSwahili
-                  ? "Anza na hatua hizi tano. Duka lako litakuwa tayari kurekodi mauzo na kupata ushauri wa AI."
-                  : "Start with these five steps. Your shop will be ready to record sales and receive AI guidance."}
+                  ? "Anza na hatua hizi. Duka lako litakuwa tayari kurekodi mauzo, kutengeneza nukuu, na kupata ushauri wa AI."
+                  : "Start with these steps. Your shop will be ready to record sales, make quotations, and receive AI guidance."}
               </p>
             </header>
 
