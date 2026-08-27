@@ -92,7 +92,7 @@ test("pending supplier order edits replace items only within the merchant shop",
   assert.deepEqual(updateData.items.create, [{ productId: "product-1", quantity: 3, unitPrice: 4500 }]);
 });
 
-test("only pending supplier orders can be deleted", async () => {
+test("pending and cancelled supplier orders can be deleted, while confirmed orders remain protected", async () => {
   let deleted = false;
   const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
@@ -108,4 +108,11 @@ test("only pending supplier orders can be deleted", async () => {
 
   assert.equal(res.statusCode, 409);
   assert.equal(deleted, false);
+
+  prismaMock.order.findFirst = async () => ({ id: "order-2", status: "CANCELLED" });
+  const cancelledRes = createRes();
+  await ctrl.remove({ user: { userId: "user-1" }, params: { id: "order-2" } }, cancelledRes);
+
+  assert.equal(cancelledRes.statusCode, 200);
+  assert.equal(deleted, true);
 });

@@ -252,7 +252,7 @@ export default function OrdersPage() {
   }
 
   async function handleDelete(order: Order) {
-    const prompt = lang === "sw" ? "Futa order hii ya kusubiri? Hii haiwezi kurejeshwa." : "Delete this pending order? This cannot be undone.";
+    const prompt = lang === "sw" ? "Futa order hii? Hii haiwezi kurejeshwa." : "Delete this order? This cannot be undone.";
     if (!window.confirm(prompt)) return;
     try {
       await api.delete(`/orders/${order.id}`);
@@ -359,7 +359,7 @@ export default function OrdersPage() {
                           <Pencil className="w-3.5 h-3.5" /> {lang === "sw" ? "Hariri" : "Edit"}
                         </button>
                       )}
-                      {order.status === "PENDING" && (
+                      {(order.status === "PENDING" || order.status === "CANCELLED") && (
                         <button onClick={() => handleDelete(order)} className="flex items-center gap-1.5 text-xs bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg font-medium min-h-0">
                           <Trash2 className="w-3.5 h-3.5" /> {lang === "sw" ? "Futa" : "Delete"}
                         </button>

@@ -181,7 +181,7 @@ const remove = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
   const existing = await prisma.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
   if (!existing) return res.status(404).json({ error: "Order not found" });
-  if (existing.status !== "PENDING") return res.status(409).json({ error: "Only pending orders can be deleted. Cancel an order already sent to the supplier." });
+  if (!["PENDING", "CANCELLED"].includes(existing.status)) return res.status(409).json({ error: "Only pending or cancelled orders can be deleted. Confirmed and delivered orders remain as part of the purchasing history." });
   await prisma.order.delete({ where: { id: existing.id } });
   req.audit = { action: "order.delete", resourceType: "order", resourceId: existing.id };
   res.json({ message: "Order deleted" });
