@@ -3,7 +3,7 @@ import Image from "next/image";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api, getFriendlyErrorMessage, hasSessionHint, markSessionActive } from "@/lib/api";
+import { api, getCurrentSession, getFriendlyErrorMessage, hasSessionHint, markSessionActive } from "@/lib/api";
 import {
   ArrowRight,
   BadgeDollarSign,
@@ -148,7 +148,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     if (!hasSessionHint()) return;
 
     let cancelled = false;
-    api.get<{ user: { role: string; staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canViewReports?: boolean } } } }>("/auth/me")
+    getCurrentSession<{ user: { role: string; staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canViewReports?: boolean } } } }>()
       .then(({ user }) => {
         if (cancelled) return;
         if (user.role === "SUPPLIER") router.replace("/supplier");

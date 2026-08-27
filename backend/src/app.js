@@ -39,6 +39,7 @@ const cronRoutes = require("./routes/cron.routes");
 const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
+const { redactPublicQuotationToken } = require("./lib/redaction");
 
 const app = express();
 
@@ -100,7 +101,10 @@ app.use(express.json({
     if (req.originalUrl === "/api/webhooks/meta-whatsapp") req.rawBody = Buffer.from(buffer);
   },
 }));
-app.use(morgan("dev"));
+const productionRequestLogger = morgan((tokens, req, res) => (
+  `${tokens.method(req, res)} ${redactPublicQuotationToken(tokens.url(req, res))} ${tokens.status(req, res)} ${tokens["response-time"](req, res)} ms`
+), { skip: (_req, res) => res.statusCode < 400 });
+app.use(process.env.NODE_ENV === "production" ? productionRequestLogger : morgan("dev"));
 // Meta calls this unauthenticated endpoint. Its verification token and signed
 // POST body are validated in the controller, before API rate limits and audit logs.
 app.use("/api/webhooks", metaWhatsAppWebhookRoutes);
@@ -173,7 +177,7 @@ app.use((err, req, res, next) => {
   const status = Number(err.status) || 500;
   const message = status >= 500 ? "Internal server error" : err.message;
 
-  console.error(err.stack || err.message || err);
+  console.error(redactPublicQuotationToken(err.stack || err.message || err));
 
   res.status(err.status || 500).json({
     error: message || "Internal server error",

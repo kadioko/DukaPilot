@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { api } from "@/lib/api";
+import { api, getCurrentSession } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
 import { Plus, Phone, MapPin, Package, X, Edit2, Truck, CheckCircle, ShieldCheck } from "lucide-react";
 
@@ -41,7 +41,7 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     fetchSuppliers();
-    api.get<{ user: CurrentUser }>("/auth/me").then((data) => setUser(data.user)).catch(() => null);
+    getCurrentSession<{ user: CurrentUser }>().then((data) => setUser(data.user)).catch(() => null);
   }, []);
 
   function openAdd() {

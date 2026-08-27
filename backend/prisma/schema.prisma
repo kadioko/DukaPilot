@@ -261,6 +261,19 @@ model MarketingEvent {
   @@map("marketing_events")
 }
 
+model PinResetOtp {
+  phone       String   @id
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  lastSentAt  DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@map("pin_reset_otps")
+}
+
 model SubscriptionPayment {
   id                  String    @id @default(cuid())
   shopId              String
@@ -549,6 +562,8 @@ model Quotation {
   @@index([shopId, status, issueDate])
   @@index([shopId, customerId, createdAt])
   @@index([shopId, expiryDate])
+  @@index([status, expiryDate])
+  @@index([status, depositDueDate])
   @@map("quotations")
 }
 
@@ -636,6 +651,7 @@ model QuotationShare {
   acceptedAt        DateTime?
 
   @@index([quotationId, revisionNumber])
+  @@index([quotationId, viewedAt])
   @@map("quotation_shares")
 }
 
@@ -792,8 +808,9 @@ model StockMovement {
     product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
     stockReceiptId String?
     stockReceipt   StockReceipt? @relation(fields: [stockReceiptId], references: [id], onDelete: SetNull)
-    createdAt DateTime          @default(now())
+  createdAt DateTime          @default(now())
 
+  @@index([productId, createdAt])
   @@map("stock_movements")
 }
 
@@ -831,6 +848,7 @@ model Sale {
   @@index([shopId, createdAt])
   @@index([shopId, status, createdAt])
   @@index([shopId, customerId, createdAt])
+  @@index([cashSessionId, paymentMethod, status])
   @@map("sales")
 }
 
@@ -852,6 +870,7 @@ model Debt {
   updatedAt     DateTime      @updatedAt
 
   @@index([shopId, status])
+  @@index([shopId, status, createdAt])
   @@index([customerPhone])
   @@map("debts")
 }
@@ -870,6 +889,7 @@ model DebtPayment {
   createdAt     DateTime      @default(now())
 
   @@index([debtId, createdAt])
+  @@index([cashSessionId, paymentMethod])
   @@map("debt_payments")
 }
 
@@ -891,6 +911,7 @@ model Expense {
 
   @@index([shopId, spentAt])
   @@index([shopId, category])
+  @@index([cashSessionId, paymentMethod])
   @@map("expenses")
 }
 
@@ -981,6 +1002,7 @@ model Order {
   updatedAt   DateTime    @updatedAt
 
   @@index([shopId, status])
+  @@index([shopId, createdAt])
   @@map("orders")
 }
 
@@ -1077,6 +1099,7 @@ model CustomerOrder {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
+  @@index([shopId, status, createdAt])
   @@map("customer_orders")
 }
 
@@ -1109,6 +1132,7 @@ model AuditLog {
 
   @@index([userId, createdAt])
   @@index([resourceType, createdAt])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 

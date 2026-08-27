@@ -48,8 +48,19 @@ async function recordReminder(quote, type, now) {
 }
 
 async function runQuotationReminders(now = new Date()) {
+  const viewedThreshold = new Date(now.getTime() - DAY_MS);
+  const expiringBy = new Date(now.getTime() + (3 * DAY_MS));
   const candidates = await prisma.quotation.findMany({
-    where: { status: { in: ["SENT", "ACCEPTED"] } },
+    // Only fetch quotations that can actually produce one of the three
+    // reminders. This prevents a cron run from scanning the full quote table.
+    where: {
+      status: { in: ["SENT", "ACCEPTED"] },
+      OR: [
+        { status: "SENT", expiryDate: { gte: now, lte: expiringBy } },
+        { depositDueDate: { lt: now } },
+        { status: "SENT", shares: { some: { viewedAt: { lte: viewedThreshold }, acceptedAt: null } } },
+      ],
+    },
     select: {
       id: true, shopId: true, quotationNumber: true, currentRevisionNumber: true, status: true, projectTitle: true,
       expiryDate: true, depositDueDate: true, depositRequiredAmount: true, amountPaid: true,
@@ -57,9 +68,9 @@ async function runQuotationReminders(now = new Date()) {
       shares: { select: { revisionNumber: true, viewedAt: true, acceptedAt: true } },
       shop: { select: { user: { select: { language: true } } } },
     },
-    take: 5000,
+    orderBy: { updatedAt: "asc" },
+    take: 500,
   });
-  const viewedThreshold = new Date(now.getTime() - DAY_MS);
   const counts = { expiringSoon: 0, depositOverdue: 0, viewedNotAccepted: 0 };
   for (const quote of candidates) {
     if (quote.status === "SENT" && quote.expiryDate && daysUntil(quote.expiryDate, now) >= 0 && daysUntil(quote.expiryDate, now) <= 3) {

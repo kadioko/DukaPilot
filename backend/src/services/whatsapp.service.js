@@ -70,19 +70,27 @@ async function sendWhatsAppMessage(toPhone, message) {
 
   const normalizedPhone = toPhone.replace(/\D/g, "");
 
-  const response = await fetch(`${apiUrl}/${phoneId}/messages`, {
-    method: "POST",
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  let response;
+  try {
+    response = await fetch(`${apiUrl}/${phoneId}/messages`, {
+      method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: normalizedPhone,
-      type: "text",
-      text: { body: message },
-    }),
-  });
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: normalizedPhone,
+        type: "text",
+        text: { body: message },
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const err = await response.text();

@@ -77,6 +77,8 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
 let refreshingPromise: Promise<boolean> | null = null;
 let authFailureHandled = false;
 const SESSION_HINT_KEY = "dukapilot_session_active";
+let currentSessionCache: { value: unknown; expiresAt: number } | null = null;
+let currentSessionRequest: Promise<unknown> | null = null;
 
 function handleAuthenticationFailure() {
   if (typeof window !== "undefined" && !authFailureHandled) {
@@ -179,6 +181,25 @@ export const api = {
   delete: <T>(path: string, lang?: Lang) => request<T>(path, { method: "DELETE" }, lang),
 };
 
+// AppShell and route pages often mount together. Coalesce the same session
+// lookup so navigation does not create a fan-out of /auth/me requests.
+export async function getCurrentSession<T>(): Promise<T> {
+  if (currentSessionCache && currentSessionCache.expiresAt > Date.now()) return currentSessionCache.value as T;
+  if (currentSessionRequest) return currentSessionRequest as Promise<T>;
+  currentSessionRequest = api.get<T>("/auth/me")
+    .then((value) => {
+      currentSessionCache = { value, expiresAt: Date.now() + 30_000 };
+      return value;
+    })
+    .finally(() => { currentSessionRequest = null; });
+  return currentSessionRequest as Promise<T>;
+}
+
+export function invalidateCurrentSession() {
+  currentSessionCache = null;
+  currentSessionRequest = null;
+}
+
 export async function downloadFile(path: string, filename: string, lang: Lang = "en") {
   const headers: Record<string, string> = {};
 
@@ -217,6 +238,7 @@ export function hasSessionHint(): boolean {
 }
 
 export function clearToken() {
+  invalidateCurrentSession();
   if (typeof window !== "undefined") {
     localStorage.removeItem(SESSION_HINT_KEY);
     localStorage.removeItem("dukapilot_token");

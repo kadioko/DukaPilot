@@ -67,7 +67,7 @@ const overview = asyncHandler(async (req, res) => {
   const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from } } : { shopId, status: "COMPLETED" };
   const activeProductsWhere = { shopId, isActive: true };
 
-  const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
+  const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCountRows, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
     prisma.shop.findUnique({ where: { id: shopId }, select: { plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true } }),
     prisma.sale.aggregate({
       where: salesWhere,
@@ -80,11 +80,18 @@ const overview = asyncHandler(async (req, res) => {
     }),
     prisma.sale.count({ where: salesWhere }),
     prisma.product.count({ where: activeProductsWhere }),
-    prisma.product.findMany({
-      where: activeProductsWhere,
-      select: { id: true, name: true, currentStock: true, minimumStock: true, unit: true, buyingPrice: true, sellingPrice: true },
-      orderBy: [{ currentStock: "asc" }, { name: "asc" }],
-    }),
+    prisma.$queryRawUnsafe(
+      `SELECT id, name, "currentStock", "minimumStock", unit, "buyingPrice", "sellingPrice"
+       FROM products
+       WHERE "shopId" = $1 AND "isActive" = true AND "currentStock" <= "minimumStock"
+       ORDER BY "currentStock" ASC, name ASC LIMIT 50`,
+      shopId,
+    ),
+    prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::int AS count FROM products
+       WHERE "shopId" = $1 AND "isActive" = true AND "currentStock" > 0 AND "currentStock" <= "minimumStock"`,
+      shopId,
+    ),
     prisma.product.count({ where: { ...activeProductsWhere, currentStock: 0 } }),
     prisma.order.count({ where: { shopId, status: { in: ["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY"] } } }),
     prisma.sale.findMany({
@@ -95,15 +102,21 @@ const overview = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  const lowStockProducts = lowStockCandidates.filter((p) => p.currentStock > 0 && p.currentStock <= p.minimumStock);
+  const lowStockProducts = lowStockCandidates.filter((p) => p.currentStock > 0);
   const outOfStockProducts = lowStockCandidates.filter((p) => p.currentStock === 0);
   const needsAttentionProducts = [...outOfStockProducts, ...lowStockProducts];
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const dailySales = await prisma.sale.findMany({
-    where: { shopId, status: "COMPLETED", createdAt: { gte: sevenDaysAgo } },
-    select: { totalAmount: true, profit: true, createdAt: true },
-  });
+  const dailySales = await prisma.$queryRawUnsafe(
+    `SELECT to_char("createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam', 'YYYY-MM-DD') AS date,
+            COALESCE(SUM("totalAmount"), 0)::bigint AS sales,
+            COALESCE(SUM(profit), 0)::bigint AS profit
+     FROM sales
+     WHERE "shopId" = $1 AND status = 'COMPLETED' AND "createdAt" >= $2
+     GROUP BY 1`,
+    shopId,
+    sevenDaysAgo,
+  );
 
   const dailyMap = {};
   for (let i = 6; i >= 0; i--) {
@@ -112,11 +125,10 @@ const overview = asyncHandler(async (req, res) => {
     const key = tanzaniaDateKey(d);
     dailyMap[key] = { date: key, sales: 0, profit: 0 };
   }
-  for (const s of dailySales) {
-    const key = tanzaniaDateKey(s.createdAt);
-    if (dailyMap[key]) {
-      dailyMap[key].sales += s.totalAmount;
-      dailyMap[key].profit += s.profit;
+  for (const row of dailySales) {
+    if (dailyMap[row.date]) {
+      dailyMap[row.date].sales += Number(row.sales || 0);
+      dailyMap[row.date].profit += Number(row.profit || 0);
     }
   }
 
@@ -142,32 +154,32 @@ const overview = asyncHandler(async (req, res) => {
     orderBy: { _sum: { totalAmount: "desc" } },
   });
 
-  const [historySales, allExpenseAgg] = await Promise.all([
-    prisma.sale.findMany({
-      where: { shopId, status: "COMPLETED" },
-      select: { totalAmount: true, profit: true, createdAt: true },
-      orderBy: { createdAt: "asc" },
-    }),
+  const [allTimeRows, historyRows, allExpenseAgg] = await Promise.all([
+    prisma.$queryRawUnsafe(
+      `SELECT COALESCE(SUM("totalAmount"), 0)::bigint AS "totalSales",
+              COALESCE(SUM(profit), 0)::bigint AS "totalProfit",
+              COUNT(*)::int AS "salesCount", MIN("createdAt") AS "firstSaleAt"
+       FROM sales WHERE "shopId" = $1 AND status = 'COMPLETED'`,
+      shopId,
+    ),
+    prisma.$queryRawUnsafe(
+      `SELECT to_char(date_trunc('month', "createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam'), 'YYYY-MM') AS period,
+              COALESCE(SUM("totalAmount"), 0)::bigint AS sales,
+              COALESCE(SUM(profit), 0)::bigint AS profit,
+              COUNT(*)::int AS "salesCount"
+       FROM sales WHERE "shopId" = $1 AND status = 'COMPLETED'
+       GROUP BY 1 ORDER BY 1 ASC`,
+      shopId,
+    ),
     prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" } }, _sum: { amount: true }, _count: { id: true } }),
   ]);
   const totalExpenses = expenseAgg._sum.amount || 0;
   const grossProfit = salesAgg._sum.profit || 0;
-  const allTimeProfit = historySales.reduce((sum, sale) => sum + sale.profit, 0);
+  const allTime = allTimeRows[0] || {};
+  const allTimeSales = Number(allTime.totalSales || 0);
+  const allTimeProfit = Number(allTime.totalProfit || 0);
+  const allTimeSalesCount = Number(allTime.salesCount || 0);
   const allTimeExpenses = allExpenseAgg._sum.amount || 0;
-
-  const historyMap = {};
-  for (const sale of historySales) {
-    const date = new Date(sale.createdAt);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    if (!historyMap[key]) {
-      historyMap[key] = { period: key, sales: 0, profit: 0, salesCount: 0 };
-    }
-    historyMap[key].sales += sale.totalAmount;
-    historyMap[key].profit += sale.profit;
-    historyMap[key].salesCount += 1;
-  }
-
-  const firstSaleAt = historySales[0]?.createdAt || null;
 
   res.json({
     period,
@@ -181,17 +193,17 @@ const overview = asyncHandler(async (req, res) => {
       salesCount,
       pendingOrders,
       totalProducts,
-      lowStockCount: lowStockProducts.length,
+      lowStockCount: Number(lowStockCountRows[0]?.count || 0),
       outOfStockCount,
     },
     allTimeSummary: {
-      totalSales: historySales.reduce((sum, sale) => sum + sale.totalAmount, 0),
+      totalSales: allTimeSales,
       totalProfit: allTimeProfit,
       totalExpenses: allTimeExpenses,
       netProfit: allTimeProfit - allTimeExpenses,
       expenseCount: allExpenseAgg._count.id,
-      salesCount: historySales.length,
-      firstSaleAt,
+      salesCount: allTimeSalesCount,
+      firstSaleAt: allTime.firstSaleAt || null,
     },
     lowStockAlerts: needsAttentionProducts.map((p) => ({
       id: p.id,
@@ -209,7 +221,7 @@ const overview = asyncHandler(async (req, res) => {
       totalAmount: item._sum.totalAmount || 0,
       salesCount: item._count.id,
     })),
-    historyTimeline: Object.values(historyMap),
+    historyTimeline: historyRows.map((row) => ({ period: row.period, sales: Number(row.sales || 0), profit: Number(row.profit || 0), salesCount: Number(row.salesCount || 0) })),
     topProducts: topProducts.map((t) => ({
       product: topProductMap[t.productId],
       totalQuantity: t._sum.quantity,

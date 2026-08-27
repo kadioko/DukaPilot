@@ -72,12 +72,13 @@ function login(phone, pin) {
   check(res, { "login 200": (r) => r.status === 200 });
   if (res.status !== 200) { errorRate.add(1); return null; }
   errorRate.add(0);
-  const body = JSON.parse(res.body);
-  return body.token;
+  // DukaPilot authenticates with Secure HttpOnly cookies. k6 keeps the
+  // Set-Cookie value in the virtual user's cookie jar automatically.
+  return true;
 }
 
-function authHeaders(token) {
-  return { Authorization: `Bearer ${token}`, ...JSON_HEADERS };
+function authHeaders() {
+  return JSON_HEADERS;
 }
 
 // ── Default scenario ──────────────────────────────────────────────────────────
@@ -90,9 +91,9 @@ export default function () {
   }
 
   // 2. Login as merchant
-  const token = login(MERCHANT_PHONE, MERCHANT_PIN);
-  if (!token) { sleep(1); return; }
-  const headers = authHeaders(token);
+  const loggedIn = login(MERCHANT_PHONE, MERCHANT_PIN);
+  if (!loggedIn) { sleep(1); return; }
+  const headers = authHeaders();
 
   sleep(0.5);
 
@@ -145,9 +146,9 @@ export default function () {
 
   // 8. Supplier portal (login as supplier every other VU)
   if (__VU % 2 === 0) {
-    const sToken = login(SUPPLIER_PHONE, MERCHANT_PIN);
-    if (sToken) {
-      const sHeaders = authHeaders(sToken);
+    const supplierLoggedIn = login(SUPPLIER_PHONE, MERCHANT_PIN);
+    if (supplierLoggedIn) {
+      const sHeaders = authHeaders();
       const res = http.get(`${BASE_URL}/api/suppliers/portal/orders`, { headers: sHeaders });
       check(res, { "supplier portal 200": (r) => r.status === 200 });
       if (res.status !== 200) errorRate.add(1); else errorRate.add(0);

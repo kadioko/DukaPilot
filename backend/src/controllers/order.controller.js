@@ -13,14 +13,55 @@ async function getShop(user) {
   return shop;
 }
 
+function orderInclude() {
+  return {
+    supplier: { select: { id: true, name: true, phone: true } },
+    items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+  };
+}
+
+async function prepareOrder(shop, body) {
+  const supplierId = String(body.supplierId || "").trim();
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!supplierId || !items.length) throw Object.assign(new Error("supplierId and items are required"), { status: 400 });
+
+  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } });
+  if (!supplier) throw Object.assign(new Error("Supplier not found"), { status: 404 });
+
+  const normalizedItems = items.map((item) => ({
+    productId: String(item.productId || ""),
+    quantity: Number(item.quantity),
+    unitPrice: item.unitPrice === undefined || item.unitPrice === null || item.unitPrice === "" ? null : Number(item.unitPrice),
+  }));
+  if (normalizedItems.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || (item.unitPrice !== null && (!Number.isInteger(item.unitPrice) || item.unitPrice < 0)))) {
+    throw Object.assign(new Error("Each order item needs a product, whole positive quantity, and optional whole TZS buying price"), { status: 400 });
+  }
+  const productIds = normalizedItems.map((item) => item.productId);
+  if (new Set(productIds).size !== productIds.length) throw Object.assign(new Error("Each product can appear only once in an order"), { status: 400 });
+
+  const products = await prisma.product.findMany({ where: { id: { in: productIds }, shopId: shop.id, isActive: true } });
+  if (products.length !== productIds.length) throw Object.assign(new Error("One or more products not found in this shop"), { status: 400 });
+  const productMap = Object.fromEntries(products.map((product) => [product.id, product]));
+  let totalAmount = 0;
+  const orderItemsData = normalizedItems.map((item) => {
+    const product = productMap[item.productId];
+    const unitPrice = item.unitPrice ?? product.buyingPrice;
+    totalAmount += unitPrice * item.quantity;
+    return { quantity: item.quantity, unitPrice, productId: item.productId };
+  });
+  return { supplierId, note: String(body.note || "").trim() || null, totalAmount, orderItemsData };
+}
+
 const list = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
   const { status } = req.query;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 100);
 
   const where = { shopId: shop.id };
   if (status) where.status = status.toUpperCase();
 
-  const orders = await prisma.order.findMany({
+  const [orders, total] = await Promise.all([prisma.order.findMany({
     where,
     include: {
       supplier: { select: { id: true, name: true, phone: true } },
@@ -29,53 +70,22 @@ const list = asyncHandler(async (req, res) => {
       },
     },
     orderBy: { createdAt: "desc" },
-  });
+    skip: (page - 1) * limit,
+    take: limit,
+  }), prisma.order.count({ where })]);
 
-  res.json({ orders });
+  res.json({ orders, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
 });
 
 const create = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
-  const { supplierId, items, note } = req.body;
-
-  if (!supplierId || !items || items.length === 0) {
-    return res.status(400).json({ error: "supplierId and items are required" });
+  let prepared;
+  try {
+    prepared = await prepareOrder(shop, req.body);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message || "Could not create order" });
   }
-
-  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-  if (!supplier) return res.status(404).json({ error: "Supplier not found" });
-
-  const normalizedItems = items.map((item) => ({
-    productId: String(item.productId || ""),
-    quantity: Number(item.quantity),
-    unitPrice: item.unitPrice,
-  }));
-
-  if (normalizedItems.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
-    return res.status(400).json({ error: "Each order item must include a productId and a whole-number quantity greater than 0" });
-  }
-
-  const productIds = normalizedItems.map((i) => i.productId);
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds }, shopId: shop.id, isActive: true },
-  });
-  if (products.length !== productIds.length) {
-    return res.status(400).json({ error: "One or more products not found in this shop" });
-  }
-  const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
-
-  let totalAmount = 0;
-  const orderItemsData = normalizedItems.map((item) => {
-    const product = productMap[item.productId];
-    if (!product) throw Object.assign(new Error(`Product ${item.productId} not found`), { status: 400 });
-    const unitPrice = item.unitPrice ?? product.buyingPrice;
-    totalAmount += unitPrice * item.quantity;
-    return {
-      quantity: item.quantity,
-      unitPrice,
-      productId: item.productId,
-    };
-  });
+  const { supplierId, note, totalAmount, orderItemsData } = prepared;
 
   const order = await prisma.order.create({
     data: {
@@ -85,12 +95,7 @@ const create = asyncHandler(async (req, res) => {
       totalAmount,
       items: { create: orderItemsData },
     },
-    include: {
-      supplier: { select: { id: true, name: true, phone: true } },
-      items: {
-        include: { product: { select: { id: true, name: true, unit: true } } },
-      },
-    },
+    include: orderInclude(),
   });
 
   // Generate WhatsApp message for the order
@@ -150,6 +155,38 @@ const confirmDelivery = asyncHandler(async (req, res) => {
   });
 });
 
+const update = asyncHandler(async (req, res) => {
+  const shop = await getShop(req.user);
+  const existing = await prisma.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
+  if (!existing) return res.status(404).json({ error: "Order not found" });
+  if (existing.status !== "PENDING") return res.status(409).json({ error: "Only pending orders can be edited. Cancel and create a new order after the supplier starts processing it." });
+
+  let prepared;
+  try {
+    prepared = await prepareOrder(shop, req.body);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message || "Could not update order" });
+  }
+  const { supplierId, note, totalAmount, orderItemsData } = prepared;
+  const order = await prisma.order.update({
+    where: { id: existing.id },
+    data: { supplierId, note, totalAmount, items: { deleteMany: {}, create: orderItemsData } },
+    include: orderInclude(),
+  });
+  req.audit = { action: "order.update", resourceType: "order", resourceId: order.id, metadata: { itemCount: orderItemsData.length, supplierId } };
+  res.json({ order, whatsappMessage: buildWhatsAppOrderMessage(order, shop) });
+});
+
+const remove = asyncHandler(async (req, res) => {
+  const shop = await getShop(req.user);
+  const existing = await prisma.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
+  if (!existing) return res.status(404).json({ error: "Order not found" });
+  if (existing.status !== "PENDING") return res.status(409).json({ error: "Only pending orders can be deleted. Cancel an order already sent to the supplier." });
+  await prisma.order.delete({ where: { id: existing.id } });
+  req.audit = { action: "order.delete", resourceType: "order", resourceId: existing.id };
+  res.json({ message: "Order deleted" });
+});
+
 // One-tap reorder based on previous order
 const reorder = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
@@ -192,4 +229,4 @@ const reorder = asyncHandler(async (req, res) => {
   res.status(201).json({ order: newOrder, whatsappMessage });
 });
 
-module.exports = { list, create, get, cancel, confirmDelivery, reorder };
+module.exports = { list, create, update, remove, get, cancel, confirmDelivery, reorder };

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
-import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp, PackagePlus } from "lucide-react";
+import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp, PackagePlus, Search, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
 interface Supplier {
@@ -32,6 +32,7 @@ interface SupplierDetails {
 interface Product {
   id: string;
   name: string;
+  sku?: string | null;
   unit: string;
   buyingPrice: number;
   currentStock: number;
@@ -74,17 +75,19 @@ export default function OrdersPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [supplierCatalog, setSupplierCatalog] = useState<SupplierCatalogProduct[]>([]);
   const [catalogImport, setCatalogImport] = useState<SupplierCatalogProduct | null>(null);
   const [retailPriceDraft, setRetailPriceDraft] = useState("");
   const [minimumStockDraft, setMinimumStockDraft] = useState("5");
-  const [orderItems, setOrderItems] = useState<{ productId: string; quantity: number }[]>([]);
+  const [orderItems, setOrderItems] = useState<{ productId: string; quantity: number; unitPrice?: number }[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [whatsappMsg, setWhatsappMsg] = useState<{ message: string; whatsappUrl: string | null } | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [productSearch, setProductSearch] = useState("");
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -97,18 +100,18 @@ export default function OrdersPage() {
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
   useEffect(() => {
-    Promise.all([
-      api.get<{ suppliers: Supplier[] }>("/suppliers"),
-      api.get<{ products: Product[] }>("/products"),
-    ]).then(([sd, pd]) => {
-      setSuppliers(sd.suppliers);
-      setProducts(pd.products);
-    });
+    api.get<{ suppliers: Supplier[] }>("/suppliers").then((data) => setSuppliers(data.suppliers));
   }, []);
 
-  const supplierProducts = selectedSupplier
-    ? products.filter((p) => p.supplier?.id === selectedSupplier || !p.supplier)
-    : products;
+  useEffect(() => {
+    let cancelled = false;
+    const query = new URLSearchParams({ limit: "100" });
+    if (productSearch.trim()) query.set("search", productSearch.trim());
+    api.get<{ products: Product[] }>(`/products?${query.toString()}`)
+      .then((data) => { if (!cancelled) setProducts(data.products); })
+      .catch(() => { if (!cancelled) setProducts([]); });
+    return () => { cancelled = true; };
+  }, [productSearch]);
 
   function addItem(productId: string) {
     setOrderItems((prev) => {
@@ -171,7 +174,7 @@ export default function OrdersPage() {
   }
 
   function fillLowStock() {
-    const lowItems = supplierProducts
+    const lowItems = products
       .filter((p) => p.currentStock <= p.minimumStock)
       .map((p) => ({
         productId: p.id,
@@ -184,13 +187,17 @@ export default function OrdersPage() {
     if (!selectedSupplier || orderItems.length === 0) return;
     setSaving(true);
     try {
-      const data = await api.post<{ order: Order; whatsappMessage: { message: string; whatsappUrl: string | null } }>("/orders", {
+      const payload = {
         supplierId: selectedSupplier,
         items: orderItems,
         note: note || undefined,
-      });
+      };
+      const data = editOrder
+        ? await api.patch<{ order: Order; whatsappMessage: { message: string; whatsappUrl: string | null } }>(`/orders/${editOrder.id}`, payload)
+        : await api.post<{ order: Order; whatsappMessage: { message: string; whatsappUrl: string | null } }>("/orders", payload);
       setWhatsappMsg(data.whatsappMessage);
       setShowForm(false);
+      setEditOrder(null);
       setOrderItems([]);
       setNote("");
       fetchOrders();
@@ -218,6 +225,45 @@ export default function OrdersPage() {
     setWhatsappMsg(data.whatsappMessage);
   }
 
+  function openNewOrder() {
+    setEditOrder(null);
+    setShowForm(true);
+    setOrderItems([]);
+    setNote("");
+    setSelectedSupplier("");
+    setSupplierCatalog([]);
+    setProductSearch("");
+  }
+
+  async function openEditOrder(order: Order) {
+    setEditOrder(order);
+    setShowForm(true);
+    setOrderItems(order.items.map((item) => ({ productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice })));
+    setProducts((current) => {
+      const known = new Set(current.map((product) => product.id));
+      const missing = order.items
+        .filter((item) => !known.has(item.productId))
+        .map((item) => ({ id: item.product.id, name: item.product.name, unit: item.product.unit, buyingPrice: item.unitPrice || 0, currentStock: 0, minimumStock: 0 }));
+      return [...current, ...missing];
+    });
+    setNote(order.note || "");
+    setProductSearch("");
+    await selectSupplier(order.supplier.id);
+  }
+
+  async function handleDelete(order: Order) {
+    const prompt = lang === "sw" ? "Futa order hii ya kusubiri? Hii haiwezi kurejeshwa." : "Delete this pending order? This cannot be undone.";
+    if (!window.confirm(prompt)) return;
+    try {
+      await api.delete(`/orders/${order.id}`);
+      if (expandedOrder === order.id) setExpandedOrder(null);
+      toast(lang === "sw" ? "Order imefutwa." : "Order deleted.", "success");
+      await fetchOrders();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+    }
+  }
+
   const filtered = statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter);
 
   const STATUS_FILTERS = [
@@ -233,7 +279,7 @@ export default function OrdersPage() {
       <div className="max-w-3xl mx-auto pb-24 lg:pb-6">
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-bold text-gray-900">{t("orders.title", lang)}</h1>
-          <button onClick={() => { setShowForm(true); setOrderItems([]); setNote(""); setSelectedSupplier(""); setSupplierCatalog([]); }}
+          <button onClick={openNewOrder}
             className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">{t("orders.newOrder", lang)}</span>
@@ -308,6 +354,16 @@ export default function OrdersPage() {
                           <RotateCcw className="w-3.5 h-3.5" /> {t("orders.reorder", lang)}
                         </button>
                       ) : null}
+                      {order.status === "PENDING" && (
+                        <button onClick={() => openEditOrder(order)} className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg font-medium min-h-0">
+                          <Pencil className="w-3.5 h-3.5" /> {lang === "sw" ? "Hariri" : "Edit"}
+                        </button>
+                      )}
+                      {order.status === "PENDING" && (
+                        <button onClick={() => handleDelete(order)} className="flex items-center gap-1.5 text-xs bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg font-medium min-h-0">
+                          <Trash2 className="w-3.5 h-3.5" /> {lang === "sw" ? "Futa" : "Delete"}
+                        </button>
+                      )}
                       {(order.status === "CONFIRMED" || order.status === "OUT_FOR_DELIVERY") && (
                         <button onClick={() => confirmDelivery(order.id)}
                           className="flex items-center gap-1.5 text-xs bg-brand-50 text-brand-700 border border-brand-200 px-3 py-1.5 rounded-lg font-medium min-h-0">
@@ -328,8 +384,8 @@ export default function OrdersPage() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-gray-900">{t("orders.newOrderTitle", lang)}</h3>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 min-h-0"><X className="w-5 h-5" /></button>
+              <h3 className="font-semibold text-gray-900">{editOrder ? (lang === "sw" ? "Hariri order" : "Edit order") : t("orders.newOrderTitle", lang)}</h3>
+              <button onClick={() => { setShowForm(false); setEditOrder(null); }} className="text-gray-400 min-h-0"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 space-y-4">
               <div>
@@ -343,14 +399,18 @@ export default function OrdersPage() {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">{t("orders.productsLabel", lang)}</label>
+                  <label className="text-xs font-medium text-gray-600">{lang === "sw" ? "Bidhaa kwenye inventory yako" : "Products in your inventory"}</label>
                   <button onClick={fillLowStock}
                     className="text-xs text-brand-600 hover:underline min-h-0 flex items-center gap-1">
                     <Clock className="w-3 h-3" /> {t("orders.fillLowStock", lang)}
                   </button>
                 </div>
+                <div className="relative mb-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} aria-label={lang === "sw" ? "Tafuta bidhaa kwenye inventory" : "Search inventory products"} placeholder={lang === "sw" ? "Tafuta bidhaa kwenye inventory" : "Search inventory products"} className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto mb-2">
-                  {supplierProducts.map((p) => {
+                  {products.map((p) => {
                     const inOrder = orderItems.find((i) => i.productId === p.id);
                     return (
                       <button key={p.id} onClick={() => addItem(p.id)}
@@ -407,10 +467,10 @@ export default function OrdersPage() {
               </div>
 
               <div className="flex gap-2">
-                <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-lg text-sm">{t("common.cancel", lang)}</button>
+                <button onClick={() => { setShowForm(false); setEditOrder(null); }} className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-lg text-sm">{t("common.cancel", lang)}</button>
                 <button onClick={handleCreate} disabled={saving || !selectedSupplier || orderItems.length === 0}
                   className="flex-1 bg-brand-600 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
-                  {saving ? "..." : t("orders.submit", lang)}
+                  {saving ? "..." : (editOrder ? (lang === "sw" ? "Hifadhi mabadiliko" : "Save changes") : t("orders.submit", lang))}
                 </button>
               </div>
             </div>

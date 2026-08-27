@@ -114,3 +114,15 @@ test("Basic includes one-staff capability while Pro and trial add AI access", ()
   assert.equal(canUseFeature({ plan: "PRO", subscriptionEndsAt: future, isActive: true }, "ASSISTANT"), true);
   assert.equal(canUseFeature({ plan: "FREE_TRIAL", trialEndsAt: future, isActive: true }, "STAFF"), true);
 });
+
+test("public quotation tokens are redacted before they reach logs or audit paths", () => {
+  const { redactPublicQuotationToken } = require("../src/lib/redaction");
+  const value = "/api/public/quotations/very-secret-token?download=1";
+  assert.equal(redactPublicQuotationToken(value), "/api/public/quotations/[token]?download=1");
+});
+
+test("merchants cannot invoke the global push delivery worker", () => {
+  const fs = require("node:fs");
+  const routeSource = fs.readFileSync(path.resolve(__dirname, "../src/routes/push.routes.js"), "utf8");
+  assert.doesNotMatch(routeSource, /post\(\s*["']\/process/);
+});

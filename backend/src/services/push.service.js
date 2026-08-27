@@ -39,8 +39,10 @@ async function queueForShop(shopId, kind, message) {
   return true;
 }
 
-async function queueShopAlerts() {
+async function queueShopAlerts({ afterId = null, limit = 100 } = {}) {
+  const batchSize = Math.min(Math.max(Number(limit) || 100, 1), 200);
   const shops = await prisma.shop.findMany({
+    where: afterId ? { id: { gt: afterId } } : undefined,
     select: {
       id: true,
       plan: true,
@@ -52,6 +54,8 @@ async function queueShopAlerts() {
       debts: { where: { status: { in: ["OPEN", "PARTIAL"] } }, select: { amount: true, amountPaid: true, dueDate: true } },
       assistantActions: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1, select: { title: true, href: true } },
     },
+    orderBy: { id: "asc" },
+    take: batchSize,
   });
   let queued = 0;
   const now = new Date();
@@ -96,7 +100,7 @@ async function queueShopAlerts() {
       }));
     }
   }
-  return queued;
+  return { queued, scanned: shops.length, nextCursor: shops.length === batchSize ? shops.at(-1).id : null };
 }
 
 async function processPushDeliveries(limit = 100) {

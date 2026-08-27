@@ -432,11 +432,11 @@ const verifyOtpAndResetPin = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "New PIN must be 4 to 8 digits" });
   }
 
-  // verifyOtp throws synchronously on failure -- catch to return 400
+  // OTP checks are persisted so resets work after restarts and across replicas.
   try {
-    verifyOtp(phone, code);
+    await verifyOtp(phone, code);
   } catch (err) {
-    return res.status(400).json({ error: err.message || "Invalid or expired OTP" });
+    return res.status(err.status || 400).json({ error: err.message || "Invalid or expired OTP" });
   }
 
   const hashedPin = await bcrypt.hash(newPin, 10);

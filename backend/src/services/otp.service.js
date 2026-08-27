@@ -6,23 +6,16 @@
  */
 
 const { randomUUID } = require("crypto");
+const bcrypt = require("bcryptjs");
+const prisma = require("../lib/prisma");
 
 const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
 const NEXTSMS_DEFAULT_URL = "https://messaging-service.co.tz/api/sms/v2/text/single";
-
-// In-memory OTP store: phone -> { code, expiresAt, attempts }
-// A production multi-instance deployment should move this to Redis.
-const otpStore = new Map();
 
 function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-function cleanExpired() {
-  const now = Date.now();
-  for (const [phone, entry] of otpStore.entries()) {
-    if (entry.expiresAt < now) otpStore.delete(phone);
-  }
 }
 
 function smsProvider() {
@@ -107,12 +100,38 @@ async function sendSms(phone, message) {
 }
 
 async function issueOtp(phone) {
-  cleanExpired();
+  const now = new Date();
+  const resendAfter = new Date(now.getTime() - OTP_RESEND_COOLDOWN_MS);
   const code = generateCode();
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
+
+  // Reserve the send before contacting the SMS provider. This survives
+  // restarts and stops two API instances from charging for the same reset.
+  const updated = await prisma.pinResetOtp.updateMany({
+    where: { phone, lastSentAt: { lte: resendAfter } },
+    data: { codeHash, expiresAt, attempts: 0, lastSentAt: now },
+  });
+  if (updated.count !== 1) {
+    try {
+      await prisma.pinResetOtp.create({ data: { phone, codeHash, expiresAt, attempts: 0, lastSentAt: now } });
+    } catch (error) {
+      if (error.code === "P2002") {
+        throw Object.assign(new Error("Please wait one minute before requesting another code."), { status: 429 });
+      }
+      throw error;
+    }
+  }
+
   const message = `DukaPilot: PIN reset code ${code}. Expires in 10 minutes. Do not share this code.`;
-  const result = await sendSms(phone, message);
-  if (result.sent) otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
-  return result;
+  try {
+    const result = await sendSms(phone, message);
+    if (!result.sent) await prisma.pinResetOtp.deleteMany({ where: { phone, codeHash } });
+    return result;
+  } catch (error) {
+    await prisma.pinResetOtp.deleteMany({ where: { phone, codeHash } });
+    throw error;
+  }
 }
 
 function isSmsConfigured() {
@@ -122,19 +141,29 @@ function isSmsConfigured() {
   return Boolean(process.env.AT_API_KEY && process.env.AT_USERNAME && process.env.AT_USERNAME !== "sandbox");
 }
 
-function verifyOtp(phone, code) {
-  cleanExpired();
-  const entry = otpStore.get(phone);
+async function verifyOtp(phone, code) {
+  const entry = await prisma.pinResetOtp.findUnique({ where: { phone } });
   if (!entry) throw Object.assign(new Error("OTP expired or not found. Request a new code."), { status: 400 });
-
-  entry.attempts += 1;
-  if (entry.attempts > 5) {
-    otpStore.delete(phone);
+  if (entry.expiresAt <= new Date()) {
+    await prisma.pinResetOtp.deleteMany({ where: { phone } });
+    throw Object.assign(new Error("OTP expired or not found. Request a new code."), { status: 400 });
+  }
+  if (entry.attempts >= OTP_MAX_ATTEMPTS) {
+    await prisma.pinResetOtp.deleteMany({ where: { phone } });
     throw Object.assign(new Error("Too many incorrect attempts. Request a new code."), { status: 429 });
   }
-  if (entry.code !== String(code).trim()) throw Object.assign(new Error("Incorrect OTP code"), { status: 400 });
+  const matches = await bcrypt.compare(String(code).trim(), entry.codeHash);
+  if (!matches) {
+    const nextAttempts = entry.attempts + 1;
+    await prisma.pinResetOtp.updateMany({ where: { phone, attempts: entry.attempts }, data: { attempts: { increment: 1 } } });
+    if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+      await prisma.pinResetOtp.deleteMany({ where: { phone } });
+      throw Object.assign(new Error("Too many incorrect attempts. Request a new code."), { status: 429 });
+    }
+    throw Object.assign(new Error("Incorrect OTP code"), { status: 400 });
+  }
 
-  otpStore.delete(phone);
+  await prisma.pinResetOtp.deleteMany({ where: { phone, codeHash: entry.codeHash } });
   return true;
 }
 

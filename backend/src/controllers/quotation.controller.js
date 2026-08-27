@@ -906,24 +906,31 @@ const metrics = asyncHandler(async (req, res) => {
     if (req.query.from) where.issueDate.gte = new Date(`${req.query.from}T00:00:00.000Z`);
     if (req.query.to) where.issueDate.lte = new Date(`${req.query.to}T23:59:59.999Z`);
   }
-  const quotations = await prisma.quotation.findMany({ where, select: { status: true, totalAmount: true, amountPaid: true, subtotalAmount: true, taxAmount: true, items: { select: { estimatedTotalCost: true, estimatedProfit: true } } } });
-  const byStatus = Object.fromEntries([...STATUSES].map((status) => [status, { count: 0, value: 0 }]));
-  let totalValue = 0; let outstanding = 0; let estimatedCost = 0; let estimatedProfit = 0;
-  for (const quotation of quotations) {
-    byStatus[quotation.status].count += 1;
-    byStatus[quotation.status].value += quotation.totalAmount;
-    totalValue += quotation.totalAmount;
-    outstanding += quotation.totalAmount - quotation.amountPaid;
-    for (const item of quotation.items) { estimatedCost += item.estimatedTotalCost; estimatedProfit += item.estimatedProfit; }
+  // The metrics cards only need grouped totals. Pulling each quotation and all
+  // its items made this endpoint grow linearly with every historical quote.
+  const [statusGroups, costTotals] = await Promise.all([
+    prisma.quotation.groupBy({ by: ["status"], where, _sum: { totalAmount: true, amountPaid: true }, _count: { id: true } }),
+    canViewCosts(req)
+      ? prisma.quotationItem.aggregate({ where: { quotation: { is: where } }, _sum: { estimatedTotalCost: true, estimatedProfit: true } })
+      : Promise.resolve(null),
+  ]);
+  const byStatus = Object.fromEntries([...STATUSES].map((status) => [status, { count: 0, value: 0, paid: 0 }]));
+  for (const group of statusGroups) {
+    byStatus[group.status] = { count: group._count.id, value: group._sum.totalAmount || 0, paid: group._sum.amountPaid || 0 };
   }
+  const totalValue = statusGroups.reduce((sum, group) => sum + (group._sum.totalAmount || 0), 0);
+  const outstanding = statusGroups.reduce((sum, group) => sum + Math.max(0, (group._sum.totalAmount || 0) - (group._sum.amountPaid || 0)), 0);
+  const quotationCount = statusGroups.reduce((sum, group) => sum + group._count.id, 0);
+  const estimatedCost = costTotals?._sum.estimatedTotalCost || 0;
+  const estimatedProfit = costTotals?._sum.estimatedProfit || 0;
   const sentOrDecided = byStatus.SENT.count + byStatus.ACCEPTED.count + byStatus.CONVERTED.count + byStatus.REJECTED.count + byStatus.EXPIRED.count;
   const acceptedOrConverted = byStatus.ACCEPTED.count + byStatus.CONVERTED.count;
   const pipelineValue = byStatus.DRAFT.value + byStatus.SENT.value;
   const acceptedWorkValue = byStatus.ACCEPTED.value;
   const convertedSalesValue = byStatus.CONVERTED.value;
-  const receivables = quotations.filter((quotation) => quotation.status === "CONVERTED").reduce((sum, quotation) => sum + Math.max(0, quotation.totalAmount - quotation.amountPaid), 0);
-  const collectedCash = quotations.reduce((sum, quotation) => sum + quotation.amountPaid, 0);
-  const response = { totalValue, byStatus, conversionRate: sentOrDecided ? Number(((acceptedOrConverted / sentOrDecided) * 100).toFixed(1)) : 0, averageQuotationValue: quotations.length ? Math.round(totalValue / quotations.length) : 0, outstandingBalance: outstanding, quotationCount: quotations.length, pipeline: { value: pipelineValue, count: byStatus.DRAFT.count + byStatus.SENT.count }, acceptedWork: { value: acceptedWorkValue, count: byStatus.ACCEPTED.count }, convertedSales: { value: convertedSalesValue, count: byStatus.CONVERTED.count }, collectedCash, receivables };
+  const receivables = Math.max(0, byStatus.CONVERTED.value - byStatus.CONVERTED.paid);
+  const collectedCash = statusGroups.reduce((sum, group) => sum + (group._sum.amountPaid || 0), 0);
+  const response = { totalValue, byStatus, conversionRate: sentOrDecided ? Number(((acceptedOrConverted / sentOrDecided) * 100).toFixed(1)) : 0, averageQuotationValue: quotationCount ? Math.round(totalValue / quotationCount) : 0, outstandingBalance: outstanding, quotationCount, pipeline: { value: pipelineValue, count: byStatus.DRAFT.count + byStatus.SENT.count }, acceptedWork: { value: acceptedWorkValue, count: byStatus.ACCEPTED.count }, convertedSales: { value: convertedSalesValue, count: byStatus.CONVERTED.count }, collectedCash, receivables };
   if (canViewCosts(req)) Object.assign(response, { estimatedCost, estimatedProfit, estimatedMargin: totalValue ? Number(((estimatedProfit / totalValue) * 100).toFixed(1)) : 0 });
   res.json({ metrics: response });
 });

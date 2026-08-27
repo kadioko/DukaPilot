@@ -1,6 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { configured, processPushDeliveries } = require("../services/push.service");
+const { configured } = require("../services/push.service");
 
 function asyncHandler(fn) { return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }
 function cleanText(value, max) { return String(value || "").trim().slice(0, max); }
@@ -61,9 +61,4 @@ const listDeliveries = asyncHandler(async (req, res) => {
   res.json({ deliveries });
 });
 
-const processQueue = asyncHandler(async (_req, res) => {
-  const result = await processPushDeliveries();
-  res.json(result);
-});
-
-module.exports = { config, getPreferences, updatePreferences, subscribe, unsubscribe, listDeliveries, processQueue };
+module.exports = { config, getPreferences, updatePreferences, subscribe, unsubscribe, listDeliveries };

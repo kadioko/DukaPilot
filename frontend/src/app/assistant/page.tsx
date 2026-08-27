@@ -77,7 +77,7 @@ export default function AssistantPage() {
   const [allTime, setAllTime] = useState<DashboardData | null>(null);
   const [debts, setDebts] = useState<DebtSummary | null>(null);
   const [expenses, setExpenses] = useState<ExpenseSummary | null>(null);
-  const [quotations, setQuotations] = useState<QuotationSummary[]>([]);
+  const quotations: QuotationSummary[] = [];
   const [quotationActions, setQuotationActions] = useState<QuotationAssistantAction[]>([]);
   const [actions, setActions] = useState<AssistantAction[]>([]);
   const [copied, setCopied] = useState(false);
@@ -88,7 +88,6 @@ export default function AssistantPage() {
       api.get<DashboardData>("/dashboard?period=all", lang).then(setAllTime).catch(() => null),
       api.get<DebtSummary>("/debts", lang).then(setDebts).catch(() => null),
       api.get<ExpenseSummary>("/expenses", lang).then(setExpenses).catch(() => null),
-      api.get<{ quotations: QuotationSummary[] }>("/quotations?limit=200", lang).then((data) => setQuotations(data.quotations)).catch(() => null),
       api.get<{ actions: QuotationAssistantAction[] }>("/assistant/quotations", lang).then((data) => setQuotationActions(data.actions)).catch(() => null),
       api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang).then((data) => setActions(data.actions)).catch(() => null),
     ]).catch(console.error);

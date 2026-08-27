@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS } from "@/lib/api";
+import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import {
   Users,
   Store,
@@ -419,7 +419,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get<{ user: { role: string } }>("/auth/me")
+    getCurrentSession<{ user: { role: string } }>()
       .then(({ user }) => {
         if (user.role !== "ADMIN") throw new Error("Admin access required");
         return Promise.all([

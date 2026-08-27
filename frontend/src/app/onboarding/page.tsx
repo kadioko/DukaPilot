@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, Languages, MessageCircle, PackagePlus, Settings, Share2, ShoppingCart, Users } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
-import { api } from "@/lib/api";
+import { getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
 const steps = [
@@ -72,7 +72,7 @@ export default function OnboardingPage() {
   }, []);
 
   useEffect(() => {
-    api.get<{ user: { shop?: { referralCode?: string } | null } }>("/auth/me")
+    getCurrentSession<{ user: { shop?: { referralCode?: string } | null } }>()
       .then(({ user }) => setReferralCode(user.shop?.referralCode || ""))
       .catch(() => {});
   }, []);

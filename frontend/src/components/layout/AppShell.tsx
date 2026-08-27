@@ -27,7 +27,7 @@ import {
   Gift,
   FileText,
 } from "lucide-react";
-import { clearToken, api, markSessionActive } from "@/lib/api";
+import { clearToken, api, getCurrentSession, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
 import ShortcutUsageTracker from "@/components/analytics/ShortcutUsageTracker";
@@ -115,7 +115,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
-    api.get<{ user: User }>("/auth/me")
+    getCurrentSession<{ user: User }>()
       .then((d) => {
         markSessionActive();
         setUser(d.user);
@@ -129,8 +129,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (user?.role === "MERCHANT") {
-      api.get<{ products: unknown[] }>("/products/low-stock")
-        .then((d) => setLowStockCount(d.products.length))
+      api.get<{ products: unknown[]; total?: number }>("/products/low-stock?limit=1")
+        .then((d) => setLowStockCount(d.total ?? d.products.length))
         .catch(() => {});
       api.get<{ daysLeft: number | null; status?: string; isActive?: boolean }>("/subscription/status")
         .then((d) => setSubscription({ daysLeft: d.daysLeft ?? null, status: d.status, isActive: d.isActive }))

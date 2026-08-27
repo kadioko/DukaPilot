@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS } from "@/lib/api";
+import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle, PackagePlus } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
@@ -204,7 +204,7 @@ export default function SalesPage() {
   const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>("/auth/me")
+    getCurrentSession<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
       .then((data) => {
         setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports));
         setCanManageStock(data.user.role === "ADMIN" || !data.user.staff || Boolean(data.user.staff.permissions?.canManageStock));

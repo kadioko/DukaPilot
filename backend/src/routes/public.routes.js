@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
 const { buildCustomerOrderMessage, sendWhatsAppMessage } = require("../services/whatsapp.service");
+const { publicEventRateLimiter, publicOrderRateLimiter } = require("../middleware/rateLimit");
 
 function activeShopWhere(now = new Date()) {
   return {
@@ -31,7 +32,7 @@ function cleanMarketingValue(value) {
   return /^[a-z][a-z0-9._-]{0,63}$/.test(normalized) ? normalized : null;
 }
 
-router.post("/events", async (req, res, next) => {
+router.post("/events", publicEventRateLimiter, async (req, res, next) => {
   try {
     const { eventName, sessionId, product, source, campaign } = req.body || {};
     if (
@@ -42,6 +43,13 @@ router.post("/events", async (req, res, next) => {
     ) {
       return res.status(400).json({ error: "Invalid marketing event" });
     }
+
+    const seenSince = new Date(Date.now() - 60 * 1000);
+    const alreadyRecorded = await prisma.marketingEvent.findFirst({
+      where: { eventName, sessionId, createdAt: { gte: seenSince } },
+      select: { id: true },
+    });
+    if (alreadyRecorded) return res.status(202).json({ ok: true, deduplicated: true });
 
     await prisma.marketingEvent.create({
       data: {
@@ -179,12 +187,15 @@ router.get("/shops/:id", async (req, res, next) => {
 });
 
 // POST /api/public/orders -> customer places an order
-router.post("/orders", async (req, res, next) => {
+router.post("/orders", publicOrderRateLimiter, async (req, res, next) => {
   try {
     const { shopId, customerName, customerPhone, items, note } = req.body;
 
-    if (!shopId || !customerName || !customerPhone || !items || items.length === 0) {
+    if (!shopId || !customerName || !customerPhone || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "shopId, customerName, customerPhone, and items are required" });
+    }
+    if (items.length > 100 || String(customerName).trim().length > 120 || String(customerPhone).trim().length > 32 || String(note || "").trim().length > 1000) {
+      return res.status(400).json({ error: "Order details are too long or contain too many items" });
     }
 
     const shop = await prisma.shop.findUnique({
@@ -206,6 +217,9 @@ router.post("/orders", async (req, res, next) => {
     }
 
     const productIds = normalizedItems.map((i) => i.productId);
+    if (new Set(productIds).size !== productIds.length) {
+      return res.status(400).json({ error: "Each product can appear only once in an order" });
+    }
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, shopId, isActive: true, currentStock: { gt: 0 } },
     });

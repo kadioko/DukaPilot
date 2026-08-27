@@ -12,6 +12,8 @@ router.use(requireActiveSubscription);
 router.get("/", orderListValidation, ctrl.list);
 router.get("/:id", ctrl.get);
 router.post("/", orderCreateValidation, ctrl.create);
+router.patch("/:id", orderCreateValidation, ctrl.update);
+router.delete("/:id", ctrl.remove);
 router.post("/:id/reorder", ctrl.reorder);
 router.patch("/:id/confirm-delivery", ctrl.confirmDelivery);
 router.patch("/:id/cancel", ctrl.cancel);

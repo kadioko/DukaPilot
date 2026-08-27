@@ -440,12 +440,22 @@ const remove = asyncHandler(async (req, res) => {
 
 const getLowStock = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const limit = Math.min(Math.max(Number(req.query?.limit) || 100, 1), 200);
+  // Prisma cannot compare currentStock to minimumStock in a normal filter.
+  // Bound the lowest-stock window rather than loading every product.
   const products = await prisma.product.findMany({
     where: { shopId, isActive: true },
     include: { supplier: { select: { id: true, name: true, phone: true } } },
     orderBy: [{ currentStock: "asc" }, { name: "asc" }],
+    take: limit,
   });
-  res.json({ products: products.filter((p) => p.currentStock <= p.minimumStock).map((product) => redactProduct(product, req)) });
+  const lowStock = products.filter((p) => p.currentStock <= p.minimumStock);
+  const countRows = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*)::int AS count FROM products
+     WHERE "shopId" = $1 AND "isActive" = true AND "currentStock" <= "minimumStock"`,
+    shopId,
+  );
+  res.json({ products: lowStock.map((product) => redactProduct(product, req)), total: Number(countRows[0]?.count || 0), limited: products.length === limit });
 });
 
 module.exports = { list, get, create, update, importCsv, remove, getLowStock };

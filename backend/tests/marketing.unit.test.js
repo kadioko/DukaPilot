@@ -66,12 +66,12 @@ test("merchant registration saves sanitized campaign attribution on the new shop
 test("public marketing events accept only the four anonymous funnel events", async () => {
   const createdEvents = [];
   mockPrisma({
-    marketingEvent: { create: async ({ data }) => { createdEvents.push(data); return { id: `event-${createdEvents.length}`, ...data }; } },
+    marketingEvent: { findFirst: async () => null, create: async ({ data }) => { createdEvents.push(data); return { id: `event-${createdEvents.length}`, ...data }; } },
   });
   delete require.cache[publicRoutesPath];
   const router = require(publicRoutesPath);
   const eventsLayer = router.stack.find((layer) => layer.route?.path === "/events" && layer.route.methods.post);
-  const handler = eventsLayer.route.stack[0].handle;
+  const handler = eventsLayer.route.stack.at(-1).handle;
   for (const eventName of ["store_click", "signup_started", "trial_started", "whatsapp_started"]) {
     const res = response();
     await handler({
@@ -102,11 +102,11 @@ test("public marketing events accept only the four anonymous funnel events", asy
 });
 
 test("public marketing events reject legacy names and invalid product payloads", async () => {
-  mockPrisma({ marketingEvent: { create: async () => { throw new Error("must not write"); } } });
+  mockPrisma({ marketingEvent: { findFirst: async () => null, create: async () => { throw new Error("must not write"); } } });
   delete require.cache[publicRoutesPath];
   const router = require(publicRoutesPath);
   const eventsLayer = router.stack.find((layer) => layer.route?.path === "/events" && layer.route.methods.post);
-  const handler = eventsLayer.route.stack[0].handle;
+  const handler = eventsLayer.route.stack.at(-1).handle;
 
   for (const body of [
     { eventName: "whatsapp_click", sessionId: "a0b1c2d3-e4f5-6789-abcd-ef0123456789", product: "dukapilot_web" },

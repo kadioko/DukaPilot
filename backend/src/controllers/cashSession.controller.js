@@ -51,7 +51,41 @@ async function summarizeSession(tx, session) {
 }
 
 async function decorateSessions(tx, sessions) {
-  return Promise.all(sessions.map(async (session) => ({ ...session, summary: await summarizeSession(tx, session) })));
+  if (!sessions.length) return [];
+  const sessionIds = sessions.map((session) => session.id);
+
+  // The daily-close history used to run five aggregates for every session.
+  // Group the same facts once per table, then attach them to the sessions.
+  const [sales, debtPayments, quotationPayments, expenses] = await Promise.all([
+    tx.sale.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", status: "COMPLETED" }, _sum: { totalAmount: true }, _count: { id: true } }),
+    tx.debtPayment.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
+    tx.quotationPayment.groupBy({ by: ["cashSessionId", "kind"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", debtPaymentId: null, kind: { in: ["PAYMENT", "REFUND"] } }, _sum: { amount: true }, _count: { id: true } }),
+    tx.expense.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
+  ]);
+  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashExpenses: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0 }]));
+  for (const row of sales) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.cashSales = row._sum.totalAmount || 0; summary.saleCount = row._count.id; }
+  }
+  for (const row of debtPayments) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.debtCollections = row._sum.amount || 0; summary.debtPaymentCount = row._count.id; }
+  }
+  for (const row of quotationPayments) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) {
+      summary.quotationCash += (row.kind === "REFUND" ? -1 : 1) * (row._sum.amount || 0);
+      summary.quotationPaymentCount += row._count.id;
+    }
+  }
+  for (const row of expenses) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.cashExpenses = row._sum.amount || 0; summary.expenseCount = row._count.id; }
+  }
+  return sessions.map((session) => {
+    const summary = bySession.get(session.id);
+    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashExpenses } };
+  });
 }
 
 const current = asyncHandler(async (req, res) => {
@@ -64,9 +98,10 @@ const current = asyncHandler(async (req, res) => {
     ? { shopId, OR: [{ openedAt: { gte: todayStart, lt: todayEnd } }, { closedAt: { gte: todayStart, lt: todayEnd } }, { status: "OPEN" }] }
     : { shopId, openedById: actorId, OR: [{ openedAt: { gte: todayStart, lt: todayEnd } }, { closedAt: { gte: todayStart, lt: todayEnd } }, { status: "OPEN" }] };
   const sessions = await prisma.cashSession.findMany({ where, orderBy: { openedAt: "desc" }, take: 30 });
+  const decoratedSessions = await decorateSessions(prisma, sessions);
   res.json({
-    session: session ? { ...session, summary: await summarizeSession(prisma, session) } : null,
-    sessions: await decorateSessions(prisma, sessions),
+    session: session ? decoratedSessions.find((item) => item.id === session.id) || { ...session, summary: await summarizeSession(prisma, session) } : null,
+    sessions: decoratedSessions,
     canManageAllSessions: canManageAllSessions(req),
   });
 });

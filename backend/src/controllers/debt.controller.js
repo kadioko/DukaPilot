@@ -18,15 +18,20 @@ const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "H
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const status = String(req.query.status || "").toUpperCase();
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 100);
   const where = { shopId };
   if (["OPEN", "PARTIAL", "PAID", "CANCELLED"].includes(status)) where.status = status;
 
-  const [debts, summary] = await Promise.all([
+  const [debts, total, summary] = await Promise.all([
     prisma.debt.findMany({
       where,
       include: { payments: { orderBy: { createdAt: "desc" }, take: 10 } },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      skip: (page - 1) * limit,
+      take: limit,
     }),
+    prisma.debt.count({ where }),
     prisma.debt.aggregate({
       where: { shopId, status: { in: ["OPEN", "PARTIAL"] } },
       _sum: { amount: true, amountPaid: true },
@@ -36,6 +41,7 @@ const list = asyncHandler(async (req, res) => {
 
   res.json({
     debts,
+    pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
     summary: {
       openCount: summary._count.id,
       totalOwed: (summary._sum.amount || 0) - (summary._sum.amountPaid || 0),
@@ -45,10 +51,20 @@ const list = asyncHandler(async (req, res) => {
 
 const customers = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const limit = Math.min(Math.max(1, Number(req.query.limit) || 200), 500);
+  const search = String(req.query.search || "").trim();
+  const where = { shopId };
+  if (search) {
+    where.OR = [
+      { customerName: { contains: search, mode: "insensitive" } },
+      { customerPhone: { contains: search.replace(/\D/g, "") } },
+    ];
+  }
   const debts = await prisma.debt.findMany({
-    where: { shopId },
+    where,
     select: { customerName: true, customerPhone: true, amount: true, amountPaid: true, status: true, createdAt: true },
     orderBy: { createdAt: "desc" },
+    take: limit,
   });
   const customerMap = new Map();
   for (const debt of debts) {
@@ -64,7 +80,7 @@ const customers = asyncHandler(async (req, res) => {
     if (["OPEN", "PARTIAL"].includes(debt.status)) existing.openBalance += debt.amount - debt.amountPaid;
     customerMap.set(phone, existing);
   }
-  res.json({ customers: Array.from(customerMap.values()) });
+  res.json({ customers: Array.from(customerMap.values()), limited: debts.length === limit });
 });
 
 const create = asyncHandler(async (req, res) => {

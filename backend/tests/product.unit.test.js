@@ -34,6 +34,7 @@ function loadController(prismaMock) {
 
 test("product list returns paginated results", async () => {
   const prismaMock = {
+    $queryRawUnsafe: async () => [{ count: 2 }],
     shop: {
       findUnique: async () => ({ id: "shop-1" }),
     },
@@ -89,6 +90,7 @@ test("low-stock pagination filters the whole catalogue before selecting a page",
 
 test("getLowStock filters products in JavaScript using minimumStock", async () => {
   const prismaMock = {
+    $queryRawUnsafe: async () => [{ count: 2 }],
     shop: {
       findUnique: async () => ({ id: "shop-1" }),
     },
@@ -102,7 +104,7 @@ test("getLowStock filters products in JavaScript using minimumStock", async () =
   };
 
   const ctrl = loadController(prismaMock);
-  const req = { user: { userId: "user-1" } };
+  const req = { user: { userId: "user-1" }, query: {} };
   const res = createRes();
 
   await ctrl.getLowStock(req, res);

@@ -66,3 +66,46 @@ test("supplier order create rejects products outside the merchant shop", async (
   assert.equal(productWhere.shopId, "shop-1");
   assert.equal(productWhere.isActive, true);
 });
+
+test("pending supplier order edits replace items only within the merchant shop", async () => {
+  let updateData;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
+    order: {
+      findFirst: async () => ({ id: "order-1", status: "PENDING" }),
+      update: async ({ data }) => {
+        updateData = data;
+        return { id: "order-1", ...data, supplier: { id: "supplier-1", name: "Jumla Traders", phone: "+255700000001" }, items: [] };
+      },
+    },
+    supplier: { findUnique: async () => ({ id: "supplier-1" }) },
+    product: { findMany: async () => [{ id: "product-1", buyingPrice: 4500 }] },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.update({ user: { userId: "user-1" }, params: { id: "order-1" }, body: { supplierId: "supplier-1", items: [{ productId: "product-1", quantity: 3 }], note: "Friday delivery" } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updateData.totalAmount, 13500);
+  assert.deepEqual(updateData.items.deleteMany, {});
+  assert.deepEqual(updateData.items.create, [{ productId: "product-1", quantity: 3, unitPrice: 4500 }]);
+});
+
+test("only pending supplier orders can be deleted", async () => {
+  let deleted = false;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
+    order: {
+      findFirst: async () => ({ id: "order-1", status: "CONFIRMED" }),
+      delete: async () => { deleted = true; },
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.remove({ user: { userId: "user-1" }, params: { id: "order-1" } }, res);
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(deleted, false);
+});

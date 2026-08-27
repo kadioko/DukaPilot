@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { api, clearToken, formatTZS } from "@/lib/api";
+import { api, clearToken, formatTZS, getCurrentSession } from "@/lib/api";
 import { LogOut, Check, X, Truck, ChevronDown, ChevronUp, Package, Plus, ArrowLeft, Edit2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import LogoMark from "@/components/brand/LogoMark";
@@ -104,7 +104,7 @@ export default function SupplierPortal() {
 
   useEffect(() => {
     Promise.all([
-      api.get<{ user: CurrentUser }>("/auth/me"),
+      getCurrentSession<{ user: CurrentUser }>(),
       api.get<DashboardData>("/suppliers/portal/dashboard"),
       api.get<{ orders: Order[] }>("/suppliers/portal/orders"),
       api.get<{ products: SupplierProduct[] }>("/suppliers/portal/products"),

@@ -12,6 +12,17 @@ function getAuthenticationKey(req) {
   return `${getClientKey(req)}:${phone}`;
 }
 
+function getPublicEventKey(req) {
+  const sessionId = String(req.body?.sessionId || "no-session").slice(0, 80);
+  return `${getClientKey(req)}:${sessionId}`;
+}
+
+function getPublicOrderKey(req) {
+  const shopId = String(req.body?.shopId || "no-shop").slice(0, 80);
+  const phone = String(req.body?.customerPhone || "no-phone").replace(/\D/g, "").slice(-12) || "no-phone";
+  return `${getClientKey(req)}:${shopId}:${phone}`;
+}
+
 const sharedOptions = {
   standardHeaders: true,
   legacyHeaders: false,
@@ -43,4 +54,28 @@ const publicRateLimiter = rateLimit({
   message: { error: "Too many requests to the public catalog. Please wait a few minutes and try again." },
 });
 
-module.exports = { apiRateLimiter, authRateLimiter, publicRateLimiter };
+const publicEventRateLimiter = rateLimit({
+  ...sharedOptions,
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  keyGenerator: getPublicEventKey,
+  message: { error: "Too many marketing events. Please try again shortly." },
+});
+
+const publicOrderRateLimiter = rateLimit({
+  ...sharedOptions,
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  keyGenerator: getPublicOrderKey,
+  message: { error: "Too many order attempts. Please wait a few minutes and try again." },
+});
+
+const otpRequestRateLimiter = rateLimit({
+  ...sharedOptions,
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  keyGenerator: getAuthenticationKey,
+  message: { error: "Too many PIN reset requests. Please wait 15 minutes and try again." },
+});
+
+module.exports = { apiRateLimiter, authRateLimiter, publicRateLimiter, publicEventRateLimiter, publicOrderRateLimiter, otpRequestRateLimiter };

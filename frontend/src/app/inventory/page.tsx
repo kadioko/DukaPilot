@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ApiError, api, formatTZS, type ApiErrorDetail } from "@/lib/api";
+import { ApiError, api, formatTZS, getCurrentSession, type ApiErrorDetail } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
 import {
   Plus,
@@ -177,7 +177,7 @@ export default function InventoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    api.get<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean } } } }>("/auth/me")
+    getCurrentSession<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean } } } }>()
       .then((data) => setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports)))
       .catch(() => setCanViewFinancials(false));
     api.get<{ suppliers: Supplier[] }>("/suppliers").then((d) => setSuppliers(d.suppliers));
