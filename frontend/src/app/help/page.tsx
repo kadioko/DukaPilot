@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, CheckCircle2, FileText, MessageCircle, Search, Sparkles } from "lucide-react";
+import { BookOpen, CheckCircle2, FileText, MessageCircle, Search, Sparkles, UtensilsCrossed } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
@@ -37,6 +37,13 @@ export default function HelpPage() {
     [lang === "sw" ? "Masharti, dokezo na sahihi" : "Terms, note, and signature", lang === "sw" ? "Masharti ya malipo, masharti na vigezo, dokezo kwa mteja, na jina la sahihi hujazwa kiotomatiki kwenye nukuu mpya. Badilisha kwenye nukuu husika pale kazi inahitaji tofauti." : "Payment terms, terms and conditions, a customer note, and signature name are prefilled on new quotations. Change them on a specific quote when the work needs different wording."],
     [lang === "sw" ? "Kiasi, bei, punguzo na sehemu" : "Quantities, prices, discounts, and sections", lang === "sw" ? "Amua kama mteja aone kiasi, bei kwa kipimo, punguzo la mstari, na vichwa kama Vifaa au Kazi. Hii hubadilisha PDF, print na link ya mteja tu; haionyeshi gharama za ndani." : "Choose whether customers see quantities, unit prices, line discounts, and headings such as Materials or Labour. This changes only the customer PDF, print, and link; it never exposes internal cost."],
     [lang === "sw" ? "Amana ya kawaida" : "Default deposit", lang === "sw" ? "Weka asilimia ya amana, kwa mfano 50%. Mfumo hukokotoa kiasi kinachotakiwa; malipo halisi huandikwa baadaye kama amana, hatua ya kazi, au malipo ya mwisho." : "Set a deposit percentage, for example 50%. DukaPilot calculates the required amount; actual money is recorded later as a deposit, milestone, or final payment."],
+  ];
+  const restaurantGuide = [
+    [lang === "sw" ? "1. Weka unit inayouzwa" : "1. Use the sellable unit", lang === "sw" ? "Kwa kuku wa kuchoma nusu, tengeneza bidhaa inayoitwa Kuku nusu na unit nusu ya kuku. Kwa vinywaji tumia bottle, can au glass; barcode inaendelea kufanya kazi kama kawaida." : "For grilled half chicken, create a product called Half chicken with unit half chicken. For drinks use bottle, can, or glass; barcodes continue working normally."],
+    [lang === "sw" ? "2. Pokea stock kwa kipimo hicho" : "2. Receive stock in that unit", lang === "sw" ? "Ukinunua kuku 10 mzima na unauza nusu, pokea stock 20 za nusu ya kuku. Gawanya gharama ya kuku mmoja kwa 2 ili upate bei ya kununua kwa kila nusu." : "If you buy 10 whole chickens and sell halves, receive 20 half-chicken units. Divide one chicken's buying cost by 2 to get the buying cost per half."],
+    [lang === "sw" ? "3. Mauzo huondoa sehemu moja" : "3. A sale removes one portion", lang === "sw" ? "Ukiuza Kuku nusu 1, POS huondoa 1 nusu ya kuku. Unit inaonyesha staff wanachohesabu kwenye stock, POS na risiti." : "When you sell 1 half chicken, POS removes 1 half-chicken unit. The unit tells staff what they count in stock, POS, and receipts."],
+    [lang === "sw" ? "4. Ununuzi wa chakula si matumizi ya kawaida" : "4. Food purchases are not normal expenses", lang === "sw" ? "Tumia Pokea Stock kwa kuku, mafuta, mchele na bidhaa za kupika. Tumia Matumizi kwa kodi, LUKU, usafiri, data na gharama za uendeshaji. Hii huzuia faida kuhesabiwa mara mbili." : "Use Receive Stock for chicken, oil, rice, and cooking goods. Use Expenses for rent, electricity, transport, data, and operating costs. This prevents profit from being counted down twice."],
+    [lang === "sw" ? "Muhimu kuhusu mapishi" : "Important about cooking", lang === "sw" ? "Unit ni jina na hesabu ya kipimo; haibadilishi kuku mzima kuwa nusu wala haipunguzi viungo yenyewe. Kwa sasa, pokea stock kwenye portions unazouza. Food Preparation ya mapishi, viungo na wastage ndiyo hatua inayofuata kwa gharama kamili ya sahani." : "A unit is the name and count of a measure; it does not convert a whole chicken into halves or deduct ingredients by itself. For now, receive stock in the portions you sell. Food Preparation for recipes, ingredients, and waste is the next step for full dish costing."],
   ];
   const aiThinking = [
     [
@@ -127,6 +134,16 @@ export default function HelpPage() {
             {quotationSettings.map(([title, body]) => <div key={title} className="border-l-2 border-brand-300 pl-4"><h3 className="text-sm font-semibold text-gray-950">{title}</h3><p className="mt-1 text-sm leading-6 text-gray-600">{body}</p></div>)}
           </div>
           <div className="border-t border-gray-100 px-5 py-4 sm:px-6"><Link href="/quotations" className="inline-flex min-h-10 items-center gap-2 text-sm font-bold text-brand-700 hover:text-brand-800"><FileText className="h-4 w-4" />{lang === "sw" ? "Fungua Nukuu za Bei" : "Open Quotations"}</Link></div>
+        </section>
+
+        <section className="overflow-hidden rounded-3xl border border-amber-200 bg-white shadow-sm">
+          <div className="border-b border-amber-100 bg-amber-50 px-5 py-5 sm:px-6">
+            <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-amber-800 shadow-sm"><UtensilsCrossed className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-gray-950">{lang === "sw" ? "Jinsi ya kutumia DukaPilot kwa Bar na Restaurant" : "How to use DukaPilot for Bars and Restaurants"}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Tumia portions kwa chakula kinachouzwa na stock ya kawaida yenye barcode kwa vinywaji na bidhaa zilizofungwa." : "Use portions for prepared food and normal barcode stock for drinks and packaged products."}</p></div></div>
+          </div>
+          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-6">
+            {restaurantGuide.map(([title, body]) => <div key={title} className="border-l-2 border-amber-300 pl-4"><h3 className="text-sm font-semibold text-gray-950">{title}</h3><p className="mt-1 text-sm leading-6 text-gray-600">{body}</p></div>)}
+          </div>
+          <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-600 sm:px-6"><strong className="text-gray-950">{lang === "sw" ? "Mfano:" : "Example:"}</strong> {lang === "sw" ? "Kuku 10 mzima x TZS 18,000 = TZS 180,000. Pokea 20 nusu ya kuku kwa TZS 9,000 kila moja. Uza kwa bei yako; DukaPilot hupima faida ya kila nusu." : "10 whole chickens x TZS 18,000 = TZS 180,000. Receive 20 half-chicken units at TZS 9,000 each. Sell at your price; DukaPilot measures profit per half."}</div>
         </section>
 
         <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">
