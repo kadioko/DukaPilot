@@ -146,11 +146,12 @@ test("product creation commits opening stock and stock movement together", async
   const ctrl = loadController(prismaMock);
   const res = createRes();
 
-  await ctrl.create({ user: { userId: "user-1" }, body: { name: "Rice", buyingPrice: 2000, sellingPrice: 3000, currentStock: 12, minimumStock: 0 } }, res);
+  await ctrl.create({ user: { userId: "user-1" }, body: { name: "Rice", unit: "nusu ya kuku", buyingPrice: 2000, sellingPrice: 3000, currentStock: 12, minimumStock: 0 } }, res);
 
   assert.equal(res.statusCode, 201);
   assert.equal(res.payload.product.currentStock, 12);
   assert.equal(res.payload.product.minimumStock, 0);
+  assert.equal(res.payload.product.unit, "nusu ya kuku");
   assert.deepEqual(movements, [{ type: "IN", quantity: 12, note: "Initial stock", productId: "prod-1" }]);
 });
 

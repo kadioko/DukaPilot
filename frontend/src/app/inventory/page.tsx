@@ -594,13 +594,10 @@ export default function InventoryPage() {
                   className={INPUT} placeholder="UNG001" />
               </Field>
               <Field label={t("inventory.unitLabel", lang)}>
-                <select aria-label={t("inventory.unitLabel", lang)} value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className={INPUT}>
-                  {["pcs", "kg", "litre", "box", "crate", "bag", "pkt", "bar"].map((u) => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
-                </select>
+                <><input aria-label={t("inventory.unitLabel", lang)} list="dukapilot-product-units" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className={INPUT} placeholder={lang === "sw" ? "Mfano: nusu ya kuku" : "For example: half chicken"} /><datalist id="dukapilot-product-units">{["pcs", "kg", "litre", "box", "crate", "bag", "pkt", "bar", "bottle", "can", "glass", "plate", "serving", "portion", "nusu ya kuku", "robo ya kuku", "kuku mzima", "skewer"].map((unit) => <option key={unit} value={unit} />)}</datalist></>
               </Field>
             </div>
+            <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950">{lang === "sw" ? "Kwa restaurant au bar, tumia unit inayouzwa: mfano nusu ya kuku, robo ya kuku, plate, glass au bottle. Kwa kuku 1 mzima inayouzwa nusu, ongeza stock 2 za nusu ya kuku; kila mauzo yataondoa 1." : "For a restaurant or bar, use the sellable unit: for example half chicken, quarter chicken, plate, glass, or bottle. For one whole chicken sold in halves, receive 2 half-chicken units; each sale removes 1."}</p>
             <div className="space-y-2 rounded-lg border border-gray-200 p-3">
               <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Barcode</p><button onClick={() => setBarcodeScannerOpen(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700"><ScanLine className="h-4 w-4" />Scan</button></div>
               <input aria-label="Barcode" value={form.barcode} disabled={form.generateBarcode} onChange={(e) => setForm({ ...form, barcode: e.target.value.toUpperCase() })} placeholder="EAN, UPC, or DP00000001" className={INPUT} />

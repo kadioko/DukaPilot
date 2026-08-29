@@ -46,7 +46,7 @@ export default function StaffPage() {
   const lang = useLang();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "" });
+  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false });
 
   async function load() {
     const [data, subscriptionStatus] = await Promise.all([
@@ -65,7 +65,7 @@ export default function StaffPage() {
     event.preventDefault();
     if (basicLimitReached) return;
     await api.post("/staff", form, lang);
-    setForm({ name: "", phone: "", role: "CASHIER", pin: "" });
+    setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false });
     await load();
   }
 
@@ -118,13 +118,14 @@ export default function StaffPage() {
           </section>
         )}
 
-        <form onSubmit={addStaff} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-5">
+        <form onSubmit={addStaff} className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-6">
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jina" : "Name"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Simu" : "Phone"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required inputMode="tel" placeholder="07... au +255..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>PIN ({lang === "sw" ? "hiari" : "optional"})</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="numeric" maxLength={8} placeholder="1234" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} /></label>
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jukumu" : "Role"}</span><select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select></label>
+          <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canRecordExpenses} onChange={(e) => setForm({ ...form, canRecordExpenses: e.target.checked })} />{lang === "sw" ? "Anaweza kurekodi matumizi" : "Can record expenses"}</label>
           <button disabled={basicLimitReached} title={basicLimitReached ? (lang === "sw" ? "Basic ina staff 1 active" : "Basic includes 1 active staff member") : undefined} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-400">
             {lang === "sw" ? "Ongeza" : "Add"}
           </button>

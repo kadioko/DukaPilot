@@ -8,6 +8,7 @@ router.use(requireRole("MERCHANT", "ADMIN"));
 router.use(requirePermission("canSell"));
 router.use(requireActiveSubscription);
 router.get("/current", controller.current);
+router.get("/history", controller.history);
 router.post("/open", controller.open);
 router.post("/:id/close", controller.close);
 

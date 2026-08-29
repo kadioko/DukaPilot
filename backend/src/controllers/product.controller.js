@@ -44,6 +44,10 @@ function redactProduct(product, req) {
   return canViewFinancials(req) ? product : { ...product, buyingPrice: null };
 }
 
+function normalizedUnit(value) {
+  return String(value == null ? "pcs" : value).trim() || "pcs";
+}
+
 function normalizeImportHeader(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -242,6 +246,8 @@ const create = asyncHandler(async (req, res) => {
   if (!name || buyingPrice == null || sellingPrice == null) {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
   }
+  const productUnit = normalizedUnit(unit);
+  if (productUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
   const initialStock = currentStock === undefined || currentStock === "" ? 0 : Number(currentStock);
   if (!Number.isInteger(initialStock) || initialStock < 0) {
     return res.status(400).json({ error: "Current stock must be a whole number 0 or greater" });
@@ -269,7 +275,7 @@ const create = asyncHandler(async (req, res) => {
       data: {
       name,
       sku,
-      unit: unit || "pcs",
+      unit: productUnit,
       buyingPrice: Number(buyingPrice),
       sellingPrice: retailPrice,
       wholesalePrice: parsedWholesalePrice,
@@ -323,6 +329,8 @@ const update = asyncHandler(async (req, res) => {
   }
 
   const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode } = req.body;
+  const nextUnit = unit === undefined ? normalizedUnit(existing.unit) : normalizedUnit(unit);
+  if (nextUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
   const nextSellingPrice = sellingPrice === undefined ? existing.sellingPrice : Number(sellingPrice);
   const nextWholesalePrice = wholesalePrice === undefined
     ? existing.wholesalePrice
@@ -352,7 +360,7 @@ const update = asyncHandler(async (req, res) => {
     data: {
       ...(name !== undefined && { name }),
       ...(sku !== undefined && { sku }),
-      ...(unit !== undefined && { unit }),
+      ...(unit !== undefined && { unit: nextUnit }),
       ...(buyingPrice !== undefined && { buyingPrice: Number(buyingPrice) }),
       ...(sellingPrice !== undefined && { sellingPrice: nextSellingPrice }),
       ...(wholesalePrice !== undefined && { wholesalePrice: nextWholesalePrice }),

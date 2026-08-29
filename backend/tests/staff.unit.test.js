@@ -23,13 +23,14 @@ test("new staff with a phone receive the default 1234 PIN and canonical Tanzania
   delete require.cache[controllerPath];
   const controller = require(controllerPath);
   const res = response();
-  await controller.create({ user: { userId: "owner-1" }, body: { name: "Asha", phone: "0743 910 580", role: "CASHIER" } }, res);
+  await controller.create({ user: { userId: "owner-1" }, body: { name: "Asha", phone: "0743 910 580", role: "CASHIER", canRecordExpenses: true } }, res);
 
   assert.equal(res.statusCode, 201);
   assert.equal(created.phone, "+255743910580");
   assert.equal(await bcrypt.compare("1234", created.pin), true);
   assert.equal(created.canSell, true);
   assert.equal(created.canManageStock, false);
+  assert.equal(created.canRecordExpenses, true);
 });
 
 test("Basic limits the owner to one active staff member", async () => {

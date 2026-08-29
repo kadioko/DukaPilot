@@ -11,6 +11,19 @@ function canManageAllSessions(req) {
   return req.user.role === "ADMIN" || !req.user.staffId;
 }
 
+function paginationValue(value, fallback, maximum) {
+  return Math.min(Math.max(Number(value) || fallback, 1), maximum);
+}
+
+function dateBoundary(value, endExclusive = false) {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return undefined;
+  const date = new Date(`${text}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text) return undefined;
+  return endExclusive ? new Date(date.getTime() + 24 * 60 * 60 * 1000) : date;
+}
+
 async function actorName(user) {
   if (user.staffId) {
     const staff = await prisma.staffMember.findFirst({ where: { id: user.staffId, isActive: true }, select: { name: true } });
@@ -106,6 +119,36 @@ const current = asyncHandler(async (req, res) => {
   });
 });
 
+const history = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const page = paginationValue(req.query.page, 1, 100000);
+  const limit = paginationValue(req.query.limit, 10, 50);
+  const status = String(req.query.status || "CLOSED").toUpperCase();
+  const from = dateBoundary(req.query.from);
+  const to = dateBoundary(req.query.to, true);
+  const search = String(req.query.search || "").trim();
+  if (!new Set(["ALL", "OPEN", "CLOSED"]).has(status)) return res.status(400).json({ error: "Status must be ALL, OPEN, or CLOSED" });
+  if (from === undefined || to === undefined) return res.status(400).json({ error: "Dates must use YYYY-MM-DD" });
+  if (from && to && from >= to) return res.status(400).json({ error: "The start date must be before the end date" });
+
+  const where = { shopId };
+  if (!canManageAllSessions(req)) where.openedById = cashSessionActorId(req.user);
+  if (status !== "ALL") where.status = status;
+  if (search) where.openedByName = { contains: search, mode: "insensitive" };
+  const dateField = status === "CLOSED" ? "closedAt" : "openedAt";
+  if (from || to) where[dateField] = { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) };
+
+  const [sessions, total] = await Promise.all([
+    prisma.cashSession.findMany({ where, orderBy: [{ openedAt: "desc" }], skip: (page - 1) * limit, take: limit }),
+    prisma.cashSession.count({ where }),
+  ]);
+  res.json({
+    sessions: await decorateSessions(prisma, sessions),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    canManageAllSessions: canManageAllSessions(req),
+  });
+});
+
 const open = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const openingCash = Number(req.body.openingCash || 0);
@@ -147,4 +190,4 @@ const close = asyncHandler(async (req, res) => {
   res.json({ session: { ...updated, summary } });
 });
 
-module.exports = { current, open, close, summarizeSession };
+module.exports = { current, history, open, close, summarizeSession };
