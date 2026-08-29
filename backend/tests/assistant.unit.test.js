@@ -57,21 +57,18 @@ test("quotation assistant returns tenant-scoped accepted, deposit, expiring, and
 });
 
 test("stock assistant returns only stock quantities, never prices, sales, or profit", async () => {
-  let productQuery;
+  let stockQuery;
   require.cache[prismaPath] = {
     id: prismaPath,
     filename: prismaPath,
     loaded: true,
     exports: {
       shop: { findUnique: async () => ({ id: "shop-1" }) },
-      product: {
-        findMany: async (query) => {
-          productQuery = query;
-          return [
-            { id: "out", name: "Maji", currentStock: 0, minimumStock: 5, unit: "bottle" },
-            { id: "safe", name: "Soda", currentStock: 10, minimumStock: 5, unit: "bottle" },
-          ];
-        },
+      $queryRaw: async (query) => {
+        stockQuery = query;
+        return [
+          { id: "out", name: "Maji", currentStock: 0, minimumStock: 5, unit: "bottle" },
+        ];
       },
     },
   };
@@ -81,7 +78,8 @@ test("stock assistant returns only stock quantities, never prices, sales, or pro
   const res = response();
   await stockSummary({ user: { userId: "owner-1" } }, res, () => {});
 
-  assert.deepEqual(productQuery.select, { id: true, name: true, currentStock: true, minimumStock: true, unit: true });
+  assert.ok(String(stockQuery).includes("currentStock"));
+  assert.ok(String(stockQuery).includes("minimumStock"));
   assert.equal(res.payload.actions.length, 1);
   assert.equal(res.payload.actions[0].title, "Stock ya Maji imeisha");
   assert.equal(JSON.stringify(res.payload).includes("buyingPrice"), false);

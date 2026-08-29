@@ -72,6 +72,7 @@ export default function FoodPreparationPage() {
 
   function selectRecipe(nextRecipeId: string) {
     setRecipeId(nextRecipeId);
+    setSaveRecipe(false);
     const recipe = recipes.find((item) => item.id === nextRecipeId);
     if (!recipe) return;
     setOutputProductId(recipe.outputProduct.id);

@@ -53,16 +53,18 @@ const quotationSummary = asyncHandler(async (req, res) => {
 const stockSummary = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const language = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase() === "en" ? "en" : "sw";
-  const products = await prisma.product.findMany({
-    where: { shopId, isActive: true },
-    select: { id: true, name: true, currentStock: true, minimumStock: true, unit: true },
-    orderBy: { updatedAt: "desc" },
-    take: 500,
-  });
+  // Compare the two stock columns in PostgreSQL so an older low-stock item is
+  // not hidden merely because it falls outside an arbitrary recent-product window.
+  const products = await prisma.$queryRaw`
+    SELECT "id", "name", "currentStock", "minimumStock", "unit"
+    FROM "products"
+    WHERE "shopId" = ${shopId}
+      AND "isActive" = true
+      AND "currentStock" <= "minimumStock"
+    ORDER BY ("minimumStock" - "currentStock") DESC, "currentStock" ASC, "name" ASC
+    LIMIT 5
+  `;
   const actions = products
-    .filter((product) => product.currentStock <= product.minimumStock)
-    .sort((a, b) => a.currentStock - b.currentStock)
-    .slice(0, 5)
     .map((product, index) => ({
       id: `staff-stock-${product.id}`,
       rank: 80 - index,

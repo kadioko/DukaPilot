@@ -32,7 +32,7 @@ Use **Save as a reusable recipe** when the same meal is made regularly. A recipe
 
 ## Grocery receipts where only the total is known
 
-In **Receive Stock**, tick **I only know the total grocery bill**. Enter the total receipt amount and the quantities received. DukaPilot allocates the cost using each product's most recent buying price; if there is no price history, it uses quantities. The receipt is marked **estimated costs** so staff know to correct item prices later if the supplier provides them.
+In **Receive Stock**, tick **I only know the total grocery bill**. Enter the total receipt amount and the quantities received. DukaPilot allocates the cost using each product's most recent buying price; if there is no price history, it uses quantities. The receipt is marked **estimated costs**. When the supplier provides line prices, use direct item costs for a future receipt so the next food-cost calculation is more accurate.
 
 ## Food purchases versus expenses
 
