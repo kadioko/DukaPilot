@@ -24,6 +24,7 @@ import {
   ScanLine,
   WalletCards,
   PackageCheck,
+  ChefHat,
   Gift,
   FileText,
 } from "lucide-react";
@@ -79,6 +80,7 @@ const merchantNav: NavItem[] = [
   { href: "/quotations", labelKey: "nav.quotations", icon: FileText, permission: "canViewQuotations", group: "sell" },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
   { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", group: "stock" },
+  { href: "/food-preparation", labelKey: "nav.foodPreparation", icon: ChefHat, permission: "canManageStock", group: "stock" },
   { href: "/barcodes", labelKey: "nav.barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },

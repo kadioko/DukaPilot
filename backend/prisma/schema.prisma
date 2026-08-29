@@ -187,6 +187,8 @@ model Shop {
   stockCounts              StockCount[]
   cashSessions             CashSession[]
   stockReceipts            StockReceipt[]
+  foodRecipes              FoodRecipe[]
+  foodPreparationBatches   FoodPreparationBatch[]
   customers                Customer[]
   services                 Service[]
   quotations               Quotation[]
@@ -725,6 +727,10 @@ model Product {
     stockReceiptItems        StockReceiptItem[]
   barcodeScans             BarcodeScan[]
   stockCountItems          StockCountItem[]
+  foodRecipeOutputs        FoodRecipe[]           @relation("FoodRecipeOutput")
+  foodRecipeIngredients    FoodRecipeItem[]
+  foodPreparationOutputs   FoodPreparationBatch[] @relation("FoodPreparationOutput")
+  foodPreparationInputs    FoodPreparationItem[]
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
@@ -808,6 +814,8 @@ model StockMovement {
     product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
     stockReceiptId String?
     stockReceipt   StockReceipt? @relation(fields: [stockReceiptId], references: [id], onDelete: SetNull)
+    foodPreparationBatchId String?
+    foodPreparationBatch   FoodPreparationBatch? @relation(fields: [foodPreparationBatchId], references: [id], onDelete: SetNull)
   createdAt DateTime          @default(now())
 
   @@index([productId, createdAt])
@@ -1038,6 +1046,8 @@ model StockReceipt {
   otherCost          Int                @default(0)
   totalProductCost   Int
   totalLandedCost    Int
+  allocationMode     String             @default("DIRECT")
+  estimatedAllocation Boolean           @default(false)
   note               String?
   receivedBy         String?
   receivedAt         DateTime           @default(now())
@@ -1054,6 +1064,87 @@ model StockReceipt {
   @@index([shopId, receivedAt])
   @@index([supplierId, receivedAt])
   @@map("stock_receipts")
+}
+
+// A reusable recipe describes expected ingredient usage. It does not move
+// stock or create costs: that happens only when a preparation batch is made.
+model FoodRecipe {
+  id              String           @id @default(cuid())
+  name            String
+  instructions    String?
+  expectedYield   Int
+  shopId          String
+  shop            Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  outputProductId String
+  outputProduct   Product          @relation("FoodRecipeOutput", fields: [outputProductId], references: [id], onDelete: Cascade)
+  isActive        Boolean          @default(true)
+  items           FoodRecipeItem[]
+  batches         FoodPreparationBatch[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([shopId, isActive, updatedAt])
+  @@index([shopId, outputProductId])
+  @@map("food_recipes")
+}
+
+model FoodRecipeItem {
+  id        String     @id @default(cuid())
+  recipeId  String
+  recipe    FoodRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int
+
+  @@unique([recipeId, productId])
+  @@index([productId])
+  @@map("food_recipe_items")
+}
+
+// A completed batch is an immutable stock conversion: ingredient stock out,
+// prepared/menu item stock in. Its cost is the cost actually available at the
+// time it was prepared, plus optional direct preparation costs.
+model FoodPreparationBatch {
+  id                 String                @id @default(cuid())
+  shopId             String
+  shop               Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  recipeId           String?
+  recipe             FoodRecipe?           @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  outputProductId    String
+  outputProduct      Product               @relation("FoodPreparationOutput", fields: [outputProductId], references: [id], onDelete: Restrict)
+  expectedYield      Int
+  actualYield        Int
+  wasteQuantity      Int                   @default(0)
+  ingredientCost     Int
+  additionalCost     Int                   @default(0)
+  totalCost          Int
+  unitCost           Int
+  additionalCostNote String?
+  note               String?
+  preparedAt         DateTime              @default(now())
+  preparedBy         String?
+  items              FoodPreparationItem[]
+  stockMovements     StockMovement[]
+  createdAt          DateTime              @default(now())
+
+  @@index([shopId, preparedAt])
+  @@index([shopId, outputProductId, preparedAt])
+  @@map("food_preparation_batches")
+}
+
+model FoodPreparationItem {
+  id                String               @id @default(cuid())
+  foodPreparationId String
+  foodPreparation   FoodPreparationBatch @relation(fields: [foodPreparationId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity          Int
+  unitCost          Int
+  totalCost         Int
+
+  @@unique([foodPreparationId, productId])
+  @@index([productId])
+  @@map("food_preparation_items")
 }
 
 model StockReceiptItem {

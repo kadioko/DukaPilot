@@ -35,7 +35,42 @@ function distributeLandedCost(items, transportCost, otherCost) {
   });
 }
 
-function normalizeItems(rawItems) {
+function allocateEstimatedGroceryCost(items, totalGroceryBill, transportCost, otherCost, productsById) {
+  const weightedItems = items.map((item) => ({
+    ...item,
+    // Use the last known buying cost as a weight. If there is no history at
+    // all, quantity gives every received unit an equal share instead.
+    allocationWeight: Math.max(0, (productsById.get(item.productId)?.buyingPrice || 0) * item.quantity),
+  }));
+  const pricedWeight = weightedItems.reduce((sum, item) => sum + item.allocationWeight, 0);
+  const totalWeight = pricedWeight || weightedItems.reduce((sum, item) => sum + item.quantity, 0);
+  let allocatedGrocery = 0;
+  let allocatedExtras = 0;
+  const extraCost = transportCost + otherCost;
+  return weightedItems.map((item, index) => {
+    const weight = totalWeight === 0 ? 0 : (pricedWeight ? item.allocationWeight : item.quantity);
+    const productCost = index === weightedItems.length - 1
+      ? totalGroceryBill - allocatedGrocery
+      : Math.floor((weight * totalGroceryBill) / totalWeight);
+    const allocatedAdditionalCost = index === weightedItems.length - 1
+      ? extraCost - allocatedExtras
+      : Math.floor((weight * extraCost) / totalWeight);
+    allocatedGrocery += productCost;
+    allocatedExtras += allocatedAdditionalCost;
+    const landedTotalCost = productCost + allocatedAdditionalCost;
+    return {
+      productId: item.productId,
+      quantity: item.quantity,
+      unitCost: Math.round(productCost / item.quantity),
+      productCost,
+      allocatedAdditionalCost,
+      landedTotalCost,
+      landedUnitCost: Math.round(landedTotalCost / item.quantity),
+    };
+  });
+}
+
+function normalizeItems(rawItems, requireUnitCost = true) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) return null;
   const seen = new Set();
   const items = rawItems.map((item) => ({
@@ -43,7 +78,7 @@ function normalizeItems(rawItems) {
     quantity: Number(item.quantity),
     unitCost: Number(item.unitCost),
   }));
-  if (items.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || !Number.isInteger(item.unitCost) || item.unitCost < 0)) return null;
+  if (items.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || (requireUnitCost && (!Number.isInteger(item.unitCost) || item.unitCost < 0)))) return null;
   if (items.some((item) => seen.has(item.productId) || !seen.add(item.productId))) return null;
   return items;
 }
@@ -64,7 +99,10 @@ const list = asyncHandler(async (req, res) => {
 
 const receive = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const items = normalizeItems(req.body.items);
+  const allocationMode = String(req.body.allocationMode || "DIRECT").toUpperCase();
+  const estimatedTotalMode = allocationMode === "TOTAL_ESTIMATE";
+  const items = normalizeItems(req.body.items, !estimatedTotalMode);
+  const totalGroceryBill = Number(req.body.totalGroceryBill || 0);
   const supplierId = String(req.body.supplierId || "").trim() || null;
   const sourceOrderId = String(req.body.sourceOrderId || "").trim() || null;
   const invoiceNumber = String(req.body.invoiceNumber || "").trim() || null;
@@ -74,7 +112,9 @@ const receive = asyncHandler(async (req, res) => {
   const paymentMethod = String(req.body.paymentMethod || "CASH").toUpperCase();
   const receivedAt = parseDate(req.body.receivedAt);
 
-  if (!items) return res.status(400).json({ error: "Add each product once with a whole quantity and unit buying cost" });
+  if (!["DIRECT", "TOTAL_ESTIMATE"].includes(allocationMode)) return res.status(400).json({ error: "Choose a valid cost allocation mode" });
+  if (!items) return res.status(400).json({ error: estimatedTotalMode ? "Add each grocery item once with a whole quantity" : "Add each product once with a whole quantity and unit buying cost" });
+  if (estimatedTotalMode && (!Number.isInteger(totalGroceryBill) || totalGroceryBill <= 0)) return res.status(400).json({ error: "Total grocery bill must be a whole TZS amount greater than 0" });
   if (!Number.isInteger(transportCost) || transportCost < 0 || !Number.isInteger(otherCost) || otherCost < 0) {
     return res.status(400).json({ error: "Transport and other costs must be whole TZS amounts of 0 or more" });
   }
@@ -103,7 +143,9 @@ const receive = asyncHandler(async (req, res) => {
 
     const products = await tx.product.findMany({ where: { id: { in: items.map((item) => item.productId) }, shopId, isActive: true } });
     if (products.length !== items.length) throw Object.assign(new Error("One or more products do not belong to this shop"), { status: 400 });
-    const allocatedItems = distributeLandedCost(items, transportCost, otherCost);
+    const allocatedItems = estimatedTotalMode
+      ? allocateEstimatedGroceryCost(items, totalGroceryBill, transportCost, otherCost, new Map(products.map((product) => [product.id, product])))
+      : distributeLandedCost(items, transportCost, otherCost);
     const totalProductCost = allocatedItems.reduce((sum, item) => sum + item.productCost, 0);
     const totalLandedCost = totalProductCost + transportCost + otherCost;
     const created = await tx.stockReceipt.create({
@@ -117,6 +159,8 @@ const receive = asyncHandler(async (req, res) => {
         otherCost,
         totalProductCost,
         totalLandedCost,
+        allocationMode,
+        estimatedAllocation: estimatedTotalMode,
         note,
         receivedAt,
         receivedBy: req.user.staffId || req.user.userId,
@@ -149,4 +193,4 @@ const receive = asyncHandler(async (req, res) => {
   res.status(201).json({ receipt });
 });
 
-module.exports = { list, receive, distributeLandedCost };
+module.exports = { list, receive, distributeLandedCost, allocateEstimatedGroceryCost };

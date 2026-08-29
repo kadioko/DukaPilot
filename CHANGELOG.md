@@ -9,6 +9,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added Food Preparation for restaurants and bars: reusable recipes, ingredient deductions, prepared portions, expected versus actual yield, waste, direct cooking costs, immutable batch history, and cost per portion.
+- Added a clearly-labelled total-grocery-bill receiving option. It allocates a receipt using recent buying prices (or quantities when there is no price history) and marks the allocation as estimated.
+- Added the in-app Bar and Restaurant Help guide and expanded the shareable restaurant operations guide.
 - Added opt-in browser push infrastructure: tenant-scoped subscriptions, alert preferences, queued deliveries, retry handling, and admin delivery health.
 - Added privacy-safe authenticated Android shortcut analytics for Sale, Stock, and Debts. No sales, customer, debt, or payment data is recorded in these events.
 - Activated the dedicated `dukapilot-backend` Sentry project in Railway production with high-priority founder email alerts and a verified alert drill.

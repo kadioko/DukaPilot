@@ -31,6 +31,7 @@ const barcodeRoutes = require("./routes/barcode.routes");
 const stockCountRoutes = require("./routes/stockCount.routes");
 const cashSessionRoutes = require("./routes/cashSession.routes");
 const stockReceiptRoutes = require("./routes/stockReceipt.routes");
+const foodPreparationRoutes = require("./routes/foodPreparation.routes");
 const referralRoutes = require("./routes/referral.routes");
 const quotationRoutes = require("./routes/quotation.routes");
 const publicQuotationRoutes = require("./routes/publicQuotation.routes");
@@ -164,6 +165,7 @@ app.use("/api/barcodes", barcodeRoutes);
 app.use("/api/stock-counts", stockCountRoutes);
 app.use("/api/cash-sessions", cashSessionRoutes);
 app.use("/api/stock-receipts", stockReceiptRoutes);
+app.use("/api/food-preparation", foodPreparationRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/quotations", quotationRoutes);
 
