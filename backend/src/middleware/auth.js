@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
+const { getShopIdForUser } = require("../lib/shopAccess");
 
 function readCookieToken(req) {
   const cookieHeader = req.headers.cookie;
@@ -133,4 +134,20 @@ function requireAnyPermission(...permissions) {
   };
 }
 
-module.exports = { authenticate, requireRole, requirePermission, requireAnyPermission, readCookieToken };
+function requireShopCategory(...categories) {
+  const allowedCategories = new Set(categories.map((category) => String(category).toLowerCase()));
+  return async (req, res, next) => {
+    try {
+      const shopId = await getShopIdForUser(req.user);
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { category: true } });
+      if (!shop || !allowedCategories.has(String(shop.category || "").toLowerCase())) {
+        return res.status(403).json({ error: "Food Preparation is available for shops set as Bar or Restaurant. You can change the shop category in Settings." });
+      }
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
+module.exports = { authenticate, requireRole, requirePermission, requireAnyPermission, requireShopCategory, readCookieToken };

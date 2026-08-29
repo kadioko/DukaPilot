@@ -1,5 +1,7 @@
 # Restaurant and Bar Guide
 
+The **Andaa Chakula / Prepare Food** menu is shown only when the shop category in **Settings** is set to **Bar** or **Restaurant**. Other businesses can still read this guide in Help, but their everyday navigation stays focused on normal inventory.
+
 ## Food preparation and bar stock
 
 Use DukaPilot's normal inventory for packaged bar products such as beer bottles, soft drinks, water, cans, and spirits. Give each item a barcode where available and receive it with its true buying price.

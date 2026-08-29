@@ -165,7 +165,7 @@ model Shop {
   name                     String
   location                 String
   district                 String?
-  category                 String                  @default("general") // grocery, pharmacy, beauty, bar, general
+  category                 String                  @default("general") // grocery, pharmacy, beauty, bar, restaurant, general
   userId                   String                  @unique
   user                     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   products                 Product[]

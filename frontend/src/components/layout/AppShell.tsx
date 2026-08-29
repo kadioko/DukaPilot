@@ -39,7 +39,7 @@ interface User {
   name: string;
   role: string;
   language?: Lang;
-  shop?: { name: string };
+  shop?: { name: string; category?: string };
   supplier?: { name: string };
   staff?: {
     role: string;
@@ -67,6 +67,7 @@ interface NavItem {
   permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canViewQuotations";
   feature?: "staff" | "assistant" | "exports";
   ownerOnly?: boolean;
+  shopCategories?: string[];
   group?: "overview" | "ai" | "sell" | "stock" | "money" | "manage";
 }
 
@@ -80,7 +81,7 @@ const merchantNav: NavItem[] = [
   { href: "/quotations", labelKey: "nav.quotations", icon: FileText, permission: "canViewQuotations", group: "sell" },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
   { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", group: "stock" },
-  { href: "/food-preparation", labelKey: "nav.foodPreparation", icon: ChefHat, permission: "canManageStock", group: "stock" },
+  { href: "/food-preparation", labelKey: "nav.foodPreparation", icon: ChefHat, permission: "canManageStock", shopCategories: ["bar", "restaurant"], group: "stock" },
   { href: "/barcodes", labelKey: "nav.barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },
@@ -175,7 +176,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
       : merchantNav.filter((item) =>
           (!user?.staff || !item.permission || user.staff.permissions[item.permission]) &&
           (!item.feature || user?.features?.[item.feature] !== false) &&
-          (!item.ownerOnly || !user?.staff)
+          (!item.ownerOnly || !user?.staff) &&
+          (!item.shopCategories || item.shopCategories.includes(String(user?.shop?.category || "").toLowerCase()))
         );
   const displayName = user?.shop?.name || user?.supplier?.name || user?.name || "DukaPilot";
   const subscriptionNeedsPayment = subscription?.status === "expired" || subscription?.status === "suspended" || subscription?.isActive === false;

@@ -2,7 +2,7 @@ const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
 const { getShopIdForUser } = require("../lib/shopAccess");
 
-const VALID_CATEGORIES = new Set(["grocery", "pharmacy", "beauty", "bar", "hardware", "electronics", "clothing", "general"]);
+const VALID_CATEGORIES = new Set(["grocery", "pharmacy", "beauty", "bar", "restaurant", "hardware", "electronics", "clothing", "general"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
 
 function normalizeText(value) {
