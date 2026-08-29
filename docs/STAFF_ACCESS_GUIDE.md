@@ -25,6 +25,16 @@ When a cashier has **Sell** permission, they can open a Daily Close cash session
 
 Cashiers without **Reports** still do not receive buying cost, profit, margin, or shop-wide financial analytics.
 
+## AI Assistant (Pro)
+
+On an active **Pro** plan, the owner can tick **Use AI Assistant** for each individual staff member. It is off by default and does not grant any other permission.
+
+- Owners and staff with **Reports** can receive the full business AI view.
+- A Stock Clerk with AI can receive stock-only prompts, without sales, buying prices, profit, debts, or expense data.
+- A Cashier with AI receives only safe POS guidance. They cannot see sales amounts, profit, debts, expenses, or business performance unless the owner separately grants **Reports**.
+
+Turning off the AI tick removes the Assistant from that staff member's navigation and blocks the AI API immediately on their next request.
+
 ## Share With Staff
 
 "Open dukapilot.com and log in with your phone number. You can write it as 07..., 255..., or +255.... Your first PIN is 1234 unless the shop owner gave you another PIN. After logging in, open Settings and change your PIN."

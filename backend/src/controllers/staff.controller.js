@@ -21,6 +21,7 @@ const SAFE_STAFF_SELECT = {
   canManageStaff: true,
   canViewReports: true,
   canRecordExpenses: true,
+  canUseAssistant: true,
   canViewQuotations: true,
   canCreateQuotations: true,
   canEditSentQuotations: true,
@@ -74,6 +75,14 @@ async function basicStaffLimitReached(shopId, excludeStaffId = null) {
   return (await prisma.staffMember.count({ where })) >= 1;
 }
 
+async function proAssistantAvailable(shopId) {
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: { plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
+  });
+  return activePlan(shop) === "PRO";
+}
+
 function basicStaffLimitError(res) {
   return res.status(403).json({
     error: "Basic includes one active staff member. Deactivate the current staff member or upgrade to Pro for more staff.",
@@ -103,6 +112,9 @@ const create = asyncHandler(async (req, res) => {
   if (!validatePin(pin)) return res.status(400).json({ error: "Staff PIN must be 4 to 8 digits" });
   if (await phoneConflict(phone)) return res.status(409).json({ error: "This phone number already belongs to another DukaPilot login" });
   if (await basicStaffLimitReached(shopId)) return basicStaffLimitError(res);
+  if (req.body.canUseAssistant === true && !(await proAssistantAvailable(shopId))) {
+    return res.status(403).json({ error: "Staff AI access is available on an active Pro plan.", code: "PLAN_UPGRADE_REQUIRED" });
+  }
 
   const defaults = permissionsFor(role);
   const staff = await prisma.staffMember.create({
@@ -116,6 +128,7 @@ const create = asyncHandler(async (req, res) => {
       canManageStaff: boolValue(req.body.canManageStaff, defaults.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, defaults.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, defaults.canRecordExpenses),
+      canUseAssistant: boolValue(req.body.canUseAssistant, false),
       canViewQuotations: boolValue(req.body.canViewQuotations, defaults.canViewQuotations),
       canCreateQuotations: boolValue(req.body.canCreateQuotations, defaults.canCreateQuotations),
       canEditSentQuotations: boolValue(req.body.canEditSentQuotations, defaults.canEditSentQuotations),
@@ -155,6 +168,9 @@ const update = asyncHandler(async (req, res) => {
   if (nextIsActive && !existing.isActive && await basicStaffLimitReached(shopId, existing.id)) {
     return basicStaffLimitError(res);
   }
+  if (req.body.canUseAssistant === true && !(await proAssistantAvailable(shopId))) {
+    return res.status(403).json({ error: "Staff AI access is available on an active Pro plan.", code: "PLAN_UPGRADE_REQUIRED" });
+  }
 
   const staff = await prisma.staffMember.update({
     where: { id: existing.id },
@@ -168,6 +184,7 @@ const update = asyncHandler(async (req, res) => {
       canManageStaff: boolValue(req.body.canManageStaff, existing.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, existing.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, existing.canRecordExpenses),
+      canUseAssistant: boolValue(req.body.canUseAssistant, existing.canUseAssistant),
       canViewQuotations: boolValue(req.body.canViewQuotations, existing.canViewQuotations),
       canCreateQuotations: boolValue(req.body.canCreateQuotations, existing.canCreateQuotations),
       canEditSentQuotations: boolValue(req.body.canEditSentQuotations, existing.canEditSentQuotations),

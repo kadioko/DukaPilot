@@ -49,6 +49,7 @@ interface User {
       canManageStaff: boolean;
       canViewReports: boolean;
       canRecordExpenses: boolean;
+      canUseAssistant: boolean;
       canViewQuotations: boolean;
     };
   };
@@ -64,7 +65,7 @@ interface NavItem {
   labelKey?: string;
   label?: string;
   icon: typeof LayoutDashboard;
-  permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canViewQuotations";
+  permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations";
   feature?: "staff" | "assistant" | "exports";
   ownerOnly?: boolean;
   shopCategories?: string[];
@@ -73,7 +74,7 @@ interface NavItem {
 
 const merchantNav: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports", group: "overview" },
-  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canViewReports", feature: "assistant", group: "ai" },
+  { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canUseAssistant", feature: "assistant", group: "ai" },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell", group: "sell" },
   { href: "/daily-close", labelKey: "nav.dailyClose", icon: WalletCards, permission: "canSell", group: "sell" },
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell", group: "sell" },

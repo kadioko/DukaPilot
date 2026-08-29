@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { TextReveal } from "@/components/ui/cascade-text";
-import { api, formatTZS } from "@/lib/api";
+import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { ArrowRight, CheckCircle2, ClipboardCopy, FileText, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 
@@ -71,6 +71,23 @@ interface QuotationAssistantAction {
   action: string;
 }
 
+interface StockAssistantAction {
+  id: string;
+  rank: number;
+  href: string;
+  title: string;
+  body: string;
+  action: string;
+}
+
+interface AssistantAccess {
+  loaded: boolean;
+  isStaff: boolean;
+  canViewReports: boolean;
+  canManageStock: boolean;
+  canSell: boolean;
+}
+
 export default function AssistantPage() {
   const lang = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -79,27 +96,68 @@ export default function AssistantPage() {
   const [expenses, setExpenses] = useState<ExpenseSummary | null>(null);
   const quotations: QuotationSummary[] = [];
   const [quotationActions, setQuotationActions] = useState<QuotationAssistantAction[]>([]);
+  const [stockActions, setStockActions] = useState<StockAssistantAction[]>([]);
   const [actions, setActions] = useState<AssistantAction[]>([]);
   const [copied, setCopied] = useState(false);
+  const [access, setAccess] = useState<AssistantAccess>({ loaded: false, isStaff: false, canViewReports: false, canManageStock: false, canSell: false });
 
   useEffect(() => {
-    Promise.all([
-      api.get<DashboardData>("/dashboard?period=today", lang).then(setDashboard).catch(() => null),
-      api.get<DashboardData>("/dashboard?period=all", lang).then(setAllTime).catch(() => null),
-      api.get<DebtSummary>("/debts", lang).then(setDebts).catch(() => null),
-      api.get<ExpenseSummary>("/expenses", lang).then(setExpenses).catch(() => null),
-      api.get<{ actions: QuotationAssistantAction[] }>("/assistant/quotations", lang).then((data) => setQuotationActions(data.actions)).catch(() => null),
-      api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang).then((data) => setActions(data.actions)).catch(() => null),
-    ]).catch(console.error);
+    let active = true;
+    async function loadAssistant() {
+      try {
+        const session = await getCurrentSession<{ user: { staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canViewReports?: boolean } } } }>();
+        const isStaff = Boolean(session.user.staff);
+        const permissions = session.user.staff?.permissions;
+        const nextAccess = {
+          loaded: true,
+          isStaff,
+          canViewReports: !isStaff || Boolean(permissions?.canViewReports),
+          canManageStock: !isStaff || Boolean(permissions?.canManageStock),
+          canSell: !isStaff || Boolean(permissions?.canSell),
+        };
+        if (!active) return;
+        setAccess(nextAccess);
+        if (nextAccess.canViewReports) {
+          const [today, all, debtData, expenseData, quoteData, actionData] = await Promise.all([
+            api.get<DashboardData>("/dashboard?period=today", lang),
+            api.get<DashboardData>("/dashboard?period=all", lang),
+            api.get<DebtSummary>("/debts", lang),
+            api.get<ExpenseSummary>("/expenses", lang),
+            api.get<{ actions: QuotationAssistantAction[] }>("/assistant/quotations", lang),
+            api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang),
+          ]);
+          if (!active) return;
+          setDashboard(today); setAllTime(all); setDebts(debtData); setExpenses(expenseData); setQuotationActions(quoteData.actions); setActions(actionData.actions);
+        } else if (nextAccess.canManageStock) {
+          const data = await api.get<{ actions: StockAssistantAction[] }>("/assistant/stock", lang);
+          if (active) setStockActions(data.actions);
+        }
+      } catch (error) {
+        if (active) setAccess((current) => ({ ...current, loaded: true }));
+      }
+    }
+    loadAssistant();
+    return () => { active = false; };
   }, [lang]);
 
+  const cashierGuidance: Recommendation[] = access.loaded && access.isStaff && !access.canViewReports && access.canSell ? [{
+    id: "cashier-safe-guidance", rank: 40, icon: ShoppingCart, tone: "bg-blue-50 text-blue-700",
+    title: lang === "sw" ? "Rekodi kila mauzo kwa POS" : "Record every sale in POS",
+    body: lang === "sw" ? "Tumia bidhaa sahihi na njia sahihi ya malipo kila mteja anaponunua. Hii huweka rekodi za duka zikiwa sahihi." : "Use the correct product and payment method for every customer sale. This keeps the shop records accurate.",
+    action: lang === "sw" ? "Fungua Mauzo" : "Open Sales", href: "/sales",
+    why: lang === "sw" ? "Rekodi sahihi ya POS humsaidia mmiliki kusimamia biashara bila kukupa taarifa za fedha za duka." : "Accurate POS records help the owner run the business without exposing shop financial data to you.",
+    impact: lang === "sw" ? "Mauzo yote yanabaki na kumbukumbu sahihi." : "Every sale has a clean record.",
+  }] : [];
   const recommendations = [
-    ...quotationActions.map((item) => ({ ...item, icon: FileText, tone: item.rank >= 90 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii imetolewa na server kwa ruhusa za akaunti yako na data ya nukuu za duka lako." : "This is generated on the server from quotation data your account is allowed to view.", impact: lang === "sw" ? "Kamilisha hatua bila kuchanganya nukuu na mapato yaliyothibitishwa." : "Complete the next step without confusing quotation value with confirmed revenue." })),
-    ...buildRecommendations({ dashboard, allTime, debts, expenses, quotations, lang }).filter((item) => !item.id.startsWith("quotation-")),
+    ...(access.canViewReports ? quotationActions.map((item) => ({ ...item, icon: FileText, tone: item.rank >= 90 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii imetolewa na server kwa ruhusa za akaunti yako na data ya nukuu za duka lako." : "This is generated on the server from quotation data your account is allowed to view.", impact: lang === "sw" ? "Kamilisha hatua bila kuchanganya nukuu na mapato yaliyothibitishwa." : "Complete the next step without confusing quotation value with confirmed revenue." })) : []),
+    ...(access.canViewReports ? buildRecommendations({ dashboard, allTime, debts, expenses, quotations, lang }).filter((item) => !item.id.startsWith("quotation-")) : []),
+    ...stockActions.map((item) => ({ ...item, icon: Package, tone: "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii inaonyesha stock inayohitaji kuangaliwa; haionyeshi mauzo, bei au faida." : "This highlights stock that needs attention; it does not show sales, prices, or profit.", impact: lang === "sw" ? "Tayarisha stock count au mjulishe mwenye duka mapema." : "Prepare a stock count or alert the owner early." })),
+    ...cashierGuidance,
   ].sort((a, b) => b.rank - a.rank).slice(0, 5);
   const ownerSummary = buildOwnerSummary(recommendations, lang);
   const urgentCount = recommendations.filter((item) => item.rank >= 80).length;
   const actionCount = recommendations.length;
+  const canTrackActions = access.canViewReports;
 
   async function copyOwnerSummary() {
     const message = lang === "sw"
@@ -164,10 +222,10 @@ export default function AssistantPage() {
                 {copied ? <CheckCircle2 className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
                 {copied ? (lang === "sw" ? "Imecopy" : "Copied") : "WhatsApp"}
               </button>
-              <Link href="/assistant/history" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-3 text-xs font-bold text-brand-700 hover:bg-brand-50 sm:col-span-3">
+              {canTrackActions && <Link href="/assistant/history" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-3 text-xs font-bold text-brand-700 hover:bg-brand-50 sm:col-span-3">
                 {lang === "sw" ? "Historia ya hatua za AI" : "AI action history"}
                 <ArrowRight className="h-4 w-4" />
-              </Link>
+              </Link>}
             </div>
           </div>
         </div>
@@ -227,27 +285,27 @@ export default function AssistantPage() {
                       <Link
                         href={item.href}
                         onClick={() => {
-                          trackRecommendation(item, "OPENED").catch(console.error);
+                          if (canTrackActions) trackRecommendation(item, "OPENED").catch(console.error);
                         }}
                         className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
                       >
                         {item.action}
                         <ArrowRight className="h-4 w-4" />
                       </Link>
-                      <button
+                      {canTrackActions && <button
                         type="button"
                         onClick={() => trackRecommendation(item, "COMPLETED").catch(console.error)}
                         className="rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-200"
                       >
                         {lang === "sw" ? "Nimefanya" : "Mark done"}
-                      </button>
-                      <button
+                      </button>}
+                      {canTrackActions && <button
                         type="button"
                         onClick={() => trackRecommendation(item, "DISMISSED").catch(console.error)}
                         className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200"
                       >
                         {lang === "sw" ? "Acha" : "Dismiss"}
-                      </button>
+                      </button>}
                     </div>
                   </div>
                 </div>

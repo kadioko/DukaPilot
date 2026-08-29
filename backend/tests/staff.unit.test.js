@@ -55,3 +55,41 @@ test("Basic limits the owner to one active staff member", async () => {
   assert.equal(res.payload.code, "BASIC_STAFF_LIMIT");
   assert.equal(createCalled, false);
 });
+
+test("only an active Pro shop can grant a staff member AI access", async () => {
+  let created;
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    shop: { findUnique: async (args) => args.where.userId ? { id: "shop-1" } : { id: "shop-1", plan: "PRO", subscriptionEndsAt: new Date(Date.now() + 86400000), trialEndsAt: null, isActive: true } },
+    user: { findFirst: async () => null },
+    staffMember: { findFirst: async () => null, create: async ({ data }) => { created = data; return { id: "staff-1", ...data }; } },
+  } };
+  delete require.cache[shopAccessPath];
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const res = response();
+
+  await controller.create({ user: { userId: "owner-1" }, body: { name: "Asha", phone: "0712345678", role: "CASHIER", canUseAssistant: true } }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(created.canUseAssistant, true);
+  assert.equal(created.canViewReports, false);
+});
+
+test("Basic cannot grant staff AI access", async () => {
+  let createCalled = false;
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    shop: { findUnique: async (args) => args.where.userId ? { id: "shop-1" } : { id: "shop-1", plan: "BASIC", subscriptionEndsAt: new Date(Date.now() + 86400000), trialEndsAt: null, isActive: true } },
+    user: { findFirst: async () => null },
+    staffMember: { findFirst: async () => null, count: async () => 0, create: async () => { createCalled = true; } },
+  } };
+  delete require.cache[shopAccessPath];
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const res = response();
+
+  await controller.create({ user: { userId: "owner-1" }, body: { name: "Baraka", phone: "0712345678", role: "CASHIER", canUseAssistant: true } }, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.payload.code, "PLAN_UPGRADE_REQUIRED");
+  assert.equal(createCalled, false);
+});

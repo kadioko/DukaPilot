@@ -15,6 +15,7 @@ interface StaffMember {
   canManageStaff: boolean;
   canViewReports: boolean;
   canRecordExpenses: boolean;
+  canUseAssistant: boolean;
   canViewQuotations: boolean;
   canCreateQuotations: boolean;
   canEditSentQuotations: boolean;
@@ -32,6 +33,7 @@ interface StaffMember {
 
 interface SubscriptionStatus {
   plan: string;
+  status: string;
 }
 
 const roles = ["MANAGER", "CASHIER", "STOCK_CLERK", "OWNER"];
@@ -46,7 +48,7 @@ export default function StaffPage() {
   const lang = useLang();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false });
+  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canUseAssistant: false });
 
   async function load() {
     const [data, subscriptionStatus] = await Promise.all([
@@ -65,11 +67,11 @@ export default function StaffPage() {
     event.preventDefault();
     if (basicLimitReached) return;
     await api.post("/staff", form, lang);
-    setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false });
+    setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canUseAssistant: false });
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
     await load();
   }
@@ -80,6 +82,7 @@ export default function StaffPage() {
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",
     canRecordExpenses: lang === "sw" ? "Kurekodi matumizi" : "Record expenses",
+    canUseAssistant: lang === "sw" ? "Kutumia Msaidizi wa AI" : "Use AI Assistant",
     canViewQuotations: lang === "sw" ? "Kuona nukuu" : "View quotations",
     canCreateQuotations: lang === "sw" ? "Kutengeneza nukuu" : "Create quotations",
     canEditSentQuotations: lang === "sw" ? "Kurekebisha zilizotumwa" : "Revise sent quotations",
@@ -94,6 +97,7 @@ export default function StaffPage() {
   };
   const activeStaffCount = staff.filter((member) => member.isActive).length;
   const basicLimitReached = subscription?.plan === "BASIC" && activeStaffCount >= 1;
+  const proAssistantAvailable = subscription?.plan === "PRO" && subscription?.status === "active";
 
   return (
     <AppShell>
@@ -126,11 +130,12 @@ export default function StaffPage() {
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select></label>
           <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canRecordExpenses} onChange={(e) => setForm({ ...form, canRecordExpenses: e.target.checked })} />{lang === "sw" ? "Anaweza kurekodi matumizi" : "Can record expenses"}</label>
+          {proAssistantAvailable && <label className="flex min-h-10 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-950"><input type="checkbox" checked={form.canUseAssistant} onChange={(e) => setForm({ ...form, canUseAssistant: e.target.checked })} />{lang === "sw" ? "Anaweza kutumia AI" : "Can use AI"}</label>}
           <button disabled={basicLimitReached} title={basicLimitReached ? (lang === "sw" ? "Basic ina staff 1 active" : "Basic includes 1 active staff member") : undefined} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-400">
             {lang === "sw" ? "Ongeza" : "Add"}
           </button>
         </form>
-        <p className="-mt-3 text-xs text-gray-500">{basicLimitReached ? (lang === "sw" ? "Zima staff active ili kuongeza mwingine kwenye Basic." : "Deactivate the active staff member to add another on Basic.") : (lang === "sw" ? "PIN ikiachwa wazi, staff ataingia kwa 1234 na anaweza kuibadilisha kwenye Settings baada ya kuingia." : "When the PIN is blank, the staff member logs in with 1234 and can change it in Settings after signing in.")}</p>
+        <p className="-mt-3 text-xs text-gray-500">{basicLimitReached ? (lang === "sw" ? "Zima staff active ili kuongeza mwingine kwenye Basic." : "Deactivate the active staff member to add another on Basic.") : (lang === "sw" ? "PIN ikiachwa wazi, staff ataingia kwa 1234 na anaweza kuibadilisha kwenye Settings baada ya kuingia." : "When the PIN is blank, the staff member logs in with 1234 and can change it in Settings after signing in.")}{proAssistantAvailable ? (lang === "sw" ? " AI haiongezi ruhusa za fedha: cashier haoni faida, madeni, kiasi cha mauzo au matumizi." : " AI never adds financial access: a cashier cannot see profit, debts, sales amounts, or expenses.") : ""}</p>
 
         <div className="grid gap-3">
           {staff.length === 0 ? (
@@ -147,7 +152,7 @@ export default function StaffPage() {
                 </button>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
-                {(Object.keys(permissionLabels) as Array<keyof typeof permissionLabels>).map((field) => (
+                {(Object.keys(permissionLabels) as Array<keyof typeof permissionLabels>).filter((field) => field !== "canUseAssistant" || proAssistantAvailable).map((field) => (
                   <label key={field} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
                     <input type="checkbox" checked={member[field]} onChange={() => togglePermission(member, field)} />
                     {permissionLabels[field]}

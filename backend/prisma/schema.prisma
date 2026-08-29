@@ -954,6 +954,7 @@ model StaffMember {
   canManageStaff    Boolean   @default(false)
   canViewReports    Boolean   @default(false)
   canRecordExpenses Boolean   @default(false)
+  canUseAssistant   Boolean   @default(false)
   canViewQuotations Boolean   @default(false)
   canCreateQuotations Boolean @default(false)
   canEditSentQuotations Boolean @default(false)

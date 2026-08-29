@@ -50,6 +50,30 @@ const quotationSummary = asyncHandler(async (req, res) => {
   res.json({ actions: actions.sort((a, b) => b.rank - a.rank), generatedAt: new Date().toISOString() });
 });
 
+const stockSummary = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const language = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase() === "en" ? "en" : "sw";
+  const products = await prisma.product.findMany({
+    where: { shopId, isActive: true },
+    select: { id: true, name: true, currentStock: true, minimumStock: true, unit: true },
+    orderBy: { updatedAt: "desc" },
+    take: 500,
+  });
+  const actions = products
+    .filter((product) => product.currentStock <= product.minimumStock)
+    .sort((a, b) => a.currentStock - b.currentStock)
+    .slice(0, 5)
+    .map((product, index) => ({
+      id: `staff-stock-${product.id}`,
+      rank: 80 - index,
+      href: `/inventory?search=${encodeURIComponent(product.name)}&action=restock`,
+      title: language === "sw" ? (product.currentStock === 0 ? `Stock ya ${product.name} imeisha` : `${product.name} inakaribia kuisha`) : (product.currentStock === 0 ? `${product.name} is out of stock` : `${product.name} is running low`),
+      body: language === "sw" ? `Iliyopo: ${product.currentStock} ${product.unit}. Kiwango cha chini: ${product.minimumStock} ${product.unit}.` : `Available: ${product.currentStock} ${product.unit}. Minimum: ${product.minimumStock} ${product.unit}.`,
+      action: language === "sw" ? "Fungua bidhaa" : "Open product",
+    }));
+  res.json({ actions });
+});
+
 const listActions = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const limit = Math.min(Number(req.query.limit) || 100, 200);
@@ -164,4 +188,4 @@ const adminAnalytics = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { listActions, trackAction, quotationSummary, adminAnalytics };
+module.exports = { listActions, trackAction, quotationSummary, stockSummary, adminAnalytics };

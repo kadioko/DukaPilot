@@ -50,4 +50,12 @@ function requireFeature(feature) {
   };
 }
 
-module.exports = { activePlan, canUseFeature, featureSnapshot, requireFeature };
+function requireAssistantAccess(req, res, next) {
+  if (req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canUseAssistant) return next();
+  return res.status(403).json({
+    error: "Your owner has not enabled AI Assistant for your staff account.",
+    code: "STAFF_AI_ACCESS_NOT_GRANTED",
+  });
+}
+
+module.exports = { activePlan, canUseFeature, featureSnapshot, requireFeature, requireAssistantAccess };
