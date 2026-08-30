@@ -267,7 +267,16 @@ const register = asyncHandler(async (req, res) => {
   const refreshToken = issueRefreshToken(user);
   const profile = await getProfile(user.id);
   setAuthCookies(res, accessToken, refreshToken);
-  req.audit = { action: "auth.register", resourceType: "user", resourceId: user.id, metadata: { role: user.role } };
+  req.audit = {
+    action: "auth.register",
+    resourceType: "user",
+    resourceId: user.id,
+    metadata: {
+      role: user.role,
+      referralCode: referrerShop?.referralCode || null,
+      referrerShopId: referrerShop?.id || null,
+    },
+  };
   res.status(201).json({ user: profile });
 });
 

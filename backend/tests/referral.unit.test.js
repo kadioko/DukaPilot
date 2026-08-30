@@ -103,6 +103,40 @@ test("admin referral reward extends an active paid subscription once", async () 
   assert.equal(req.audit.action, "admin.referral.rewarded");
 });
 
+test("admin can recover a missing referral without bypassing qualification", async () => {
+  let createdReferral;
+  const tx = {
+    shop: {
+      findUnique: async () => ({ id: "shop-referrer", name: "Amina Shop", referralCode: "DP-S-REFERRER" }),
+    },
+    user: {
+      findFirst: async () => ({ id: "owner-referred", shop: { id: "shop-referred", name: "Juma Shop" } }),
+    },
+    shopReferral: {
+      findUnique: async () => null,
+      create: async ({ data }) => { createdReferral = data; return { id: "recovered-1", ...data }; },
+    },
+    sale: { count: async () => 4 },
+  };
+  mockPrisma({ $transaction: async (callback) => callback(tx) });
+  delete require.cache[referralPath];
+  const { adminRecoverReferral } = require(referralPath);
+  const res = response();
+  const req = {
+    body: { referralCode: "dp-s-referrer", referredPhone: "0712345678", note: "Owner confirmed the shared referral link" },
+    user: { userId: "admin-1" },
+  };
+
+  await adminRecoverReferral(req, res, (error) => { throw error; });
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createdReferral.referrerShopId, "shop-referrer");
+  assert.equal(createdReferral.referredShopId, "shop-referred");
+  assert.equal(createdReferral.status, "PENDING");
+  assert.match(createdReferral.note, /^Recovered by admin:/);
+  assert.equal(req.audit.action, "admin.referral.recovered");
+});
+
 test("shop owners can read only their own referral link and progress", async () => {
   mockPrisma({
     shop: {

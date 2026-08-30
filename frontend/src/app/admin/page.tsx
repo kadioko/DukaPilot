@@ -400,6 +400,9 @@ export default function AdminPage() {
   const [subscriptionSearch, setSubscriptionSearch] = useState("");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [updatingReferral, setUpdatingReferral] = useState<string | null>(null);
+  const [recoveringReferral, setRecoveringReferral] = useState(false);
+  const [referralRecovery, setReferralRecovery] = useState({ referralCode: "", referredPhone: "", note: "" });
+  const [referralRecoveryMessage, setReferralRecoveryMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [updatingSupplier, setUpdatingSupplier] = useState<string | null>(null);
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
   const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
@@ -618,6 +621,22 @@ export default function AdminPage() {
       window.alert(error instanceof Error ? error.message : "Could not grant referral reward");
     } finally {
       setUpdatingReferral(null);
+    }
+  }
+
+  async function handleRecoverReferral(event: React.FormEvent) {
+    event.preventDefault();
+    setReferralRecoveryMessage(null);
+    setRecoveringReferral(true);
+    try {
+      const data = await api.post<{ message: string }>("/admin/referrals/recover", referralRecovery);
+      setReferralRecovery({ referralCode: "", referredPhone: "", note: "" });
+      setReferralRecoveryMessage({ tone: "success", text: data.message });
+      await refreshReferrals();
+    } catch (error) {
+      setReferralRecoveryMessage({ tone: "error", text: error instanceof Error ? error.message : "Could not recover referral" });
+    } finally {
+      setRecoveringReferral(false);
     }
   }
 
@@ -1778,6 +1797,20 @@ export default function AdminPage() {
                 <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{qualifiedReferrals} ready to reward</span>
                 <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-800">{referrals.filter((referral) => referral.status === "REWARDED").length} rewarded</span>
               </div>
+            </section>
+
+            <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div>
+                <h2 className="text-sm font-semibold text-amber-950">Recover missing referral</h2>
+                <p className="mt-1 text-xs leading-5 text-amber-800">Use only when a genuine referral was missed. It creates an audit record and still requires 10 completed sales before the free week can be granted.</p>
+              </div>
+              <form onSubmit={handleRecoverReferral} className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_1.5fr_auto] lg:items-end">
+                <label className="grid gap-1 text-xs font-semibold text-amber-950"><span>Referrer's code</span><input value={referralRecovery.referralCode} onChange={(event) => setReferralRecovery((current) => ({ ...current, referralCode: event.target.value }))} placeholder="DP-S-..." className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal text-gray-900" required /></label>
+                <label className="grid gap-1 text-xs font-semibold text-amber-950"><span>New owner phone</span><input value={referralRecovery.referredPhone} onChange={(event) => setReferralRecovery((current) => ({ ...current, referredPhone: event.target.value }))} placeholder="07... or +255..." className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal text-gray-900" required /></label>
+                <label className="grid gap-1 text-xs font-semibold text-amber-950"><span>Evidence note</span><input value={referralRecovery.note} onChange={(event) => setReferralRecovery((current) => ({ ...current, note: event.target.value }))} placeholder="Confirmed referral link was used" className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal text-gray-900" minLength={3} required /></label>
+                <button type="submit" disabled={recoveringReferral} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"><Gift className="h-3.5 w-3.5" /> {recoveringReferral ? "Saving..." : "Recover"}</button>
+              </form>
+              {referralRecoveryMessage && <p className={`mt-3 rounded-lg px-3 py-2 text-xs font-medium ${referralRecoveryMessage.tone === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>{referralRecoveryMessage.text}</p>}
             </section>
 
             {referrals.length === 0 ? (

@@ -27,7 +27,7 @@ import PublicHeader from "@/components/marketing/PublicHeader";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import clsx from "clsx";
-import { clearReferralCode, getAttribution, getReferralCode, trackMarketingEvent } from "@/lib/marketing";
+import { captureReferralCode, clearReferralCode, getAttribution, getReferralCode, trackMarketingEvent } from "@/lib/marketing";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import PublicFAQSection from "@/components/marketing/PublicFAQSection";
 
@@ -125,6 +125,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   const [shopCategory, setShopCategory] = useState("general");
   const [role, setRole] = useState<"MERCHANT" | "SUPPLIER">("MERCHANT");
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
 
   // PIN recovery fields
   const [forgotPhone, setForgotPhone] = useState("");
@@ -143,6 +144,10 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
       setView(requestedView);
     }
   }, [initialView, searchParams]);
+
+  useEffect(() => {
+    setReferralCode(captureReferralCode());
+  }, [searchParams]);
 
   useEffect(() => {
     if (initialView !== "login" || searchParams.get("view")) return;
@@ -230,7 +235,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               shopDistrict: shopDistrict.trim() || undefined,
               shopCategory,
               acquisition: getAttribution(),
-              referralCode: getReferralCode(),
+              referralCode: referralCode || getReferralCode(),
             }
           : { phone: normalizedPhone, pin: normalizedPin };
 
@@ -529,9 +534,14 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                {view === "register" && (
-                  <>
-                    <div>
+              {view === "register" && (
+                <>
+                  {referralCode && (
+                    <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs leading-5 text-brand-900">
+                      {lang === "sw" ? "Umejiunga kupitia mwaliko wa rafiki. Referral itaunganishwa baada ya usajili wako kukamilika." : "You are joining through a friend's invitation. The referral will be linked when your registration is completed."}
+                    </div>
+                  )}
+                  <div>
                       <label htmlFor="register-name" className="block text-sm font-medium text-gray-700 mb-1">{t("auth.yourName", lang)}</label>
                       <input
                         id="register-name"

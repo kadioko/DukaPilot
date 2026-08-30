@@ -9,7 +9,9 @@ type Attribution = {
 const ATTRIBUTION_KEY = "dukapilot_marketing_attribution";
 const SESSION_KEY = "dukapilot_marketing_session";
 const REFERRAL_CODE_KEY = "dukapilot_referral_code";
+const REFERRAL_CAPTURED_AT_KEY = "dukapilot_referral_captured_at";
 const MAX_VALUE_LENGTH = 120;
+const REFERRAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function clean(value: string | null): string | null {
   const trimmed = value?.trim().slice(0, MAX_VALUE_LENGTH) || "";
@@ -68,11 +70,17 @@ export function captureReferralCode(): string | null {
   const incoming = clean(new URLSearchParams(window.location.search).get("ref"))?.toUpperCase() || null;
   if (incoming && /^DP-[A-Z0-9-]{8,80}$/.test(incoming)) {
     window.localStorage.setItem(REFERRAL_CODE_KEY, incoming);
+    window.localStorage.setItem(REFERRAL_CAPTURED_AT_KEY, String(Date.now()));
     return incoming;
   }
 
   const saved = clean(window.localStorage.getItem(REFERRAL_CODE_KEY))?.toUpperCase() || null;
-  return saved && /^DP-[A-Z0-9-]{8,80}$/.test(saved) ? saved : null;
+  const capturedAt = Number(window.localStorage.getItem(REFERRAL_CAPTURED_AT_KEY) || 0);
+  if (!saved || !/^DP-[A-Z0-9-]{8,80}$/.test(saved) || !capturedAt || Date.now() - capturedAt > REFERRAL_TTL_MS) {
+    clearReferralCode();
+    return null;
+  }
+  return saved;
 }
 
 export function getReferralCode(): string | null {
@@ -82,6 +90,7 @@ export function getReferralCode(): string | null {
 export function clearReferralCode() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(REFERRAL_CODE_KEY);
+    window.localStorage.removeItem(REFERRAL_CAPTURED_AT_KEY);
   }
 }
 

@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { phoneLookupValues } = require("../lib/phone");
 
 const SALES_REQUIRED = 10;
 const REWARD_DAYS = 7;
@@ -14,6 +15,11 @@ function addDays(date, days) {
 
 function httpError(message, status) {
   return Object.assign(new Error(message), { status });
+}
+
+function normalizeReferralCode(value) {
+  const code = String(value || "").trim().toUpperCase();
+  return /^DP-[A-Z0-9-]{8,80}$/.test(code) ? code : "";
 }
 
 async function completeSaleCounts(client, shopIds) {
@@ -186,6 +192,73 @@ const adminRewardReferral = asyncHandler(async (req, res) => {
   res.json({ referralId, shop: result.shop, message: `Added ${REWARD_DAYS} free days to ${result.shop.name}` });
 });
 
+// Admin-only recovery for a genuine referral that was missed during signup.
+// A mandatory note and the normal 10-sale qualification rule keep this from
+// becoming an untracked way to grant subscription time.
+const adminRecoverReferral = asyncHandler(async (req, res) => {
+  const referralCode = normalizeReferralCode(req.body?.referralCode);
+  const referredPhone = String(req.body?.referredPhone || "").trim();
+  const note = String(req.body?.note || "").trim().slice(0, 1000);
+  if (!referralCode) return res.status(400).json({ error: "Enter a valid referrer's referral code" });
+  if (!referredPhone) return res.status(400).json({ error: "Enter the new shop owner's phone number" });
+  if (note.length < 3) return res.status(400).json({ error: "Add a short note explaining why this referral is being recovered" });
+
+  const now = new Date();
+  const result = await prisma.$transaction(async (tx) => {
+    const referrerShop = await tx.shop.findUnique({
+      where: { referralCode },
+      select: { id: true, name: true, referralCode: true },
+    });
+    if (!referrerShop) throw httpError("Referral code was not found", 404);
+
+    const referredUser = await tx.user.findFirst({
+      where: { phone: { in: phoneLookupValues(referredPhone) }, role: "MERCHANT" },
+      select: { id: true, shop: { select: { id: true, name: true } } },
+    });
+    if (!referredUser?.shop) throw httpError("A merchant shop was not found for that phone number", 404);
+    if (referredUser.shop.id === referrerShop.id) throw httpError("A shop cannot refer itself", 400);
+
+    const existing = await tx.shopReferral.findUnique({ where: { referredShopId: referredUser.shop.id } });
+    if (existing) throw httpError("This new shop is already linked to a referral", 409);
+
+    const salesCount = await tx.sale.count({ where: { shopId: referredUser.shop.id, status: "COMPLETED" } });
+    const qualified = salesCount >= SALES_REQUIRED;
+    const referral = await tx.shopReferral.create({
+      data: {
+        referrerShopId: referrerShop.id,
+        referredShopId: referredUser.shop.id,
+        referralCode: referrerShop.referralCode,
+        status: qualified ? "QUALIFIED" : "PENDING",
+        qualifiedAt: qualified ? now : null,
+        note: `Recovered by admin: ${note}`,
+      },
+      select: { id: true, status: true, referrerShopId: true, referredShopId: true },
+    });
+    return { referral, referrerShop, referredShop: referredUser.shop, salesCount };
+  });
+
+  req.audit = {
+    action: "admin.referral.recovered",
+    resourceType: "shop_referral",
+    resourceId: result.referral.id,
+    metadata: {
+      adminId: req.user.userId,
+      referrerShopId: result.referral.referrerShopId,
+      referredShopId: result.referral.referredShopId,
+      salesCount: result.salesCount,
+      qualified: result.referral.status === "QUALIFIED",
+      note,
+    },
+  };
+
+  res.status(201).json({
+    referral: result.referral,
+    message: result.referral.status === "QUALIFIED"
+      ? `Recovered referral for ${result.referredShop.name}. It is ready for the 7-day reward.`
+      : `Recovered referral for ${result.referredShop.name}. It needs ${Math.max(0, SALES_REQUIRED - result.salesCount)} more completed sale(s) before the reward.`,
+  });
+});
+
 const adminRejectReferral = asyncHandler(async (req, res) => {
   const { referralId } = req.params;
   const note = String(req.body?.note || "").trim().slice(0, 1000) || "Marked not valid by admin";
@@ -204,4 +277,4 @@ const adminRejectReferral = asyncHandler(async (req, res) => {
   res.json({ message: "Referral marked not valid" });
 });
 
-module.exports = { getMyReferrals, adminListReferrals, adminRewardReferral, adminRejectReferral, SALES_REQUIRED, REWARD_DAYS };
+module.exports = { getMyReferrals, adminListReferrals, adminRewardReferral, adminRecoverReferral, adminRejectReferral, SALES_REQUIRED, REWARD_DAYS };

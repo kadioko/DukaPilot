@@ -47,7 +47,7 @@ export default function ReferralsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const referralUrl = data?.referralCode ? `https://www.dukapilot.com/?ref=${encodeURIComponent(data.referralCode)}` : "";
+  const referralUrl = data?.referralCode ? `https://www.dukapilot.com/register?ref=${encodeURIComponent(data.referralCode)}` : "";
   const message = useMemo(() => {
     if (!referralUrl) return "";
     return lang === "sw"

@@ -22,7 +22,7 @@ Launch offer:
 - Referrer gets 1 free week after the referred shop records 10 real sales.
 - Referred shop gets free setup help.
 
-Each merchant's onboarding checklist has a unique referral link. When a new merchant registers through it, DukaPilot records the referrer and the new shop automatically.
+Each merchant's referral page has a unique link that opens the registration form directly. When a new merchant completes registration through it, DukaPilot records the referrer and the new shop automatically. The invite is retained in the browser for up to 30 days, and successful registrations record the referrer in the audit trail.
 
 ## Merchant Share Message
 
@@ -52,3 +52,4 @@ In Admin -> Referrals:
 - The record moves to `QUALIFIED` after the new shop has 10 completed sales.
 - Select `Reward 7 days` to extend the referrer's active paid subscription or free-trial validity. The action is audited and cannot be granted twice.
 - Select `Not valid` only for a mistaken or fraudulent referral; this permanently closes the reward.
+- If a genuine registration was missed, use **Recover missing referral** with the referrer's code, the new owner phone number, and a short evidence note. This creates one audited referral record and still applies the normal 10-completed-sale rule before a reward can be granted.
