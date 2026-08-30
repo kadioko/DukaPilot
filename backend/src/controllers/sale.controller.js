@@ -3,6 +3,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTime");
 const { normalizePhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -236,6 +237,7 @@ const create = asyncHandler(async (req, res) => {
     return res.json({ sale: redactSale(existingSale, req), reused: true });
   }
 
+  await invalidateDashboardHistory(shopId);
   req.audit = { action: "sale.create", resourceType: "sale", resourceId: sale.id, metadata: { receiptNumber: sale.receiptNumber } };
   res.status(201).json({ sale: redactSale(sale, req) });
 });
@@ -291,6 +293,7 @@ const voidSale = asyncHandler(async (req, res) => {
     });
   });
 
+  await invalidateDashboardHistory(shopId);
   req.audit = {
     action: "sale.void",
     resourceType: "sale",

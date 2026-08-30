@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaMonth, tanzaniaDateKey } = require("../lib/businessTime");
 const { featureSnapshot } = require("../lib/entitlements");
+const { dashboardHistory } = require("../services/dashboard-cache.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -154,25 +155,28 @@ const overview = asyncHandler(async (req, res) => {
     orderBy: { _sum: { totalAmount: "desc" } },
   });
 
-  const [allTimeRows, historyRows, allExpenseAgg] = await Promise.all([
-    prisma.$queryRawUnsafe(
-      `SELECT COALESCE(SUM("totalAmount"), 0)::bigint AS "totalSales",
-              COALESCE(SUM(profit), 0)::bigint AS "totalProfit",
-              COUNT(*)::int AS "salesCount", MIN("createdAt") AS "firstSaleAt"
-       FROM sales WHERE "shopId" = $1 AND status = 'COMPLETED'`,
-      shopId,
-    ),
-    prisma.$queryRawUnsafe(
-      `SELECT to_char(date_trunc('month', "createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam'), 'YYYY-MM') AS period,
-              COALESCE(SUM("totalAmount"), 0)::bigint AS sales,
-              COALESCE(SUM(profit), 0)::bigint AS profit,
-              COUNT(*)::int AS "salesCount"
-       FROM sales WHERE "shopId" = $1 AND status = 'COMPLETED'
-       GROUP BY 1 ORDER BY 1 ASC`,
-      shopId,
-    ),
-    prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" } }, _sum: { amount: true }, _count: { id: true } }),
-  ]);
+  const { allTimeRows, historyRows, allExpenseAgg } = await dashboardHistory(shopId, async () => {
+    const [allTimeRows, historyRows, allExpenseAgg] = await Promise.all([
+      prisma.$queryRawUnsafe(
+        `SELECT COALESCE(SUM("totalAmount"), 0)::bigint AS "totalSales",
+                COALESCE(SUM(profit), 0)::bigint AS "totalProfit",
+                COUNT(*)::int AS "salesCount", MIN("createdAt") AS "firstSaleAt"
+         FROM sales WHERE "shopId" = $1 AND status = 'COMPLETED'`,
+        shopId,
+      ),
+      prisma.$queryRawUnsafe(
+        `SELECT to_char(date_trunc('month', "createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam'), 'YYYY-MM') AS period,
+                COALESCE(SUM("totalAmount"), 0)::bigint AS sales,
+                COALESCE(SUM(profit), 0)::bigint AS profit,
+                COUNT(*)::int AS "salesCount"
+         FROM sales WHERE "shopId" = $1 AND status = 'COMPLETED'
+         GROUP BY 1 ORDER BY 1 ASC`,
+        shopId,
+      ),
+      prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" } }, _sum: { amount: true }, _count: { id: true } }),
+    ]);
+    return { allTimeRows, historyRows, allExpenseAgg };
+  });
   const totalExpenses = expenseAgg._sum.amount || 0;
   const grossProfit = salesAgg._sum.profit || 0;
   const allTime = allTimeRows[0] || {};

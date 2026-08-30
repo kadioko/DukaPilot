@@ -1,5 +1,7 @@
 const rateLimit = require("express-rate-limit");
 const { ipKeyGenerator } = rateLimit;
+const { RedisStore } = require("rate-limit-redis");
+const { getRedisClient } = require("../lib/redis");
 
 // Express resolves req.ip through the single trusted Railway proxy configured
 // in app.js. Reading X-Forwarded-For directly lets callers spoof rate keys.
@@ -29,8 +31,18 @@ const sharedOptions = {
   keyGenerator: getClientKey,
 };
 
+function sharedStore(name) {
+  const redis = getRedisClient();
+  if (!redis) return undefined;
+  return new RedisStore({
+    prefix: `dukapilot:rate-limit:${name}:`,
+    sendCommand: (...args) => redis.sendCommand(args),
+  });
+}
+
 const apiRateLimiter = rateLimit({
   ...sharedOptions,
+  store: sharedStore("api"),
   windowMs: 15 * 60 * 1000,
   // Browser traffic is proxied through Vercel, and Tanzanian mobile networks
   // commonly place many customers behind one public IP. Keep this broad
@@ -41,6 +53,7 @@ const apiRateLimiter = rateLimit({
 
 const authRateLimiter = rateLimit({
   ...sharedOptions,
+  store: sharedStore("auth"),
   windowMs: 15 * 60 * 1000,
   max: 10,
   keyGenerator: getAuthenticationKey,
@@ -49,6 +62,7 @@ const authRateLimiter = rateLimit({
 
 const publicRateLimiter = rateLimit({
   ...sharedOptions,
+  store: sharedStore("public"),
   windowMs: 15 * 60 * 1000,
   max: 1000,
   message: { error: "Too many requests to the public catalog. Please wait a few minutes and try again." },
@@ -56,6 +70,7 @@ const publicRateLimiter = rateLimit({
 
 const publicEventRateLimiter = rateLimit({
   ...sharedOptions,
+  store: sharedStore("event"),
   windowMs: 15 * 60 * 1000,
   max: 30,
   keyGenerator: getPublicEventKey,
@@ -64,6 +79,7 @@ const publicEventRateLimiter = rateLimit({
 
 const publicOrderRateLimiter = rateLimit({
   ...sharedOptions,
+  store: sharedStore("order"),
   windowMs: 15 * 60 * 1000,
   max: 8,
   keyGenerator: getPublicOrderKey,
@@ -72,6 +88,7 @@ const publicOrderRateLimiter = rateLimit({
 
 const statusRateLimiter = rateLimit({
   ...sharedOptions,
+  store: sharedStore("status"),
   windowMs: 60 * 1000,
   max: 30,
   message: { error: "Too many service-status checks. Please try again shortly." },
@@ -79,6 +96,7 @@ const statusRateLimiter = rateLimit({
 
 const otpRequestRateLimiter = rateLimit({
   ...sharedOptions,
+  store: sharedStore("otp"),
   windowMs: 15 * 60 * 1000,
   max: 3,
   keyGenerator: getAuthenticationKey,

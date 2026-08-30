@@ -32,6 +32,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and the multi-branch roadmap
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
+- **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
 - **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
 - **Product test gate:** [TESTING.md](./TESTING.md)
 - **Android release build:** [docs/ANDROID_RELEASE_BUILD.md](./docs/ANDROID_RELEASE_BUILD.md)

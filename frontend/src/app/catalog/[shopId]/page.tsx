@@ -11,6 +11,7 @@ import {
   Trash2,
   Store,
   CheckCircle,
+  Search,
 } from "lucide-react";
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
@@ -61,7 +62,11 @@ export default function ShopPage() {
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [search, setSearch] = useState("");
+  const [activeSearch, setActiveSearch] = useState("");
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [view, setView] = useState<View>("shop");
@@ -75,17 +80,40 @@ export default function ShopPage() {
   const [shopWaUrl, setShopWaUrl] = useState("");
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setActiveSearch(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     if (!shopId) return;
     setLoading(true);
+    setNotFound(false);
+    const params = new URLSearchParams({ limit: "60" });
+    if (activeSearch) params.set("search", activeSearch);
     api
-      .get<{ shop: ShopInfo; products: Product[] }>(`/public/shops/${shopId}`)
+      .get<{ shop: ShopInfo; products: Product[]; pagination?: { hasMore: boolean } }>(`/public/shops/${shopId}?${params}`)
       .then((d) => {
         setShop(d.shop);
         setProducts(d.products);
+        setHasMore(Boolean(d.pagination?.hasMore));
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  }, [shopId]);
+  }, [shopId, activeSearch]);
+
+  async function loadMoreProducts() {
+    if (!shopId || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ limit: "60", offset: String(products.length) });
+      if (activeSearch) params.set("search", activeSearch);
+      const data = await api.get<{ products: Product[]; pagination?: { hasMore: boolean } }>(`/public/shops/${shopId}?${params}`);
+      setProducts((current) => [...current, ...data.products]);
+      setHasMore(Boolean(data.pagination?.hasMore));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function addToCart(product: Product, tier: "RETAIL" | "WHOLESALE") {
     const unitPrice =
@@ -228,7 +256,18 @@ export default function ShopPage() {
       <main className="max-w-4xl mx-auto p-4 pb-24">
         {/* Shop view */}
         {view === "shop" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div>
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label={t("catalog.search", lang)}
+                placeholder={t("catalog.search", lang)}
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {products.length === 0 ? (
               <div className="col-span-full text-center py-16 text-gray-400 text-sm">
                 {t("catalog.noProducts", lang)}
@@ -273,6 +312,18 @@ export default function ShopPage() {
                   </div>
                 </article>
               ))
+            )}
+            </div>
+            {hasMore && (
+              <div className="mt-5 flex justify-center">
+                <button
+                  onClick={loadMoreProducts}
+                  disabled={loadingMore}
+                  className="min-h-11 rounded-lg border border-brand-300 bg-white px-5 py-2 text-sm font-bold text-brand-800 disabled:opacity-60"
+                >
+                  {loadingMore ? t("common.loading", lang) : (lang === "sw" ? "Onyesha bidhaa zaidi" : "Load more products")}
+                </button>
+              </div>
             )}
           </div>
         )}

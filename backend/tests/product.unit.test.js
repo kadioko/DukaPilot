@@ -78,20 +78,19 @@ test("product list caps a requested page to a safe catalogue size", async () => 
   assert.equal(res.payload.pagination.limit, 200);
 });
 
-test("low-stock pagination filters the whole catalogue before selecting a page", async () => {
+test("low-stock pagination asks PostgreSQL for one page before loading product details", async () => {
   let findManyArgs;
   const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $queryRaw: async (query) => {
+      const sql = String(query);
+      return sql.includes("COUNT") ? [{ count: 2 }] : [{ id: "prod-3" }];
+    },
     product: {
       findMany: async (args) => {
         findManyArgs = args;
-        return [
-          { id: "prod-1", name: "Enough stock", currentStock: 9, minimumStock: 5 },
-          { id: "prod-2", name: "Low stock first", currentStock: 5, minimumStock: 5 },
-          { id: "prod-3", name: "Low stock later", currentStock: 1, minimumStock: 5 },
-        ];
+        return [{ id: "prod-3", name: "Low stock later", currentStock: 1, minimumStock: 5 }];
       },
-      count: async () => { throw new Error("low-stock results should be counted after filtering"); },
     },
   };
   const ctrl = loadController(prismaMock);
@@ -99,23 +98,23 @@ test("low-stock pagination filters the whole catalogue before selecting a page",
 
   await ctrl.list({ user: { userId: "user-1" }, query: { lowStock: "true", page: "2", limit: "1" } }, res);
 
-  assert.equal(findManyArgs.skip, undefined);
-  assert.equal(findManyArgs.take, undefined);
+  assert.deepEqual(findManyArgs.where.id.in, ["prod-3"]);
   assert.equal(res.payload.pagination.total, 2);
   assert.equal(res.payload.pagination.totalPages, 2);
   assert.deepEqual(res.payload.products.map((item) => item.id), ["prod-3"]);
 });
 
-test("getLowStock filters products in JavaScript using minimumStock", async () => {
+test("getLowStock returns only database-filtered low-stock products", async () => {
   const prismaMock = {
-    $queryRawUnsafe: async () => [{ count: 2 }],
+    $queryRaw: async (query) => String(query).includes("COUNT")
+      ? [{ count: 2 }]
+      : [{ id: "prod-1" }, { id: "prod-3" }],
     shop: {
       findUnique: async () => ({ id: "shop-1" }),
     },
     product: {
       findMany: async () => [
         { id: "prod-1", name: "Rice", currentStock: 2, minimumStock: 5 },
-        { id: "prod-2", name: "Sugar", currentStock: 8, minimumStock: 5 },
         { id: "prod-3", name: "Salt", currentStock: 0, minimumStock: 1 },
       ],
     },

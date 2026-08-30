@@ -3,6 +3,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { getRequestLanguage } = require("../lib/requestLanguage");
 const { startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, addTanzaniaMonths } = require("../lib/businessTime");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -226,6 +227,7 @@ const create = asyncHandler(async (req, res) => {
     });
   }
 
+  await invalidateDashboardHistory(shopId);
   req.audit = { action: "expense.create", resourceType: "expense", resourceId: result.expense.id, metadata: { recurringMonthly } };
   res.status(201).json(result);
 });
@@ -243,6 +245,7 @@ const update = asyncHandler(async (req, res) => {
     data,
   });
 
+  await invalidateDashboardHistory(shopId);
   req.audit = { action: "expense.update", resourceType: "expense", resourceId: expense.id };
   res.json({ expense });
 });
@@ -275,6 +278,7 @@ const recordRecurring = asyncHandler(async (req, res) => {
     await tx.recurringExpense.update({ where: { id: recurringExpense.id }, data: { nextDueAt } });
     return { expense, nextDueAt };
   });
+  await invalidateDashboardHistory(shopId);
   req.audit = { action: "expense.recurring.record", resourceType: "expense", resourceId: result.expense.id, metadata: { recurringExpenseId: req.params.id } };
   res.status(201).json(result);
 });
@@ -292,6 +296,7 @@ const remove = asyncHandler(async (req, res) => {
   const existing = await prisma.expense.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Expense not found" });
   await prisma.expense.delete({ where: { id: existing.id } });
+  await invalidateDashboardHistory(shopId);
   req.audit = { action: "expense.delete", resourceType: "expense", resourceId: existing.id };
   res.json({ message: "Expense deleted" });
 });

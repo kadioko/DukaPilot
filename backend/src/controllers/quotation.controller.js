@@ -3,6 +3,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 
 const STATUSES = new Set(["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CONVERTED", "ARCHIVED", "CANCELLED"]);
 const CATEGORIES = new Set(["MATERIAL", "LABOUR", "TRANSPORT", "DESIGN", "INSTALLATION", "SUBCONTRACTOR", "SERVICE", "OTHER"]);
@@ -893,6 +894,7 @@ const convert = asyncHandler(async (req, res) => {
     if (guarded.count !== 1) throw Object.assign(new Error("Quotation changed before it could be converted. Refresh and try again."), { status: 409 });
     return { sale, quotation: await fetchQuotation(tx, quotation.id, shopId) };
   });
+  await invalidateDashboardHistory(shopId);
   req.audit = { action: "quotation.convert", resourceType: "quotation", resourceId: result.quotation.id, metadata: { saleId: result.sale.id, receiptNumber: result.sale.receiptNumber } };
   res.status(201).json({ sale: result.sale, quotation: redactQuotation(result.quotation, req) });
 });

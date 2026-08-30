@@ -181,6 +181,55 @@ function parseProductImport(csv) {
   return { errors, products };
 }
 
+async function lowStockPage(shopId, search, skip, take) {
+  const term = String(search || "").trim();
+  const barcode = term.toUpperCase();
+  let idRows;
+  let countRows;
+  if (term) {
+    [idRows, countRows] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT id FROM products
+        WHERE "shopId" = ${shopId}
+          AND "isActive" = true
+          AND "currentStock" <= "minimumStock"
+          AND (name ILIKE ${`%${term}%`} OR sku ILIKE ${`%${term}%`} OR barcode = ${barcode})
+        ORDER BY "currentStock" ASC, name ASC
+        LIMIT ${take} OFFSET ${skip}`,
+      prisma.$queryRaw`
+        SELECT COUNT(*)::int AS count FROM products
+        WHERE "shopId" = ${shopId}
+          AND "isActive" = true
+          AND "currentStock" <= "minimumStock"
+          AND (name ILIKE ${`%${term}%`} OR sku ILIKE ${`%${term}%`} OR barcode = ${barcode})`,
+    ]);
+  } else {
+    [idRows, countRows] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT id FROM products
+        WHERE "shopId" = ${shopId}
+          AND "isActive" = true
+          AND "currentStock" <= "minimumStock"
+        ORDER BY "currentStock" ASC, name ASC
+        LIMIT ${take} OFFSET ${skip}`,
+      prisma.$queryRaw`
+        SELECT COUNT(*)::int AS count FROM products
+        WHERE "shopId" = ${shopId}
+          AND "isActive" = true
+          AND "currentStock" <= "minimumStock"`,
+    ]);
+  }
+
+  const ids = idRows.map((row) => row.id);
+  if (!ids.length) return { products: [], total: Number(countRows[0]?.count || 0) };
+  const products = await prisma.product.findMany({
+    where: { id: { in: ids }, shopId, isActive: true },
+    include: { supplier: { select: { id: true, name: true, phone: true } } },
+  });
+  const byId = new Map(products.map((product) => [product.id, product]));
+  return { products: ids.map((id) => byId.get(id)).filter(Boolean), total: Number(countRows[0]?.count || 0) };
+}
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const { lowStock, search, page = 1, limit = 50 } = req.query;
@@ -195,8 +244,8 @@ const list = asyncHandler(async (req, res) => {
     { barcode: { contains: String(search).trim().toUpperCase() } },
   ];
 
-  // Low stock compares two product fields, so filter before slicing the result
-  // into pages. Filtering after `take` made products beyond page one invisible.
+  // PostgreSQL compares the two stock columns before we page. The old in-memory
+  // filter scanned an entire catalogue and got slower with every new product.
   const productsQuery = {
     where,
     include: { supplier: { select: { id: true, name: true, phone: true } } },
@@ -205,10 +254,7 @@ const list = asyncHandler(async (req, res) => {
   let products;
   let total;
   if (lowStock === "true") {
-    const lowStockProducts = (await prisma.product.findMany(productsQuery))
-      .filter((product) => product.currentStock <= product.minimumStock);
-    total = lowStockProducts.length;
-    products = lowStockProducts.slice(skip, skip + limitNumber);
+    ({ products, total } = await lowStockPage(shopId, search, skip, limitNumber));
   } else {
     [products, total] = await Promise.all([
       prisma.product.findMany({ ...productsQuery, skip, take: limitNumber }),
@@ -458,21 +504,8 @@ const remove = asyncHandler(async (req, res) => {
 const getLowStock = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const limit = Math.min(Math.max(Number(req.query?.limit) || 100, 1), 200);
-  // Prisma cannot compare currentStock to minimumStock in a normal filter.
-  // Bound the lowest-stock window rather than loading every product.
-  const products = await prisma.product.findMany({
-    where: { shopId, isActive: true },
-    include: { supplier: { select: { id: true, name: true, phone: true } } },
-    orderBy: [{ currentStock: "asc" }, { name: "asc" }],
-    take: limit,
-  });
-  const lowStock = products.filter((p) => p.currentStock <= p.minimumStock);
-  const countRows = await prisma.$queryRawUnsafe(
-    `SELECT COUNT(*)::int AS count FROM products
-     WHERE "shopId" = $1 AND "isActive" = true AND "currentStock" <= "minimumStock"`,
-    shopId,
-  );
-  res.json({ products: lowStock.map((product) => redactProduct(product, req)), total: Number(countRows[0]?.count || 0), limited: products.length === limit });
+  const { products, total } = await lowStockPage(shopId, req.query?.search, 0, limit);
+  res.json({ products: products.map((product) => redactProduct(product, req)), total, limited: total > products.length });
 });
 
-module.exports = { list, get, create, update, importCsv, remove, getLowStock };
+module.exports = { list, get, create, update, importCsv, remove, getLowStock, lowStockPage };

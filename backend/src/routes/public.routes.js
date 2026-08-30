@@ -66,12 +66,25 @@ router.post("/events", publicEventRateLimiter, async (req, res, next) => {
   }
 });
 
-// GET /api/public/shops -> list shops that have active products
+// GET /api/public/shops -> paginated, searchable public shops
 router.get("/shops", async (req, res, next) => {
   try {
     const now = new Date();
-    const shops = await prisma.shop.findMany({
-      where: { ...activeShopWhere(now), products: { some: { isActive: true, currentStock: { gt: 0 } } } },
+    const search = String(req.query.search || "").trim().slice(0, 80);
+    const take = Math.min(Math.max(Number(req.query.limit) || 60, 1), 100);
+    const skip = Math.max(Number(req.query.offset) || 0, 0);
+    const where = { ...activeShopWhere(now), products: { some: { isActive: true, currentStock: { gt: 0 } } } };
+    if (search) {
+      where.AND = [{
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { location: { contains: search, mode: "insensitive" } },
+          { district: { contains: search, mode: "insensitive" } },
+        ],
+      }];
+    }
+    const [shops, total] = await Promise.all([prisma.shop.findMany({
+      where,
       select: {
         id: true,
         name: true,
@@ -81,7 +94,9 @@ router.get("/shops", async (req, res, next) => {
         _count: { select: { products: { where: { isActive: true, currentStock: { gt: 0 } } } } },
       },
       orderBy: { name: "asc" },
-    });
+      take,
+      skip,
+    }), prisma.shop.count({ where })]);
 
     res.json({
       shops: shops.map((s) => ({
@@ -92,6 +107,7 @@ router.get("/shops", async (req, res, next) => {
         category: s.category,
         productCount: s._count.products,
       })),
+      pagination: { total, limit: take, offset: skip, hasMore: skip + shops.length < total },
     });
   } catch (err) {
     next(err);
@@ -101,10 +117,15 @@ router.get("/shops", async (req, res, next) => {
 // GET /api/public/products?shopId=&search= -> browse active products
 router.get("/products", async (req, res, next) => {
   try {
-    const { shopId, search, limit = 60, offset = 0 } = req.query;
+    const { shopId, limit = 60, offset = 0 } = req.query;
+    const search = String(req.query.search || "").trim().slice(0, 80);
     const where = { isActive: true, currentStock: { gt: 0 }, shop: activeShopWhere() };
     if (shopId) where.shopId = String(shopId);
-    if (search) where.name = { contains: String(search), mode: "insensitive" };
+    if (search) where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { sku: { contains: search, mode: "insensitive" } },
+      { barcode: search.toUpperCase() },
+    ];
 
     const take = Math.min(Math.max(Number(limit) || 60, 1), 100);
     const skip = Math.max(Number(offset) || 0, 0);
@@ -131,7 +152,7 @@ router.get("/products", async (req, res, next) => {
   }
 });
 
-// GET /api/public/shops/:id -> single shop with products
+// GET /api/public/shops/:id -> one shop plus a bounded product search page
 router.get("/shops/:id", async (req, res, next) => {
   try {
     const shop = await prisma.shop.findUnique({
@@ -155,8 +176,17 @@ router.get("/shops/:id", async (req, res, next) => {
     if (!shop) return res.status(404).json({ error: "Shop not found" });
     if (!shop.isCatalogPublished || shop.isDemo || !isPublicShopActive(shop)) return res.status(404).json({ error: "Shop not available" });
 
-    const products = await prisma.product.findMany({
-      where: { shopId: req.params.id, isActive: true, currentStock: { gt: 0 } },
+    const search = String(req.query.search || "").trim().slice(0, 80);
+    const take = Math.min(Math.max(Number(req.query.limit) || 60, 1), 100);
+    const skip = Math.max(Number(req.query.offset) || 0, 0);
+    const productWhere = { shopId: req.params.id, isActive: true, currentStock: { gt: 0 } };
+    if (search) productWhere.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { sku: { contains: search, mode: "insensitive" } },
+      { barcode: search.toUpperCase() },
+    ];
+    const [products, total] = await Promise.all([prisma.product.findMany({
+      where: productWhere,
       select: {
         id: true,
         name: true,
@@ -167,7 +197,9 @@ router.get("/shops/:id", async (req, res, next) => {
         currentStock: true,
       },
       orderBy: { name: "asc" },
-    });
+      take,
+      skip,
+    }), prisma.product.count({ where: productWhere })]);
 
     res.json({
       shop: {
@@ -180,6 +212,7 @@ router.get("/shops/:id", async (req, res, next) => {
         productCount: shop._count.products,
       },
       products,
+      pagination: { total, limit: take, offset: skip, hasMore: skip + products.length < total },
     });
   } catch (err) {
     next(err);

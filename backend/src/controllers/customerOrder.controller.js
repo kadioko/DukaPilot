@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 
 const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK", "CREDIT"]);
 
@@ -251,6 +252,7 @@ const convertToSale = asyncHandler(async (req, res) => {
     result = { sale: existing, reused: true };
   }
 
+  if (!result.reused) await invalidateDashboardHistory(shop.id);
   req.audit = {
     action: result.reused ? "customerOrder.sale.reused" : "customerOrder.sale.convert",
     resourceType: "customerOrder",

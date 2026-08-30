@@ -117,3 +117,50 @@ test("public marketing events reject legacy names and invalid product payloads",
     assert.equal(res.statusCode, 400);
   }
 });
+
+test("public shop catalog searches and returns a bounded product page", async () => {
+  let productFindArgs;
+  mockPrisma({
+    shop: {
+      findUnique: async () => ({
+        id: "shop-1",
+        name: "Duka la Amina",
+        location: "Mwanza",
+        district: "Ilemela",
+        category: "RETAIL",
+        plan: "PRO",
+        subscriptionEndsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        isActive: true,
+        isCatalogPublished: true,
+        isDemo: false,
+        user: { phone: "+255700000001" },
+        _count: { products: 101 },
+      }),
+    },
+    product: {
+      findMany: async (args) => {
+        productFindArgs = args;
+        return [{ id: "product-1", name: "Rice", sellingPrice: 3000, currentStock: 12 }];
+      },
+      count: async () => 101,
+    },
+  });
+  delete require.cache[publicRoutesPath];
+  const router = require(publicRoutesPath);
+  const catalogLayer = router.stack.find((layer) => layer.route?.path === "/shops/:id" && layer.route.methods.get);
+  const handler = catalogLayer.route.stack.at(-1).handle;
+  const res = response();
+
+  await handler({ params: { id: "shop-1" }, query: { search: "rice", limit: "500", offset: "2" } }, res, (error) => { throw error; });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(productFindArgs.take, 100);
+  assert.equal(productFindArgs.skip, 2);
+  assert.equal(productFindArgs.where.shopId, "shop-1");
+  assert.deepEqual(productFindArgs.where.OR, [
+    { name: { contains: "rice", mode: "insensitive" } },
+    { sku: { contains: "rice", mode: "insensitive" } },
+    { barcode: "RICE" },
+  ]);
+  assert.deepEqual(res.payload.pagination, { total: 101, limit: 100, offset: 2, hasMore: true });
+});
