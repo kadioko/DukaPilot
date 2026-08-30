@@ -76,7 +76,16 @@ export function captureReferralCode(): string | null {
 
   const saved = clean(window.localStorage.getItem(REFERRAL_CODE_KEY))?.toUpperCase() || null;
   const capturedAt = Number(window.localStorage.getItem(REFERRAL_CAPTURED_AT_KEY) || 0);
-  if (!saved || !/^DP-[A-Z0-9-]{8,80}$/.test(saved) || !capturedAt || Date.now() - capturedAt > REFERRAL_TTL_MS) {
+  if (!saved || !/^DP-[A-Z0-9-]{8,80}$/.test(saved)) {
+    clearReferralCode();
+    return null;
+  }
+  // Preserve a valid referral captured just before this timestamp was added.
+  if (!capturedAt) {
+    window.localStorage.setItem(REFERRAL_CAPTURED_AT_KEY, String(Date.now()));
+    return saved;
+  }
+  if (Date.now() - capturedAt > REFERRAL_TTL_MS) {
     clearReferralCode();
     return null;
   }

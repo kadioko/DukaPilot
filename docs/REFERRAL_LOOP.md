@@ -24,6 +24,8 @@ Launch offer:
 
 Each merchant's referral page has a unique link that opens the registration form directly. When a new merchant completes registration through it, DukaPilot records the referrer and the new shop automatically. The invite is retained in the browser for up to 30 days, and successful registrations record the referrer in the audit trail.
 
+The registration, shop creation, and referral record are one database transaction. A partial failure rolls all of them back rather than creating a merchant account without its referral. Referral histories are paginated in both the merchant and Admin views, so older valid referrals remain accessible as the list grows.
+
 ## Merchant Share Message
 
 Swahili:

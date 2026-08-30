@@ -26,7 +26,8 @@ function response() {
 test("merchant registration records the shop that supplied a valid referral link", async () => {
   process.env.JWT_SECRET = "referral-test-secret";
   let createdShop;
-  mockPrisma({
+  let transactionCalls = 0;
+  const prismaMock = {
     user: {
       findUnique: async ({ where }) => where.phone ? null : {
         id: "merchant-2",
@@ -43,7 +44,12 @@ test("merchant registration records the shop that supplied a valid referral link
       findUnique: async ({ where }) => where.referralCode === "DP-S-REFERRER" ? { id: "shop-referrer", referralCode: "DP-S-REFERRER" } : null,
       create: async ({ data }) => { createdShop = data; return { id: "shop-2", ...data }; },
     },
-  });
+  };
+  prismaMock.$transaction = async (work) => {
+    transactionCalls += 1;
+    return work(prismaMock);
+  };
+  mockPrisma(prismaMock);
   delete require.cache[authPath];
   const { register } = require(authPath);
   const res = response();
@@ -51,6 +57,7 @@ test("merchant registration records the shop that supplied a valid referral link
   await register({ body: { phone: "+255700000010", pin: "1234", name: "Referred owner", role: "MERCHANT", referralCode: "dp-s-referrer" } }, res, (error) => { throw error; });
 
   assert.equal(res.statusCode, 201);
+  assert.equal(transactionCalls, 1);
   assert.equal(createdShop.referralCode, "DP-U-MERCHANT-2");
   assert.deepEqual(createdShop.referralReceived, {
     create: { referrerShopId: "shop-referrer", referralCode: "DP-S-REFERRER" },
@@ -142,7 +149,11 @@ test("shop owners can read only their own referral link and progress", async () 
     shop: {
       findUnique: async ({ where }) => where.userId
         ? { id: "shop-owner" }
-        : { id: "shop-owner", referralCode: "DP-S-SHOP-OWNER", referralsMade: [] },
+        : { id: "shop-owner", referralCode: "DP-S-SHOP-OWNER" },
+    },
+    shopReferral: {
+      count: async () => 0,
+      findMany: async () => [],
     },
   });
   delete require.cache[shopAccessPath];

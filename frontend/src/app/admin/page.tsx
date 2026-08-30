@@ -196,6 +196,11 @@ interface AdminReferral {
   };
 }
 
+interface AdminReferralListResponse {
+  referrals: AdminReferral[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
 interface AdminMetric {
   label: string;
   value: number;
@@ -385,6 +390,9 @@ export default function AdminPage() {
   const [subscriptionTotalPages, setSubscriptionTotalPages] = useState(1);
   const [subscriptionStatusCounts, setSubscriptionStatusCounts] = useState<SubscriptionListResponse["statusCounts"]>({ trial: 0, active: 0, expired: 0, suspended: 0 });
   const [referrals, setReferrals] = useState<AdminReferral[]>([]);
+  const [referralPage, setReferralPage] = useState(1);
+  const [referralTotal, setReferralTotal] = useState(0);
+  const [referralTotalPages, setReferralTotalPages] = useState(1);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [syncSummaries, setSyncSummaries] = useState<SyncShopSummary[]>([]);
   const [syncEvents, setSyncEvents] = useState<AdminSyncEvent[]>([]);
@@ -431,7 +439,7 @@ export default function AdminPage() {
       optionalAdminLoad("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }),
       optionalAdminLoad("reports", api.get<{ reports: Report[] }>("/reports/admin?limit=200"), { reports: [] }),
       optionalAdminLoad<SubscriptionListResponse>("subscriptions", api.get<SubscriptionListResponse>("/subscription/admin?page=1&limit=24"), { shops: [], total: 0, page: 1, limit: 24, totalPages: 1, statusCounts: { trial: 0, active: 0, expired: 0, suspended: 0 } }),
-      optionalAdminLoad("referrals", api.get<{ referrals: AdminReferral[] }>("/admin/referrals"), { referrals: [] }),
+      optionalAdminLoad<AdminReferralListResponse>("referrals", api.get<AdminReferralListResponse>("/admin/referrals?page=1&limit=25"), { referrals: [], pagination: { page: 1, limit: 25, total: 0, totalPages: 1 } }),
       optionalAdminLoad("suppliers", api.get<{ suppliers: Supplier[] }>("/suppliers"), { suppliers: [] }),
       optionalAdminLoad("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }),
       optionalAdminLoad("sync events", api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"), { events: [], devices: [] }),
@@ -451,6 +459,9 @@ export default function AdminPage() {
         setSubscriptionTotalPages(sub.totalPages);
         setSubscriptionStatusCounts(sub.statusCounts);
         setReferrals(referralData.referrals);
+        setReferralPage(referralData.pagination.page);
+        setReferralTotal(referralData.pagination.total);
+        setReferralTotalPages(referralData.pagination.totalPages);
         setSuppliers(supplierData.suppliers);
         setSyncSummaries(syncData.shops);
         setSyncEvents(syncEventsData.events);
@@ -601,9 +612,12 @@ export default function AdminPage() {
     refreshSubscriptions({ page: 1 }).catch(console.error);
   }
 
-  async function refreshReferrals() {
-    const data = await api.get<{ referrals: AdminReferral[] }>("/admin/referrals");
+  async function refreshReferrals(page = referralPage) {
+    const data = await api.get<AdminReferralListResponse>(`/admin/referrals?page=${page}&limit=25`);
     setReferrals(data.referrals);
+    setReferralPage(data.pagination.page);
+    setReferralTotal(data.pagination.total);
+    setReferralTotalPages(data.pagination.totalPages);
   }
 
   async function handleRewardReferral(referral: AdminReferral) {
@@ -1793,9 +1807,9 @@ export default function AdminPage() {
                 </button>
               </div>
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-                <span className="rounded-full bg-white px-2.5 py-1 text-gray-700">{referrals.length} tracked</span>
-                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{qualifiedReferrals} ready to reward</span>
-                <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-800">{referrals.filter((referral) => referral.status === "REWARDED").length} rewarded</span>
+                <span className="rounded-full bg-white px-2.5 py-1 text-gray-700">{referralTotal} tracked</span>
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{qualifiedReferrals} ready on this page</span>
+                <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-800">{referrals.filter((referral) => referral.status === "REWARDED").length} rewarded on this page</span>
               </div>
             </section>
 
@@ -1879,6 +1893,15 @@ export default function AdminPage() {
                     </article>
                   );
                 })}
+                {referralTotalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3 text-xs">
+                    <p className="text-gray-500">Page {referralPage} of {referralTotalPages}</p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => refreshReferrals(referralPage - 1).catch(console.error)} disabled={referralPage <= 1} className="rounded-lg border border-gray-200 px-3 py-2 font-semibold text-gray-700 disabled:opacity-40">Previous</button>
+                      <button type="button" onClick={() => refreshReferrals(referralPage + 1).catch(console.error)} disabled={referralPage >= referralTotalPages} className="rounded-lg border border-gray-200 px-3 py-2 font-semibold text-gray-700 disabled:opacity-40">Next</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -22,6 +22,16 @@ function normalizeReferralCode(value) {
   return /^DP-[A-Z0-9-]{8,80}$/.test(code) ? code : "";
 }
 
+function paginationParams(query = {}) {
+  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit, 10) || 25));
+  return { page, limit, skip: (page - 1) * limit };
+}
+
+function paginationResponse({ page, limit }, total) {
+  return { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) };
+}
+
 async function completeSaleCounts(client, shopIds) {
   if (!shopIds.length) return new Map();
   const rows = await client.sale.groupBy({
@@ -52,28 +62,31 @@ const getMyReferrals = asyncHandler(async (req, res) => {
   if (req.user.staffId) return res.status(403).json({ error: "Only the shop owner can view referral rewards" });
 
   const shopId = await getShopIdForUser(req.user);
+  const pagination = paginationParams(req.query);
   const shop = await prisma.shop.findUnique({
     where: { id: shopId },
-    select: {
-      id: true,
-      referralCode: true,
-      referralsMade: {
-        include: {
-          referredShop: { select: { id: true, name: true, createdAt: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      },
-    },
+    select: { id: true, referralCode: true },
   });
   if (!shop) return res.status(404).json({ error: "Shop not found" });
 
-  const { saleCounts, newlyQualifiedIds } = await qualifyPendingReferrals(prisma, shop.referralsMade);
+  const where = { referrerShopId: shop.id };
+  const [total, referrals] = await Promise.all([
+    prisma.shopReferral.count({ where }),
+    prisma.shopReferral.findMany({
+      where,
+      include: { referredShop: { select: { id: true, name: true, createdAt: true } } },
+      orderBy: { createdAt: "desc" },
+      skip: pagination.skip,
+      take: pagination.limit,
+    }),
+  ]);
+  const { saleCounts, newlyQualifiedIds } = await qualifyPendingReferrals(prisma, referrals);
   res.json({
     referralCode: shop.referralCode,
     salesRequired: SALES_REQUIRED,
     rewardDays: REWARD_DAYS,
-    referrals: shop.referralsMade.map((referral) => {
+    pagination: paginationResponse(pagination, total),
+    referrals: referrals.map((referral) => {
       const salesCount = saleCounts.get(referral.referredShopId) || 0;
       const status = newlyQualifiedIds.includes(referral.id) ? "QUALIFIED" : referral.status;
       return {
@@ -96,21 +109,28 @@ const adminListReferrals = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Invalid referral status" });
   }
 
-  const referrals = await prisma.shopReferral.findMany({
-    where: status === "ALL" ? undefined : { status },
+  const pagination = paginationParams(req.query);
+  const where = status === "ALL" ? {} : { status };
+  const [total, referrals] = await Promise.all([
+    prisma.shopReferral.count({ where }),
+    prisma.shopReferral.findMany({
+    where,
     include: {
       referrerShop: { select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, user: { select: { name: true, phone: true } } } },
       referredShop: { select: { id: true, name: true, createdAt: true, user: { select: { name: true, phone: true } } } },
     },
     orderBy: { createdAt: "desc" },
-    take: 300,
-  });
+    skip: pagination.skip,
+    take: pagination.limit,
+    }),
+  ]);
 
   const { saleCounts, newlyQualifiedIds } = await qualifyPendingReferrals(prisma, referrals);
 
   res.json({
     salesRequired: SALES_REQUIRED,
     rewardDays: REWARD_DAYS,
+    pagination: paginationResponse(pagination, total),
     referrals: referrals.map((referral) => {
       const salesCount = saleCounts.get(referral.referredShopId) || 0;
       const statusValue = newlyQualifiedIds.includes(referral.id) ? "QUALIFIED" : referral.status;

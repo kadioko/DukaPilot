@@ -21,6 +21,7 @@ type ReferralData = {
   salesRequired: number;
   rewardDays: number;
   referrals: Referral[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
 };
 
 function formatDate(value?: string | null) {
@@ -33,11 +34,13 @@ export default function ReferralsPage() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
-  async function load() {
+  async function load(nextPage = page) {
     setError("");
     try {
-      setData(await api.get<ReferralData>("/referrals/mine", lang));
+      setData(await api.get<ReferralData>(`/referrals/mine?page=${nextPage}&limit=25`, lang));
+      setPage(nextPage);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load referral rewards");
     } finally {
@@ -45,7 +48,7 @@ export default function ReferralsPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(1); }, []);
 
   const referralUrl = data?.referralCode ? `https://www.dukapilot.com/register?ref=${encodeURIComponent(data.referralCode)}` : "";
   const message = useMemo(() => {
@@ -91,7 +94,7 @@ export default function ReferralsPage() {
                 </p>
               </div>
             </div>
-            <button onClick={load} className="inline-flex items-center justify-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/25">
+            <button onClick={() => load(page)} className="inline-flex items-center justify-center gap-1 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/25">
               <RefreshCw className="h-3.5 w-3.5" /> {lang === "sw" ? "Sasisha" : "Refresh"}
             </button>
           </div>
@@ -122,7 +125,7 @@ export default function ReferralsPage() {
         )}
 
         <section className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-xs font-semibold text-gray-500">{lang === "sw" ? "Zilizofuatiliwa" : "Tracked"}</p><p className="mt-1 text-2xl font-bold text-gray-950">{referrals.length}</p></div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-xs font-semibold text-gray-500">{lang === "sw" ? "Zilizofuatiliwa" : "Tracked"}</p><p className="mt-1 text-2xl font-bold text-gray-950">{data?.pagination.total || 0}</p></div>
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold text-amber-800">{lang === "sw" ? "Tayari kwa zawadi" : "Ready for reward"}</p><p className="mt-1 text-2xl font-bold text-amber-950">{qualified}</p></div>
           <div className="rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-semibold text-green-800">{lang === "sw" ? "Zawadi zilizotolewa" : "Rewards granted"}</p><p className="mt-1 text-2xl font-bold text-green-950">{rewarded}</p></div>
         </section>
@@ -139,6 +142,15 @@ export default function ReferralsPage() {
                   <div className="text-left sm:text-right"><p className="text-sm font-semibold text-gray-800">{referral.salesCount}/{data?.salesRequired || 10} {lang === "sw" ? "mauzo" : "sales"}</p><p className={`mt-1 text-xs font-semibold ${referral.status === "REWARDED" ? "text-green-700" : referral.status === "QUALIFIED" ? "text-amber-700" : "text-gray-500"}`}>{referral.status === "REWARDED" ? (lang === "sw" ? `Wiki ${data?.rewardDays || 7} imeongezwa` : `${data?.rewardDays || 7} days added`) : referral.status === "QUALIFIED" ? (lang === "sw" ? "Admin anathibitisha zawadi" : "Admin is confirming reward") : referral.status === "REJECTED" ? (lang === "sw" ? "Haikustahili" : "Not eligible") : (lang === "sw" ? `${referral.salesRemaining} mauzo yamebaki` : `${referral.salesRemaining} sales remaining`)}</p></div>
                 </div>
               ))}
+              {(data?.pagination.totalPages || 1) > 1 && (
+                <div className="flex items-center justify-between gap-3 border-t border-gray-100 p-4 text-sm">
+                  <p className="text-gray-500">{lang === "sw" ? `Ukurasa ${data?.pagination.page} kati ya ${data?.pagination.totalPages}` : `Page ${data?.pagination.page} of ${data?.pagination.totalPages}`}</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => load(page - 1)} disabled={page <= 1} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-40">{lang === "sw" ? "Nyuma" : "Previous"}</button>
+                    <button type="button" onClick={() => load(page + 1)} disabled={page >= (data?.pagination.totalPages || 1)} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-40">{lang === "sw" ? "Mbele" : "Next"}</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

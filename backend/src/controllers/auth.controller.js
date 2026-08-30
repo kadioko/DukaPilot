@@ -54,6 +54,12 @@ function findByPhone(model, rawPhone) {
   return model.findUnique({ where: { phone } });
 }
 
+// Registration creates a user plus a tenant-owned record. Keep those writes
+// together so a failed nested shop/referral write cannot leave an orphaned user.
+function withTransaction(work) {
+  return typeof prisma.$transaction === "function" ? prisma.$transaction(work) : work(prisma);
+}
+
 function getCookieOptions(maxAge) {
   const secure = process.env.NODE_ENV === "production";
   return {
@@ -207,61 +213,65 @@ const register = asyncHandler(async (req, res) => {
 
   const hashedPin = await bcrypt.hash(pin, 10);
 
-  let referrerShop = null;
-  if (role === "MERCHANT" && referralCode) {
-    referrerShop = await prisma.shop.findUnique({
-      where: { referralCode },
-      select: { id: true, referralCode: true },
-    });
-    if (!referrerShop) {
-      return res.status(400).json({ error: "This referral link is no longer valid. Ask your friend to share it again." });
+  const { user, referrerShop } = await withTransaction(async (tx) => {
+    let resolvedReferrer = null;
+    if (role === "MERCHANT" && referralCode) {
+      resolvedReferrer = await tx.shop.findUnique({
+        where: { referralCode },
+        select: { id: true, referralCode: true },
+      });
+      if (!resolvedReferrer) {
+        throw Object.assign(new Error("This referral link is no longer valid. Ask your friend to share it again."), { status: 400 });
+      }
     }
-  }
 
-  const user = await prisma.user.create({
-    data: {
-      phone,
-      pin: hashedPin,
-      name,
-      role,
-    },
-  });
-
-  if (role === "MERCHANT") {
-    const trialEndsAt = new Date();
-    trialEndsAt.setDate(trialEndsAt.getDate() + 14);
-
-    await prisma.shop.create({
+    const createdUser = await tx.user.create({
       data: {
-        name: shopName || `${name}'s Duka`,
-        location: shopLocation || "Dar es Salaam",
-        district: shopDistrict || null,
-        category: shopCategory || "general",
-        trialEndsAt,
-        userId: user.id,
-        referralCode: `DP-U-${user.id.toUpperCase()}`,
-        ...attribution,
-        ...(referrerShop ? {
-          referralReceived: {
-            create: {
-              referrerShopId: referrerShop.id,
-              referralCode: referrerShop.referralCode,
-            },
-          },
-        } : {}),
-      },
-    });
-  }
-
-  if (role === "SUPPLIER") {
-    await prisma.supplier.create({
-      data: {
-        name,
         phone,
-        userId: user.id,
+        pin: hashedPin,
+        name,
+        role,
       },
     });
-  }
+
+    if (role === "MERCHANT") {
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + 14);
+
+      await tx.shop.create({
+        data: {
+          name: shopName || `${name}'s Duka`,
+          location: shopLocation || "Dar es Salaam",
+          district: shopDistrict || null,
+          category: shopCategory || "general",
+          trialEndsAt,
+          userId: createdUser.id,
+          referralCode: `DP-U-${createdUser.id.toUpperCase()}`,
+          ...attribution,
+          ...(resolvedReferrer ? {
+            referralReceived: {
+              create: {
+                referrerShopId: resolvedReferrer.id,
+                referralCode: resolvedReferrer.referralCode,
+              },
+            },
+          } : {}),
+        },
+      });
+    }
+
+    if (role === "SUPPLIER") {
+      await tx.supplier.create({
+        data: {
+          name,
+          phone,
+          userId: createdUser.id,
+        },
+      });
+    }
+
+    return { user: createdUser, referrerShop: resolvedReferrer };
+  });
 
   const accessToken = issueAccessToken(user);
   const refreshToken = issueRefreshToken(user);

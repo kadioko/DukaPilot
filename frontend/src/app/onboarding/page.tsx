@@ -86,7 +86,7 @@ export default function OnboardingPage() {
   }
 
   const completeCount = steps.filter((step) => done[step.href]).length;
-  const referralUrl = referralCode ? `https://www.dukapilot.com/?ref=${encodeURIComponent(referralCode)}` : "";
+  const referralUrl = referralCode ? `https://www.dukapilot.com/register?ref=${encodeURIComponent(referralCode)}` : "";
   const referralText = encodeURIComponent(
     lang === "sw"
       ? `Nimeanza kutumia DukaPilot kufuatilia stock, mauzo na madeni ya duka. Kama una duka, jiunge kupitia link yangu: ${referralUrl}. Ukirekodi mauzo 10, nitapata wiki 1 bure.`
