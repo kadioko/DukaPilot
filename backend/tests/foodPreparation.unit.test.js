@@ -46,3 +46,27 @@ test("estimated grocery allocation preserves every TZS and marks unknown costs a
   assert.equal(items.reduce((sum, item) => sum + item.allocatedAdditionalCost, 0), 10000);
   assert.equal(items.reduce((sum, item) => sum + item.landedTotalCost, 0), 230000);
 });
+
+test("food preparation keeps product and batch costs private for staff without reports access", () => {
+  const { redactRecipe, redactBatch } = loadController();
+  const staffRequest = { user: { role: "MERCHANT", staffId: "staff-1", permissions: { canViewReports: false } } };
+  const recipe = redactRecipe({
+    outputProduct: { id: "half-chicken", buyingPrice: 12000 },
+    items: [{ product: { id: "chicken", buyingPrice: 18000 } }],
+  }, staffRequest);
+  const batch = redactBatch({
+    ingredientCost: 180000,
+    additionalCost: 12000,
+    totalCost: 192000,
+    unitCost: 10667,
+    items: [{ unitCost: 18000, totalCost: 180000 }],
+  }, staffRequest);
+
+  assert.equal(recipe.outputProduct.buyingPrice, null);
+  assert.equal(recipe.items[0].product.buyingPrice, null);
+  assert.equal(batch.ingredientCost, null);
+  assert.equal(batch.additionalCost, null);
+  assert.equal(batch.totalCost, null);
+  assert.equal(batch.unitCost, null);
+  assert.equal(batch.items[0].totalCost, null);
+});

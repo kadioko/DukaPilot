@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { findOpenCashSession } = require("../lib/cashSession");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -124,7 +125,7 @@ const receive = asyncHandler(async (req, res) => {
   const receipt = await prisma.$transaction(async (tx) => {
     let receiptSupplierId = supplierId;
     if (supplierId) {
-      const supplier = await tx.supplier.findUnique({ where: { id: supplierId }, select: { id: true } });
+      const supplier = await tx.supplier.findFirst({ where: { id: supplierId, shopId }, select: { id: true } });
       if (!supplier) throw Object.assign(new Error("Supplier not found"), { status: 404 });
     }
     if (sourceOrderId) {
@@ -148,6 +149,7 @@ const receive = asyncHandler(async (req, res) => {
       : distributeLandedCost(items, transportCost, otherCost);
     const totalProductCost = allocatedItems.reduce((sum, item) => sum + item.productCost, 0);
     const totalLandedCost = totalProductCost + transportCost + otherCost;
+    const cashSession = paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     const created = await tx.stockReceipt.create({
       data: {
         shopId,
@@ -164,6 +166,7 @@ const receive = asyncHandler(async (req, res) => {
         note,
         receivedAt,
         receivedBy: req.user.staffId || req.user.userId,
+        cashSessionId: cashSession?.id || null,
       },
     });
 
@@ -189,7 +192,7 @@ const receive = asyncHandler(async (req, res) => {
     });
   });
 
-  req.audit = { action: "stock_receipt.create", resourceType: "stock_receipt", resourceId: receipt.id, metadata: { supplierId: receipt.supplierId, sourceOrderId, totalLandedCost: receipt.totalLandedCost, itemCount: receipt.items.length } };
+  req.audit = { action: "stock_receipt.create", resourceType: "stock_receipt", resourceId: receipt.id, metadata: { supplierId: receipt.supplierId, sourceOrderId, paymentMethod, cashSessionId: receipt.cashSessionId || null, totalLandedCost: receipt.totalLandedCost, itemCount: receipt.items.length } };
   res.status(201).json({ receipt });
 });
 

@@ -34,7 +34,7 @@ async function actorName(user) {
 }
 
 async function summarizeSession(tx, session) {
-  const [sales, debtPayments, quotationPayments, quotationRefunds, expenses] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, quotationRefunds, expenses, stockReceipts, foodPreparation] = await Promise.all([
     tx.sale.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", status: "COMPLETED" }, _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment?.aggregate
@@ -44,22 +44,34 @@ async function summarizeSession(tx, session) {
       ? tx.quotationPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", debtPaymentId: null, kind: "REFUND" }, _sum: { amount: true }, _count: { id: true } })
       : Promise.resolve({ _sum: { amount: 0 }, _count: { id: 0 } }),
     tx.expense.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
+    tx.stockReceipt?.aggregate
+      ? tx.stockReceipt.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { totalLandedCost: true }, _count: { id: true } })
+      : Promise.resolve({ _sum: { totalLandedCost: 0 }, _count: { id: 0 } }),
+    tx.foodPreparationBatch?.aggregate
+      ? tx.foodPreparationBatch.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { additionalCost: true }, _count: { id: true } })
+      : Promise.resolve({ _sum: { additionalCost: 0 }, _count: { id: 0 } }),
   ]);
   const cashSales = sales._sum.totalAmount || 0;
   const debtCollections = debtPayments._sum.amount || 0;
   const quotationCash = (quotationPayments._sum.amount || 0) - (quotationRefunds._sum.amount || 0);
   const quotationPaymentCount = (quotationPayments._count.id || 0) + (quotationRefunds._count.id || 0);
   const cashExpenses = expenses._sum.amount || 0;
+  const inventoryCashOut = stockReceipts._sum.totalLandedCost || 0;
+  const cookingCashOut = foodPreparation._sum.additionalCost || 0;
   return {
     cashSales,
     debtCollections,
     quotationCash,
     cashExpenses,
+    inventoryCashOut,
+    cookingCashOut,
     saleCount: sales._count.id,
     debtPaymentCount: debtPayments._count.id,
     quotationPaymentCount,
     expenseCount: expenses._count.id,
-    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashExpenses,
+    stockReceiptCount: stockReceipts._count.id,
+    cookingCostCount: foodPreparation._count.id,
+    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashExpenses - inventoryCashOut - cookingCashOut,
   };
 }
 
@@ -69,13 +81,19 @@ async function decorateSessions(tx, sessions) {
 
   // The daily-close history used to run five aggregates for every session.
   // Group the same facts once per table, then attach them to the sessions.
-  const [sales, debtPayments, quotationPayments, expenses] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, expenses, stockReceipts, foodPreparation] = await Promise.all([
     tx.sale.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", status: "COMPLETED" }, _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment.groupBy({ by: ["cashSessionId", "kind"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", debtPaymentId: null, kind: { in: ["PAYMENT", "REFUND"] } }, _sum: { amount: true }, _count: { id: true } }),
     tx.expense.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
+    tx.stockReceipt?.groupBy
+      ? tx.stockReceipt.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { totalLandedCost: true }, _count: { id: true } })
+      : Promise.resolve([]),
+    tx.foodPreparationBatch?.groupBy
+      ? tx.foodPreparationBatch.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { additionalCost: true }, _count: { id: true } })
+      : Promise.resolve([]),
   ]);
-  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashExpenses: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0 }]));
+  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashExpenses: 0, inventoryCashOut: 0, cookingCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, cookingCostCount: 0 }]));
   for (const row of sales) {
     const summary = bySession.get(row.cashSessionId);
     if (summary) { summary.cashSales = row._sum.totalAmount || 0; summary.saleCount = row._count.id; }
@@ -95,9 +113,17 @@ async function decorateSessions(tx, sessions) {
     const summary = bySession.get(row.cashSessionId);
     if (summary) { summary.cashExpenses = row._sum.amount || 0; summary.expenseCount = row._count.id; }
   }
+  for (const row of stockReceipts) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.inventoryCashOut = row._sum.totalLandedCost || 0; summary.stockReceiptCount = row._count.id; }
+  }
+  for (const row of foodPreparation) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.cookingCashOut = row._sum.additionalCost || 0; summary.cookingCostCount = row._count.id; }
+  }
   return sessions.map((session) => {
     const summary = bySession.get(session.id);
-    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashExpenses } };
+    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashExpenses - summary.inventoryCashOut - summary.cookingCashOut } };
   });
 }
 

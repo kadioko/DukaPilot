@@ -1,5 +1,33 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { findOpenCashSession } = require("../lib/cashSession");
+
+const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
+
+function canViewFinancials(req) {
+  return req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canViewReports;
+}
+
+function redactRecipe(recipe, req) {
+  if (canViewFinancials(req)) return recipe;
+  return {
+    ...recipe,
+    outputProduct: { ...recipe.outputProduct, buyingPrice: null },
+    items: recipe.items.map((item) => ({ ...item, product: { ...item.product, buyingPrice: null } })),
+  };
+}
+
+function redactBatch(batch, req) {
+  if (canViewFinancials(req)) return batch;
+  return {
+    ...batch,
+    ingredientCost: null,
+    additionalCost: null,
+    totalCost: null,
+    unitCost: null,
+    items: batch.items.map((item) => ({ ...item, unitCost: null, totalCost: null })),
+  };
+}
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -57,7 +85,7 @@ const list = asyncHandler(async (req, res) => {
     }),
     prisma.foodPreparationBatch.count({ where: { shopId } }),
   ]);
-  res.json({ batches, page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) });
+  res.json({ batches: batches.map((batch) => redactBatch(batch, req)), page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) });
 });
 
 const listRecipes = asyncHandler(async (req, res) => {
@@ -65,13 +93,13 @@ const listRecipes = asyncHandler(async (req, res) => {
   const recipes = await prisma.foodRecipe.findMany({
     where: { shopId, isActive: true },
     include: {
-      outputProduct: { select: { id: true, name: true, unit: true } },
-      items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+      outputProduct: { select: { id: true, name: true, unit: true, currentStock: true, buyingPrice: true } },
+      items: { include: { product: { select: { id: true, name: true, unit: true, currentStock: true, buyingPrice: true } } } },
     },
     orderBy: { updatedAt: "desc" },
     take: 100,
   });
-  res.json({ recipes });
+  res.json({ recipes: recipes.map((recipe) => redactRecipe(recipe, req)) });
 });
 
 const createRecipe = asyncHandler(async (req, res) => {
@@ -104,6 +132,7 @@ const prepare = asyncHandler(async (req, res) => {
   const actualYield = Number(req.body.actualYield);
   const requestedExpectedYield = req.body.expectedYield == null || req.body.expectedYield === "" ? null : Number(req.body.expectedYield);
   const additionalCost = Number(req.body.additionalCost || 0);
+  const paymentMethod = String(req.body.paymentMethod || "CASH").toUpperCase();
   const additionalCostNote = String(req.body.additionalCostNote || "").trim() || null;
   const note = String(req.body.note || "").trim() || null;
   const preparedAt = parseDate(req.body.preparedAt);
@@ -112,6 +141,7 @@ const prepare = asyncHandler(async (req, res) => {
   if (!outputProductId || !Number.isInteger(actualYield) || actualYield <= 0 || !Number.isInteger(additionalCost) || additionalCost < 0 || !preparedAt) {
     return res.status(400).json({ error: "Choose an output product, valid yield, preparation cost, and date" });
   }
+  if (!PAYMENT_METHODS.has(paymentMethod)) return res.status(400).json({ error: "Choose a valid payment method for the cooking cost" });
 
   const batch = await prisma.$transaction(async (tx) => {
     let ingredients = requestedItems;
@@ -139,11 +169,12 @@ const prepare = asyncHandler(async (req, res) => {
     }
     const costItems = ingredients.map((item) => ({ ...item, unitCost: productMap.get(item.productId).buyingPrice }));
     const costs = calculateBatchCosts(costItems, additionalCost, actualYield, expectedYield);
+    const cashSession = additionalCost > 0 && paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     const created = await tx.foodPreparationBatch.create({
       data: {
         shopId, recipeId, outputProductId, expectedYield, actualYield, wasteQuantity: costs.wasteQuantity,
         ingredientCost: costs.ingredientCost, additionalCost, totalCost: costs.totalCost, unitCost: costs.unitCost,
-        additionalCostNote, note, preparedAt, preparedBy: req.user.staffId || req.user.userId,
+        additionalCostNote, paymentMethod, cashSessionId: cashSession?.id || null, note, preparedAt, preparedBy: req.user.staffId || req.user.userId,
         items: { create: costItems.map((item) => ({ productId: item.productId, quantity: item.quantity, unitCost: item.unitCost, totalCost: item.quantity * item.unitCost })) },
       },
     });
@@ -158,8 +189,8 @@ const prepare = asyncHandler(async (req, res) => {
     await tx.stockMovement.create({ data: { type: "IN", quantity: actualYield, note: `Food preparation #${created.id.slice(-6)}${costs.wasteQuantity ? `; waste ${costs.wasteQuantity}` : ""}`, productId: outputProductId, foodPreparationBatchId: created.id } });
     return tx.foodPreparationBatch.findUnique({ where: { id: created.id }, include: batchInclude() });
   });
-  req.audit = { action: "food_preparation.create", resourceType: "food_preparation_batch", resourceId: batch.id, metadata: { outputProductId, actualYield: batch.actualYield, wasteQuantity: batch.wasteQuantity, totalCost: batch.totalCost } };
-  res.status(201).json({ batch });
+  req.audit = { action: "food_preparation.create", resourceType: "food_preparation_batch", resourceId: batch.id, metadata: { outputProductId, actualYield: batch.actualYield, wasteQuantity: batch.wasteQuantity, paymentMethod, cashSessionId: batch.cashSessionId || null, totalCost: batch.totalCost } };
+  res.status(201).json({ batch: redactBatch(batch, req) });
 });
 
-module.exports = { list, listRecipes, createRecipe, prepare, calculateBatchCosts };
+module.exports = { list, listRecipes, createRecipe, prepare, calculateBatchCosts, redactRecipe, redactBatch };

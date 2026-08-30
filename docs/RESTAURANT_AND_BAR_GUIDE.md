@@ -21,8 +21,8 @@ The unit is shown in stock, POS, receipts, supplier receiving, and low-stock mes
 
 1. In **Inventory**, create `Kuku mzima` with unit `kuku mzima`, and create a separate sellable item called `Kuku nusu` with unit `nusu ya kuku`.
 2. In **Receive Stock**, receive 10 `Kuku mzima` at TZS 18,000 each. Add oil, spices, charcoal, and other ingredients as their own products and receive them too.
-3. Open **Andaa Chakula**, choose `Kuku nusu` as the prepared item, then add the ingredients actually used.
-4. Set expected yield to 20 and actual yield to 18 if two portions were lost in cooking. Add direct cooking costs such as charcoal or labour where relevant.
+3. Open **Andaa Chakula**, search for `Kuku nusu` as the prepared item, then search and add the ingredients actually used. The picker searches as you type, so it remains fast for a large menu.
+4. Set expected yield to 20 and actual yield to 18 if two portions were lost in cooking. Add direct cooking costs such as charcoal or labour where relevant, and select how those direct costs were paid.
 5. Save the batch. DukaPilot deducts ingredient stock, adds 18 `Kuku nusu` to stock, records waste of 2 portions, and calculates the actual cost per half.
 6. Sell `Kuku nusu` in POS. Each sale removes one half chicken and uses the batch cost for profit reporting.
 
@@ -37,6 +37,8 @@ In **Receive Stock**, tick **I only know the total grocery bill**. Enter the tot
 ## Food purchases versus expenses
 
 Use **Receive Stock** for food and stock inputs: chicken, oil, rice, spices, vegetables, charcoal, and drinks. This establishes their buying cost and keeps a stock history. Use **Andaa Chakula** to convert the ingredients into prepared portions.
+
+For a cash grocery purchase, open the cashier's **Daily Close** shift first. A cash **Receive Stock** record reduces that shift's expected cash as an inventory purchase; a cash direct cooking cost does the same as a cooking cost. These are cash-outs, not normal expenses, so do not enter either one a second time in **Expenses**. Ingredient costs are already included in the prepared portion cost and are never deducted again when the batch is saved.
 
 Use **Expenses** for operating costs: rent, electricity, data, salaries, transport not already included in a stock receipt, and repairs.
 

@@ -1033,6 +1033,8 @@ model CashSession {
   expenses       Expense[]
   debtPayments   DebtPayment[]
   quotationPayments QuotationPayment[]
+  stockReceipts     StockReceipt[]
+  foodPreparationBatches FoodPreparationBatch[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])
@@ -1058,12 +1060,15 @@ model StockReceipt {
   supplier           Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   sourceOrderId      String?            @unique
   sourceOrder        Order?             @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  cashSessionId      String?
+  cashSession        CashSession?       @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   items              StockReceiptItem[]
   stockMovements     StockMovement[]
   createdAt          DateTime           @default(now())
 
   @@index([shopId, receivedAt])
   @@index([supplierId, receivedAt])
+  @@index([cashSessionId, paymentMethod])
   @@map("stock_receipts")
 }
 
@@ -1121,6 +1126,9 @@ model FoodPreparationBatch {
   totalCost          Int
   unitCost           Int
   additionalCostNote String?
+  paymentMethod      PaymentMethod      @default(CASH)
+  cashSessionId      String?
+  cashSession        CashSession?       @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   note               String?
   preparedAt         DateTime              @default(now())
   preparedBy         String?
@@ -1130,6 +1138,7 @@ model FoodPreparationBatch {
 
   @@index([shopId, preparedAt])
   @@index([shopId, outputProductId, preparedAt])
+  @@index([cashSessionId, paymentMethod])
   @@map("food_preparation_batches")
 }
 

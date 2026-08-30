@@ -32,10 +32,14 @@ test("cash session summary reconciles opening cash, sales, collections, and expe
     debtCollections: 20000,
     quotationCash: 30000,
     cashExpenses: 18000,
+    inventoryCashOut: 0,
+    cookingCashOut: 0,
     saleCount: 7,
     debtPaymentCount: 2,
     quotationPaymentCount: 2,
     expenseCount: 1,
+    stockReceiptCount: 0,
+    cookingCostCount: 0,
     expectedCash: 192000,
   });
 });
