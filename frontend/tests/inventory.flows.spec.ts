@@ -38,7 +38,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/*api/products/low-stock", async (route) => {
+  await page.route("**/*api/products/low-stock*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -257,7 +257,7 @@ test("inventory shows the real total and lets merchants reach later product page
       body: JSON.stringify({ user: { name: "Test Merchant", role: "MERCHANT", language: "en", shop: { name: "Test Shop" } } }),
     });
   });
-  await page.route("**/*api/products/low-stock", async (route) => {
+  await page.route("**/*api/products/low-stock*", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
   });
   await page.route("**/*api/suppliers", async (route) => {

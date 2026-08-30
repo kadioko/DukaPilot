@@ -14,6 +14,8 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
 
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: undefined });
     const nativeOpen = window.open.bind(window);
     (window as typeof window & { __openedWhatsAppUrl?: string }).open = ((url?: string | URL) => {
       const target = String(url || "");

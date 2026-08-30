@@ -126,8 +126,8 @@ export default function ReferralsPage() {
 
         <section className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-xs font-semibold text-gray-500">{lang === "sw" ? "Zilizofuatiliwa" : "Tracked"}</p><p className="mt-1 text-2xl font-bold text-gray-950">{data?.pagination.total || 0}</p></div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold text-amber-800">{lang === "sw" ? "Tayari kwa zawadi" : "Ready for reward"}</p><p className="mt-1 text-2xl font-bold text-amber-950">{qualified}</p></div>
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-semibold text-green-800">{lang === "sw" ? "Zawadi zilizotolewa" : "Rewards granted"}</p><p className="mt-1 text-2xl font-bold text-green-950">{rewarded}</p></div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-semibold text-amber-800">{lang === "sw" ? "Tayari kwa zawadi (ukurasa huu)" : "Ready for reward (this page)"}</p><p className="mt-1 text-2xl font-bold text-amber-950">{qualified}</p></div>
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-semibold text-green-800">{lang === "sw" ? "Zawadi zilizotolewa (ukurasa huu)" : "Rewards granted (this page)"}</p><p className="mt-1 text-2xl font-bold text-green-950">{rewarded}</p></div>
         </section>
 
         <section className="rounded-xl border border-gray-200 bg-white">
