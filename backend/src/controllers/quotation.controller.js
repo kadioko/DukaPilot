@@ -845,7 +845,6 @@ const convert = asyncHandler(async (req, res) => {
     const receiptNumber = counter.nextSaleNumber - 1;
     const fullPaymentMethod = PAYMENT_METHODS.has(String(req.body.paymentMethod || "").toUpperCase()) ? String(req.body.paymentMethod).toUpperCase() : (quotation.payments[0]?.paymentMethod || "CASH");
     const paymentMethod = outstanding > 0 ? "CREDIT" : fullPaymentMethod;
-    const cashSession = paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     const sale = await tx.sale.create({
       data: {
         totalAmount: quotation.totalAmount,
@@ -858,7 +857,8 @@ const convert = asyncHandler(async (req, res) => {
         quotationId: quotation.id,
         note: `Converted from quotation ${quotation.quotationNumber}`,
         receiptNumber,
-        cashSessionId: cashSession?.id || null,
+        // Conversion records the sale. Payment was already recorded on the quote.
+        cashSessionId: null,
         shopId,
         items: {
           create: quotation.items.map((item) => ({

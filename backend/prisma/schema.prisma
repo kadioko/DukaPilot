@@ -834,8 +834,10 @@ model Sale {
   customerName    String?
   customerId      String?
   customer        Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  quotationId     String?       @unique
-  quotation       Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  quotationId     String?         @unique
+  quotation       Quotation?      @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  customerOrderId String?         @unique
+  customerOrder   CustomerOrder?  @relation(fields: [customerOrderId], references: [id], onDelete: SetNull)
   note            String?
   clientReference String?
   receiptNumber   Int?
@@ -1197,6 +1199,8 @@ model CustomerOrder {
   shopId        String
   shop          Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
   items         CustomerOrderItem[]
+  convertedSale Sale?
+  convertedAt   DateTime?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
@@ -1208,6 +1212,7 @@ model CustomerOrderItem {
   id          String        @id @default(cuid())
   quantity    Int
   unitPrice   Int
+  buyingPrice Int?
   pricingTier PricingTier   @default(RETAIL)
   productId   String
   product     Product       @relation(fields: [productId], references: [id])

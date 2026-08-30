@@ -24,6 +24,23 @@ function dateBoundary(value, endExclusive = false) {
   return endExclusive ? new Date(date.getTime() + 24 * 60 * 60 * 1000) : date;
 }
 
+// Quote payments already represent collected money. This avoids counting a
+// legacy converted quote sale in the same cash session a second time.
+function cashSaleWhere(cashSessionId) {
+  return {
+    cashSessionId,
+    paymentMethod: "CASH",
+    status: "COMPLETED",
+    NOT: {
+      quotation: {
+        is: {
+          payments: { some: { kind: "PAYMENT", paymentMethod: "CASH", debtPaymentId: null } },
+        },
+      },
+    },
+  };
+}
+
 async function actorName(user) {
   if (user.staffId) {
     const staff = await prisma.staffMember.findFirst({ where: { id: user.staffId, isActive: true }, select: { name: true } });
@@ -35,7 +52,7 @@ async function actorName(user) {
 
 async function summarizeSession(tx, session) {
   const [sales, debtPayments, quotationPayments, quotationRefunds, expenses, stockReceipts, foodPreparation] = await Promise.all([
-    tx.sale.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", status: "COMPLETED" }, _sum: { totalAmount: true }, _count: { id: true } }),
+    tx.sale.aggregate({ where: cashSaleWhere(session.id), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment?.aggregate
       ? tx.quotationPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", debtPaymentId: null, kind: "PAYMENT" }, _sum: { amount: true }, _count: { id: true } })
@@ -82,7 +99,7 @@ async function decorateSessions(tx, sessions) {
   // The daily-close history used to run five aggregates for every session.
   // Group the same facts once per table, then attach them to the sessions.
   const [sales, debtPayments, quotationPayments, expenses, stockReceipts, foodPreparation] = await Promise.all([
-    tx.sale.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", status: "COMPLETED" }, _sum: { totalAmount: true }, _count: { id: true } }),
+    tx.sale.groupBy({ by: ["cashSessionId"], where: cashSaleWhere({ in: sessionIds }), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment.groupBy({ by: ["cashSessionId", "kind"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", debtPaymentId: null, kind: { in: ["PAYMENT", "REFUND"] } }, _sum: { amount: true }, _count: { id: true } }),
     tx.expense.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
@@ -216,4 +233,4 @@ const close = asyncHandler(async (req, res) => {
   res.json({ session: { ...updated, summary } });
 });
 
-module.exports = { current, history, open, close, summarizeSession };
+module.exports = { current, history, open, close, summarizeSession, cashSaleWhere };

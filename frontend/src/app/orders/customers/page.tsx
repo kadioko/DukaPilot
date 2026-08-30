@@ -22,6 +22,7 @@ interface CustomerOrder {
   totalAmount: number;
   createdAt: string;
   items: CustomerOrderItem[];
+  convertedSale?: { id: string; receiptNumber?: number | null; paymentMethod: string; createdAt: string } | null;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -44,7 +45,7 @@ const STATUS_FILTERS = [
 const NEXT_ACTION: Record<string, { status: string; labelKey: string; color: string } | null> = {
   PENDING: { status: "CONFIRMED", labelKey: "customerOrders.confirm", color: "bg-blue-600 hover:bg-blue-700" },
   CONFIRMED: { status: "OUT_FOR_DELIVERY", labelKey: "customerOrders.dispatch", color: "bg-purple-600 hover:bg-purple-700" },
-  OUT_FOR_DELIVERY: { status: "DELIVERED", labelKey: "customerOrders.deliver", color: "bg-green-600 hover:bg-green-700" },
+  OUT_FOR_DELIVERY: null,
   DELIVERED: null,
   CANCELLED: null,
 };
@@ -57,6 +58,8 @@ export default function CustomerOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<Record<string, string>>({});
+  const [paymentRefs, setPaymentRefs] = useState<Record<string, string>>({});
 
   const fetchOrders = useCallback(() => {
     setLoading(true);
@@ -86,6 +89,22 @@ export default function CustomerOrdersPage() {
     setUpdating(orderId);
     try {
       await api.patch(`/customer-orders/${orderId}/status`, { status: newStatus });
+      fetchOrders();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : t("common.error", lang), "error");
+    } finally {
+      setUpdating(null);
+    }
+  }
+
+  async function convertToSale(orderId: string) {
+    setUpdating(orderId);
+    try {
+      const result = await api.post<{ reused?: boolean }>(`/customer-orders/${orderId}/convert`, {
+        paymentMethod: paymentMethods[orderId] || "CASH",
+        paymentRef: paymentRefs[orderId] || undefined,
+      });
+      toast(result.reused ? (lang === "sw" ? "Mauzo haya yalikuwa tayari yamehifadhiwa" : "This sale was already recorded") : t("customerOrders.saleRecorded", lang), "success");
       fetchOrders();
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : t("common.error", lang), "error");
@@ -207,6 +226,43 @@ export default function CustomerOrdersPage() {
                       {order.status === "PENDING" && (
                         <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 mb-3">
                           {t("customerOrders.stockWarning", lang)}
+                        </p>
+                      )}
+
+                      {(order.status === "OUT_FOR_DELIVERY" || (order.status === "DELIVERED" && !order.convertedSale)) && (
+                        <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                          <select
+                            aria-label={t("customerOrders.paymentMethod", lang)}
+                            value={paymentMethods[order.id] || "CASH"}
+                            onChange={(event) => setPaymentMethods((current) => ({ ...current, [order.id]: event.target.value }))}
+                            className="min-w-0 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700"
+                          >
+                            <option value="CASH">{lang === "sw" ? "Fedha taslimu" : "Cash"}</option>
+                            <option value="MPESA">M-Pesa</option>
+                            <option value="TIGOPESA">Tigo Pesa</option>
+                            <option value="AIRTEL_MONEY">Airtel Money</option>
+                            <option value="BANK">{lang === "sw" ? "Benki" : "Bank"}</option>
+                            <option value="CREDIT">{lang === "sw" ? "Deni" : "Credit"}</option>
+                          </select>
+                          <input
+                            aria-label={t("customerOrders.paymentRef", lang)}
+                            value={paymentRefs[order.id] || ""}
+                            onChange={(event) => setPaymentRefs((current) => ({ ...current, [order.id]: event.target.value }))}
+                            placeholder={t("customerOrders.paymentRef", lang)}
+                            className="min-w-0 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs"
+                          />
+                          <button
+                            onClick={() => convertToSale(order.id)}
+                            disabled={updating === order.id}
+                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                          >
+                            {updating === order.id ? "..." : t("customerOrders.completeSale", lang)}
+                          </button>
+                        </div>
+                      )}
+                      {order.convertedSale?.receiptNumber && (
+                        <p className="mb-3 text-xs text-green-700">
+                          {lang === "sw" ? "Mauzo yamehifadhiwa kwenye risiti" : "Sale recorded as receipt"} #{String(order.convertedSale.receiptNumber).padStart(6, "0")}
                         </p>
                       )}
 

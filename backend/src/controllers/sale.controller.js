@@ -30,6 +30,8 @@ const VALID_CHANNELS = ['POS', 'ONLINE'];
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const { from, to, limit = 50, offset = 0, paymentMethod, channel } = req.query;
+  const pageSize = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const pageOffset = Math.max(Number(offset) || 0, 0);
 
   const where = { shopId };
   if (from || to) {
@@ -55,13 +57,13 @@ const list = asyncHandler(async (req, res) => {
         },
       },
       orderBy: { createdAt: "desc" },
-      take: Number(limit),
-      skip: Number(offset),
+      take: pageSize,
+      skip: pageOffset,
     }),
     prisma.sale.count({ where }),
   ]);
 
-  res.json({ sales: sales.map((sale) => redactSale(sale, req)), total });
+  res.json({ sales: sales.map((sale) => redactSale(sale, req)), total, limit: pageSize, offset: pageOffset });
 });
 
 const create = asyncHandler(async (req, res) => {

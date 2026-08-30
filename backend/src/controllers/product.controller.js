@@ -3,6 +3,7 @@ const { parse } = require("csv-parse/sync");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { inferBarcodeType, validateBarcode, nextInternalBarcode } = require("../lib/barcode");
 const { getRequestLanguage } = require("../lib/requestLanguage");
+const { findVisibleSupplier } = require("../lib/supplierAccess");
 
 const PRODUCT_IMPORT_MAX_ROWS = 200;
 const PRODUCT_IMPORT_MAX_BYTES = 500_000;
@@ -265,6 +266,10 @@ const create = asyncHandler(async (req, res) => {
     const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeGenerationEnabled: true } });
     if (shop?.barcodeGenerationEnabled === false) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
   }
+  if (supplierId) {
+    const supplier = await findVisibleSupplier(prisma, String(supplierId), shopId, { select: { id: true } });
+    if (!supplier) return res.status(400).json({ error: "Supplier not found in this shop" });
+  }
   const product = await prisma.$transaction(async (tx) => {
     const barcode = generateBarcode ? await nextInternalBarcode(tx) : checked.value;
     if (barcode) {
@@ -354,6 +359,10 @@ const update = asyncHandler(async (req, res) => {
       req.audit = { action: "barcode.duplicate_attempt", resourceType: "product", resourceId: existing.id, metadata: { shopId, barcode } };
       return res.status(409).json({ error: "This barcode is already used by another product." });
     }
+  }
+  if (supplierId) {
+    const supplier = await findVisibleSupplier(prisma, String(supplierId), shopId, { select: { id: true } });
+    if (!supplier) return res.status(400).json({ error: "Supplier not found in this shop" });
   }
   const product = await prisma.product.update({
     where: { id: req.params.id },

@@ -39,7 +39,7 @@ test("supplier order create rejects products outside the merchant shop", async (
       findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }),
     },
     supplier: {
-      findUnique: async () => ({ id: "supplier-1", name: "Jumla Traders" }),
+      findFirst: async () => ({ id: "supplier-1", name: "Jumla Traders" }),
     },
     product: {
       findMany: async ({ where }) => {
@@ -78,7 +78,7 @@ test("pending supplier order edits replace items only within the merchant shop",
         return { id: "order-1", ...data, supplier: { id: "supplier-1", name: "Jumla Traders", phone: "+255700000001" }, items: [] };
       },
     },
-    supplier: { findUnique: async () => ({ id: "supplier-1" }) },
+    supplier: { findFirst: async () => ({ id: "supplier-1" }) },
     product: { findMany: async () => [{ id: "product-1", buyingPrice: 4500 }] },
   };
   const ctrl = loadController(prismaMock);
@@ -90,6 +90,20 @@ test("pending supplier order edits replace items only within the merchant shop",
   assert.equal(updateData.totalAmount, 13500);
   assert.deepEqual(updateData.items.deleteMany, {});
   assert.deepEqual(updateData.items.create, [{ productId: "product-1", quantity: 3, unitPrice: 4500 }]);
+});
+
+test("supplier order create rejects a supplier private to another shop", async () => {
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
+    supplier: { findFirst: async () => null },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.create({ user: { userId: "user-1" }, body: { supplierId: "private-supplier", items: [{ productId: "product-1", quantity: 1 }] } }, res);
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.payload.error, "Supplier not found");
 });
 
 test("pending and cancelled supplier orders can be deleted, while confirmed orders remain protected", async () => {

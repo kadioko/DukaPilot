@@ -37,7 +37,7 @@ const quotationRoutes = require("./routes/quotation.routes");
 const publicQuotationRoutes = require("./routes/publicQuotation.routes");
 const metaWhatsAppWebhookRoutes = require("./routes/metaWhatsAppWebhook.routes");
 const cronRoutes = require("./routes/cron.routes");
-const { apiRateLimiter, publicRateLimiter } = require("./middleware/rateLimit");
+const { apiRateLimiter, publicRateLimiter, statusRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
 const prisma = require("./lib/prisma");
 const { redactPublicQuotationToken } = require("./lib/redaction");
@@ -89,7 +89,7 @@ app.use(helmet({
   strictTransportSecurity: {
     maxAge: 31536000,
     includeSubDomains: true,
-    preload: true,
+    preload: false,
   },
   // Next.js frontend handles its own CSP; skip it here to avoid double-config
   contentSecurityPolicy: false,
@@ -115,7 +115,7 @@ app.use(auditTrail);
 app.get("/health", (req, res) => res.json({ status: "ok", service: "DukaPilot API" }));
 
 const SERVICE_START = Date.now();
-app.get("/status", async (req, res) => {
+app.get("/status", statusRateLimiter, async (req, res) => {
   let dbStatus = "ok";
   let dbLatencyMs = null;
   try {

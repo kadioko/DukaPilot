@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { buildWhatsAppOrderMessage } = require("../services/whatsapp.service");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { findVisibleSupplier } = require("../lib/supplierAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -25,7 +26,7 @@ async function prepareOrder(shop, body) {
   const items = Array.isArray(body.items) ? body.items : [];
   if (!supplierId || !items.length) throw Object.assign(new Error("supplierId and items are required"), { status: 400 });
 
-  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } });
+  const supplier = await findVisibleSupplier(prisma, supplierId, shop.id, { select: { id: true } });
   if (!supplier) throw Object.assign(new Error("Supplier not found"), { status: 404 });
 
   const normalizedItems = items.map((item) => ({

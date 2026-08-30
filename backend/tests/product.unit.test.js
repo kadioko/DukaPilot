@@ -155,6 +155,26 @@ test("product creation commits opening stock and stock movement together", async
   assert.deepEqual(movements, [{ type: "IN", quantity: 12, note: "Initial stock", productId: "prod-1" }]);
 });
 
+test("product creation cannot attach a supplier private to another shop", async () => {
+  let transactionStarted = false;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    supplier: { findFirst: async () => null },
+    $transaction: async () => { transactionStarted = true; },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.create({
+    user: { userId: "user-1" },
+    body: { name: "Rice", buyingPrice: 2000, sellingPrice: 3000, supplierId: "private-supplier" },
+  }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.error, "Supplier not found in this shop");
+  assert.equal(transactionStarted, false);
+});
+
 test("product update rejects direct currentStock changes and names the supported endpoint", async () => {
   let updateCalled = false;
   const prismaMock = {

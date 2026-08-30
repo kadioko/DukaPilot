@@ -89,3 +89,16 @@ test("daily close counts cash stock receipts and direct cooking costs once as ca
   assert.equal(summary.cookingCostCount, 1);
   assert.equal(summary.expectedCash, 103000);
 });
+
+test("daily close excludes a legacy converted quotation sale when its cash payment is already recorded", () => {
+  const controller = loadController({});
+  const where = controller.cashSaleWhere("session-1");
+
+  assert.equal(where.cashSessionId, "session-1");
+  assert.equal(where.paymentMethod, "CASH");
+  assert.deepEqual(where.NOT.quotation.is.payments.some, {
+    kind: "PAYMENT",
+    paymentMethod: "CASH",
+    debtPaymentId: null,
+  });
+});

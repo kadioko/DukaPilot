@@ -70,6 +70,13 @@ const publicOrderRateLimiter = rateLimit({
   message: { error: "Too many order attempts. Please wait a few minutes and try again." },
 });
 
+const statusRateLimiter = rateLimit({
+  ...sharedOptions,
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: "Too many service-status checks. Please try again shortly." },
+});
+
 const otpRequestRateLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 15 * 60 * 1000,
@@ -78,4 +85,4 @@ const otpRequestRateLimiter = rateLimit({
   message: { error: "Too many PIN reset requests. Please wait 15 minutes and try again." },
 });
 
-module.exports = { apiRateLimiter, authRateLimiter, publicRateLimiter, publicEventRateLimiter, publicOrderRateLimiter, otpRequestRateLimiter };
+module.exports = { apiRateLimiter, authRateLimiter, publicRateLimiter, publicEventRateLimiter, publicOrderRateLimiter, otpRequestRateLimiter, statusRateLimiter };

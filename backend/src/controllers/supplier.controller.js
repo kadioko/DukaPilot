@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { supplierVisibilityWhere, findVisibleSupplier } = require("../lib/supplierAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -22,6 +23,7 @@ async function getPortalSupplier(user) {
 const list = asyncHandler(async (req, res) => {
   const shopId = req.user.role === "MERCHANT" ? await getShopIdForUser(req.user) : null;
   const suppliers = await prisma.supplier.findMany({
+    where: shopId ? supplierVisibilityWhere(shopId) : undefined,
     select: {
       id: true,
       name: true,
@@ -29,9 +31,15 @@ const list = asyncHandler(async (req, res) => {
       address: true,
       verificationStatus: true,
       verifiedAt: true,
-      adminNotes: true,
+      ...(req.user.role === "ADMIN" ? { adminNotes: true } : {}),
       createdByShopId: true,
-      _count: { select: { products: true, orders: true, catalogProducts: true } },
+      _count: {
+        select: {
+          products: shopId ? { where: { shopId } } : true,
+          orders: shopId ? { where: { shopId } } : true,
+          catalogProducts: true,
+        },
+      },
     },
     orderBy: { name: "asc" },
   });
@@ -46,16 +54,25 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const get = asyncHandler(async (req, res) => {
-  const supplier = await prisma.supplier.findUnique({
-    where: { id: req.params.id },
-    include: {
+  const shopId = req.user.role === "MERCHANT" ? await getShopIdForUser(req.user) : null;
+  const supplier = await prisma.supplier.findFirst({
+    where: { id: req.params.id, ...(shopId ? supplierVisibilityWhere(shopId) : {}) },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      address: true,
+      verificationStatus: true,
+      verifiedAt: true,
+      createdByShopId: true,
+      ...(req.user.role === "ADMIN" ? { adminNotes: true } : {}),
       catalogProducts: {
         where: { isAvailable: true },
         orderBy: { name: "asc" },
         select: { id: true, name: true, sku: true, unit: true, price: true, minOrderQty: true, note: true, isAvailable: true },
       },
       products: {
-        where: { isActive: true },
+        where: { isActive: true, ...(shopId ? { shopId } : {}) },
         select: { id: true, name: true, unit: true, sellingPrice: true },
       },
     },
@@ -110,7 +127,7 @@ const update = asyncHandler(async (req, res) => {
 
 const importCatalogProduct = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
+  const supplier = await findVisibleSupplier(prisma, req.params.id, shopId);
   if (!supplier) return res.status(404).json({ error: "Supplier not found" });
 
   const isOwnSupplier = supplier.createdByShopId === shopId;

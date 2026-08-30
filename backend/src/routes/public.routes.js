@@ -242,7 +242,7 @@ router.post("/orders", publicOrderRateLimiter, async (req, res, next) => {
         ? product.wholesalePrice
         : product.sellingPrice;
       totalAmount += unitPrice * item.quantity;
-      return { quantity: item.quantity, unitPrice, pricingTier: tier, productId: item.productId };
+      return { quantity: item.quantity, unitPrice, buyingPrice: product.buyingPrice, pricingTier: tier, productId: item.productId };
     });
 
     const order = await prisma.customerOrder.create({

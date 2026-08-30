@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
+const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
 const controllerPath = path.resolve(__dirname, "../src/controllers/sale.controller.js");
 
 function createRes() {
@@ -22,14 +23,39 @@ function createRes() {
 
 function loadController(prismaMock) {
   delete require.cache[controllerPath];
+  delete require.cache[shopAccessPath];
   require.cache[prismaPath] = {
     id: prismaPath,
     filename: prismaPath,
     loaded: true,
     exports: prismaMock,
   };
+  require.cache[shopAccessPath] = {
+    id: shopAccessPath,
+    filename: shopAccessPath,
+    loaded: true,
+    exports: { getShopIdForUser: async () => "shop-1" },
+  };
   return require(controllerPath);
 }
+
+test("sales history caps a client-requested page to a bounded payload", async () => {
+  let findManyArgs;
+  const prismaMock = {
+    sale: {
+      findMany: async (args) => { findManyArgs = args; return []; },
+      count: async () => 0,
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.list({ user: { userId: "owner-1", role: "MERCHANT" }, query: { limit: "100000", offset: "-5" } }, res);
+
+  assert.equal(findManyArgs.take, 200);
+  assert.equal(findManyArgs.skip, 0);
+  assert.equal(res.payload.limit, 200);
+});
 
 test("sale create rejects insufficient stock", async () => {
   const prismaMock = {
