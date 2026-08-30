@@ -32,7 +32,7 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
     contentType: "application/json",
     body: JSON.stringify({ user: { name: "Test Merchant", role: "MERCHANT", language: "sw", shop: { name: "Duka la Jaribio" }, features: { staff: true, assistant: true, exports: true } } }),
   }));
-  await page.route("**/*api/products/low-stock", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) }));
+  await page.route("**/*api/products/low-stock*", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) }));
   await page.route("**/*api/subscription/status", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) }));
   await page.route("**/*api/notifications", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) }));
   await page.route("**/*api/debts/customers", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ customers: [] }) }));

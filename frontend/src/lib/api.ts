@@ -29,9 +29,7 @@ function normalizeBaseUrl(url: string): string {
 }
 
 function getBaseUrl(): string {
-  const hostname = typeof window !== "undefined" ? window.location.hostname : "";
-  const isLocalBrowser = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
-  if (typeof window !== "undefined" && !isLocalBrowser) {
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
     return BROWSER_API_PATH;
   }
 

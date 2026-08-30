@@ -14,7 +14,7 @@ async function mockMerchantShell(page: Page) {
       },
     }),
   }));
-  await page.route("**/*api/products/low-stock", async (route) => route.fulfill({
+  await page.route("**/*api/products/low-stock*", async (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({ products: [] }),

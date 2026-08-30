@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 async function mockShell(page: Page) {
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   await page.route("**/*api/auth/me", (route) => route.fulfill(json({ user: { name: "Amina", role: "MERCHANT", language: "sw", shop: { name: "Duka la Amina" }, features: { staff: true, assistant: true, exports: true } } })));
-  await page.route("**/*api/products/low-stock", (route) => route.fulfill(json({ products: [] })));
+  await page.route("**/*api/products/low-stock*", (route) => route.fulfill(json({ products: [] })));
   await page.route("**/*api/subscription/status", (route) => route.fulfill(json({ status: "active", daysLeft: 30 })));
   await page.route("**/*api/notifications", (route) => route.fulfill(json({ items: [], unreadCount: 0 })));
   await page.route("**/*api/products", (route) => route.fulfill(json({ products: [{ id: "product-1", name: "Rangi", unit: "tin", sellingPrice: 25000, buyingPrice: 18000, currentStock: 12 }] })));
