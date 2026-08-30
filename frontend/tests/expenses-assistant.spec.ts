@@ -182,10 +182,10 @@ test("AI ranks proven demand above an out-of-stock product with zero sales", asy
     contentType: "application/json",
     body: JSON.stringify({ actions: [] }),
   }));
-  await page.route(/\/(?:_api|api)\/quotations\?limit=200$/, async (route) => route.fulfill({
+  await page.route(/\/(?:_api|api)\/assistant\/quotations$/, async (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ quotations: [] }),
+    body: JSON.stringify({ actions: [] }),
   }));
 
   await page.goto("/assistant");

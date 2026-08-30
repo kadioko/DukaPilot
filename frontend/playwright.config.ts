@@ -18,7 +18,7 @@ export default defineConfig({
   },
   reporter: [["list"]],
   webServer: externalBaseURL ? undefined : {
-    command: productionMode ? "npm run start -- -p 3010" : "npm run dev -- -p 3010",
+    command: productionMode ? "node scripts/start-playwright-production.js" : "npm run dev -- -p 3010",
     url: localBaseURL,
     reuseExistingServer: true,
     timeout: 120_000,

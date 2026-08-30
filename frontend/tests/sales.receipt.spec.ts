@@ -35,7 +35,11 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
   await page.route("**/*api/notifications", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) }));
   await page.route("**/*api/debts/customers", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ customers: [] }) }));
   await page.route("**/*api/settings", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { shop: { name: "Duka la Jaribio" } } }) }));
-  await page.route("**/*api/products", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [product] }) }));
+  await page.route("**/*api/products?*", async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ products: [product], pagination: { page: 1, limit: 100, total: 1, totalPages: 1 } }),
+  }));
   await page.route("**/*api/sales", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ sales: [], total: 0 }) });
