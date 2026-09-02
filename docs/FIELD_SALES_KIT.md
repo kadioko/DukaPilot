@@ -13,6 +13,8 @@ Best shop types:
 - Hardware
 - Phone / electronics shop
 
+Farm prospects are an adjacent, qualified segment. Keep the default field motion focused on shops. When meeting a poultry or livestock farm, select **Ufugaji wa Mifugo na Kuku** and demonstrate the commercial core first, then Farm Operations only if they record feed, output, losses, or packing.
+
 Best areas to start:
 
 - Kariakoo
@@ -45,6 +47,12 @@ Ask these before demoing:
 - Unaagiza bidhaa kwa supplier kupitia WhatsApp?
 - Kuna mfanyakazi anayesaidia kuuza?
 - Ungependa kujua faida ya siku/wiki/mwezi?
+
+For a farm prospect only:
+
+- Unafuga aina gani: mayai, kuku wa nyama, maziwa, nguruwe, au mifugo mingine?
+- Feed, dawa na mayai/maziwa vinaandikwa wapi leo?
+- Unahitaji kufuatilia output, hasara au packing ya mayai/maziwa?
 
 ## Demo Flow
 

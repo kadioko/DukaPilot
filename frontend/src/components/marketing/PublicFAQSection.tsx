@@ -47,6 +47,12 @@ const faqs = [
     swAnswer: "Taarifa zako hazifutwi mpango unapoisha. Unaweza kuona rekodi zilizopo, lakini kuongeza au kubadilisha rekodi kunahitaji kuhuisha mpango.",
     enAnswer: "Your data is not deleted when the plan expires. You can still view existing records, but creating or changing records requires reactivation.",
   },
+  {
+    sw: "DukaPilot inafaa kwa ufugaji?",
+    en: "Can DukaPilot work for a farm?",
+    swAnswer: "Ndiyo. Chagua Ufugaji wa Mifugo na Kuku wakati wa usajili au Settings. Mbali na mauzo, stock, pesa na wateja, utaona makundi ya mifugo, matumizi ya feed, uzalishaji na packing. Hii ni mfumo wa biashara na uzalishaji, si ushauri wa afya ya mifugo.",
+    enAnswer: "Yes. Choose Livestock & Poultry Farm during registration or in Settings. Alongside sales, stock, cash, and customers, it adds animal groups, feed use, production, and packing. It is a commercial and production tool, not animal-health advice.",
+  },
 ];
 
 export default function PublicFAQSection() {

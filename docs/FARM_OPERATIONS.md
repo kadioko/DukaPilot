@@ -1,6 +1,8 @@
 # Farm Operations
 
-DukaPilot can run the commercial side of a poultry or livestock farm while keeping farm production separate from ordinary shop inventory and expenses.
+DukaPilot remains a commercial system for Tanzanian shops: sales, stock, cash, customers, debts, receipts, and supplier buying are its core. Farm Operations is a focused, category-aware production layer for a poultry or livestock merchant who needs to turn farm inputs into sellable output without double-counting cost or cash.
+
+It does not replace the normal DukaPilot workflow. Eggs, milk, animals, or harvested output still sell through the usual POS, customer order, receipt, debt, and reporting flows.
 
 ## Who sees it
 

@@ -19,6 +19,7 @@ import {
   Phone,
   ReceiptText,
   Store,
+  Tractor,
   TrendingUp,
 } from "lucide-react";
 import LogoMark from "@/components/brand/LogoMark";
@@ -798,6 +799,22 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         <ProductProofSection />
       </section>
       <PublicFAQSection />
+      <section className="mx-auto w-full max-w-6xl px-4 py-10 lg:py-14">
+        <div className="grid gap-5 border-y border-white/20 py-6 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:gap-6">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-brand-100 ring-1 ring-white/15"><Tractor className="h-5 w-5" /></span>
+          <div>
+            <p className="text-sm font-bold text-white">{lang === "sw" ? "Kwa wafugaji pia" : "Also for farms"}</p>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-100">
+              {lang === "sw"
+                ? "DukaPilot bado inaanzia kwenye mauzo, stock, pesa na wateja. Akaunti iliyochagua Ufugaji wa Mifugo na Kuku hupata makundi ya mifugo, matumizi ya feed, uzalishaji na packing ya mayai au maziwa juu ya mfumo huo wa kawaida."
+                : "DukaPilot still starts with sales, stock, cash, and customers. An account that chooses Livestock & Poultry Farm adds animal groups, feed use, production, and egg or milk packing on top of that normal commercial system."}
+            </p>
+          </div>
+          <Link href="/register" className="inline-flex min-h-10 items-center justify-center gap-2 border border-white/25 px-4 py-2 text-sm font-bold text-white hover:bg-white/10">
+            {lang === "sw" ? "Chagua Ufugaji" : "Choose Farm"}<ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
       <section className="mx-auto w-full max-w-6xl px-4 py-10 lg:py-14">
         <div className="overflow-hidden rounded-3xl border border-white/15 bg-white/95 shadow-2xl shadow-black/15">
           <div className="grid gap-0 lg:grid-cols-[0.9fr_1.1fr]">

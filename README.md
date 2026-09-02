@@ -1,6 +1,6 @@
 # DukaPilot — Merchant OS for Tanzania
 
-> **Merchant operating system for informal retailers in Tanzania.**
+> **Merchant operating system for informal retailers in Tanzania, with focused category-aware workflows where they add real value.**
 > Track stock, record sales, order from suppliers, and grow your business — all in Kiswahili, from your phone.
 
 ---
