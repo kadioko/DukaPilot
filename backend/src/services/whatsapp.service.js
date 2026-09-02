@@ -54,21 +54,22 @@ function formatTZS(amount) {
   return `TZS ${Number(amount).toLocaleString("en-TZ")}`;
 }
 
-/**
- * Send order via WhatsApp Business Cloud API
- * Requires WHATSAPP_API_TOKEN and WHATSAPP_PHONE_ID env vars
- */
-async function sendWhatsAppMessage(toPhone, message) {
-  const apiUrl = process.env.WHATSAPP_API_URL;
-  const token = process.env.WHATSAPP_API_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_ID;
+function normalizeWhatsAppPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.startsWith("0") && digits.length === 10) return `255${digits.slice(1)}`;
+  return digits;
+}
 
-  if (!apiUrl || !token || !phoneId) {
-    // Not configured — return the deep link instead
-    return { sent: false, reason: "WhatsApp API not configured" };
-  }
+function cloudApiConfig() {
+  const apiUrl = String(process.env.WHATSAPP_API_URL || "").trim().replace(/\/$/, "");
+  const token = String(process.env.WHATSAPP_API_TOKEN || "").trim();
+  const phoneId = String(process.env.WHATSAPP_PHONE_ID || "").trim();
+  return { apiUrl, token, phoneId, configured: Boolean(apiUrl && token && phoneId) };
+}
 
-  const normalizedPhone = toPhone.replace(/\D/g, "");
+async function postCloudMessage(payload) {
+  const { apiUrl, token, phoneId, configured } = cloudApiConfig();
+  if (!configured) return { sent: false, reason: "WhatsApp API not configured" };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -76,16 +77,8 @@ async function sendWhatsAppMessage(toPhone, message) {
   try {
     response = await fetch(`${apiUrl}/${phoneId}/messages`, {
       method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: normalizedPhone,
-        type: "text",
-        text: { body: message },
-      }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
       signal: controller.signal,
     });
   } finally {
@@ -93,11 +86,55 @@ async function sendWhatsAppMessage(toPhone, message) {
   }
 
   if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`WhatsApp API error: ${err}`);
+    const errorText = await response.text();
+    throw new Error(`WhatsApp API error (${response.status}): ${errorText.slice(0, 500)}`);
   }
 
-  return { sent: true, data: await response.json() };
+  const data = await response.json();
+  return { sent: true, data, messageId: data.messages?.[0]?.id || null, provider: "META_WHATSAPP" };
+}
+
+function isWhatsAppOtpConfigured() {
+  return Boolean(cloudApiConfig().configured && String(process.env.WHATSAPP_OTP_TEMPLATE || "").trim());
+}
+
+function isWhatsAppFreeformEnabled() {
+  return String(process.env.WHATSAPP_ENABLE_FREEFORM || "").trim().toLowerCase() === "true";
+}
+
+// PIN recovery starts with an approved Meta template. This works outside the
+// 24-hour customer-service window and never logs the code.
+async function sendWhatsAppOtp(phone, code) {
+  const templateName = String(process.env.WHATSAPP_OTP_TEMPLATE || "").trim();
+  const language = String(process.env.WHATSAPP_OTP_TEMPLATE_LANGUAGE || "en_US").trim();
+  if (!isWhatsAppOtpConfigured()) {
+    throw new Error("WhatsApp PIN recovery is not configured. Set WHATSAPP_OTP_TEMPLATE after Meta approves it.");
+  }
+
+  return postCloudMessage({
+    to: normalizeWhatsAppPhone(phone),
+    type: "template",
+    template: {
+      name: templateName,
+      language: { policy: "deterministic", code: language },
+      components: [{ type: "body", parameters: [{ type: "text", text: String(code) }] }],
+    },
+  });
+}
+
+/**
+ * Send order via WhatsApp Business Cloud API
+ * Requires WHATSAPP_API_TOKEN and WHATSAPP_PHONE_ID env vars
+ */
+async function sendWhatsAppMessage(toPhone, message) {
+  if (!isWhatsAppFreeformEnabled()) {
+    return { sent: false, reason: "WhatsApp free-form messaging is disabled" };
+  }
+  return postCloudMessage({
+    to: normalizeWhatsAppPhone(toPhone),
+    type: "text",
+    text: { body: message },
+  });
 }
 
 function buildCustomerOrderMessage(order, shop) {
@@ -141,4 +178,13 @@ function buildCustomerOrderMessage(order, shop) {
   return { message, whatsappUrl };
 }
 
-module.exports = { buildWhatsAppOrderMessage, buildCustomerOrderMessage, sendWhatsAppMessage, formatTZS };
+module.exports = {
+  buildWhatsAppOrderMessage,
+  buildCustomerOrderMessage,
+  sendWhatsAppMessage,
+  sendWhatsAppOtp,
+  isWhatsAppOtpConfigured,
+  isWhatsAppFreeformEnabled,
+  normalizeWhatsAppPhone,
+  formatTZS,
+};

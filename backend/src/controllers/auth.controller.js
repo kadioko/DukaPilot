@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
-const { issueOtp, verifyOtp, isSmsConfigured } = require("../services/otp.service");
+const { issueOtp, verifyOtp, isOtpChannelConfigured, normalizeDeliveryChannel } = require("../services/otp.service");
 const { activePlan, canUseFeature, featureSnapshot } = require("../lib/entitlements");
 const { normalizePhone, phoneLookupValues, isValidPhone } = require("../lib/phone");
 
@@ -410,12 +410,16 @@ const refresh = asyncHandler(async (req, res) => {
 // POST /api/auth/otp/request — send OTP to phone for PIN recovery
 const requestOtp = asyncHandler(async (req, res) => {
   const phone = normalizePhone(req.body.phone);
+  const channel = normalizeDeliveryChannel(req.body.channel);
 
   if (!validatePhone(phone)) {
     return res.status(400).json({ error: "Enter a valid phone number" });
   }
-  if (process.env.NODE_ENV === "production" && !isSmsConfigured()) {
-    return res.status(503).json({ error: "PIN recovery SMS is temporarily unavailable. Contact DukaPilot support on WhatsApp." });
+  if (!channel) {
+    return res.status(400).json({ error: "Choose SMS or WhatsApp for PIN recovery." });
+  }
+  if (process.env.NODE_ENV === "production" && !isOtpChannelConfigured(channel)) {
+    return res.status(503).json({ error: `${channel === "WHATSAPP" ? "WhatsApp" : "SMS"} PIN recovery is temporarily unavailable. Contact DukaPilot support on WhatsApp.` });
   }
 
   const [user, staff] = await Promise.all([
@@ -425,15 +429,21 @@ const requestOtp = asyncHandler(async (req, res) => {
   // Don't reveal whether phone exists — always return success
   if (user || staff?.isActive) {
     try {
-      await issueOtp(phone);
+      await issueOtp(phone, channel);
     } catch (err) {
       console.error("OTP send error:", err.message);
       // Don't expose internal error to client
     }
   }
 
-  res.json({ message: "If this number is registered, an OTP has been sent." });
+  res.json({ message: "If this number is registered, an OTP has been sent.", channel });
 });
+
+// This exposes provider availability only, never account information. The
+// sign-in screen uses it to avoid offering a channel that is not live yet.
+const otpChannels = (_req, res) => {
+  res.json({ sms: isOtpChannelConfigured("SMS"), whatsapp: isOtpChannelConfigured("WHATSAPP") });
+};
 
 // POST /api/auth/otp/verify-reset — verify OTP and reset PIN
 const verifyOtpAndResetPin = asyncHandler(async (req, res) => {
@@ -552,4 +562,4 @@ async function getStaffProfile(staffId) {
   };
 }
 
-module.exports = { register, login, me, updateLanguage, logout, refresh, requestOtp, verifyOtpAndResetPin, issueToken, setAuthCookie, clearAuthCookie, staffPermissions };
+module.exports = { register, login, me, updateLanguage, logout, refresh, requestOtp, otpChannels, verifyOtpAndResetPin, issueToken, setAuthCookie, clearAuthCookie, staffPermissions };

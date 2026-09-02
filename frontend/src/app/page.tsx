@@ -134,6 +134,8 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   const [forgotCode, setForgotCode] = useState("");
   const [forgotNewPin, setForgotNewPin] = useState("");
   const [forgotStep, setForgotStep] = useState<"phone" | "code">("phone");
+  const [forgotChannel, setForgotChannel] = useState<"SMS" | "WHATSAPP">("SMS");
+  const [otpChannels, setOtpChannels] = useState({ sms: true, whatsapp: false });
   const [forgotMsg, setForgotMsg] = useState("");
 
   useEffect(() => {
@@ -150,6 +152,19 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   useEffect(() => {
     setReferralCode(captureReferralCode());
   }, [searchParams]);
+
+  useEffect(() => {
+    if (view !== "forgot") return;
+    let cancelled = false;
+    api.get<{ sms: boolean; whatsapp: boolean }>("/auth/otp/channels", lang)
+      .then((channels) => {
+        if (cancelled) return;
+        setOtpChannels(channels);
+        if (!channels.whatsapp) setForgotChannel("SMS");
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [lang, view]);
 
   useEffect(() => {
     if (initialView !== "login" || searchParams.get("view")) return;
@@ -178,6 +193,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     setForgotPhone("");
     setForgotCode("");
     setForgotNewPin("");
+    setForgotChannel("SMS");
     setConfirmPin("");
     setTermsAccepted(false);
   }
@@ -291,8 +307,11 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
     }
     setLoading(true);
     try {
-      await api.post("/auth/otp/request", { phone: normalizedPhone }, lang);
-      setForgotMsg(lang === "sw" ? "Nambari ya uthibitisho imetumwa kwa simu yako." : "A verification code has been sent to your phone.");
+      const channel = forgotChannel === "WHATSAPP" && otpChannels.whatsapp ? "WHATSAPP" : "SMS";
+      await api.post("/auth/otp/request", { phone: normalizedPhone, channel }, lang);
+      setForgotMsg(lang === "sw"
+        ? `Kama namba imesajiliwa, nambari ya uthibitisho imetumwa kwa ${channel === "WHATSAPP" ? "WhatsApp" : "SMS"}.`
+        : `If the number is registered, a verification code has been sent by ${channel === "WHATSAPP" ? "WhatsApp" : "SMS"}.`);
       setForgotStep("code");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("auth.error", lang));
@@ -450,6 +469,17 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                       />
                     </div>
                   </div>
+                  <fieldset>
+                    <legend className="mb-2 text-sm font-medium text-gray-700">{lang === "sw" ? "Pokea nambari kupitia" : "Receive code by"}</legend>
+                    <div className={`grid gap-2 ${otpChannels.whatsapp ? "grid-cols-2" : "grid-cols-1"}`}>
+                      <button type="button" onClick={() => setForgotChannel("SMS")} aria-pressed={forgotChannel === "SMS"} className={`rounded-lg border px-3 py-2.5 text-sm font-semibold ${forgotChannel === "SMS" ? "border-brand-600 bg-brand-50 text-brand-800" : "border-gray-300 bg-white text-gray-700"}`}>
+                        {lang === "sw" ? "Ujumbe wa SMS" : "SMS"}
+                      </button>
+                      {otpChannels.whatsapp && <button type="button" onClick={() => setForgotChannel("WHATSAPP")} aria-pressed={forgotChannel === "WHATSAPP"} className={`rounded-lg border px-3 py-2.5 text-sm font-semibold ${forgotChannel === "WHATSAPP" ? "border-green-600 bg-green-50 text-green-800" : "border-gray-300 bg-white text-gray-700"}`}>
+                        <MessageCircle className="mr-1 inline h-4 w-4" />WhatsApp
+                      </button>}
+                    </div>
+                  </fieldset>
                   <button
                     type="submit"
                     disabled={loading}
@@ -463,7 +493,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                 <form onSubmit={handleForgotReset} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {lang === "sw" ? "Nambari ya Uthibitisho (SMS)" : "Verification Code (SMS)"}
+                      {lang === "sw" ? `Nambari ya Uthibitisho (${forgotChannel === "WHATSAPP" ? "WhatsApp" : "SMS"})` : `Verification Code (${forgotChannel === "WHATSAPP" ? "WhatsApp" : "SMS"})`}
                     </label>
                     <input
                       type="text"

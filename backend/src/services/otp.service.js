@@ -8,6 +8,7 @@
 const { randomUUID } = require("crypto");
 const bcrypt = require("bcryptjs");
 const prisma = require("../lib/prisma");
+const { sendWhatsAppOtp, isWhatsAppOtpConfigured } = require("./whatsapp.service");
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
@@ -99,7 +100,22 @@ async function sendSms(phone, message) {
   return provider === "NEXTSMS" ? sendNextSms(phone, message) : sendAfricasTalking(phone, message);
 }
 
-async function issueOtp(phone) {
+function normalizeDeliveryChannel(channel) {
+  const value = String(channel || "SMS").trim().toUpperCase();
+  return ["SMS", "WHATSAPP"].includes(value) ? value : null;
+}
+
+function isOtpChannelConfigured(channel) {
+  const normalized = normalizeDeliveryChannel(channel);
+  return normalized === "WHATSAPP" ? isWhatsAppOtpConfigured() : normalized === "SMS" ? isSmsConfigured() : false;
+}
+
+async function issueOtp(phone, channel = "SMS") {
+  const deliveryChannel = normalizeDeliveryChannel(channel);
+  if (!deliveryChannel) throw Object.assign(new Error("Choose SMS or WhatsApp for PIN recovery."), { status: 400 });
+  if (!isOtpChannelConfigured(deliveryChannel)) {
+    throw new Error(`${deliveryChannel === "WHATSAPP" ? "WhatsApp" : "SMS"} PIN recovery is not configured.`);
+  }
   const now = new Date();
   const resendAfter = new Date(now.getTime() - OTP_RESEND_COOLDOWN_MS);
   const code = generateCode();
@@ -123,11 +139,12 @@ async function issueOtp(phone) {
     }
   }
 
-  const message = `DukaPilot: PIN reset code ${code}. Expires in 10 minutes. Do not share this code.`;
   try {
-    const result = await sendSms(phone, message);
+    const result = deliveryChannel === "WHATSAPP"
+      ? await sendWhatsAppOtp(phone, code)
+      : await sendSms(phone, `DukaPilot: PIN reset code ${code}. Expires in 10 minutes. Do not share this code.`);
     if (!result.sent) await prisma.pinResetOtp.deleteMany({ where: { phone, codeHash } });
-    return result;
+    return { ...result, channel: deliveryChannel };
   } catch (error) {
     await prisma.pinResetOtp.deleteMany({ where: { phone, codeHash } });
     throw error;
@@ -167,4 +184,12 @@ async function verifyOtp(phone, code) {
   return true;
 }
 
-module.exports = { issueOtp, verifyOtp, isSmsConfigured, sendSms, smsProvider };
+module.exports = {
+  issueOtp,
+  verifyOtp,
+  isSmsConfigured,
+  isOtpChannelConfigured,
+  normalizeDeliveryChannel,
+  sendSms,
+  smsProvider,
+};

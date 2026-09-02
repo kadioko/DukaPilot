@@ -152,7 +152,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 | **Auth** | Secure HttpOnly session cookies (1h access + 30d refresh) · phone + PIN login · OTP PIN recovery |
 | **SMS / OTP** | NextSMS production SMS with an approved DukaPilot sender ID |
 | **Error tracking** | Sentry (`@sentry/node` backend and `@sentry/nextjs` browser/server monitoring live in production) |
-| **Messaging** | WhatsApp deep links + WhatsApp Cloud API (optional) |
+| **Messaging** | WhatsApp deep links + Meta WhatsApp Cloud API; PIN recovery can use SMS or WhatsApp |
 | **Payments** | Cash, Bank, Credit, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa |
 | **Charts** | Recharts |
 | **Containerisation** | Docker (node:24-alpine) + Docker Compose |
@@ -398,8 +398,11 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 | `VAPID_PUBLIC_KEY` | Required for push | Public key from the private DukaPilot secrets vault |
 | `VAPID_PRIVATE_KEY` | Required for push | Private key from the private DukaPilot secrets vault. Never commit it. |
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
-| `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
+| `WHATSAPP_API_TOKEN` | Optional | Meta system-user access token; Railway secret only |
 | `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
+| `WHATSAPP_OTP_TEMPLATE` | Required for WhatsApp PIN recovery | Approved Meta authentication template name |
+| `WHATSAPP_OTP_TEMPLATE_LANGUAGE` | Required for WhatsApp PIN recovery | Exact Meta template language code, for example `en_US` |
+| `WHATSAPP_ENABLE_FREEFORM` | Optional | Keep `false`; set `true` only for customer-initiated 24-hour WhatsApp service windows |
 | `META_WHATSAPP_VERIFY_TOKEN` | Required for Meta webhooks | Random secret entered both in Railway and Meta's webhook verification screen. |
 | `META_WHATSAPP_APP_SECRET` | Required for Meta webhooks | App Secret from Meta App Settings; validates signed delivery callbacks. Never commit it. |
 | `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
