@@ -116,9 +116,10 @@ export default function AssistantPage() {
     let active = true;
     async function loadAssistant() {
       try {
-        const session = await getCurrentSession<{ user: { staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canManageFarm?: boolean; canViewReports?: boolean } } } }>();
+        const session = await getCurrentSession<{ user: { shop?: { category?: string | null }; staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canManageFarm?: boolean; canViewReports?: boolean } } } }>();
         const isStaff = Boolean(session.user.staff);
         const permissions = session.user.staff?.permissions;
+        const isLivestock = String(session.user.shop?.category || "").toLowerCase() === "livestock";
         const nextAccess = {
           loaded: true,
           isStaff,
@@ -137,11 +138,11 @@ export default function AssistantPage() {
             api.get<ExpenseSummary>("/expenses", lang),
             api.get<{ actions: QuotationAssistantAction[] }>("/assistant/quotations", lang),
             api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang),
-            nextAccess.canManageFarm ? api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang) : Promise.resolve({ actions: [] }),
+            isLivestock && nextAccess.canManageFarm ? api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang) : Promise.resolve({ actions: [] }),
           ]);
           if (!active) return;
           setDashboard(today); setAllTime(all); setDebts(debtData); setExpenses(expenseData); setQuotationActions(quoteData.actions); setActions(actionData.actions); setFarmActions(farmData.actions);
-        } else if (nextAccess.canManageFarm) {
+        } else if (isLivestock && nextAccess.canManageFarm) {
           const data = await api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang);
           if (active) setFarmActions(data.actions);
         } else if (nextAccess.canManageStock) {
