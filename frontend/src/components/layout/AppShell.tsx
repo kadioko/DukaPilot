@@ -25,6 +25,7 @@ import {
   WalletCards,
   PackageCheck,
   ChefHat,
+  Tractor,
   Gift,
   FileText,
 } from "lucide-react";
@@ -46,6 +47,7 @@ interface User {
     permissions: {
       canSell: boolean;
       canManageStock: boolean;
+      canManageFarm: boolean;
       canManageStaff: boolean;
       canViewReports: boolean;
       canRecordExpenses: boolean;
@@ -65,7 +67,7 @@ interface NavItem {
   labelKey?: string;
   label?: string;
   icon: typeof LayoutDashboard;
-  permission?: "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations";
+  permission?: "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations";
   feature?: "staff" | "assistant" | "exports";
   ownerOnly?: boolean;
   shopCategories?: string[];
@@ -83,6 +85,7 @@ const merchantNav: NavItem[] = [
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
   { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", group: "stock" },
   { href: "/food-preparation", labelKey: "nav.foodPreparation", icon: ChefHat, permission: "canManageStock", shopCategories: ["bar", "restaurant"], group: "stock" },
+  { href: "/farm", labelKey: "nav.farm", icon: Tractor, permission: "canManageFarm", shopCategories: ["livestock"], group: "stock" },
   { href: "/barcodes", labelKey: "nav.barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },

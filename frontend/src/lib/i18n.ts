@@ -27,6 +27,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "nav.dailyClose": { sw: "Funga Siku", en: "Daily Close" },
   "nav.receiving": { sw: "Pokea Bidhaa", en: "Receive Stock" },
   "nav.foodPreparation": { sw: "Andaa Chakula", en: "Prepare Food" },
+  "nav.farm": { sw: "Ufugaji", en: "Farm" },
   "staff.recordExpenses": { sw: "Kurekodi matumizi", en: "Record expenses" },
   "nav.settings": { sw: "Mipangilio", en: "Settings" },
   "nav.customerOrders": { sw: "Maagizo ya Wateja", en: "Customer Orders" },

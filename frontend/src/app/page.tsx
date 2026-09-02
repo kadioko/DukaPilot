@@ -52,6 +52,7 @@ const SHOP_CATEGORIES = [
   { value: "hardware", sw: "Vifaa vya Ujenzi", en: "Hardware" },
   { value: "electronics", sw: "Umeme / Simu", en: "Electronics" },
   { value: "clothing", sw: "Nguo", en: "Clothing" },
+  { value: "livestock", sw: "Ufugaji wa Mifugo na Kuku", en: "Livestock & Poultry Farm" },
   { value: "general", sw: "Bidhaa Mchanganyiko", en: "General / Mixed" },
 ];
 

@@ -129,6 +129,7 @@ function staffPermissions(staff) {
   return {
     canSell: Boolean(staff.canSell),
     canManageStock: Boolean(staff.canManageStock),
+    canManageFarm: Boolean(staff.canManageFarm),
     canManageStaff: Boolean(staff.canManageStaff),
     canViewReports: Boolean(staff.canViewReports),
     canRecordExpenses: Boolean(staff.canRecordExpenses),
@@ -551,4 +552,4 @@ async function getStaffProfile(staffId) {
   };
 }
 
-module.exports = { register, login, me, updateLanguage, logout, refresh, requestOtp, verifyOtpAndResetPin, issueToken, setAuthCookie, clearAuthCookie };
+module.exports = { register, login, me, updateLanguage, logout, refresh, requestOtp, verifyOtpAndResetPin, issueToken, setAuthCookie, clearAuthCookie, staffPermissions };

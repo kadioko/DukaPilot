@@ -90,6 +90,24 @@ test("daily close counts cash stock receipts and direct cooking costs once as ca
   assert.equal(summary.expectedCash, 103000);
 });
 
+test("daily close counts direct farm production cost once as cash-out", async () => {
+  const prismaMock = {
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 50000 }, _count: { id: 2 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 10000 }, _count: { id: 1 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    expense: { aggregate: async () => ({ _sum: { amount: 5000 }, _count: { id: 1 } }) },
+    stockReceipt: { aggregate: async () => ({ _sum: { totalLandedCost: 240000 }, _count: { id: 2 } }) },
+    foodPreparationBatch: { aggregate: async () => ({ _sum: { additionalCost: 12000 }, _count: { id: 1 } }) },
+    farmProductionBatch: { aggregate: async () => ({ _sum: { additionalCost: 3000 }, _count: { id: 1 } }) },
+  };
+  const controller = loadController(prismaMock);
+  const summary = await controller.summarizeSession(prismaMock, { id: "session-1", openingCash: 300000 });
+
+  assert.equal(summary.farmCashOut, 3000);
+  assert.equal(summary.farmProductionCostCount, 1);
+  assert.equal(summary.expectedCash, 100000);
+});
+
 test("daily close excludes a legacy converted quotation sale when its cash payment is already recorded", () => {
   const controller = loadController({});
   const where = controller.cashSaleWhere("session-1");

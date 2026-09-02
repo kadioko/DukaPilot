@@ -51,7 +51,7 @@ async function actorName(user) {
 }
 
 async function summarizeSession(tx, session) {
-  const [sales, debtPayments, quotationPayments, quotationRefunds, expenses, stockReceipts, foodPreparation] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, quotationRefunds, expenses, stockReceipts, foodPreparation, farmProduction] = await Promise.all([
     tx.sale.aggregate({ where: cashSaleWhere(session.id), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment?.aggregate
@@ -67,6 +67,9 @@ async function summarizeSession(tx, session) {
     tx.foodPreparationBatch?.aggregate
       ? tx.foodPreparationBatch.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { additionalCost: true }, _count: { id: true } })
       : Promise.resolve({ _sum: { additionalCost: 0 }, _count: { id: 0 } }),
+    tx.farmProductionBatch?.aggregate
+      ? tx.farmProductionBatch.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { additionalCost: true }, _count: { id: true } })
+      : Promise.resolve({ _sum: { additionalCost: 0 }, _count: { id: 0 } }),
   ]);
   const cashSales = sales._sum.totalAmount || 0;
   const debtCollections = debtPayments._sum.amount || 0;
@@ -75,6 +78,7 @@ async function summarizeSession(tx, session) {
   const cashExpenses = expenses._sum.amount || 0;
   const inventoryCashOut = stockReceipts._sum.totalLandedCost || 0;
   const cookingCashOut = foodPreparation._sum.additionalCost || 0;
+  const farmCashOut = farmProduction._sum.additionalCost || 0;
   return {
     cashSales,
     debtCollections,
@@ -82,13 +86,15 @@ async function summarizeSession(tx, session) {
     cashExpenses,
     inventoryCashOut,
     cookingCashOut,
+    farmCashOut,
     saleCount: sales._count.id,
     debtPaymentCount: debtPayments._count.id,
     quotationPaymentCount,
     expenseCount: expenses._count.id,
     stockReceiptCount: stockReceipts._count.id,
     cookingCostCount: foodPreparation._count.id,
-    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashExpenses - inventoryCashOut - cookingCashOut,
+    farmProductionCostCount: farmProduction._count.id,
+    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashExpenses - inventoryCashOut - cookingCashOut - farmCashOut,
   };
 }
 
@@ -98,7 +104,7 @@ async function decorateSessions(tx, sessions) {
 
   // The daily-close history used to run five aggregates for every session.
   // Group the same facts once per table, then attach them to the sessions.
-  const [sales, debtPayments, quotationPayments, expenses, stockReceipts, foodPreparation] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, expenses, stockReceipts, foodPreparation, farmProduction] = await Promise.all([
     tx.sale.groupBy({ by: ["cashSessionId"], where: cashSaleWhere({ in: sessionIds }), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment.groupBy({ by: ["cashSessionId", "kind"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", debtPaymentId: null, kind: { in: ["PAYMENT", "REFUND"] } }, _sum: { amount: true }, _count: { id: true } }),
@@ -109,8 +115,11 @@ async function decorateSessions(tx, sessions) {
     tx.foodPreparationBatch?.groupBy
       ? tx.foodPreparationBatch.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { additionalCost: true }, _count: { id: true } })
       : Promise.resolve([]),
+    tx.farmProductionBatch?.groupBy
+      ? tx.farmProductionBatch.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { additionalCost: true }, _count: { id: true } })
+      : Promise.resolve([]),
   ]);
-  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashExpenses: 0, inventoryCashOut: 0, cookingCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, cookingCostCount: 0 }]));
+  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashExpenses: 0, inventoryCashOut: 0, cookingCashOut: 0, farmCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, cookingCostCount: 0, farmProductionCostCount: 0 }]));
   for (const row of sales) {
     const summary = bySession.get(row.cashSessionId);
     if (summary) { summary.cashSales = row._sum.totalAmount || 0; summary.saleCount = row._count.id; }
@@ -138,9 +147,13 @@ async function decorateSessions(tx, sessions) {
     const summary = bySession.get(row.cashSessionId);
     if (summary) { summary.cookingCashOut = row._sum.additionalCost || 0; summary.cookingCostCount = row._count.id; }
   }
+  for (const row of farmProduction) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.farmCashOut = row._sum.additionalCost || 0; summary.farmProductionCostCount = row._count.id; }
+  }
   return sessions.map((session) => {
     const summary = bySession.get(session.id);
-    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashExpenses - summary.inventoryCashOut - summary.cookingCashOut } };
+    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashExpenses - summary.inventoryCashOut - summary.cookingCashOut - summary.farmCashOut } };
   });
 }
 

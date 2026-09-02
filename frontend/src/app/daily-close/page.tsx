@@ -14,12 +14,14 @@ interface SessionSummary {
   cashExpenses: number;
   inventoryCashOut: number;
   cookingCashOut: number;
+  farmCashOut: number;
   saleCount: number;
   debtPaymentCount: number;
   quotationPaymentCount: number;
   expenseCount: number;
   stockReceiptCount: number;
   cookingCostCount: number;
+  farmProductionCostCount: number;
   expectedCash: number;
 }
 
@@ -204,6 +206,6 @@ function SessionHistoryRow({ session, lang, showDate = true }: { session: CashSe
 }
 
 function SessionSummaryCard({ summary, openingCash, lang, compact = false }: { summary: SessionSummary; openingCash: number; lang: string; compact?: boolean }) {
-  const rows = [[lang === "sw" ? "Pesa ya kuanzia" : "Opening cash", openingCash], [lang === "sw" ? `Mauzo ya taslimu (${summary.saleCount || 0})` : `Cash sales (${summary.saleCount || 0})`, summary.cashSales || 0], [lang === "sw" ? `Malipo ya madeni (${summary.debtPaymentCount || 0})` : `Debt collections (${summary.debtPaymentCount || 0})`, summary.debtCollections || 0], [lang === "sw" ? `Amana/malipo ya nukuu (${summary.quotationPaymentCount || 0})` : `Quotation deposits/payments (${summary.quotationPaymentCount || 0})`, summary.quotationCash || 0], [lang === "sw" ? `Matumizi ya taslimu (${summary.expenseCount || 0})` : `Cash expenses (${summary.expenseCount || 0})`, -(summary.cashExpenses || 0)], [lang === "sw" ? `Manunuzi ya stock/grocery (${summary.stockReceiptCount || 0})` : `Stock and grocery purchases (${summary.stockReceiptCount || 0})`, -(summary.inventoryCashOut || 0)], [lang === "sw" ? `Gharama za kupika (${summary.cookingCostCount || 0})` : `Cooking costs (${summary.cookingCostCount || 0})`, -(summary.cookingCashOut || 0)]];
+  const rows = [[lang === "sw" ? "Pesa ya kuanzia" : "Opening cash", openingCash], [lang === "sw" ? `Mauzo ya taslimu (${summary.saleCount || 0})` : `Cash sales (${summary.saleCount || 0})`, summary.cashSales || 0], [lang === "sw" ? `Malipo ya madeni (${summary.debtPaymentCount || 0})` : `Debt collections (${summary.debtPaymentCount || 0})`, summary.debtCollections || 0], [lang === "sw" ? `Amana/malipo ya nukuu (${summary.quotationPaymentCount || 0})` : `Quotation deposits/payments (${summary.quotationPaymentCount || 0})`, summary.quotationCash || 0], [lang === "sw" ? `Matumizi ya taslimu (${summary.expenseCount || 0})` : `Cash expenses (${summary.expenseCount || 0})`, -(summary.cashExpenses || 0)], [lang === "sw" ? `Manunuzi ya stock/grocery (${summary.stockReceiptCount || 0})` : `Stock and grocery purchases (${summary.stockReceiptCount || 0})`, -(summary.inventoryCashOut || 0)], [lang === "sw" ? `Gharama za kupika (${summary.cookingCostCount || 0})` : `Cooking costs (${summary.cookingCostCount || 0})`, -(summary.cookingCashOut || 0)], [lang === "sw" ? `Gharama za uzalishaji wa shamba (${summary.farmProductionCostCount || 0})` : `Farm production costs (${summary.farmProductionCostCount || 0})`, -(summary.farmCashOut || 0)]];
   return <div className={`mt-4 grid gap-2 ${compact ? "sm:grid-cols-2" : "sm:grid-cols-4"}`}>{rows.map(([label, value]) => <div key={String(label)} className="border border-gray-100 bg-gray-50 p-3"><p className="text-xs text-gray-500">{label}</p><p className={`mt-1 text-sm font-bold ${Number(value) < 0 ? "text-red-700" : "text-gray-950"}`}>{Number(value) < 0 ? "-" : ""}{formatTZS(Math.abs(Number(value)))}</p></div>)}<div className="border border-brand-200 bg-brand-50 p-3"><p className="text-xs text-brand-700">{lang === "sw" ? "Pesa inayotarajiwa" : "Expected cash"}</p><p className="mt-1 text-sm font-bold text-brand-950">{formatTZS(summary.expectedCash)}</p></div></div>;
 }

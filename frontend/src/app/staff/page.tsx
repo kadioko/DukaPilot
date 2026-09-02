@@ -12,6 +12,7 @@ interface StaffMember {
   role: string;
   canSell: boolean;
   canManageStock: boolean;
+  canManageFarm: boolean;
   canManageStaff: boolean;
   canViewReports: boolean;
   canRecordExpenses: boolean;
@@ -48,7 +49,7 @@ export default function StaffPage() {
   const lang = useLang();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canUseAssistant: false });
+  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
 
   async function load() {
     const [data, subscriptionStatus] = await Promise.all([
@@ -67,11 +68,11 @@ export default function StaffPage() {
     event.preventDefault();
     if (basicLimitReached) return;
     await api.post("/staff", form, lang);
-    setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canUseAssistant: false });
+    setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
     await load();
   }
@@ -79,6 +80,7 @@ export default function StaffPage() {
   const permissionLabels = {
     canSell: lang === "sw" ? "Kuuza" : "Sell",
     canManageStock: lang === "sw" ? "Bidhaa" : "Stock",
+    canManageFarm: lang === "sw" ? "Kusimamia uzalishaji wa shamba" : "Manage farm production",
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",
     canRecordExpenses: lang === "sw" ? "Kurekodi matumizi" : "Record expenses",
@@ -130,6 +132,7 @@ export default function StaffPage() {
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select></label>
           <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canRecordExpenses} onChange={(e) => setForm({ ...form, canRecordExpenses: e.target.checked })} />{lang === "sw" ? "Anaweza kurekodi matumizi" : "Can record expenses"}</label>
+          <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canManageFarm} onChange={(e) => setForm({ ...form, canManageFarm: e.target.checked })} />{lang === "sw" ? "Anaweza kusimamia shamba" : "Can manage farm"}</label>
           {proAssistantAvailable && <label className="flex min-h-10 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-950"><input type="checkbox" checked={form.canUseAssistant} onChange={(e) => setForm({ ...form, canUseAssistant: e.target.checked })} />{lang === "sw" ? "Anaweza kutumia AI" : "Can use AI"}</label>}
           <button disabled={basicLimitReached} title={basicLimitReached ? (lang === "sw" ? "Basic ina staff 1 active" : "Basic includes 1 active staff member") : undefined} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-400">
             {lang === "sw" ? "Ongeza" : "Add"}

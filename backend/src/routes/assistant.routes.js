@@ -10,6 +10,7 @@ router.use(requireRole("MERCHANT"));
 router.use(requireFeature("ASSISTANT"));
 router.use(requireAssistantAccess);
 router.get("/stock", requirePermission("canManageStock"), ctrl.stockSummary);
+router.get("/farm", requirePermission("canManageFarm"), ctrl.farmSummary);
 router.get("/quotations", requireAnyPermission("canViewQuotationCosts", "canViewReports"), ctrl.quotationSummary);
 router.get("/actions", requirePermission("canViewReports"), ctrl.listActions);
 router.post("/actions", requirePermission("canViewReports"), ctrl.trackAction);

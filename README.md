@@ -31,6 +31,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
 - **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and the multi-branch roadmap
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
+- **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Category-gated poultry and livestock groups, production batches, output packing, cash rules, staff access, and farm AI boundaries
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
 - **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
 - **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
@@ -51,6 +52,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Inventory tracking** | Add products, set buying/selling/wholesale prices, track stock levels |
 | **Receive stock with true cost** | Record supplier, invoice, items, transport and other costs; DukaPilot allocates landed cost and preserves stock history |
 | **Food preparation and recipe costing** | Turn ingredient stock into prepared portions with saved recipes, actual yield, waste, direct cooking costs, and an audited cost per plate or portion; packaged drinks stay normal barcode inventory |
+| **Farm operations** | For livestock and poultry farms: group flocks, pens, or herds; record additions and losses; consume feed and supplies into eggs, milk, harvest, or other sellable output; pack output such as eggs into trays; keep farm cash costs in Daily Close once |
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |

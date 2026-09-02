@@ -76,6 +76,37 @@ const stockSummary = asyncHandler(async (req, res) => {
   res.json({ actions });
 });
 
+const farmSummary = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const language = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase() === "en" ? "en" : "sw";
+  const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { category: true } });
+  if (String(shop?.category || "").toLowerCase() !== "livestock") return res.json({ actions: [] });
+
+  const sinceWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const sinceTwoDays = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const [groups, production, losses, recentProduction] = await Promise.all([
+    prisma.farmGroup.findMany({ where: { shopId, isActive: true }, select: { id: true, name: true, profileType: true, currentAnimals: true }, take: 100 }),
+    prisma.farmProductionBatch.aggregate({ where: { shopId, producedAt: { gte: sinceWeek } }, _sum: { actualYield: true, wasteQuantity: true }, _count: { id: true } }),
+    prisma.farmAnimalEvent.aggregate({ where: { group: { shopId }, type: { in: ["MORTALITY", "CULL"] }, occurredAt: { gte: sinceWeek } }, _sum: { quantity: true } }),
+    prisma.farmProductionBatch.findMany({ where: { shopId, producedAt: { gte: sinceTwoDays } }, select: { id: true }, take: 1 }),
+  ]);
+  const actions = [];
+  const layers = groups.filter((group) => group.profileType === "LAYERS");
+  if (layers.length && !recentProduction.length) {
+    actions.push({ id: "farm-record-production", rank: 82, href: "/farm", title: language === "sw" ? "Rekodi uzalishaji wa mayai" : "Record egg production", body: language === "sw" ? `Kuna ${layers.length} kundi la kuku wa mayai lakini hakuna batch ya uzalishaji kwa siku 2 zilizopita.` : `${layers.length} layer group(s) have no production batch recorded in the last two days.`, action: language === "sw" ? "Fungua Ufugaji" : "Open Farm" });
+  }
+  const lossAnimals = losses._sum.quantity || 0;
+  if (lossAnimals > 0) {
+    actions.push({ id: "farm-review-losses", rank: 90, href: "/farm", title: language === "sw" ? "Kagua vifo na cull za shamba" : "Review farm deaths and culls", body: language === "sw" ? `Wanyama ${lossAnimals} wameandikwa kama vifo au cull katika siku 7 zilizopita.` : `${lossAnimals} animals were recorded as deaths or culls in the last seven days.`, action: language === "sw" ? "Kagua Ufugaji" : "Review Farm" });
+  }
+  const waste = production._sum.wasteQuantity || 0;
+  const output = production._sum.actualYield || 0;
+  if (waste > 0 && waste >= Math.max(2, Math.round(output * 0.05))) {
+    actions.push({ id: "farm-review-output-loss", rank: 78, href: "/farm", title: language === "sw" ? "Kagua hasara ya output" : "Review output loss", body: language === "sw" ? `Output iliyopotea ni ${waste} kwenye siku 7 zilizopita. Linganisha yield halisi na supplies zilizotumika.` : `${waste} output units were lost in the last seven days. Compare actual yield with supplies used.`, action: language === "sw" ? "Fungua batch" : "Open batches" });
+  }
+  res.json({ actions: actions.sort((a, b) => b.rank - a.rank) });
+});
+
 const listActions = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const limit = Math.min(Number(req.query.limit) || 100, 200);
@@ -190,4 +221,4 @@ const adminAnalytics = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { listActions, trackAction, quotationSummary, stockSummary, adminAnalytics };
+module.exports = { listActions, trackAction, quotationSummary, stockSummary, farmSummary, adminAnalytics };

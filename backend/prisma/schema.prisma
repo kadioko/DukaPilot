@@ -143,6 +143,30 @@ enum QuotationReminderType {
   VIEWED_NOT_ACCEPTED
 }
 
+enum FarmProfileType {
+  LAYERS
+  BROILERS
+  DAIRY
+  BEEF
+  GOATS_SHEEP
+  PIGS
+  MIXED
+}
+
+enum FarmAnimalEventType {
+  OPENING
+  ADDITION
+  MORTALITY
+  CULL
+}
+
+enum FarmProductionType {
+  EGGS
+  MILK
+  HARVEST
+  OTHER
+}
+
 model User {
   id        String     @id @default(cuid())
   phone     String     @unique
@@ -189,6 +213,10 @@ model Shop {
   stockReceipts            StockReceipt[]
   foodRecipes              FoodRecipe[]
   foodPreparationBatches   FoodPreparationBatch[]
+  farmProfiles             FarmProfile[]
+  farmGroups               FarmGroup[]
+  farmProductionBatches    FarmProductionBatch[]
+  farmPackConversions      FarmPackConversion[]
   customers                Customer[]
   services                 Service[]
   quotations               Quotation[]
@@ -731,6 +759,10 @@ model Product {
   foodRecipeIngredients    FoodRecipeItem[]
   foodPreparationOutputs   FoodPreparationBatch[] @relation("FoodPreparationOutput")
   foodPreparationInputs    FoodPreparationItem[]
+  farmProductionOutputs    FarmProductionBatch[] @relation("FarmProductionOutput")
+  farmProductionInputs     FarmProductionItem[] @relation("FarmProductionInput")
+  farmPackInputs           FarmPackConversion[] @relation("FarmPackInput")
+  farmPackOutputs          FarmPackConversion[] @relation("FarmPackOutput")
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
@@ -953,6 +985,7 @@ model StaffMember {
   role              StaffRole @default(CASHIER)
   canSell           Boolean   @default(true)
   canManageStock    Boolean   @default(false)
+  canManageFarm     Boolean   @default(false)
   canManageStaff    Boolean   @default(false)
   canViewReports    Boolean   @default(false)
   canRecordExpenses Boolean   @default(false)
@@ -1037,6 +1070,7 @@ model CashSession {
   quotationPayments QuotationPayment[]
   stockReceipts     StockReceipt[]
   foodPreparationBatches FoodPreparationBatch[]
+  farmProductionBatches FarmProductionBatch[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])
@@ -1157,6 +1191,134 @@ model FoodPreparationItem {
   @@unique([foodPreparationId, productId])
   @@index([productId])
   @@map("food_preparation_items")
+}
+
+// Farm profiles select the production workflows a livestock business uses.
+// They intentionally sit below the broad shop category so one farm can raise
+// layers and goats without changing its business identity.
+model FarmProfile {
+  id        String          @id @default(cuid())
+  shopId    String
+  shop      Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type      FarmProfileType
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([shopId, type])
+  @@index([shopId, isActive])
+  @@map("farm_profiles")
+}
+
+// A group is a flock, pen, herd, or rearing batch. The first release stays
+// group-based so small farms do not have to create a record for every animal.
+model FarmGroup {
+  id                String                @id @default(cuid())
+  shopId            String
+  shop              Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  profileType       FarmProfileType
+  name              String
+  currentAnimals    Int                   @default(0)
+  isActive          Boolean               @default(true)
+  note              String?
+  events            FarmAnimalEvent[]
+  productionBatches FarmProductionBatch[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([shopId, profileType, isActive])
+  @@index([shopId, updatedAt])
+  @@map("farm_groups")
+}
+
+model FarmAnimalEvent {
+  id         String              @id @default(cuid())
+  groupId    String
+  group      FarmGroup           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  type       FarmAnimalEventType
+  quantity   Int
+  note       String?
+  occurredAt DateTime            @default(now())
+  recordedBy String?
+  createdAt  DateTime            @default(now())
+
+  @@index([groupId, occurredAt])
+  @@map("farm_animal_events")
+}
+
+// A production batch consumes farm supplies and creates sellable output stock
+// such as individual eggs, milk in millilitres, or harvested animals.
+model FarmProductionBatch {
+  id                 String              @id @default(cuid())
+  shopId             String
+  shop               Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  groupId            String
+  group              FarmGroup           @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  type               FarmProductionType  @default(OTHER)
+  outputProductId    String
+  outputProduct      Product             @relation("FarmProductionOutput", fields: [outputProductId], references: [id], onDelete: Restrict)
+  expectedYield      Int
+  actualYield        Int
+  wasteQuantity      Int                 @default(0)
+  ingredientCost     Int
+  additionalCost     Int                 @default(0)
+  totalCost          Int
+  unitCost           Int
+  additionalCostNote String?
+  paymentMethod      PaymentMethod       @default(CASH)
+  cashSessionId      String?
+  cashSession        CashSession?        @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  note               String?
+  producedAt         DateTime            @default(now())
+  producedBy         String?
+  items              FarmProductionItem[]
+  createdAt          DateTime            @default(now())
+
+  @@index([shopId, producedAt])
+  @@index([shopId, outputProductId, producedAt])
+  @@index([groupId, producedAt])
+  @@index([cashSessionId, paymentMethod])
+  @@map("farm_production_batches")
+}
+
+model FarmProductionItem {
+  id               String               @id @default(cuid())
+  farmProductionId String
+  farmProduction   FarmProductionBatch  @relation(fields: [farmProductionId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product              @relation("FarmProductionInput", fields: [productId], references: [id], onDelete: Restrict)
+  quantity         Int
+  unitCost         Int
+  totalCost        Int
+
+  @@unique([farmProductionId, productId])
+  @@index([productId])
+  @@map("farm_production_items")
+}
+
+// Packaging keeps one base stock unit accurate. A layer farm can convert 30
+// individual eggs into one tray without creating imaginary purchased stock.
+model FarmPackConversion {
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  inputProductId  String
+  inputProduct    Product   @relation("FarmPackInput", fields: [inputProductId], references: [id], onDelete: Restrict)
+  outputProductId String
+  outputProduct   Product   @relation("FarmPackOutput", fields: [outputProductId], references: [id], onDelete: Restrict)
+  inputQuantity   Int
+  outputQuantity  Int
+  totalCost       Int
+  unitCost        Int
+  note            String?
+  convertedAt     DateTime  @default(now())
+  convertedBy     String?
+  createdAt       DateTime  @default(now())
+
+  @@index([shopId, convertedAt])
+  @@index([inputProductId])
+  @@index([outputProductId])
+  @@map("farm_pack_conversions")
 }
 
 model StockReceiptItem {

@@ -18,6 +18,7 @@ const SAFE_STAFF_SELECT = {
   role: true,
   canSell: true,
   canManageStock: true,
+  canManageFarm: true,
   canManageStaff: true,
   canViewReports: true,
   canRecordExpenses: true,
@@ -40,10 +41,10 @@ const SAFE_STAFF_SELECT = {
 
 function permissionsFor(role) {
   const quotationManager = { canViewQuotations: true, canCreateQuotations: true, canEditSentQuotations: true, canViewQuotationCosts: true, canApproveQuotationDiscounts: true, canSendQuotations: true, canAcceptQuotations: true, canConvertQuotations: true, canRecordQuotationPayments: true, canArchiveQuotations: true, canDeleteQuotationDrafts: true };
-  if (role === "OWNER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true, ...quotationManager };
-  if (role === "MANAGER") return { canSell: true, canManageStock: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true, ...quotationManager };
-  if (role === "STOCK_CLERK") return { canSell: false, canManageStock: true, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canViewQuotations: true, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false, canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false, canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false };
-  return { canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canViewQuotations: false, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false, canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false, canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false };
+  if (role === "OWNER") return { canSell: true, canManageStock: true, canManageFarm: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true, ...quotationManager };
+  if (role === "MANAGER") return { canSell: true, canManageStock: true, canManageFarm: true, canManageStaff: true, canViewReports: true, canRecordExpenses: true, ...quotationManager };
+  if (role === "STOCK_CLERK") return { canSell: false, canManageStock: true, canManageFarm: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canViewQuotations: true, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false, canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false, canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false };
+  return { canSell: true, canManageStock: false, canManageFarm: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canViewQuotations: false, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false, canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false, canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false };
 }
 
 function boolValue(value, fallback) {
@@ -125,6 +126,7 @@ const create = asyncHandler(async (req, res) => {
       role,
       canSell: boolValue(req.body.canSell, defaults.canSell),
       canManageStock: boolValue(req.body.canManageStock, defaults.canManageStock),
+      canManageFarm: boolValue(req.body.canManageFarm, defaults.canManageFarm),
       canManageStaff: boolValue(req.body.canManageStaff, defaults.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, defaults.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, defaults.canRecordExpenses),
@@ -181,6 +183,7 @@ const update = asyncHandler(async (req, res) => {
       role,
       canSell: boolValue(req.body.canSell, existing.canSell),
       canManageStock: boolValue(req.body.canManageStock, existing.canManageStock),
+      canManageFarm: boolValue(req.body.canManageFarm, existing.canManageFarm),
       canManageStaff: boolValue(req.body.canManageStaff, existing.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, existing.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, existing.canRecordExpenses),

@@ -56,6 +56,7 @@ async function authenticate(req, res, next) {
           canViewReports: true,
           canRecordExpenses: true,
           canUseAssistant: true,
+          canManageFarm: true,
           canViewQuotations: true,
           canCreateQuotations: true,
           canEditSentQuotations: true,
@@ -82,6 +83,7 @@ async function authenticate(req, res, next) {
         canViewReports: staff.canViewReports,
         canRecordExpenses: staff.canRecordExpenses,
         canUseAssistant: staff.canUseAssistant,
+        canManageFarm: staff.canManageFarm,
         canViewQuotations: staff.canViewQuotations,
         canCreateQuotations: staff.canCreateQuotations,
         canEditSentQuotations: staff.canEditSentQuotations,
@@ -143,7 +145,7 @@ function requireShopCategory(...categories) {
       const shopId = await getShopIdForUser(req.user);
       const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { category: true } });
       if (!shop || !allowedCategories.has(String(shop.category || "").toLowerCase())) {
-        return res.status(403).json({ error: "Food Preparation is available for shops set as Bar or Restaurant. You can change the shop category in Settings." });
+        return res.status(403).json({ error: "This feature is not available for this business category. You can change the shop category in Settings." });
       }
       return next();
     } catch (error) {

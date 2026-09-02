@@ -1,16 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, CheckCircle2, FileText, MessageCircle, Search, Sparkles, UtensilsCrossed } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BookOpen, CheckCircle2, Egg, FileText, MessageCircle, Search, Sparkles, Tractor, UtensilsCrossed } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
+import { getCurrentSession } from "@/lib/api";
 
 export default function HelpPage() {
   const lang = useLang();
+  const [isLivestock, setIsLivestock] = useState(false);
+  useEffect(() => {
+    getCurrentSession<{ user: { shop?: { category?: string } } }>()
+      .then((result) => setIsLivestock(String(result.user.shop?.category || "").toLowerCase() === "livestock"))
+      .catch(() => setIsLivestock(false));
+  }, []);
   const faqs = [
     [lang === "sw" ? "Ninaanzaje?" : "How do I start?", lang === "sw" ? "Jisajili, kamilisha duka, ongeza bidhaa chache, kisha rekodi mauzo ya kwanza." : "Register, complete shop setup, add a few products, then record your first sale."],
     [lang === "sw" ? "Ninatumaje orodha ya bidhaa?" : "How do I share the catalog?", lang === "sw" ? "Fungua Orodha ya bidhaa, chagua duka lako, kisha tuma kiungo kwa WhatsApp au mitandao mingine." : "Open Catalog, choose your shop, then send the link on WhatsApp or other channels."],
@@ -45,6 +53,13 @@ export default function HelpPage() {
     [lang === "sw" ? "3. Andaa batch baada ya kupika" : "3. Prepare a batch after cooking", lang === "sw" ? "Fungua Andaa Chakula, chagua ingredients zilizotumika, kisha weka yield iliyotarajiwa na portions halisi zilizotoka. Mfumo unapunguza ingredients na kuongeza portions zilizo tayari kuuzwa." : "Open Prepare Food, choose the ingredients used, then enter expected yield and actual portions made. The system deducts ingredients and adds the sellable portions."],
     [lang === "sw" ? "4. Rekodi waste na gharama" : "4. Record waste and costs", lang === "sw" ? "Ikiwa kuku 10 zilitarajiwa kutoa nusu 20 lakini zimetoka 18, weka 18. Mfumo unaonyesha waste 2 na kugawa gharama yote kwenye nusu 18 halisi. Ongeza gharama kama mkaa au labour kwenye batch na uchague njia ya malipo; taslimu huonekana kwenye Daily Close." : "If 10 chickens should make 20 halves but only 18 are usable, enter 18. The system shows 2 wasted and spreads the full cost across the actual 18 halves. Add costs such as charcoal or labour to the batch and choose the payment method; cash appears in Daily Close."],
     [lang === "sw" ? "5. Uza portion kwenye POS" : "5. Sell the portion in POS", lang === "sw" ? "Ukiuza Kuku nusu 1, POS huondoa nusu 1 na kutumia gharama ya batch kwenye faida ya mauzo. Batch zilizohifadhiwa hazihaririwi, hivyo stock history inabaki sahihi." : "When you sell 1 Half chicken, POS deducts 1 half and uses the batch cost in sale profit. Saved batches are not edited, so stock history remains trustworthy."],
+  ];
+  const farmGuide = [
+    [lang === "sw" ? "1. Chagua aina na kundi" : "1. Choose profiles and a group", lang === "sw" ? "Kwenye Ufugaji, chagua Kuku wa mayai, Kuku wa nyama, Maziwa, Ng'ombe wa nyama, Mbuzi na kondoo, Nguruwe, au Mifugo mchanganyiko. Kisha ongeza banda, zizi, herd au batch yako pamoja na idadi ya kuanzia." : "In Farm, choose Layers, Broilers, Dairy, Beef, Goats and sheep, Pigs, or Mixed livestock. Then add your house, pen, herd, or batch with its opening animal count."],
+    [lang === "sw" ? "2. Pokea feed na supplies" : "2. Receive feed and supplies", lang === "sw" ? "Pokea feed, dawa, packaging na supplies nyingine kupitia Pokea Bidhaa. Usiziweke tena kama Matumizi wakati bado hazijatumika; zinakuwa gharama ya output pale zinapotumika." : "Receive feed, medicine, packaging, and other supplies through Receive Stock. Do not also record them as Expenses while unused; they become output cost when used."],
+    [lang === "sw" ? "3. Rekodi uzalishaji halisi" : "3. Record real production", lang === "sw" ? "Chagua kundi, output inayouzwa, feed/supplies zilizotumika, yield iliyotarajiwa na halisi. Mfumo hupunguza supplies, unaongeza mayai, maziwa au mavuno kwenye stock, na huonyesha loss." : "Choose the group, sellable output, feed or supplies used, expected yield, and actual yield. DukaPilot reduces supplies, adds eggs, milk, or harvest to stock, and records loss."],
+    [lang === "sw" ? "4. Pakia output bila kuchanganya stock" : "4. Pack output without mixing stock", lang === "sw" ? "Kwa mayai, toa mayai 30 kwenye stock ya moja moja na ongeza tray 1. Kwa maziwa, tumia ml kama stock ya msingi: 1,000 ml ni litre 1. Gharama inahamia kwenye kifurushi bila kununua stock tena." : "For eggs, take 30 individual eggs from stock and add one tray. For dairy, use ml as base stock: 1,000 ml is one litre. Cost moves into the packed item without buying stock again."],
+    [lang === "sw" ? "5. Uza kama kawaida" : "5. Sell normally", lang === "sw" ? "Uza mayai, tray, maziwa, kuku au bidhaa nyingine kupitia Mauzo. POS hupunguza stock ya bidhaa iliyouzwa na faida hutumia gharama ya batch iliyorekodiwa." : "Sell eggs, trays, milk, chickens, or other output through Sales. POS deducts the sold product and uses the recorded batch cost for profit."],
   ];
   const aiThinking = [
     [
@@ -146,6 +161,16 @@ export default function HelpPage() {
           </div>
           <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-600 sm:px-6"><strong className="text-gray-950">{lang === "sw" ? "Mfano:" : "Example:"}</strong> {lang === "sw" ? "Pokea kuku 10 mzima x TZS 18,000 = TZS 180,000. Baada ya kupika, chagua kuku 10 kwenye Andaa Chakula na weka nusu 18 halisi. Gharama ni TZS 10,000 kwa kila nusu; mfumo unaonyesha waste 2." : "Receive 10 whole chickens x TZS 18,000 = TZS 180,000. After cooking, choose 10 chickens in Prepare Food and enter 18 actual halves. The cost is TZS 10,000 per half; the system shows 2 wasted."} <Link href="/food-preparation" className="ml-1 font-bold text-brand-700 hover:text-brand-800">{lang === "sw" ? "Fungua Andaa Chakula" : "Open Prepare Food"}</Link></div>
         </section>
+
+        {isLivestock && <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">
+          <div className="border-b border-brand-100 bg-brand-50 px-5 py-5 sm:px-6">
+            <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand-700 shadow-sm"><Tractor className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-gray-950">{lang === "sw" ? "Jinsi ya kutumia DukaPilot kwa Ufugaji" : "How to use DukaPilot for Farm Operations"}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Kwa kuku, mayai, maziwa, ng'ombe, mbuzi, kondoo na nguruwe bila kuhesabu feed au pesa mara mbili." : "For poultry, eggs, dairy, cattle, goats, sheep, and pigs without double-counting feed or cash."}</p></div></div>
+          </div>
+          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-6">
+            {farmGuide.map(([title, body]) => <div key={title} className="border-l-2 border-brand-300 pl-4"><h3 className="text-sm font-semibold text-gray-950">{title}</h3><p className="mt-1 text-sm leading-6 text-gray-600">{body}</p></div>)}
+          </div>
+          <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-600 sm:px-6"><Egg className="mr-1 inline h-4 w-4 text-brand-700" /><strong className="text-gray-950">{lang === "sw" ? "Mfano wa mayai:" : "Egg example:"}</strong> {lang === "sw" ? "Pokea feed 50 kg, tumia kg 5 kwa Banda A, kisha rekodi mayai 280 yaliyopatikana na 8 yaliyovunjika. Pakia mayai 30 kuwa tray 1, halafu uza tray kwenye POS." : "Receive 50 kg of feed, use 5 kg for House A, then record 280 eggs produced and 8 broken eggs. Pack 30 eggs into one tray, then sell the tray in POS."} <Link href="/farm" className="ml-1 font-bold text-brand-700 hover:text-brand-800">{lang === "sw" ? "Fungua Ufugaji" : "Open Farm"}</Link></div>
+        </section>}
 
         <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">
           <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
