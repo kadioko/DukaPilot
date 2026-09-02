@@ -11,10 +11,19 @@ In **WhatsApp Manager**, select the production account for the DukaPilot number,
 | Field | Value |
 | --- | --- |
 | Name | `dukapilot_pin_reset` |
-| Language | English (US) |
-| Body | `DukaPilot: your PIN reset code is {{1}}. It expires in 10 minutes. Do not share this code.` |
+| Category | Authentication |
+| Type | One-time Passcode |
+| Language | English (`en_US`) |
+| Delivery | Copy code |
+| Validity | 10 minutes |
 
-Do not include a customer name, PIN, business data, debt balance, or promotional text. Wait until Meta marks the template as active/approved before enabling WhatsApp recovery.
+Meta owns the fixed authentication copy (for example, `{{1}} is your verification code`), so there is no custom message body to enter. Do not add a customer name, PIN, business data, debt balance, or promotional text. Wait until Meta marks the template as active/approved before enabling WhatsApp recovery.
+
+### Production-number prerequisite
+
+The production number must be **registered and Online for Cloud API** in the same WhatsApp Business Account before it can create templates or send messages. A number that appears in WhatsApp Manager as **Offline**, or an app setup page that says **No phone numbers available for this app**, is not ready even when webhooks, payment, app publication, and business verification are complete.
+
+For an existing WhatsApp Business App number, use Meta's supported Cloud API / coexistence onboarding path for that number. Do not submit a registration or transfer step without confirming whether the existing mobile WhatsApp Business app will remain usable. After the number is Online, associate it with the DukaPilot developer app, create the template above, then add the Railway variables.
 
 ## Railway production variables
 
