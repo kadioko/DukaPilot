@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
+import WhatsAppCoexistencePanel from "@/components/admin/WhatsAppCoexistencePanel";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import {
   Users,
@@ -300,7 +301,7 @@ interface BillingFeedback {
   message: string;
 }
 
-type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "referrals" | "suppliers" | "sync" | "sms";
+type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "referrals" | "suppliers" | "sync" | "sms" | "whatsapp";
 
 async function optionalAdminLoad<T>(label: string, request: Promise<T>, fallback: T): Promise<T> {
   try {
@@ -938,6 +939,7 @@ export default function AdminPage() {
     { id: "suppliers", label: "Suppliers" },
     { id: "sync", label: "Sync History" },
     { id: "sms", label: "SMS" },
+    { id: "whatsapp", label: "WhatsApp API" },
   ];
   const activeShops = subscriptionStatusCounts.active;
   const trialShops = subscriptionStatusCounts.trial;
@@ -2599,6 +2601,8 @@ export default function AdminPage() {
             )}
           </div>
         )}
+
+        {tab === "whatsapp" && <WhatsAppCoexistencePanel />}
 
         {/* SUPPLIERS */}
         {tab === "suppliers" && (

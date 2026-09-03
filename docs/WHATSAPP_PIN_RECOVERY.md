@@ -23,7 +23,7 @@ Meta owns the fixed authentication copy (for example, `{{1}} is your verificatio
 
 The production number must be **registered and Online for Cloud API** in the same WhatsApp Business Account before it can create templates or send messages. A number that appears in WhatsApp Manager as **Offline**, or an app setup page that says **No phone numbers available for this app**, is not ready even when webhooks, payment, app publication, and business verification are complete.
 
-For an existing WhatsApp Business App number, use Meta's supported Cloud API / coexistence onboarding path for that number. Do not submit a registration or transfer step without confirming whether the existing mobile WhatsApp Business app will remain usable. After the number is Online, associate it with the DukaPilot developer app, create the template above, then add the Railway variables.
+For an existing WhatsApp Business App number, use DukaPilot's **Admin > WhatsApp API** coexistence flow. It launches Meta Embedded Signup with the Business App selector and confirms that the same number is both `is_on_biz_app: true` and `platform_type: CLOUD_API`. Do not use Meta's generic **Add new number** or normal phone-registration route. The full platform setup is in [WHATSAPP_BUSINESS_APP_COEXISTENCE.md](WHATSAPP_BUSINESS_APP_COEXISTENCE.md).
 
 ## Railway production variables
 

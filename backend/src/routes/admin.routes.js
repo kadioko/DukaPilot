@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone, smsMonitoring } = require("../controllers/admin.controller");
+const { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone, smsMonitoring, completeWhatsAppCoexistence } = require("../controllers/admin.controller");
 const { adminListReferrals, adminRewardReferral, adminRecoverReferral, adminRejectReferral } = require("../controllers/referral.controller");
 const { authenticate, requireRole } = require("../middleware/auth");
 
@@ -15,6 +15,7 @@ router.post("/users/:userId/reset-pin", resetUserPin);
 router.post("/staff/:staffId/reset-pin", resetStaffPin);
 router.get("/audit-logs", listAuditLogs);
 router.get("/sms-monitoring", smsMonitoring);
+router.post("/whatsapp/coexistence/complete", completeWhatsAppCoexistence);
 router.get("/referrals", adminListReferrals);
 router.post("/referrals/recover", adminRecoverReferral);
 router.post("/referrals/:referralId/reward", adminRewardReferral);

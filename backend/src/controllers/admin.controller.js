@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
 const { getNextSmsMonitoring } = require("../services/nextsms-monitor.service");
+const { verifyCoexistenceOnboarding, isMetaCoexistenceConfigured } = require("../services/meta-whatsapp-coexistence.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -318,4 +319,30 @@ const smsMonitoring = asyncHandler(async (req, res) => {
   res.json(data);
 });
 
-module.exports = { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone, smsMonitoring };
+// The browser receives Meta's short-lived authorization code. Exchange it only
+// on the server, never persist or return it, then verify the exact coexistence state.
+const completeWhatsAppCoexistence = asyncHandler(async (req, res) => {
+  if (!isMetaCoexistenceConfigured()) {
+    return res.status(503).json({ error: "Meta coexistence is not configured on the server" });
+  }
+
+  const connection = await verifyCoexistenceOnboarding({
+    code: req.body?.code,
+    wabaId: req.body?.wabaId,
+  });
+
+  req.audit = {
+    action: "admin.whatsapp.coexistence.complete",
+    resourceType: "meta_whatsapp_connection",
+    resourceId: connection.phoneNumberId || null,
+    metadata: {
+      wabaId: connection.wabaId || String(req.body?.wabaId || "").slice(0, 32),
+      connected: connection.connected,
+      platformType: connection.platformType || null,
+      isOnBusinessApp: connection.isOnBusinessApp === true,
+    },
+  };
+  res.json(connection);
+});
+
+module.exports = { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone, smsMonitoring, completeWhatsAppCoexistence };

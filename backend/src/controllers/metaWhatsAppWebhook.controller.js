@@ -36,14 +36,23 @@ function hasValidSignature(req) {
   return safeEqual(signature, expected);
 }
 
+function hasCoexistenceUpdate(payload) {
+  const coexistenceFields = new Set(["history", "smb_app_state_sync", "smb_message_echoes"]);
+  return Array.isArray(payload?.entry) && payload.entry.some((entry) =>
+    Array.isArray(entry?.changes) && entry.changes.some((change) => coexistenceFields.has(change?.field))
+  );
+}
+
 function receive(req, res) {
   if (!hasValidSignature(req)) {
     return res.status(401).json({ error: "Invalid Meta WhatsApp webhook signature" });
   }
 
-  // Delivery-status persistence is added with the outbound template sender.
-  // Do not log message bodies, phone numbers, PINs, or webhook payloads.
+  // Coexistence fields (history, smb_app_state_sync, smb_message_echoes) are
+  // accepted here after Meta subscription. Do not log message bodies, phone
+  // numbers, PINs, authorization codes, or the raw webhook payload.
+  if (hasCoexistenceUpdate(req.body)) return res.sendStatus(200);
   res.sendStatus(200);
 }
 
-module.exports = { verify, receive, hasValidSignature, safeEqual };
+module.exports = { verify, receive, hasValidSignature, safeEqual, hasCoexistenceUpdate };

@@ -51,3 +51,12 @@ test("Meta WhatsApp webhook accepts only correctly signed callbacks", () => {
     else process.env.META_WHATSAPP_APP_SECRET = original;
   }
 });
+
+test("Meta WhatsApp webhook recognizes coexistence updates without retaining their contents", () => {
+  assert.equal(controller.hasCoexistenceUpdate({
+    entry: [{ changes: [{ field: "smb_app_state_sync" }] }],
+  }), true);
+  assert.equal(controller.hasCoexistenceUpdate({
+    entry: [{ changes: [{ field: "messages" }] }],
+  }), false);
+});
