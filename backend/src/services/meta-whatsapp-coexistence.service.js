@@ -4,7 +4,8 @@ function graphApiUrl() {
 
 function config() {
   const appId = String(process.env.META_APP_ID || "").trim();
-  const appSecret = String(process.env.META_APP_SECRET || "").trim();
+  // Keep compatibility with the existing Railway WhatsApp integration secret.
+  const appSecret = String(process.env.META_APP_SECRET || process.env.META_WHATSAPP_APP_SECRET || "").trim();
   return { appId, appSecret, ready: Boolean(appId && appSecret), graphApiUrl: graphApiUrl() };
 }
 
