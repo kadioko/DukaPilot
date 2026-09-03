@@ -3,6 +3,8 @@ const nextConfig = {
   output: "standalone",
   env: {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || "development",
+    NEXT_PUBLIC_META_APP_ID: process.env.NEXT_PUBLIC_META_APP_ID || "",
+    NEXT_PUBLIC_META_WHATSAPP_COEXISTENCE_CONFIG_ID: process.env.NEXT_PUBLIC_META_WHATSAPP_COEXISTENCE_CONFIG_ID || "",
   },
   async rewrites() {
     return [{
