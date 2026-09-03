@@ -38,7 +38,8 @@ The authorization code and Meta access token are never returned to the browser, 
 3. The app must have a Facebook Login for Business configuration that Meta has enabled for WhatsApp Business App coexistence / Tech Provider or Solution Partner use.
 4. Add that configuration ID to Vercel as `NEXT_PUBLIC_META_WHATSAPP_COEXISTENCE_CONFIG_ID`.
 5. Add the Meta app ID to Vercel as `NEXT_PUBLIC_META_APP_ID`.
-6. Add `META_APP_ID` and `META_APP_SECRET` to the Railway backend. Keep the app secret private.
+   These are browser identifiers required by Meta's SDK, so they must be ordinary, non-sensitive Production variables that Vercel can include at build time. They are not secrets.
+6. Add `META_APP_ID` and `META_APP_SECRET` to the Railway backend. DukaPilot also accepts the existing `META_WHATSAPP_APP_SECRET` Railway variable for the app secret. Keep either secret private.
 7. In Meta's WhatsApp webhook configuration, subscribe to `history`, `smb_app_state_sync`, and `smb_message_echoes` in addition to the standard delivery fields. The endpoint is `https://dukapilotproduction.up.railway.app/api/webhooks/meta-whatsapp`.
 
 `META_GRAPH_API_URL` may stay at `https://graph.facebook.com/v25.0` unless a newer supported Graph version is deliberately selected.
