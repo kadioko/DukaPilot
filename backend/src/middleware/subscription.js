@@ -10,7 +10,9 @@ function isSubscriptionActive(shop) {
 
 function requireActiveSubscription(req, res, next) {
   if (req.user.role === "ADMIN") return next();
-  if (!["POST", "PATCH", "DELETE"].includes(req.method)) return next();
+  // Route handlers use each of the standard write methods. Keeping this list
+  // complete prevents a new PUT endpoint from accidentally bypassing billing.
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
 
   Promise.resolve()
     .then(async () => {

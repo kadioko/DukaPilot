@@ -128,6 +128,59 @@ test("branch writes use the current root-business subscription instead of stale 
   });
 });
 
+test("subscription enforcement also protects PUT updates", async () => {
+  require.cache[shopAccessPath] = {
+    id: shopAccessPath,
+    filename: shopAccessPath,
+    loaded: true,
+    exports: {
+      getShopIdForUser: async () => "shop-1",
+      getBillingShopIdForUser: async () => "shop-1",
+    },
+  };
+  mockPrisma({
+    shop: {
+      findUnique: async () => ({
+        id: "shop-1",
+        name: "Expired Business",
+        plan: "BASIC",
+        isActive: true,
+        trialEndsAt: null,
+        subscriptionEndsAt: new Date(Date.now() - 86400000),
+        parentShopId: null,
+        branchArchived: false,
+      }),
+    },
+  });
+  delete require.cache[subscriptionPath];
+  const { requireActiveSubscription } = require(subscriptionPath);
+  await new Promise((resolve, reject) => {
+    requireActiveSubscription(
+      { method: "PUT", user: { userId: "owner-1", role: "MERCHANT" } },
+      {
+        status(code) {
+          try {
+            assert.equal(code, 402);
+          } catch (error) {
+            reject(error);
+          }
+          return {
+            json(payload) {
+              try {
+                assert.equal(payload.code, "SUBSCRIPTION_REQUIRED");
+                resolve();
+              } catch (error) {
+                reject(error);
+              }
+            },
+          };
+        },
+      },
+      (error) => error ? reject(error) : reject(new Error("Expired shop reached a PUT handler")),
+    );
+  });
+});
+
 test("customer orders reject skipping directly from pending to delivered", async () => {
   const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1" }) },
