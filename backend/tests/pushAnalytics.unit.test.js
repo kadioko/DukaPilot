@@ -131,6 +131,46 @@ test("shop owners can save one alert preference without changing the others", as
   assert.equal(res.payload.preferences.debtDue, true);
 });
 
+test("staff delivery history is limited to their device and permitted alert kinds", async () => {
+  let deliveryWhere;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-a" }) },
+    pushDelivery: { findMany: async ({ where }) => { deliveryWhere = where; return []; } },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[pushControllerPath];
+  const controller = require(pushControllerPath);
+  const res = response();
+
+  await controller.listDeliveries({ user: { userId: "owner-a", staffId: "stock-1", shopId: "shop-a", permissions: { canManageStock: true } } }, res);
+
+  assert.equal(deliveryWhere.shopId, "shop-a");
+  assert.equal(deliveryWhere.subscription.staffId, "stock-1");
+  assert.deepEqual(deliveryWhere.kind.in, ["LOW_STOCK"]);
+});
+
+test("shop alert queue excludes staff who lack permission for its content", async () => {
+  let queued;
+  mockPrisma({
+    pushSubscription: { findMany: async () => [
+      { id: "owner-device", staffId: null },
+      { id: "stock-device", staffId: "stock-1" },
+      { id: "cashier-device", staffId: "cashier-1" },
+    ] },
+    staffMember: { findMany: async () => [
+      { id: "stock-1", isActive: true, canManageStock: true, canViewReports: false, canViewQuotations: false, canUseAssistant: false },
+      { id: "cashier-1", isActive: true, canManageStock: false, canViewReports: false, canViewQuotations: false, canUseAssistant: false },
+    ] },
+    pushDelivery: { createMany: async ({ data }) => { queued = data; return { count: data.length }; } },
+  });
+  delete require.cache[pushServicePath];
+  const { queueForShop } = require(pushServicePath);
+  const result = await queueForShop("shop-a", "LOW_STOCK", { title: "Stock", body: "Details", href: "/inventory" });
+
+  assert.equal(result, true);
+  assert.deepEqual(queued.map((item) => item.subscriptionId), ["owner-device", "stock-device"]);
+});
+
 test("push worker claims a delivery and does not deactivate a valid device after transient retry exhaustion", async () => {
   process.env.VAPID_PUBLIC_KEY = "public";
   process.env.VAPID_PRIVATE_KEY = "private";

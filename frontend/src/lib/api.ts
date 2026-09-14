@@ -1,4 +1,6 @@
 import { t, type Lang } from "@/lib/i18n";
+import { clearActiveOfflineSalesScope, hasPendingOfflineSales } from "@/lib/offlineSalesStorage";
+import { clearActiveOfflineCropScope, hasPendingOfflineCropOperations } from "@/lib/offlineCropStorage";
 
 const PROD_API_URL = "https://dukapilotproduction.up.railway.app/api";
 const BROWSER_API_PATH = "/_api";
@@ -6,8 +8,8 @@ const REQUEST_TIMEOUT_MS = 20000;
 export const BRANCH_KEY = "dukapilot_selected_branch";
 export function selectedBranchId() { return typeof window === "undefined" ? "" : sessionStorage.getItem(BRANCH_KEY) || ""; }
 export function switchBranch(id: string) {
-  const pending = JSON.parse(localStorage.getItem("dukapilot_pending_sales") || "[]");
-  if (pending.length) throw new Error("Sync or resolve pending offline sales before switching branches.");
+  if (hasPendingOfflineSales()) throw new Error("Sync or resolve pending offline sales before switching branches.");
+  if (hasPendingOfflineCropOperations()) throw new Error("Sync or resolve pending crop records before switching branches.");
   sessionStorage.setItem(BRANCH_KEY, id);
   invalidateCurrentSession();
   window.location.assign("/dashboard");
@@ -56,6 +58,10 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
 
   if (normalized === "Invalid phone or PIN") {
     return t("auth.error.invalidCredentials", lang);
+  }
+
+  if (normalized === "No account found for this phone number") {
+    return t("auth.error.accountNotFound", lang);
   }
 
   if (normalized === "Session expired") {
@@ -131,7 +137,13 @@ async function request<T>(
   _isRetry = false
 ): Promise<T> {
   const baseUrl = getBaseUrl();
-  if (["/auth/login", "/auth/logout", "/auth/register"].includes(path) && typeof window !== "undefined") sessionStorage.removeItem(BRANCH_KEY);
+  if (["/auth/login", "/auth/logout", "/auth/register"].includes(path) && typeof window !== "undefined") {
+    sessionStorage.removeItem(BRANCH_KEY);
+    if (path === "/auth/login" || path === "/auth/register") {
+      clearActiveOfflineSalesScope();
+      clearActiveOfflineCropScope();
+    }
+  }
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-DukaPilot-Language": lang,
@@ -151,7 +163,10 @@ async function request<T>(
   }
 
   // On 401, attempt token refresh once then retry
-  if (res.status === 401 && !_isRetry) {
+  // A failed sign-in is not an expired session. Read its response normally so
+  // the login form can explain whether to retry a PIN or create an account.
+  const canRefreshSession = path !== "/auth/login" && path !== "/auth/register";
+  if (res.status === 401 && canRefreshSession && !_isRetry) {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
       return request<T>(path, options, lang, true);
@@ -160,7 +175,7 @@ async function request<T>(
     throw new Error("Session expired");
   }
 
-  if (res.status === 401) {
+  if (res.status === 401 && canRefreshSession) {
     handleAuthenticationFailure();
     throw new Error("Session expired");
   }
@@ -191,6 +206,8 @@ export const api = {
     request<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
   patch: <T>(path: string, body: unknown, lang?: Lang) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }, lang),
+  put: <T>(path: string, body: unknown, lang?: Lang) =>
+    request<T>(path, { method: "PUT", body: JSON.stringify(body) }, lang),
   delete: <T>(path: string, lang?: Lang) => request<T>(path, { method: "DELETE" }, lang),
 };
 
@@ -206,6 +223,18 @@ export async function getCurrentSession<T>(): Promise<T> {
     })
     .finally(() => { currentSessionRequest = null; });
   return currentSessionRequest as Promise<T>;
+}
+
+// Public pages may personalize optional content, but a missing session must
+// never redirect a signed-out visitor away from the page.
+export async function getOptionalCurrentSession<T>(): Promise<T | null> {
+  try {
+    const res = await fetch(`${getBaseUrl()}/auth/me`, { credentials: "include", headers: { "X-DukaPilot-Language": "en" } });
+    if (!res.ok) return null;
+    return await res.json() as T;
+  } catch {
+    return null;
+  }
 }
 
 export function invalidateCurrentSession() {
@@ -253,6 +282,7 @@ export function hasSessionHint(): boolean {
 export function clearToken() {
   invalidateCurrentSession();
   if (typeof window !== "undefined") {
+    clearActiveOfflineSalesScope();
     sessionStorage.removeItem(BRANCH_KEY);
     localStorage.removeItem(SESSION_HINT_KEY);
     localStorage.removeItem("dukapilot_token");

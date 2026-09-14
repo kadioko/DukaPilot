@@ -228,6 +228,15 @@ model Shop {
   farmGroups               FarmGroup[]
   farmProductionBatches    FarmProductionBatch[]
   farmPackConversions      FarmPackConversion[]
+  farmSettings             FarmSettings?
+  cropPlots                CropPlot[]
+  cropCycles               CropCycle[]
+  cropInputUsages          CropInputUsage[]
+  cropHarvestBatches       CropHarvestBatch[]
+  cropIrrigationLogs       CropIrrigationLog[]
+  cropFieldTasks           CropFieldTask[]
+  cropBuyerContracts       CropBuyerContract[]
+  cropWeatherAlerts        CropWeatherAlert[]
   customers                Customer[]
   services                 Service[]
   quotations               Quotation[]
@@ -809,6 +818,8 @@ model Product {
   farmProductionInputs     FarmProductionItem[]    @relation("FarmProductionInput")
   farmPackInputs           FarmPackConversion[]    @relation("FarmPackInput")
   farmPackOutputs          FarmPackConversion[]    @relation("FarmPackOutput")
+  cropInputUsages          CropInputUsage[]        @relation("CropInputProduct")
+  cropHarvestBatches       CropHarvestBatch[]      @relation("CropHarvestOutput")
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
@@ -918,6 +929,8 @@ model StockMovement {
   stockReceipt           StockReceipt?         @relation(fields: [stockReceiptId], references: [id], onDelete: SetNull)
   foodPreparationBatchId String?
   foodPreparationBatch   FoodPreparationBatch? @relation(fields: [foodPreparationBatchId], references: [id], onDelete: SetNull)
+  cropHarvestBatchId     String?
+  cropHarvestBatch       CropHarvestBatch?     @relation(fields: [cropHarvestBatchId], references: [id], onDelete: SetNull)
   createdAt              DateTime              @default(now())
 
   @@index([productId, createdAt])
@@ -1085,19 +1098,20 @@ model StaffMember {
 }
 
 model SaleItem {
-  id                  String   @id @default(cuid())
-  quantity            Int
-  unitPrice           Int
-  buyingPrice         Int
-  totalPrice          Int
-  saleId              String
-  sale                Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  productId           String?
-  product             Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  name                String?
-  description         String?
-  unit                String?
-  quotedQuantityMilli Int?
+  id                     String                  @id @default(cuid())
+  quantity               Int
+  unitPrice              Int
+  buyingPrice            Int
+  totalPrice             Int
+  saleId                 String
+  sale                   Sale                    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId              String?
+  product                Product?                @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name                   String?
+  description            String?
+  unit                   String?
+  quotedQuantityMilli    Int?
+  cropHarvestAllocations CropHarvestAllocation[]
 
   @@index([saleId])
   @@index([productId])
@@ -1144,6 +1158,7 @@ model CashSession {
   stockReceipts          StockReceipt[]
   foodPreparationBatches FoodPreparationBatch[]
   farmProductionBatches  FarmProductionBatch[]
+  cropInputUsages        CropInputUsage[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])
@@ -1392,6 +1407,298 @@ model FarmPackConversion {
   @@index([inputProductId])
   @@index([outputProductId])
   @@map("farm_pack_conversions")
+}
+
+// Farm settings deliberately distinguish crops from livestock. A farm may run
+// either operation or both without forcing crop growers through animal forms.
+model FarmSettings {
+  id           String   @id @default(cuid())
+  shopId       String   @unique
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  hasLivestock Boolean  @default(false)
+  hasCrops     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("farm_settings")
+}
+
+// A plot is a physical field, bed, greenhouse, or other growing area. Area is
+// stored in thousandths to avoid floating-point drift for acres and hectares.
+model CropPlot {
+  id                String             @id @default(cuid())
+  shopId            String
+  shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name              String
+  location          String?
+  areaMilli         Int                @default(0)
+  areaUnit          String             @default("ACRE")
+  note              String?
+  isActive          Boolean            @default(true)
+  cycles            CropCycle[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  cropWeatherAlerts CropWeatherAlert[]
+
+  @@index([shopId, isActive, updatedAt])
+  @@map("crop_plots")
+}
+
+// A crop cycle connects growing work, input costs, harvest, and reporting to a
+// single planting on a particular plot.
+model CropCycle {
+  id                String              @id @default(cuid())
+  shopId            String
+  shop              Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  plotId            String
+  plot              CropPlot            @relation(fields: [plotId], references: [id], onDelete: Restrict)
+  cropName          String
+  variety           String?
+  status            String              @default("PLANTED")
+  plantedAt         DateTime
+  expectedHarvestAt DateTime?
+  expectedYield     Int?
+  yieldUnit         String?
+  note              String?
+  closedAt          DateTime?
+  unrecoveredCost   Int                 @default(0)
+  costReconciledAt  DateTime?
+  inputUsages       CropInputUsage[]
+  harvestBatches    CropHarvestBatch[]
+  seasonBudget      CropSeasonBudget?
+  irrigationLogs    CropIrrigationLog[]
+  fieldTasks        CropFieldTask[]
+  buyerContracts    CropBuyerContract[]
+  weatherAlerts     CropWeatherAlert[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([shopId, status, expectedHarvestAt])
+  @@index([plotId, plantedAt])
+  @@map("crop_cycles")
+}
+
+// Inputs can consume existing stock (seed, fertilizer, pesticide) or record a
+// direct crop cost such as labour, transport, or irrigation.
+model CropInputUsage {
+  id              String                    @id @default(cuid())
+  shopId          String
+  shop            Shop                      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cropCycleId     String
+  cropCycle       CropCycle                 @relation(fields: [cropCycleId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product?                  @relation("CropInputProduct", fields: [productId], references: [id], onDelete: SetNull)
+  category        String                    @default("OTHER")
+  title           String
+  quantity        Int?
+  unitCost        Int?
+  totalCost       Int
+  paymentMethod   PaymentMethod             @default(CASH)
+  cashSessionId   String?
+  cashSession     CashSession?              @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  note            String?
+  usedAt          DateTime                  @default(now())
+  recordedBy      String?
+  clientRequestId String?
+  costAllocations CropInputCostAllocation[]
+  createdAt       DateTime                  @default(now())
+
+  @@unique([shopId, clientRequestId])
+  @@index([shopId, usedAt])
+  @@index([cropCycleId, usedAt])
+  @@index([productId])
+  @@index([cashSessionId, paymentMethod])
+  @@map("crop_input_usages")
+}
+
+// A harvest batch turns a crop cycle into sellable stock. Remaining quantity and
+// cost are consumed by POS allocations, keeping crop revenue and profit honest.
+model CropHarvestBatch {
+  id                   String                    @id @default(cuid())
+  shopId               String
+  shop                 Shop                      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cropCycleId          String
+  cropCycle            CropCycle                 @relation(fields: [cropCycleId], references: [id], onDelete: Cascade)
+  outputProductId      String
+  outputProduct        Product                   @relation("CropHarvestOutput", fields: [outputProductId], references: [id], onDelete: Restrict)
+  expectedYield        Int?
+  actualYield          Int
+  wasteQuantity        Int                       @default(0)
+  totalCost            Int                       @default(0)
+  unitCost             Int                       @default(0)
+  remainingQuantity    Int
+  remainingCost        Int                       @default(0)
+  soldQuantity         Int                       @default(0)
+  realizedRevenue      Int                       @default(0)
+  realizedCost         Int                       @default(0)
+  harvestAt            DateTime                  @default(now())
+  note                 String?
+  recordedBy           String?
+  clientRequestId      String?
+  stockMovements       StockMovement[]
+  allocations          CropHarvestAllocation[]
+  inputCostAllocations CropInputCostAllocation[]
+  grades               CropHarvestGrade[]
+  createdAt            DateTime                  @default(now())
+
+  @@unique([shopId, clientRequestId])
+  @@index([shopId, outputProductId, harvestAt])
+  @@index([cropCycleId, harvestAt])
+  @@map("crop_harvest_batches")
+}
+
+// Each cost allocation is durable. It links a recorded input to exactly one
+// harvest batch and never rewrites the cost of produce already sold.
+model CropInputCostAllocation {
+  id               String           @id @default(cuid())
+  cropInputUsageId String
+  cropInputUsage   CropInputUsage   @relation(fields: [cropInputUsageId], references: [id], onDelete: Cascade)
+  harvestBatchId   String
+  harvestBatch     CropHarvestBatch @relation(fields: [harvestBatchId], references: [id], onDelete: Cascade)
+  amount           Int
+  reason           String           @default("HARVEST")
+  createdAt        DateTime         @default(now())
+
+  @@unique([cropInputUsageId, harvestBatchId, reason])
+  @@index([harvestBatchId])
+  @@map("crop_input_cost_allocations")
+}
+
+model CropSeasonBudget {
+  id             String    @id @default(cuid())
+  cropCycleId    String    @unique
+  cropCycle      CropCycle @relation(fields: [cropCycleId], references: [id], onDelete: Cascade)
+  plannedCost    Int       @default(0)
+  plannedRevenue Int?
+  note           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("crop_season_budgets")
+}
+
+model CropIrrigationLog {
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cropCycleId     String
+  cropCycle       CropCycle @relation(fields: [cropCycleId], references: [id], onDelete: Cascade)
+  amount          Int?
+  unit            String?
+  durationMinutes Int?
+  irrigatedAt     DateTime  @default(now())
+  note            String?
+  recordedBy      String?
+  clientRequestId String?
+  createdAt       DateTime  @default(now())
+
+  @@unique([shopId, clientRequestId])
+  @@index([cropCycleId, irrigatedAt])
+  @@map("crop_irrigation_logs")
+}
+
+model CropFieldTask {
+  id              String     @id @default(cuid())
+  shopId          String
+  shop            Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cropCycleId     String?
+  cropCycle       CropCycle? @relation(fields: [cropCycleId], references: [id], onDelete: SetNull)
+  title           String
+  status          String     @default("TODO")
+  priority        String     @default("NORMAL")
+  dueAt           DateTime?
+  completedAt     DateTime?
+  assignedStaffId String?
+  note            String?
+  recordedBy      String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([shopId, status, dueAt])
+  @@index([cropCycleId, status])
+  @@map("crop_field_tasks")
+}
+
+model CropBuyerContract {
+  id          String     @id @default(cuid())
+  shopId      String
+  shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cropCycleId String?
+  cropCycle   CropCycle? @relation(fields: [cropCycleId], references: [id], onDelete: SetNull)
+  buyerName   String
+  buyerPhone  String?
+  produceName String
+  quantity    Int
+  unit        String     @default("kg")
+  unitPrice   Int?
+  deliveryAt  DateTime?
+  status      String     @default("DRAFT")
+  note        String?
+  recordedBy  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([shopId, status, deliveryAt])
+  @@index([cropCycleId])
+  @@map("crop_buyer_contracts")
+}
+
+model CropHarvestGrade {
+  id             String           @id @default(cuid())
+  harvestBatchId String
+  harvestBatch   CropHarvestBatch @relation(fields: [harvestBatchId], references: [id], onDelete: Cascade)
+  grade          String
+  quantity       Int
+  unit           String?
+  note           String?
+  recordedBy     String?
+  createdAt      DateTime         @default(now())
+
+  @@unique([harvestBatchId, grade])
+  @@map("crop_harvest_grades")
+}
+
+// Weather alerts are manual farm observations until a verified provider and
+// localized forecast contract are configured. This prevents false forecasts.
+model CropWeatherAlert {
+  id          String     @id @default(cuid())
+  shopId      String
+  shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cropPlotId  String?
+  cropPlot    CropPlot?  @relation(fields: [cropPlotId], references: [id], onDelete: SetNull)
+  cropCycleId String?
+  cropCycle   CropCycle? @relation(fields: [cropCycleId], references: [id], onDelete: SetNull)
+  type        String     @default("WEATHER")
+  severity    String     @default("INFO")
+  message     String
+  source      String     @default("MANUAL")
+  startsAt    DateTime   @default(now())
+  expiresAt   DateTime?
+  isResolved  Boolean    @default(false)
+  resolvedAt  DateTime?
+  recordedBy  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([shopId, isResolved, startsAt])
+  @@index([cropCycleId])
+  @@map("crop_weather_alerts")
+}
+
+model CropHarvestAllocation {
+  id             String           @id @default(cuid())
+  harvestBatchId String
+  harvestBatch   CropHarvestBatch @relation(fields: [harvestBatchId], references: [id], onDelete: Cascade)
+  saleItemId     String
+  saleItem       SaleItem         @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  quantity       Int
+  revenue        Int
+  cost           Int
+  createdAt      DateTime         @default(now())
+
+  @@unique([harvestBatchId, saleItemId])
+  @@index([saleItemId])
+  @@map("crop_harvest_allocations")
 }
 
 model StockReceiptItem {

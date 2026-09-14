@@ -163,7 +163,7 @@ const recordPayment = asyncHandler(async (req, res) => {
 
     const amountPaid = debt.amountPaid + amount;
     const guarded = await tx.debt.updateMany({
-      where: { id: debt.id, shopId, amountPaid: debt.amountPaid },
+      where: { id: debt.id, shopId, amount: debt.amount, amountPaid: debt.amountPaid, status: debt.status },
       data: { amountPaid, status: nextStatus(debt.amount, amountPaid) },
     });
     if (guarded.count !== 1) {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "DukaPilot Onboarding - Set Up Your Shop, Products, Staff, and Catalog",
+  title: "DukaPilot Onboarding - Set Up Your Business, Products, Staff, and Catalog",
   description:
     "Start DukaPilot with a guided shop setup checklist: shop details, first products, staff, first sale, catalog link, pricing, and billing support.",
   keywords: [

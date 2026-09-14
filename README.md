@@ -35,7 +35,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
 - **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and branch operations
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
-- **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Category-gated poultry and livestock groups, production batches, output packing, cash rules, staff access, and farm AI boundaries
+- **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Crop, livestock, and mixed-farm setup; plots, crop cycles, inputs, harvest-to-stock, livestock production, staff privacy, cash rules, and farm AI boundaries
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
 - **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
 - **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
@@ -56,7 +56,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Inventory tracking** | Add products, set buying/selling/wholesale prices, track stock levels |
 | **Receive stock with true cost** | Record supplier, invoice, items, transport and other costs; DukaPilot allocates landed cost and preserves stock history |
 | **Food preparation and recipe costing** | Turn ingredient stock into prepared portions with saved recipes, actual yield, waste, direct cooking costs, and an audited cost per plate or portion; packaged drinks stay normal barcode inventory |
-| **Farm operations** | For livestock and poultry farms: group flocks, pens, or herds; record additions and losses; consume feed and supplies into eggs, milk, harvest, or other sellable output; pack output such as eggs into trays; keep farm cash costs in Daily Close once |
+| **Farm operations** | For crop, livestock, and mixed farms: record fields and crop cycles; use seed, fertilizer, labour, transport, or irrigation against a crop; harvest into dedicated sellable stock; or manage flocks, pens, herds, production, and output packing; keep direct farm cash costs in Daily Close once |
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
 | **POS / Sales entry** | Record sales by product, quantity, and payment method |
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
@@ -182,7 +182,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - Rate limiting is applied on all `/api/*` routes (200 requests / 15 min). Authentication limits are scoped by Railway-resolved client IP and phone number so unrelated mobile-network users do not lock each other out or spoof their way around the limit.
 - Browser API calls use the same-origin `/_api` proxy and secure HttpOnly cookies. Access tokens are not stored in `localStorage`.
 - All money values are stored as whole Tanzanian shillings (TZS), not floating-point values.
-- Staff permissions are reloaded from the database on every authenticated request; disabling a staff account invalidates access immediately.
+- Staff permissions are reloaded from the database on every authenticated request; disabling a staff account invalidates access immediately. Staff sessions always remain merchant actors and never inherit platform-admin access from the shop owner.
 - Staff can be configured as a shop attendant: `canSell`, `canManageStock`, and `canRecordExpenses` may be enabled while `canViewReports` remains off. Staff without report access receive redacted buying-cost and profit fields, while owners/managers keep full financial visibility.
 - Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
 - OTP codes expire after 10 minutes and are single-use.
@@ -453,12 +453,13 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 ### Launch Notes
 
 - Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, expense-entry, staff, and reports access for staff sessions. A shop attendant can sell, adjust stock, record debts, and record expenses without seeing shop-wide profit reports or buying costs.
-- Offline support includes the cached app shell, `/offline.html` fallback, a browser-local pending sales queue, merchant sync history, and admin sync failure resolution by shop/device. Broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled yet.
+- Offline support includes an already-open Sales screen, an account/shop/staff-scoped browser queue, merchant sync history, and admin sync failure resolution by shop/device. Reopening the app without a connection still shows `/offline.html`; broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired or suspended shops can still view data and open **Billing**, where they can pay, submit a reference, and see the reactivation steps. Operational changes such as new sales, stock edits, expenses, staff changes, and orders resume after an admin verifies payment.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
+- Debt collections guard the debt amount, prior collection total, and status together. Stock-count completion refuses to overwrite sales or receipts recorded after the count began, and one count can only be finalized once.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.
-- Push notifications are opt-in per browser/device. Run `npm run push:process` in a dedicated Railway cron service once daily; it queues low-stock, overdue-debt, subscription, and opted-in AI alerts, then retries transient delivery failures. The API remains harmless until all three VAPID variables are set.
+- Push notifications are opt-in per browser/device. Staff receive only alerts allowed by their current permissions, disabled staff subscriptions are revoked, and private previews hide both the title and details. Run `npm run push:process` in a dedicated Railway cron service once daily; it queues alerts and retries transient failures. The API remains harmless until all three VAPID variables are set.
 
 ---
 

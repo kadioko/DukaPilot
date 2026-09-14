@@ -11,10 +11,10 @@ const steps = [
   {
     icon: Settings,
     href: "/settings",
-    sw: "Kamilisha taarifa za duka",
-    en: "Complete shop setup",
-    swBody: "Weka jina la duka, eneo, aina ya biashara, lugha na mawasiliano.",
-    enBody: "Set shop name, location, business type, language, and contact details.",
+    sw: "Kamilisha taarifa za duka/biashara",
+    en: "Complete business setup",
+    swBody: "Weka jina la duka/biashara, eneo, aina ya biashara, lugha na mawasiliano.",
+    enBody: "Set your shop or business name, location, business type, language, and contact details.",
   },
   {
     icon: PackagePlus,
@@ -89,8 +89,8 @@ export default function OnboardingPage() {
   const referralUrl = referralCode ? `https://www.dukapilot.com/register?ref=${encodeURIComponent(referralCode)}` : "";
   const referralText = encodeURIComponent(
     lang === "sw"
-      ? `Nimeanza kutumia DukaPilot kufuatilia stock, mauzo na madeni ya duka. Kama una duka, jiunge kupitia link yangu: ${referralUrl}. Ukirekodi mauzo 10, nitapata wiki 1 bure.`
-      : `I started using DukaPilot to track shop stock, sales, and customer debts. If you run a shop, join through my link: ${referralUrl}. After 10 completed sales, I receive one free week.`
+      ? `Nimeanza kutumia DukaPilot kufuatilia stock, mauzo na madeni ya biashara. Kama una duka au biashara, jiunge kupitia link yangu: ${referralUrl}. Ukirekodi mauzo 10, nitapata wiki 1 bure.`
+      : `I started using DukaPilot to track business stock, sales, and customer debts. If you run a shop or business, join through my link: ${referralUrl}. After 10 completed sales, I receive one free week.`
   );
 
   return (
@@ -99,7 +99,7 @@ export default function OnboardingPage() {
         <section className="rounded-2xl bg-brand-700 p-6 text-white">
           <p className="text-sm font-semibold text-brand-100">DukaPilot</p>
           <h1 className="mt-2 text-2xl font-bold">
-            {lang === "sw" ? "Anzisha duka lako kwa hatua 5" : "Set up your shop in 5 steps"}
+            {lang === "sw" ? `Anzisha duka/biashara yako kwa hatua ${steps.length}` : `Set up your business in ${steps.length} steps`}
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-brand-100">
             {lang === "sw"
@@ -162,7 +162,7 @@ export default function OnboardingPage() {
               <Share2 className="mt-0.5 h-5 w-5 text-brand-700" />
               <div>
                 <h2 className="font-semibold text-gray-950">
-                  {lang === "sw" ? "Mlete mfanyabiashara mwenzako" : "Refer another shop owner"}
+                  {lang === "sw" ? "Mlete mfanyabiashara mwenzako" : "Refer another business owner"}
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-gray-600">
                   {lang === "sw"

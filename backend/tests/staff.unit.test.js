@@ -93,3 +93,25 @@ test("Basic cannot grant staff AI access", async () => {
   assert.equal(res.payload.code, "PLAN_UPGRADE_REQUIRED");
   assert.equal(createCalled, false);
 });
+
+test("deactivating staff revokes their active push subscriptions", async () => {
+  let revokedWhere;
+  const existing = { id: "staff-1", shopId: "shop-1", name: "Asha", phone: "+255712345678", role: "CASHIER", isActive: true, canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canUseAssistant: false };
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    staffMember: {
+      findFirst: async () => existing,
+      update: async ({ data }) => ({ ...existing, ...data, isActive: false }),
+    },
+    pushSubscription: { updateMany: async ({ where }) => { revokedWhere = where; return { count: 1 }; } },
+  } };
+  delete require.cache[shopAccessPath];
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const res = response();
+
+  await controller.update({ user: { userId: "owner-1" }, params: { id: "staff-1" }, body: { isActive: false } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(revokedWhere, { shopId: "shop-1", staffId: "staff-1", isActive: true });
+});

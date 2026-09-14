@@ -2,40 +2,40 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { BookOpen, CheckCircle2, Egg, FileText, MessageCircle, Search, Sparkles, Tractor, UtensilsCrossed } from "lucide-react";
+import { BookOpen, CheckCircle2, Egg, FileText, MessageCircle, Search, Sparkles, Sprout, Tractor, UtensilsCrossed } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
-import { getCurrentSession } from "@/lib/api";
+import { getOptionalCurrentSession } from "@/lib/api";
 
 export default function HelpPage() {
   const lang = useLang();
-  const [isLivestock, setIsLivestock] = useState(false);
+  const [farmCategory, setFarmCategory] = useState("");
   useEffect(() => {
-    getCurrentSession<{ user: { shop?: { category?: string } } }>()
-      .then((result) => setIsLivestock(String(result.user.shop?.category || "").toLowerCase() === "livestock"))
-      .catch(() => setIsLivestock(false));
+    getOptionalCurrentSession<{ user: { shop?: { category?: string } } }>()
+      .then((result) => setFarmCategory(String(result?.user.shop?.category || "").toLowerCase()));
   }, []);
   const faqs = [
     [lang === "sw" ? "Ninaweza kulipa kwa AzamPesa, Selcom au nTZS?" : "Can I pay using AzamPesa, Selcom, or nTZS?", lang === "sw" ? "AzamPesa: Lipa namba 293726045. Selcom: Lipa namba 7006 3589. Jina ni Necuva Group Limited. Weka kumbukumbu ya muamala kwenye Malipo kwa uhakiki. nTZS ikipatikana kwenye Malipo, mmiliki anaweza kuchagua mpango, kuweka simu na kuthibitisha ombi kwenye simu. Usitume PIN hapa. Mpango huwashwa baada ya malipo kuthibitishwa; usilipe tena ikiwa pesa zimekatwa na hali bado inasubiri." : "AzamPesa: Lipa number 293726045. Selcom: Lipa number 7006 3589. Recipient name is Necuva Group Limited. Submit the transaction reference in Billing for review. When nTZS is available in Billing, the owner selects a plan, enters a phone number, and confirms the prompt on their phone. Never enter a mobile-money PIN here. Activation follows verified payment; do not pay again if money was deducted but the status is pending."],
-    [lang === "sw" ? "Ninaanzaje?" : "How do I start?", lang === "sw" ? "Jisajili, kamilisha duka, ongeza bidhaa chache, kisha rekodi mauzo ya kwanza." : "Register, complete shop setup, add a few products, then record your first sale."],
+    [lang === "sw" ? "Ninaanzaje?" : "How do I start?", lang === "sw" ? "Jisajili, kamilisha taarifa za duka/biashara, ongeza bidhaa chache, kisha rekodi mauzo ya kwanza." : "Register, complete your business setup, add a few products, then record your first sale."],
     [lang === "sw" ? "Ninatumaje orodha ya bidhaa?" : "How do I share the catalog?", lang === "sw" ? "Fungua Orodha ya bidhaa, chagua duka lako, kisha tuma kiungo kwa WhatsApp au mitandao mingine." : "Open Catalog, choose your shop, then send the link on WhatsApp or other channels."],
     [lang === "sw" ? "Wafanyakazi wanaingiaje?" : "How do staff sign in?", lang === "sw" ? "Mmiliki anaongeza mfanyakazi, simu na PIN kwenye ukurasa wa Wafanyakazi. Mfanyakazi hutumia simu na PIN kuingia." : "The owner adds staff, phone, and PIN on the Staff page. Staff use that phone and PIN to sign in."],
     [lang === "sw" ? "Staff anawezaje kutumia AI?" : "How can a staff member use AI?", lang === "sw" ? "Kwenye Pro, mmiliki hutick Kutumia Msaidizi wa AI kwa staff husika. Tick hii haimpei ruhusa ya fedha: cashier haoni faida, madeni, kiasi cha mauzo au matumizi bila ruhusa ya Ripoti." : "On Pro, the owner ticks Use AI Assistant for that staff member. This does not grant financial access: a cashier cannot see profit, debts, sales amounts, or expenses without Reports permission."],
-    [lang === "sw" ? "Mfumo hufanya kazi bila intaneti?" : "Does offline work?", lang === "sw" ? "Ukurasa wa Mauzo unaweza kuhifadhi mauzo kwenye simu bila intaneti na kuyasawazisha intaneti ikirudi. Kagua historia ya usawazishaji kwa hitilafu za kiasi cha bidhaa." : "The Sales page can save sales locally while offline and sync them when internet returns. Check sync history for stock conflict errors."],
+    [lang === "sw" ? "Mfumo hufanya kazi bila intaneti?" : "Does offline work?", lang === "sw" ? "Ukiwa tayari umefungua ukurasa wa Mauzo, unaweza kuhifadhi mauzo kwenye simu bila intaneti na kuyasawazisha intaneti ikirudi. Kufungua app upya bila mtandao bado kunahitaji intaneti. Kagua historia ya usawazishaji kwa hitilafu za stock." : "If the Sales page is already open, it can save sales locally while offline and sync them when internet returns. Reopening the app while offline still requires a connection. Check sync history for stock conflicts."],
     [lang === "sw" ? "Ninalipaje mpango wangu?" : "How do I pay for subscription?", lang === "sw" ? "Lipa kwa M-Pesa 52806296, Mix by Yas 18214626, AzamPesa 293726045, au Selcom 7006 3589. Majina ya mpokeaji ni Necuva Group Limited isipokuwa Mix by Yas ni Necuva. Pia unaweza kutuma pesa 0743910580. Hakikisha jina la mpokeaji, kisha weka reference kwenye Malipo au tuma WhatsApp." : "Pay by M-Pesa 52806296, Mix by Yas 18214626, AzamPesa 293726045, or Selcom 7006 3589. Recipient name is Necuva Group Limited except Mix by Yas, which is Necuva. You can also send money to 0743910580. Confirm the recipient name, then submit the reference in Billing or WhatsApp."],
     [lang === "sw" ? "Nitajuaje malipo yamekubaliwa?" : "How do I know payment was confirmed?", lang === "sw" ? "Ukurasa wa Malipo unaonyesha maombi yako na hali yake. Msimamizi akithibitisha, mpango utaonekana umeanza." : "Billing shows your payment requests and status. Once admin confirms, your plan shows active."],
     [lang === "sw" ? "Msaidizi wa AI ananisaidiaje?" : "How does the AI Assistant help?", lang === "sw" ? "Anapanga hatua za leo kama kuagiza bidhaa, kufuatilia madeni, kupunguza gharama, kushughulikia maagizo, kufuatilia nukuu inayokaribia kuisha, amana inayochelewa, au nukuu iliyokubaliwa inayosubiri kubadilishwa kuwa mauzo." : "It ranks today's actions like restocking, following up debts, reducing costs, handling orders, following up an expiring quotation, a late deposit, or an accepted quotation waiting to become a sale."],
+    [lang === "sw" ? "Naweza kutumia DukaPilot kwa mazao?" : "Can I use DukaPilot for crops?", lang === "sw" ? "Ndiyo. Chagua Mazao na Ufugaji, kisha chagua Mazao au Vyote kwenye Farm. Ongeza plot, msimu wa zao, pembejeo, halafu rekodi mavuno kwenye stock ya kuuza. Tumia bidhaa maalumu ya mavuno ili ripoti ya zao ibaki sahihi." : "Yes. Choose Crop & Livestock Farm, then choose Crops or Both in Farm. Add a plot, crop cycle, inputs, then harvest into sellable stock. Use a dedicated harvest product to keep crop reporting accurate."],
     [lang === "sw" ? "Ninatengenezaje nukuu ya bei?" : "How do I create a quotation?", lang === "sw" ? "Fungua Nukuu za Bei, chagua Nukuu mpya, weka mteja na kazi, kisha ongeza bidhaa za stock au mistari ya huduma, kazi, usafiri na gharama nyingine. Hifadhi rasimu, kagua PDF, halafu tuma link salama kwa mteja." : "Open Quotations, choose New quotation, add the customer and project, then add stock products or custom service, labour, transport, and other lines. Save a draft, review the PDF, then share the secure link."],
     [lang === "sw" ? "Nukuu ikikubaliwa, mauzo yanaanza moja kwa moja?" : "Does an accepted quotation automatically become a sale?", lang === "sw" ? "Hapana. Nukuu ni makadirio tu. Baada ya mteja kukubali, mmiliki huchagua Badilisha kuwa mauzo. Hapo ndipo bidhaa zilizolinkiwa hupunguzwa stock na salio linaweza kurekodiwa kama deni." : "No. A quotation is only an estimate. Once accepted, the owner chooses Convert to sale. Only then do linked products reduce stock and any balance become a receivable."],
     [lang === "sw" ? "Gharama na faida ya makadirio vinaonekana kwa mteja?" : "Can a customer see estimated costs or profit?", lang === "sw" ? "Hapana. Gharama za kununua, supplier, markup, faida ya makadirio na dokezo la ndani hubaki kwa biashara. Link, PDF na print ya mteja hutumia taarifa za mteja tu." : "No. Buying costs, suppliers, markup, estimated profit, and private notes remain inside the business. Customer links, PDFs, and print views use customer-safe information only."],
     [lang === "sw" ? "Nafutaje akaunti yangu?" : "How do I delete my account?", lang === "sw" ? "Fungua ukurasa wa Delete Account kuona hatua, aina ya data inayofutwa, na muda wa retention." : "Open the Delete Account page to see the steps, deleted data types, and retention period."],
   ];
   const walkthrough = [
-    [lang === "sw" ? "Kuweka mfumo" : "Setup", lang === "sw" ? "Weka jina la duka, lugha, na mawasiliano." : "Set shop name, language, and contact details."],
+    [lang === "sw" ? "Kuweka mfumo" : "Setup", lang === "sw" ? "Weka jina la duka/biashara, lugha, na mawasiliano." : "Set your shop or business name, language, and contact details."],
     [lang === "sw" ? "Bidhaa" : "Products", lang === "sw" ? "Ongeza kiasi, bei ya kununua, bei ya kuuza na msambazaji." : "Add stock, buying price, selling price, and supplier."],
     [lang === "sw" ? "Mauzo" : "Sales", lang === "sw" ? "Rekodi mauzo ya taslimu, M-Pesa, benki au deni kwa simu." : "Record cash, M-Pesa, bank, or credit sales from the phone."],
     [lang === "sw" ? "Hatua za AI" : "AI actions", lang === "sw" ? "Fungua Msaidizi wa AI kuona cha kufanya leo." : "Open Assistant to see what to do today."],
@@ -61,6 +61,13 @@ export default function HelpPage() {
     [lang === "sw" ? "3. Rekodi uzalishaji halisi" : "3. Record real production", lang === "sw" ? "Chagua kundi, output inayouzwa, feed/supplies zilizotumika, yield iliyotarajiwa na halisi. Mfumo hupunguza supplies, unaongeza mayai, maziwa au mavuno kwenye stock, na huonyesha loss." : "Choose the group, sellable output, feed or supplies used, expected yield, and actual yield. DukaPilot reduces supplies, adds eggs, milk, or harvest to stock, and records loss."],
     [lang === "sw" ? "4. Pakia output bila kuchanganya stock" : "4. Pack output without mixing stock", lang === "sw" ? "Kwa mayai, toa mayai 30 kwenye stock ya moja moja na ongeza tray 1. Kwa maziwa, tumia ml kama stock ya msingi: 1,000 ml ni litre 1. Gharama inahamia kwenye kifurushi bila kununua stock tena." : "For eggs, take 30 individual eggs from stock and add one tray. For dairy, use ml as base stock: 1,000 ml is one litre. Cost moves into the packed item without buying stock again."],
     [lang === "sw" ? "5. Uza kama kawaida" : "5. Sell normally", lang === "sw" ? "Uza mayai, tray, maziwa, kuku au bidhaa nyingine kupitia Mauzo. POS hupunguza stock ya bidhaa iliyouzwa na faida hutumia gharama ya batch iliyorekodiwa." : "Sell eggs, trays, milk, chickens, or other output through Sales. POS deducts the sold product and uses the recorded batch cost for profit."],
+  ];
+  const cropGuide = [
+    [lang === "sw" ? "1. Chagua Mazao au Vyote" : "1. Choose Crops or Both", lang === "sw" ? "Kwenye Farm, chagua Mazao kwa shamba la mimea pekee au Vyote kama una mazao na mifugo. Zana za wanyama hazitaonekana kwa shamba la mazao pekee." : "In Farm, choose Crops for a crop-only business or Both for crops and livestock. Animal tools stay hidden for a crop-only farm."],
+    [lang === "sw" ? "2. Ongeza plot na msimu wa zao" : "2. Add a plot and crop cycle", lang === "sw" ? "Kwenye Mazao, andika shamba, sehemu au greenhouse pamoja na ukubwa. Anzisha msimu kwa zao, variety, tarehe ya kupanda na tarehe ya mavuno inayotarajiwa." : "In Crops, record a field, section, or greenhouse with its area. Start a cycle with crop, variety, planting date, and expected harvest."],
+    [lang === "sw" ? "3. Rekodi pembejeo zinapotumika" : "3. Record inputs when used", lang === "sw" ? "Tumia stock ya mbegu, mbolea au dawa pale inapoenda shambani. Rekodi kazi, usafiri au umwagiliaji kama gharama ya moja kwa moja kwenye msimu wa zao." : "Use seed, fertilizer, or pesticide stock only when it goes into the field. Record labour, transport, or irrigation as a direct cycle cost."],
+    [lang === "sw" ? "4. Weka mavuno kwenye stock" : "4. Harvest into stock", lang === "sw" ? "Tengeneza bidhaa maalumu, mfano Mahindi Shamba A, kisha rekodi mavuno. Bidhaa hiyo iko tayari kuuzwa kwenye Mauzo au catalog." : "Create a dedicated product, for example Field A maize, then record the harvest. It is ready to sell through Sales or the catalog."],
+    [lang === "sw" ? "5. Uza na kagua ripoti" : "5. Sell and review", lang === "sw" ? "POS hupunguza stock ya mavuno. Mmiliki huona gharama, stock iliyobaki na faida; mfanyakazi wa shamba haoni fedha bila ruhusa ya Ripoti." : "POS reduces harvest stock. Owners see cost, remaining stock, and profit; farm staff do not see financials without Reports permission."],
   ];
   const aiThinking = [
     [
@@ -103,9 +110,9 @@ export default function HelpPage() {
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-700 ring-1 ring-brand-100">
                 <BookOpen className="h-6 w-6" />
               </div>
-              <h1 className="mt-5 max-w-2xl text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
+              <h2 className="mt-5 max-w-2xl text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
                 <TextReveal text={lang === "sw" ? "Msaada" : "Help"} hoverColor="#15803d" />
-              </h1>
+              </h2>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
                 {lang === "sw" ? "Majibu ya haraka kwa kuweka mfumo, orodha ya bidhaa, wafanyakazi, mauzo bila intaneti, malipo na msaidizi wa AI." : "Quick answers for setup, catalog links, staff, offline sales, payments, and the AI assistant."}
               </p>
@@ -169,7 +176,7 @@ export default function HelpPage() {
           <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-600 sm:px-6"><strong className="text-gray-950">{lang === "sw" ? "Mfano:" : "Example:"}</strong> {lang === "sw" ? "Pokea kuku 10 mzima x TZS 18,000 = TZS 180,000. Baada ya kupika, chagua kuku 10 kwenye Andaa Chakula na weka nusu 18 halisi. Gharama ni TZS 10,000 kwa kila nusu; mfumo unaonyesha waste 2." : "Receive 10 whole chickens x TZS 18,000 = TZS 180,000. After cooking, choose 10 chickens in Prepare Food and enter 18 actual halves. The cost is TZS 10,000 per half; the system shows 2 wasted."} <Link href="/food-preparation" className="ml-1 font-bold text-brand-700 hover:text-brand-800">{lang === "sw" ? "Fungua Andaa Chakula" : "Open Prepare Food"}</Link></div>
         </section>
 
-        {isLivestock && <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">
+        {farmCategory === "livestock" && <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">
           <div className="border-b border-brand-100 bg-brand-50 px-5 py-5 sm:px-6">
             <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand-700 shadow-sm"><Tractor className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-gray-950">{lang === "sw" ? "Jinsi ya kutumia DukaPilot kwa Ufugaji" : "How to use DukaPilot for Farm Operations"}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Kwa kuku, mayai, maziwa, ng'ombe, mbuzi, kondoo na nguruwe bila kuhesabu feed au pesa mara mbili." : "For poultry, eggs, dairy, cattle, goats, sheep, and pigs without double-counting feed or cash."}</p></div></div>
           </div>
@@ -177,6 +184,16 @@ export default function HelpPage() {
             {farmGuide.map(([title, body]) => <div key={title} className="border-l-2 border-brand-300 pl-4"><h3 className="text-sm font-semibold text-gray-950">{title}</h3><p className="mt-1 text-sm leading-6 text-gray-600">{body}</p></div>)}
           </div>
           <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-600 sm:px-6"><Egg className="mr-1 inline h-4 w-4 text-brand-700" /><strong className="text-gray-950">{lang === "sw" ? "Mfano wa mayai:" : "Egg example:"}</strong> {lang === "sw" ? "Pokea feed 50 kg, tumia kg 5 kwa Banda A, kisha rekodi mayai 280 yaliyopatikana na 8 yaliyovunjika. Pakia mayai 30 kuwa tray 1, halafu uza tray kwenye POS." : "Receive 50 kg of feed, use 5 kg for House A, then record 280 eggs produced and 8 broken eggs. Pack 30 eggs into one tray, then sell the tray in POS."} <Link href="/farm" className="ml-1 font-bold text-brand-700 hover:text-brand-800">{lang === "sw" ? "Fungua Ufugaji" : "Open Farm"}</Link></div>
+        </section>}
+
+        {farmCategory === "farm" && <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">
+          <div className="border-b border-brand-100 bg-brand-50 px-5 py-5 sm:px-6">
+            <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand-700 shadow-sm"><Sprout className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-gray-950">{lang === "sw" ? "Jinsi ya kutumia DukaPilot kwa Mazao" : "How to use DukaPilot for Crops"}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Kwa plots, pembejeo, mavuno, stock na mauzo bila kuchanganya gharama za zao." : "For plots, inputs, harvests, stock, and sales without mixing crop costs."}</p></div></div>
+          </div>
+          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-6">
+            {cropGuide.map(([title, body]) => <div key={title} className="border-l-2 border-brand-300 pl-4"><h3 className="text-sm font-semibold text-gray-950">{title}</h3><p className="mt-1 text-sm leading-6 text-gray-600">{body}</p></div>)}
+          </div>
+          <div className="border-t border-gray-100 px-5 py-4 text-sm text-gray-600 sm:px-6"><Sprout className="mr-1 inline h-4 w-4 text-brand-700" /><strong className="text-gray-950">{lang === "sw" ? "Mfano wa mahindi:" : "Maize example:"}</strong> {lang === "sw" ? "Ongeza Shamba A ekari 2, anzisha Mahindi, tumia NPK kg 2, halafu rekodi mavuno kg 500 kwenye bidhaa Mahindi Shamba A kabla ya kuuza." : "Add Field A at two acres, start Maize, use 2 kg of NPK, then record a 500 kg harvest to the dedicated Field A maize product before selling."} <Link href="/crops" className="ml-1 font-bold text-brand-700 hover:text-brand-800">{lang === "sw" ? "Fungua Mazao" : "Open Crops"}</Link></div>
         </section>}
 
         <section className="overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-sm">

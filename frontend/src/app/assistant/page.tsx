@@ -6,7 +6,7 @@ import AppShell from "@/components/layout/AppShell";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { ArrowRight, CheckCircle2, ClipboardCopy, FileText, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, Tractor, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCopy, FileText, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, Sprout, Tractor, TrendingDown, TrendingUp } from "lucide-react";
 
 interface DashboardData {
   summary: { totalSales: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
@@ -120,7 +120,7 @@ export default function AssistantPage() {
         const session = await getCurrentSession<{ user: { shop?: { category?: string | null }; staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canManageFarm?: boolean; canViewReports?: boolean } } } }>();
         const isStaff = Boolean(session.user.staff);
         const permissions = session.user.staff?.permissions;
-        const isLivestock = String(session.user.shop?.category || "").toLowerCase() === "livestock";
+        const isFarm = ["livestock", "farm"].includes(String(session.user.shop?.category || "").toLowerCase());
         const nextAccess = {
           loaded: true,
           isStaff,
@@ -139,11 +139,11 @@ export default function AssistantPage() {
             api.get<ExpenseSummary>("/expenses", lang),
             api.get<{ actions: QuotationAssistantAction[] }>("/assistant/quotations", lang),
             api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang),
-            isLivestock && nextAccess.canManageFarm ? api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang) : Promise.resolve({ actions: [] }),
+            isFarm && nextAccess.canManageFarm ? api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang) : Promise.resolve({ actions: [] }),
           ]);
           if (!active) return;
           setDashboard(today); setAllTime(all); setDebts(debtData); setExpenses(expenseData); setQuotationActions(quoteData.actions); setActions(actionData.actions); setFarmActions(farmData.actions);
-        } else if (isLivestock && nextAccess.canManageFarm) {
+        } else if (isFarm && nextAccess.canManageFarm) {
           const data = await api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang);
           if (active) setFarmActions(data.actions);
         } else if (nextAccess.canManageStock) {
@@ -170,7 +170,7 @@ export default function AssistantPage() {
     ...(access.canViewReports ? quotationActions.map((item) => ({ ...item, icon: FileText, tone: item.rank >= 90 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii imetolewa na server kwa ruhusa za akaunti yako na data ya nukuu za duka lako." : "This is generated on the server from quotation data your account is allowed to view.", impact: lang === "sw" ? "Kamilisha hatua bila kuchanganya nukuu na mapato yaliyothibitishwa." : "Complete the next step without confusing quotation value with confirmed revenue." })) : []),
     ...(access.canViewReports ? buildRecommendations({ dashboard, allTime, debts, expenses, quotations, lang }).filter((item) => !item.id.startsWith("quotation-")) : []),
     ...stockActions.map((item) => ({ ...item, icon: Package, tone: "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii inaonyesha stock inayohitaji kuangaliwa; haionyeshi mauzo, bei au faida." : "This highlights stock that needs attention; it does not show sales, prices, or profit.", impact: lang === "sw" ? "Tayarisha stock count au mjulishe mwenye duka mapema." : "Prepare a stock count or alert the owner early." })),
-    ...farmActions.map((item) => ({ ...item, icon: Tractor, tone: item.rank >= 90 ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700", why: lang === "sw" ? "Hii inatokana na makundi, uzalishaji na loss za shamba lako; haijumuishi ushauri wa afya ya mifugo." : "This uses your farm groups, production, and losses; it does not provide animal-health advice.", impact: lang === "sw" ? "Rekodi za uzalishaji na stock zinabaki sahihi kabla ya kuuza." : "Keep production and sellable stock accurate before sales." })),
+    ...farmActions.map((item) => ({ ...item, icon: item.id.startsWith("crop-") ? Sprout : Tractor, tone: item.rank >= 90 ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700", why: lang === "sw" ? "Hii inatokana na rekodi za shamba lako. Haijumuishi ushauri wa afya ya wanyama au kilimo." : "This uses records from your farm. It does not provide animal-health or agronomy advice.", impact: lang === "sw" ? "Rekodi za shamba na stock zinabaki sahihi kabla ya kuuza." : "Keep field records and sellable stock accurate before sales." })),
     ...cashierGuidance,
   ].sort((a, b) => b.rank - a.rank).slice(0, 5);
   const ownerSummary = buildOwnerSummary(recommendations, lang);

@@ -5,6 +5,7 @@ const path = require("node:path");
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const saleControllerPath = path.resolve(__dirname, "../src/controllers/sale.controller.js");
 const debtControllerPath = path.resolve(__dirname, "../src/controllers/debt.controller.js");
+const stockCountControllerPath = path.resolve(__dirname, "../src/controllers/stockCount.controller.js");
 const supplierControllerPath = path.resolve(__dirname, "../src/controllers/supplier.controller.js");
 const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
 
@@ -147,6 +148,76 @@ test("debt payment retry key cannot be reused for a different amount", async () 
   await controller.recordPayment({ user: { userId: "owner-1" }, params: { id: "debt-1" }, body: { amount: 2000, requestKey: "12345678-1234-1234-1234-123456789abc" } }, res, (nextError) => { error = nextError; });
   assert.equal(error.status, 409);
   assert.match(error.message, /different payment details/);
+});
+
+test("debt payment refuses a concurrent reduction of the debt amount", async () => {
+  let guardedWhere;
+  let createdPayments = 0;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (fn) => fn({
+      debt: {
+        findFirst: async () => ({ id: "debt-1", shopId: "shop-1", amount: 10000, amountPaid: 0, status: "OPEN" }),
+        updateMany: async ({ where }) => { guardedWhere = where; return { count: 0 }; },
+      },
+      debtPayment: { create: async () => { createdPayments += 1; } },
+    }),
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[debtControllerPath];
+  const controller = require(debtControllerPath);
+  const res = response();
+  let error;
+
+  await controller.recordPayment({ user: { userId: "owner-1" }, params: { id: "debt-1" }, body: { amount: 3000 } }, res, (nextError) => { error = nextError; });
+
+  assert.equal(guardedWhere.amount, 10000);
+  assert.equal(guardedWhere.status, "OPEN");
+  assert.equal(error.status, 409);
+  assert.equal(createdPayments, 0);
+});
+
+test("stock count completion refuses to overwrite stock changed after counting began", async () => {
+  let movementCreated = false;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (fn) => fn({
+      stockCount: {
+        updateMany: async () => ({ count: 1 }),
+        findUnique: async () => ({ id: "count-1", shopId: "shop-1", items: [{ productId: "product-1", expected: 10, counted: 9 }] }),
+      },
+      product: { updateMany: async () => ({ count: 0 }) },
+      stockMovement: { create: async () => { movementCreated = true; } },
+    }),
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[stockCountControllerPath];
+  const controller = require(stockCountControllerPath);
+  const res = response();
+  let error;
+
+  await controller.finish({ user: { userId: "owner-1" }, params: { id: "count-1" }, body: { applyAdjustments: true } }, res, (nextError) => { error = nextError; });
+
+  assert.equal(error.status, 409);
+  assert.match(error.message, /Stock changed/);
+  assert.equal(movementCreated, false);
+});
+
+test("stock count can be finalized only once", async () => {
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (fn) => fn({ stockCount: { updateMany: async () => ({ count: 0 }) } }),
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[stockCountControllerPath];
+  const controller = require(stockCountControllerPath);
+  const res = response();
+  let error;
+
+  await controller.finish({ user: { userId: "owner-1" }, params: { id: "count-1" }, body: { applyAdjustments: true } }, res, (nextError) => { error = nextError; });
+
+  assert.equal(error.status, 409);
+  assert.match(error.message, /already completed/);
 });
 
 test("debt edit refuses to overwrite a concurrently recorded payment and derives status", async () => {

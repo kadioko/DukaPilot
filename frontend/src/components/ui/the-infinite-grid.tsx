@@ -30,6 +30,7 @@ interface InfiniteGridProps {
   primaryCta?: InfiniteGridCta;
   secondaryCta?: InfiniteGridCta;
   className?: string;
+  headingLevel?: "h1" | "h2";
 }
 
 export function TheInfiniteGrid({
@@ -40,7 +41,9 @@ export function TheInfiniteGrid({
   primaryCta,
   secondaryCta,
   className,
+  headingLevel = "h1",
 }: InfiniteGridProps) {
+  const Heading = headingLevel;
   const containerRef = useRef<HTMLDivElement>(null);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -108,9 +111,9 @@ export function TheInfiniteGrid({
           <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm lg:mx-0">
             <Sparkles className="h-6 w-6" />
           </div>
-          <h1 className="text-3xl font-black tracking-normal text-gray-950 sm:text-5xl">
+          <Heading className="text-3xl font-black tracking-normal text-gray-950 sm:text-5xl">
             {resolvedHeadline}
-          </h1>
+          </Heading>
           <p className="mt-5 max-w-2xl text-base leading-7 text-gray-600">
             {resolvedBody}
           </p>

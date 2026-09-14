@@ -54,6 +54,37 @@ test("authenticate refreshes staff permissions from the database", async () => {
   assert.equal(req.user.permissions.canManageStock, true);
 });
 
+test("staff of an admin-owned shop cannot inherit platform-admin access", async () => {
+  process.env.JWT_SECRET = "hardening-test-secret";
+  mockPrisma({
+    user: { findUnique: async () => ({ id: "admin-owner", role: "ADMIN", sessionVersion: 1 }) },
+    staffMember: {
+      findFirst: async () => ({
+        id: "cashier-1", sessionVersion: 1, role: "CASHIER", shopId: "shop-1",
+        canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false,
+        shop: { userId: "admin-owner", parentShopId: null, branchArchived: false, parentShop: null },
+      }),
+    },
+  });
+  delete require.cache[authPath];
+  const { authenticate, requireRole, requirePermission } = require(authPath);
+  const token = jwt.sign({ userId: "admin-owner", role: "ADMIN", staffId: "cashier-1", sessionVersion: 1 }, process.env.JWT_SECRET);
+  const req = { headers: { authorization: `Bearer ${token}` } };
+  const authRes = response();
+  await authenticate(req, authRes, () => {});
+
+  assert.equal(req.user.role, "MERCHANT");
+  assert.equal(req.user.accountRole, "ADMIN");
+
+  const adminRes = response();
+  requireRole("ADMIN")(req, adminRes, () => assert.fail("staff reached platform admin route"));
+  assert.equal(adminRes.statusCode, 403);
+
+  const staffRes = response();
+  requirePermission("canManageStaff")(req, staffRes, () => assert.fail("cashier managed staff"));
+  assert.equal(staffRes.statusCode, 403);
+});
+
 test("authenticate rejects a session issued before the account session version changed", async () => {
   process.env.JWT_SECRET = "hardening-test-secret";
   mockPrisma({ user: { findUnique: async () => ({ id: "owner-1", role: "MERCHANT", sessionVersion: 3 }) } });

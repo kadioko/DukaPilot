@@ -34,6 +34,7 @@ const SHOP_CATEGORIES = [
   { value: "electronics", sw: "Umeme / Simu", en: "Electronics" },
   { value: "clothing", sw: "Nguo", en: "Clothing" },
   { value: "livestock", sw: "Ufugaji wa Mifugo na Kuku", en: "Livestock & Poultry Farm" },
+  { value: "farm", sw: "Mazao na Ufugaji", en: "Crop & Livestock Farm" },
   { value: "general", sw: "Bidhaa Mchanganyiko", en: "General / Mixed" },
 ];
 
@@ -116,7 +117,7 @@ export default function SettingsPage() {
     setShopError("");
     setShopMsg("");
     if (!shopName.trim() || !shopLocation.trim()) {
-      setShopError(lang === "sw" ? "Jina na jiji lazima zijazwe" : "Shop name and city are required");
+      setShopError(lang === "sw" ? "Jina la duka/biashara na jiji lazima yajazwe" : "Shop/business name and city are required");
       return;
     }
     setShopSaving(true);

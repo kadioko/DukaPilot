@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { getFarmConfiguration } = require("../lib/farmAccess");
 
 function readCookieToken(req) {
   const cookieHeader = req.headers.cookie;
@@ -48,6 +49,7 @@ async function authenticate(req, res, next) {
       select: { id: true, role: true, sessionVersion: true },
     });
     if (!account) return res.status(401).json({ error: "Account access expired" });
+    payload.accountRole = account.role;
     payload.role = account.role;
     if (payload.staffId) {
       const staff = await prisma.staffMember.findFirst({
@@ -85,6 +87,9 @@ async function authenticate(req, res, next) {
       if (payload.sessionVersion !== staff.sessionVersion) return res.status(401).json({ error: "Session expired" });
       payload.shopId = staff.shopId;
       payload.businessShopId = staff.shop.parentShopId || staff.shopId;
+      // A staff session is a merchant actor even when the shop owner also has
+      // platform-admin access. Never inherit the owner's platform privileges.
+      payload.role = "MERCHANT";
       const requested = req.headers["x-dukapilot-branch"];
       if (requested && requested !== staff.shopId) return res.status(403).json({ error: "Staff can only access their assigned branch" });
       payload.staffRole = staff.role;
@@ -123,6 +128,9 @@ async function authenticate(req, res, next) {
 
 function requireRole(...roles) {
   return (req, res, next) => {
+    if (roles.includes("ADMIN") && req.user.staffId) {
+      return res.status(403).json({ error: "Platform admin access is not available to staff sessions" });
+    }
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -132,7 +140,7 @@ function requireRole(...roles) {
 
 function requirePermission(permission) {
   return (req, res, next) => {
-    if (req.user.role === "ADMIN") return next();
+    if (req.user.role === "ADMIN" && !req.user.staffId) return next();
     if (!req.user.staffId) return next();
 
     const permissions = req.user.permissions || {};
@@ -145,7 +153,7 @@ function requirePermission(permission) {
 
 function requireAnyPermission(...permissions) {
   return (req, res, next) => {
-    if (req.user.role === "ADMIN" || !req.user.staffId) return next();
+    if ((req.user.role === "ADMIN" && !req.user.staffId) || !req.user.staffId) return next();
 
     const granted = req.user.permissions || {};
     if (!permissions.some((permission) => granted[permission])) {
@@ -171,4 +179,39 @@ function requireShopCategory(...categories) {
   };
 }
 
-module.exports = { authenticate, requireRole, requirePermission, requireAnyPermission, requireShopCategory, readCookieToken };
+function requireFarmCategory() {
+  return async (req, res, next) => {
+    try {
+      const shopId = await getShopIdForUser(req.user);
+      const configuration = await getFarmConfiguration(shopId);
+      if (!configuration?.isFarm) {
+        return res.status(403).json({ error: "Farm operations are available after choosing Farm / Agriculture in Settings." });
+      }
+      req.farmConfiguration = configuration;
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
+function requireFarmMode(mode) {
+  const normalizedMode = String(mode || "").toUpperCase();
+  const settingKey = normalizedMode === "CROPS" ? "hasCrops" : "hasLivestock";
+  return async (req, res, next) => {
+    try {
+      const shopId = await getShopIdForUser(req.user);
+      const configuration = await getFarmConfiguration(shopId);
+      if (!configuration?.isFarm || !configuration[settingKey]) {
+        const label = normalizedMode === "CROPS" ? "Crops" : "Livestock";
+        return res.status(403).json({ error: `${label} operations are not enabled for this farm. Update the farm setup first.` });
+      }
+      req.farmConfiguration = configuration;
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
+module.exports = { authenticate, requireRole, requirePermission, requireAnyPermission, requireShopCategory, requireFarmCategory, requireFarmMode, readCookieToken };

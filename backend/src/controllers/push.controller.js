@@ -1,6 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { configured } = require("../services/push.service");
+const { configured, staffCanReceiveKind } = require("../services/push.service");
 
 function asyncHandler(fn) { return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }
 function cleanText(value, max) { return String(value || "").trim().slice(0, max); }
@@ -12,7 +12,8 @@ const config = asyncHandler(async (_req, res) => {
 const getPreferences = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const preferences = await prisma.notificationPreference.upsert({ where: { shopId }, update: {}, create: { shopId } });
-  const subscriptions = await prisma.pushSubscription.findMany({ where: { shopId }, select: { id: true, deviceId: true, deviceLabel: true, isActive: true, lastSeenAt: true } });
+  const where = req.user.staffId ? { shopId, staffId: req.user.staffId } : { shopId };
+  const subscriptions = await prisma.pushSubscription.findMany({ where, select: { id: true, deviceId: true, deviceLabel: true, isActive: true, lastSeenAt: true } });
   res.json({ preferences, subscriptions, pushConfigured: configured() });
 });
 
@@ -57,7 +58,14 @@ const unsubscribe = asyncHandler(async (req, res) => {
 
 const listDeliveries = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const deliveries = await prisma.pushDelivery.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, take: 100, include: { subscription: { select: { deviceLabel: true, deviceId: true } } } });
+  const where = { shopId };
+  if (req.user.staffId) {
+    const permittedKinds = ["LOW_STOCK", "DEBT_DUE", "QUOTATION_REMINDER", "DAILY_ASSISTANT"]
+      .filter((kind) => staffCanReceiveKind({ isActive: true, ...req.user.permissions }, kind));
+    where.subscription = { staffId: req.user.staffId };
+    where.kind = { in: permittedKinds };
+  }
+  const deliveries = await prisma.pushDelivery.findMany({ where, orderBy: { createdAt: "desc" }, take: 100, include: { subscription: { select: { deviceLabel: true, deviceId: true } } } });
   res.json({ deliveries });
 });
 

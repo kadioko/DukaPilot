@@ -108,6 +108,22 @@ test("daily close counts direct farm production cost once as cash-out", async ()
   assert.equal(summary.expectedCash, 100000);
 });
 
+test("daily close counts direct cash crop inputs once as a cash-out", async () => {
+  const prismaMock = {
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 50000 }, _count: { id: 2 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 10000 }, _count: { id: 1 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    expense: { aggregate: async () => ({ _sum: { amount: 5000 }, _count: { id: 1 } }) },
+    cropInputUsage: { aggregate: async () => ({ _sum: { totalCost: 7000 }, _count: { id: 1 } }) },
+  };
+  const controller = loadController(prismaMock);
+  const summary = await controller.summarizeSession(prismaMock, { id: "session-1", openingCash: 20000 });
+
+  assert.equal(summary.cropCashOut, 7000);
+  assert.equal(summary.cropInputCostCount, 1);
+  assert.equal(summary.expectedCash, 68000);
+});
+
 test("daily close excludes a legacy converted quotation sale when its cash payment is already recorded", () => {
   const controller = loadController({});
   const where = controller.cashSaleWhere("session-1");

@@ -21,8 +21,31 @@ export default function DemoPage() {
   return (
     <PublicPageShell>
       <div className="space-y-8">
+        <section className="border-b border-gray-200 pb-8">
+          <p className="text-sm font-semibold text-brand-700">DukaPilot Demo</p>
+          <h1 className="mt-2 text-3xl font-bold text-gray-950 sm:text-4xl">
+            <TextReveal text={lang === "sw" ? "Ingia kwenye onyesho sasa" : "Enter the demo now"} hoverColor="#15803d" />
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">
+            {lang === "sw" ? "Chagua akaunti hapa chini. PIN ya kila akaunti ni 1234." : "Choose an account below. Every demo account uses PIN 1234."}
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {accounts.map(([role, phone, name]) => (
+              <section key={phone} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-bold uppercase text-gray-400">{role}</p>
+                <h2 className="mt-1 font-semibold text-gray-950">{name}</h2>
+                <p className="mt-1 text-sm text-gray-600">{phone} / 1234</p>
+              </section>
+            ))}
+          </div>
+          <Link href="/" className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
+            {lang === "sw" ? "Fungua login ya demo" : "Open demo login"}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </section>
         <TheInfiniteGrid
           lang={lang}
+          headingLevel="h2"
           headline={lang === "sw" ? "Jaribu onyesho kabla ya kuanza" : "Try the demo before you start"}
           body={lang === "sw"
             ? "Tumia akaunti za demo kuona mauzo, stock, maagizo, madeni, matumizi, nukuu za bei, staff, billing na AI Assistant. PIN zote ni 1234."
@@ -40,11 +63,6 @@ export default function DemoPage() {
             { title: lang === "sw" ? "Nukuu za Bei" : "Quotations", description: lang === "sw" ? "Ona rasimu, zilizotumwa, zilizokubaliwa na zilizokataliwa bila kubadilisha mauzo ya demo." : "See draft, sent, accepted, and rejected examples without changing demo sales." },
           ]}
         />
-        <div>
-          <h1 className="text-3xl font-bold text-gray-950">
-            <TextReveal text={lang === "sw" ? "Onyesho la DukaPilot" : "DukaPilot Demo"} hoverColor="#15803d" />
-          </h1>
-        </div>
         <section className="rounded-xl border border-brand-200 bg-brand-50 p-5">
           <h2 className="font-semibold text-brand-950">{lang === "sw" ? "Hatua za onyesho za kujaribu" : "Demo flows to try"}</h2>
           <div className="mt-3 grid gap-2 text-sm text-brand-900 sm:grid-cols-2">
@@ -56,15 +74,6 @@ export default function DemoPage() {
           </div>
         </section>
         <ProductProofSection />
-        <div className="grid gap-3">
-          {accounts.map(([role, phone, name]) => (
-            <section key={phone} className="rounded-xl border border-gray-200 p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">{role}</p>
-              <h2 className="mt-1 font-semibold text-gray-950">{name}</h2>
-              <p className="mt-1 text-sm text-gray-600">{phone} / 1234</p>
-            </section>
-          ))}
-        </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link href="/" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
             {lang === "sw" ? "Fungua login" : "Open login"}

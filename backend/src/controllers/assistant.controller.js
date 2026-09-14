@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { getFarmConfiguration } = require("../lib/farmAccess");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -46,6 +47,28 @@ async function measureAction(shopId, actionKey) {
     const rows = await prisma.$queryRaw`SELECT COUNT(*)::int AS count FROM "products" WHERE "shopId" = ${shopId} AND "isActive" = true AND "currentStock" <= "minimumStock"`;
     return Number(rows[0]?.count || 0);
   }
+  const cropMatch = actionKey.match(/^crop-(input|harvest)-(.+)$/);
+  if (cropMatch && prisma.cropCycle) {
+    const cycle = await prisma.cropCycle.findFirst({
+      where: { id: cropMatch[2], shopId },
+      select: cropMatch[1] === "input" ? { _count: { select: { inputUsages: true } } } : { _count: { select: { harvestBatches: true } } },
+    });
+    return cycle ? (cropMatch[1] === "input" ? cycle._count.inputUsages : cycle._count.harvestBatches) : null;
+  }
+  const irrigationMatch = actionKey.match(/^crop-irrigation-(.+)$/);
+  if (irrigationMatch && prisma.cropIrrigationLog) {
+    return prisma.cropIrrigationLog.count({ where: { shopId, cropCycleId: irrigationMatch[1], irrigatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } });
+  }
+  const taskMatch = actionKey.match(/^crop-task-(.+)$/);
+  if (taskMatch && prisma.cropFieldTask) {
+    const task = await prisma.cropFieldTask.findFirst({ where: { id: taskMatch[1], shopId }, select: { status: true } });
+    return task ? Number(task.status === "DONE") : null;
+  }
+  const weatherMatch = actionKey.match(/^crop-weather-(.+)$/);
+  if (weatherMatch && prisma.cropWeatherAlert) {
+    const alert = await prisma.cropWeatherAlert.findFirst({ where: { id: weatherMatch[1], shopId }, select: { isResolved: true } });
+    return alert ? Number(alert.isResolved) : null;
+  }
   const quoteMatch = actionKey.match(/^quotation-(convert|deposit)-(.+)$/);
   if (quoteMatch) {
     const quote = await prisma.quotation.findFirst({ where: { id: quoteMatch[2], shopId }, select: { status: true, amountPaid: true, depositRequiredAmount: true } });
@@ -60,6 +83,8 @@ function outcomeVerified(actionKey, baseline, current) {
   if (actionKey.startsWith("quotation-convert-")) return current === 1;
   if (actionKey.startsWith("quotation-deposit-")) return baseline !== null && current > baseline;
   if (["debt", "stock"].includes(actionKey) || actionKey.startsWith("staff-stock-")) return baseline !== null && current < baseline;
+  if (actionKey.startsWith("crop-input-") || actionKey.startsWith("crop-harvest-") || actionKey.startsWith("crop-irrigation-")) return baseline !== null && current > baseline;
+  if (actionKey.startsWith("crop-task-") || actionKey.startsWith("crop-weather-")) return current === 1;
   return false;
 }
 
@@ -113,30 +138,44 @@ const stockSummary = asyncHandler(async (req, res) => {
 const farmSummary = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const language = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase() === "en" ? "en" : "sw";
-  const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { category: true } });
-  if (String(shop?.category || "").toLowerCase() !== "livestock") return res.json({ actions: [] });
-
+  const configuration = await getFarmConfiguration(shopId);
+  if (!configuration?.isFarm) return res.json({ actions: [] });
   const sinceWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const sinceTwoDays = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-  const [groups, production, losses, recentProduction] = await Promise.all([
-    prisma.farmGroup.findMany({ where: { shopId, isActive: true }, select: { id: true, name: true, profileType: true, currentAnimals: true }, take: 100 }),
-    prisma.farmProductionBatch.aggregate({ where: { shopId, producedAt: { gte: sinceWeek } }, _sum: { actualYield: true, wasteQuantity: true }, _count: { id: true } }),
-    prisma.farmAnimalEvent.aggregate({ where: { group: { shopId }, type: { in: ["MORTALITY", "CULL"] }, occurredAt: { gte: sinceWeek } }, _sum: { quantity: true } }),
-    prisma.farmProductionBatch.findMany({ where: { shopId, producedAt: { gte: sinceTwoDays } }, select: { id: true }, take: 1 }),
-  ]);
   const actions = [];
-  const layers = groups.filter((group) => group.profileType === "LAYERS");
-  if (layers.length && !recentProduction.length) {
-    actions.push({ id: "farm-record-production", rank: 82, href: "/farm", title: language === "sw" ? "Rekodi uzalishaji wa mayai" : "Record egg production", body: language === "sw" ? `Kuna ${layers.length} kundi la kuku wa mayai lakini hakuna batch ya uzalishaji kwa siku 2 zilizopita.` : `${layers.length} layer group(s) have no production batch recorded in the last two days.`, action: language === "sw" ? "Fungua Ufugaji" : "Open Farm" });
+  if (configuration.hasLivestock) {
+    const [groups, production, losses, recentProduction] = await Promise.all([
+      prisma.farmGroup.findMany({ where: { shopId, isActive: true }, select: { id: true, name: true, profileType: true, currentAnimals: true }, take: 100 }),
+      prisma.farmProductionBatch.aggregate({ where: { shopId, producedAt: { gte: sinceWeek } }, _sum: { actualYield: true, wasteQuantity: true }, _count: { id: true } }),
+      prisma.farmAnimalEvent.aggregate({ where: { group: { shopId }, type: { in: ["MORTALITY", "CULL"] }, occurredAt: { gte: sinceWeek } }, _sum: { quantity: true } }),
+      prisma.farmProductionBatch.findMany({ where: { shopId, producedAt: { gte: sinceTwoDays } }, select: { id: true }, take: 1 }),
+    ]);
+    const layers = groups.filter((group) => group.profileType === "LAYERS");
+    if (layers.length && !recentProduction.length) actions.push({ id: "farm-record-production", rank: 82, href: "/farm", title: language === "sw" ? "Rekodi uzalishaji wa mayai" : "Record egg production", body: language === "sw" ? `Kuna ${layers.length} kundi la kuku wa mayai lakini hakuna batch ya uzalishaji kwa siku 2 zilizopita.` : `${layers.length} layer group(s) have no production batch recorded in the last two days.`, action: language === "sw" ? "Fungua Ufugaji" : "Open Farm" });
+    const lossAnimals = losses._sum.quantity || 0;
+    if (lossAnimals > 0) actions.push({ id: "farm-review-losses", rank: 90, href: "/farm", title: language === "sw" ? "Kagua vifo na cull za shamba" : "Review farm deaths and culls", body: language === "sw" ? `Wanyama ${lossAnimals} wameandikwa kama vifo au cull katika siku 7 zilizopita.` : `${lossAnimals} animals were recorded as deaths or culls in the last seven days.`, action: language === "sw" ? "Kagua Ufugaji" : "Review Farm" });
+    const waste = production._sum.wasteQuantity || 0;
+    const output = production._sum.actualYield || 0;
+    if (waste > 0 && waste >= Math.max(2, Math.round(output * 0.05))) actions.push({ id: "farm-review-output-loss", rank: 78, href: "/farm", title: language === "sw" ? "Kagua hasara ya output" : "Review output loss", body: language === "sw" ? `Output iliyopotea ni ${waste} kwenye siku 7 zilizopita. Linganisha yield halisi na supplies zilizotumika.` : `${waste} output units were lost in the last seven days. Compare actual yield with supplies used.`, action: language === "sw" ? "Fungua batch" : "Open batches" });
   }
-  const lossAnimals = losses._sum.quantity || 0;
-  if (lossAnimals > 0) {
-    actions.push({ id: "farm-review-losses", rank: 90, href: "/farm", title: language === "sw" ? "Kagua vifo na cull za shamba" : "Review farm deaths and culls", body: language === "sw" ? `Wanyama ${lossAnimals} wameandikwa kama vifo au cull katika siku 7 zilizopita.` : `${lossAnimals} animals were recorded as deaths or culls in the last seven days.`, action: language === "sw" ? "Kagua Ufugaji" : "Review Farm" });
-  }
-  const waste = production._sum.wasteQuantity || 0;
-  const output = production._sum.actualYield || 0;
-  if (waste > 0 && waste >= Math.max(2, Math.round(output * 0.05))) {
-    actions.push({ id: "farm-review-output-loss", rank: 78, href: "/farm", title: language === "sw" ? "Kagua hasara ya output" : "Review output loss", body: language === "sw" ? `Output iliyopotea ni ${waste} kwenye siku 7 zilizopita. Linganisha yield halisi na supplies zilizotumika.` : `${waste} output units were lost in the last seven days. Compare actual yield with supplies used.`, action: language === "sw" ? "Fungua batch" : "Open batches" });
+  if (configuration.hasCrops && prisma.cropCycle && prisma.cropHarvestBatch) {
+    const today = new Date();
+    const dueSoon = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const plantedAtLeastAWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const [missingInputs, dueHarvest, remainingHarvest, missingIrrigation, dueTasks, weatherWarnings] = await Promise.all([
+      prisma.cropCycle.findMany({ where: { shopId, status: { in: ["PLANTED", "GROWING"] }, plantedAt: { lte: plantedAtLeastAWeek }, inputUsages: { none: {} } }, include: { plot: { select: { name: true } } }, orderBy: { plantedAt: "asc" }, take: 2 }),
+      prisma.cropCycle.findMany({ where: { shopId, status: { in: ["PLANTED", "GROWING"] }, expectedHarvestAt: { gte: today, lte: dueSoon } }, include: { plot: { select: { name: true } } }, orderBy: { expectedHarvestAt: "asc" }, take: 2 }),
+      prisma.cropHarvestBatch.findFirst({ where: { shopId, remainingQuantity: { gt: 0 }, harvestAt: { lte: sinceWeek } }, include: { cropCycle: { select: { cropName: true, plot: { select: { name: true } } } }, outputProduct: { select: { name: true, unit: true } } }, orderBy: { harvestAt: "asc" } }),
+      prisma.cropIrrigationLog ? prisma.cropCycle.findMany({ where: { shopId, status: { in: ["PLANTED", "GROWING"] }, irrigationLogs: { none: { irrigatedAt: { gte: sinceWeek } } } }, include: { plot: { select: { name: true } } }, orderBy: { plantedAt: "asc" }, take: 2 }) : Promise.resolve([]),
+      prisma.cropFieldTask ? prisma.cropFieldTask.findMany({ where: { shopId, status: { in: ["TODO", "IN_PROGRESS"] }, dueAt: { lte: today } }, include: { cropCycle: { select: { cropName: true, plot: { select: { name: true } } } } }, orderBy: { dueAt: "asc" }, take: 2 }) : Promise.resolve([]),
+      prisma.cropWeatherAlert ? prisma.cropWeatherAlert.findMany({ where: { shopId, isResolved: false, severity: "WARNING" }, include: { cropCycle: { select: { cropName: true } }, cropPlot: { select: { name: true } } }, orderBy: { startsAt: "asc" }, take: 2 }) : Promise.resolve([]),
+    ]);
+    for (const cycle of missingInputs) actions.push({ id: `crop-input-${cycle.id}`, rank: 82, href: `/crops?action=input&cycle=${cycle.id}`, title: language === "sw" ? `Rekodi pembejeo za ${cycle.cropName}` : `Record inputs for ${cycle.cropName}`, body: language === "sw" ? `${cycle.plot.name} imepandwa lakini hakuna pembejeo au gharama iliyoandikwa.` : `${cycle.plot.name} is planted but has no input or cost record.`, action: language === "sw" ? "Fungua Mazao" : "Open Crops" });
+    for (const cycle of dueHarvest) actions.push({ id: `crop-harvest-${cycle.id}`, rank: 86, href: `/crops?action=harvest&cycle=${cycle.id}`, title: language === "sw" ? `Panga mavuno ya ${cycle.cropName}` : `Prepare to harvest ${cycle.cropName}`, body: language === "sw" ? `${cycle.plot.name} ina tarehe ya mavuno ndani ya siku 7. Rekodi mavuno kabla ya kuyauza.` : `${cycle.plot.name} is due for harvest within seven days. Record the harvest before selling it.`, action: language === "sw" ? "Fungua Mazao" : "Open Crops" });
+    for (const cycle of missingIrrigation) actions.push({ id: `crop-irrigation-${cycle.id}`, rank: 80, href: "/crops/operations", title: language === "sw" ? `Kagua umwagiliaji wa ${cycle.cropName}` : `Check irrigation for ${cycle.cropName}`, body: language === "sw" ? `${cycle.plot.name} haina umwagiliaji uliorekodiwa ndani ya siku 7 zilizopita. Rekodi hali halisi ya shamba.` : `${cycle.plot.name} has no irrigation record in the last seven days. Record the real field condition.`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
+    for (const task of dueTasks) actions.push({ id: `crop-task-${task.id}`, rank: 85, href: "/crops/operations", title: language === "sw" ? `Kamilisha kazi: ${task.title}` : `Complete task: ${task.title}`, body: language === "sw" ? `${task.cropCycle ? `${task.cropCycle.cropName} - ${task.cropCycle.plot.name}: ` : ""}tarehe ya kazi imefika. Sasisha baada ya kukamilisha.` : `${task.cropCycle ? `${task.cropCycle.cropName} - ${task.cropCycle.plot.name}: ` : ""}the task is due. Update it when complete.`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
+    for (const alert of weatherWarnings) actions.push({ id: `crop-weather-${alert.id}`, rank: 88, href: "/crops/operations", title: language === "sw" ? "Kagua tahadhari ya shamba" : "Review field warning", body: language === "sw" ? `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Shamba"}: ${alert.message}` : `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Field"}: ${alert.message}`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
+    if (remainingHarvest) actions.push({ id: `crop-review-${remainingHarvest.id}`, rank: 71, href: "/crops", title: language === "sw" ? `Kagua stock ya ${remainingHarvest.outputProduct.name}` : `Review ${remainingHarvest.outputProduct.name} harvest stock`, body: language === "sw" ? `Kuna ${remainingHarvest.remainingQuantity} ${remainingHarvest.outputProduct.unit} kutoka ${remainingHarvest.cropCycle.cropName} ya ${remainingHarvest.cropCycle.plot.name} ambayo bado ipo kwenye stock.` : `${remainingHarvest.remainingQuantity} ${remainingHarvest.outputProduct.unit} from ${remainingHarvest.cropCycle.cropName} in ${remainingHarvest.cropCycle.plot.name} is still in stock.`, action: language === "sw" ? "Kagua Mazao" : "Review Crops" });
   }
   res.json({ actions: actions.sort((a, b) => b.rank - a.rank) });
 });

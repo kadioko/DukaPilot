@@ -20,7 +20,15 @@ interface Batch {
   items: Array<{ id: string; quantity: number; unitCost: number | null; totalCost: number | null; product: { id: string; name: string; unit: string } }>;
 }
 interface Conversion { id: string; inputQuantity: number; outputQuantity: number; totalCost: number | null; unitCost: number | null; convertedAt: string; inputProduct: { id: string; name: string; unit: string }; outputProduct: { id: string; name: string; unit: string }; }
+interface FarmConfiguration {
+  category: string;
+  hasLivestock: boolean;
+  hasCrops: boolean;
+  needsSetup: boolean;
+}
+
 interface FarmData {
+  configuration?: FarmConfiguration;
   profiles: Profile[]; groups: Group[]; batches: Batch[]; conversions: Conversion[];
   pagination: { page: number; totalPages: number; total: number };
   summary: { activeGroups: number; animals: number; productionCount: number; outputQuantity: number; wasteQuantity: number; lossAnimals: number; productionCost?: number };
@@ -47,9 +55,11 @@ export default function FarmPage() {
   const [data, setData] = useState<FarmData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingProfiles, setSavingProfiles] = useState(false);
+  const [farmMode, setFarmMode] = useState<"CROPS" | "LIVESTOCK" | "BOTH">("BOTH");
   const [page, setPage] = useState(1);
   const [selectedProfiles, setSelectedProfiles] = useState<ProfileType[]>([]);
-  const [groupForm, setGroupForm] = useState({ name: "", profileType: "LAYERS" as ProfileType, currentAnimals: "", note: "" });
+  const [groupForm, setGroupForm] = useState<{ name: string; profileType: ProfileType | ""; currentAnimals: string; note: string }>({ name: "", profileType: "", currentAnimals: "", note: "" });
   const [eventForm, setEventForm] = useState({ groupId: "", type: "MORTALITY", quantity: "", occurredAt: today(), note: "" });
   const [productionForm, setProductionForm] = useState({ groupId: "", type: "EGGS" as ProductionType, outputProduct: null as Product | null, expectedYield: "", actualYield: "", additionalCost: "0", paymentMethod: "CASH", producedAt: today(), note: "", additionalCostNote: "" });
   const [supplyLines, setSupplyLines] = useState<Array<{ product: Product; quantity: string }>>([]);
@@ -60,7 +70,9 @@ export default function FarmPage() {
     try {
       const result = await api.get<FarmData>(`/farm?page=${nextPage}&limit=12`, lang);
       setData(result);
-      setSelectedProfiles(result.profiles.filter((profile) => profile.isActive).map((profile) => profile.type));
+      const activeTypes = result.profiles.filter((profile) => profile.isActive).map((profile) => profile.type);
+      setSelectedProfiles(activeTypes);
+      setGroupForm((current) => ({ ...current, profileType: activeTypes.includes(current.profileType as ProfileType) ? current.profileType : activeTypes[0] || "" }));
       setProductionForm((current) => ({ ...current, groupId: current.groupId || result.groups.find((group) => group.isActive)?.id || "" }));
       setEventForm((current) => ({ ...current, groupId: current.groupId || result.groups.find((group) => group.isActive)?.id || "" }));
     } catch (error) {
@@ -72,23 +84,42 @@ export default function FarmPage() {
 
   const activeGroups = data?.groups.filter((group) => group.isActive) || [];
   const activeProfileSet = useMemo(() => new Set(selectedProfiles), [selectedProfiles]);
+  const savedProfiles = useMemo(() => data?.profiles.filter((profile) => profile.isActive).map((profile) => profile.type) || [], [data?.profiles]);
+  const savedProfileSet = useMemo(() => new Set(savedProfiles), [savedProfiles]);
+  const profilesChanged = selectedProfiles.length !== savedProfiles.length || selectedProfiles.some((type) => !savedProfileSet.has(type));
+
+  function toggleProfile(type: ProfileType, checked: boolean) {
+    setSelectedProfiles((current) => {
+      const next = checked ? [...new Set([...current, type])] : current.filter((item) => item !== type);
+      setGroupForm((form) => ({ ...form, profileType: next.includes(form.profileType as ProfileType) ? form.profileType : next[0] || "" }));
+      return next;
+    });
+  }
 
   async function saveProfiles() {
     if (!selectedProfiles.length) { toast(lang === "sw" ? "Chagua angalau aina moja ya ufugaji." : "Choose at least one farm profile.", "error"); return; }
-    setSaving(true);
+    setSavingProfiles(true);
     try {
       await api.post("/farm/profiles", { types: selectedProfiles }, lang);
       toast(lang === "sw" ? "Aina za ufugaji zimehifadhiwa." : "Farm profiles saved.", "success");
       await load(1);
-    } catch (error) { toast(error instanceof Error ? error.message : "Could not save profiles", "error"); } finally { setSaving(false); }
+    } catch (error) { toast(error instanceof Error ? error.message : "Could not save profiles", "error"); } finally { setSavingProfiles(false); }
   }
 
   async function addGroup(event: FormEvent) {
     event.preventDefault();
+    if (profilesChanged) {
+      toast(lang === "sw" ? "Hifadhi aina za ufugaji kwanza, kisha ongeza kundi." : "Save farm profiles first, then add the group.", "error");
+      return;
+    }
+    if (!groupForm.profileType) {
+      toast(lang === "sw" ? "Chagua na uhifadhi aina ya ufugaji kwanza." : "Choose and save a farm profile first.", "error");
+      return;
+    }
     setSaving(true);
     try {
       await api.post("/farm/groups", { ...groupForm, currentAnimals: Number(groupForm.currentAnimals || 0), note: groupForm.note.trim() || undefined }, lang);
-      setGroupForm({ name: "", profileType: selectedProfiles[0] || "LAYERS", currentAnimals: "", note: "" });
+      setGroupForm({ name: "", profileType: savedProfiles[0] || "", currentAnimals: "", note: "" });
       toast(lang === "sw" ? "Kundi la ufugaji limeongezwa." : "Farm group added.", "success");
       await load(1);
     } catch (error) { toast(error instanceof Error ? error.message : "Could not add farm group", "error"); } finally { setSaving(false); }
@@ -137,14 +168,40 @@ export default function FarmPage() {
     } catch (error) { toast(error instanceof Error ? error.message : "Could not pack output", "error"); } finally { setSaving(false); }
   }
 
+  async function saveFarmConfiguration() {
+    setSaving(true);
+    try {
+      await api.post("/farm/configuration", {
+        hasCrops: farmMode !== "LIVESTOCK",
+        hasLivestock: farmMode !== "CROPS",
+      }, lang);
+      toast(lang === "sw" ? "Aina ya shamba imehifadhiwa." : "Farm setup saved.", "success");
+      await load(1);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kuhifadhi aina ya shamba." : "Could not save farm setup."), "error");
+    } finally { setSaving(false); }
+  }
+
   function addSupply(product: Product) {
     setSupplyLines((current) => current.some((line) => line.product.id === product.id) ? current : [...current, { product, quantity: "1" }]);
   }
 
   if (loading && !data) return <AppShell><div className="flex h-64 items-center justify-center"><LoaderCircle className="h-6 w-6 animate-spin text-brand-700" /></div></AppShell>;
 
+  if (data?.configuration && !data.configuration.hasLivestock) {
+    const setupRequired = data.configuration.needsSetup;
+    return <AppShell><main className="mx-auto max-w-4xl space-y-6 pb-24 lg:pb-8">
+      <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "Shamba" : "Farm operations"}</h1><p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">{lang === "sw" ? "Panga mazao, matumizi ya pembejeo, mavuno na stock ya kuuza kutoka sehemu moja." : "Plan crops, record inputs, harvest, and sellable stock from one place."}</p></div><a href="/help" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-800"><Tractor className="h-4 w-4" />{lang === "sw" ? "Soma mwongozo" : "Read guide"}</a></header>
+      {setupRequired ? <section className="border border-brand-200 bg-brand-50 p-5"><h2 className="font-bold text-gray-950">{lang === "sw" ? "Chagua aina ya shamba" : "Choose your farm type"}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Chagua Mazao, Ufugaji, au Vyote. Hii huonyesha zana zinazohusika na biashara yako pekee." : "Choose Crops, Livestock, or Both. DukaPilot will show only the tools your business uses."}</p><div className="mt-4 grid gap-3 sm:grid-cols-3">{([
+        ["CROPS", lang === "sw" ? "Mazao" : "Crops", lang === "sw" ? "Mashamba, pembejeo na mavuno" : "Plots, inputs, and harvests"],
+        ["LIVESTOCK", lang === "sw" ? "Ufugaji" : "Livestock", lang === "sw" ? "Makundi ya mifugo na uzalishaji" : "Animal groups and production"],
+        ["BOTH", lang === "sw" ? "Vyote" : "Both", lang === "sw" ? "Mazao pamoja na ufugaji" : "Crops and livestock together"],
+      ] as const).map(([value, title, detail]) => <button key={value} type="button" onClick={() => setFarmMode(value)} className={`min-h-28 border p-4 text-left ${farmMode === value ? "border-brand-600 bg-white ring-2 ring-brand-200" : "border-brand-200 bg-brand-50 hover:bg-white"}`}><strong className="block text-gray-950">{title}</strong><span className="mt-1 block text-xs leading-5 text-gray-600">{detail}</span></button>)}</div><button type="button" disabled={saving} onClick={saveFarmConfiguration} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Tractor className="h-4 w-4" />{saving ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Endelea" : "Continue")}</button></section> : <section className="border border-brand-200 bg-brand-50 p-5"><h2 className="font-bold text-gray-950">{lang === "sw" ? "Mazao yako yako tayari" : "Your crop tools are ready"}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Ongeza shamba/plot, anzisha msimu wa zao, rekodi pembejeo kisha mavuno yataongezwa kwenye stock ya kuuza." : "Add a plot, start a crop cycle, record inputs, then harvest directly into sellable stock."}</p><a href="/crops" className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white"><Wheat className="h-4 w-4" />{lang === "sw" ? "Fungua Mazao" : "Open Crops"}</a></section>}
+    </main></AppShell>;
+  }
+
   return <AppShell><main className="mx-auto max-w-6xl space-y-6 pb-24 lg:pb-8">
-    <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "Ufugaji" : "Farm Operations"}</h1><p className="mt-1 max-w-3xl text-sm leading-6 text-gray-600">{lang === "sw" ? "Rekodi makundi ya mifugo, supplies zilizotumika, uzalishaji, hasara na stock ya kuuza." : "Record animal groups, supplies used, production, loss, and sellable stock."}</p></div><a href="/help" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-800"><Tractor className="h-4 w-4" />{lang === "sw" ? "Soma mwongozo" : "Read guide"}</a></header>
+    <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-bold text-gray-950">{lang === "sw" ? "Ufugaji" : "Farm Operations"}</h1><p className="mt-1 max-w-3xl text-sm leading-6 text-gray-600">{lang === "sw" ? "Rekodi makundi ya mifugo, supplies zilizotumika, uzalishaji, hasara na stock ya kuuza." : "Record animal groups, supplies used, production, loss, and sellable stock."}</p></div><div className="flex flex-wrap gap-2"><a href="/crops" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-800"><Wheat className="h-4 w-4" />{lang === "sw" ? "Mazao" : "Crops"}</a><a href="/help" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-800"><Tractor className="h-4 w-4" />{lang === "sw" ? "Soma mwongozo" : "Read guide"}</a></div></header>
 
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{([
       { label: lang === "sw" ? "Makundi hai" : "Active groups", value: data?.summary.activeGroups || 0, Icon: Users },
@@ -154,11 +211,52 @@ export default function FarmPage() {
       { label: lang === "sw" ? "Vifo/cull siku 30" : "30-day deaths/culls", value: data?.summary.lossAnimals || 0, Icon: ClipboardList },
     ] satisfies Array<{ label: string; value: number; Icon: LucideIcon }>).map(({ label, value, Icon }) => <div key={label} className="border border-gray-200 bg-white p-4"><Icon className="h-4 w-4 text-brand-700" /><p className="mt-3 text-xs text-gray-500">{label}</p><p className="mt-1 text-lg font-bold text-gray-950">{value}</p></div>)}</section>
 
-    <section className="border border-brand-200 bg-brand-50 p-5"><div className="flex items-start gap-3"><Tractor className="mt-0.5 h-5 w-5 text-brand-800" /><div><h2 className="font-bold text-gray-950">{lang === "sw" ? "Aina za ufugaji" : "Farm profiles"}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Chagua shughuli ambazo shamba lako linafanya. Unaweza kuchagua zaidi ya moja." : "Choose the activities your farm runs. You can choose more than one."}</p></div></div><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{PROFILES.map((profile) => <label key={profile.value} className={`flex cursor-pointer items-start gap-3 border p-3 text-sm ${activeProfileSet.has(profile.value) ? "border-brand-400 bg-white" : "border-brand-100 bg-brand-50"}`}><input type="checkbox" checked={activeProfileSet.has(profile.value)} onChange={(event) => setSelectedProfiles((current) => event.target.checked ? [...current, profile.value] : current.filter((type) => type !== profile.value))} className="mt-0.5" /><span><strong className="block text-gray-950">{profile[lang]}</strong><span className="mt-1 block text-xs leading-5 text-gray-600">{lang === "sw" ? profile.hintSw : profile.hintEn}</span></span></label>)}</div><button type="button" disabled={saving} onClick={saveProfiles} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Tractor className="h-4 w-4" />{lang === "sw" ? "Hifadhi aina" : "Save profiles"}</button></section>
+    <section className="border border-brand-200 bg-brand-50 p-5">
+      <div className="flex items-start gap-3">
+        <Tractor className="mt-0.5 h-5 w-5 shrink-0 text-brand-800" />
+        <div>
+          <h2 className="font-bold text-gray-950">{lang === "sw" ? "Hatua ya 1: Chagua aina za ufugaji" : "Step 1: Choose farm profiles"}</h2>
+          <p className="mt-1 text-sm leading-6 text-gray-600">{lang === "sw" ? "Gusa aina moja au zaidi, kisha hifadhi. Baada ya kuhifadhi utaweza kuongeza kundi." : "Tap one or more activities, then save. After saving, you can add a farm group."}</p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" role="group" aria-label={lang === "sw" ? "Aina za ufugaji" : "Farm profile choices"}>
+        {PROFILES.map((profile) => (
+          <label
+            key={profile.value}
+            className={`flex min-h-20 cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition focus-within:ring-2 focus-within:ring-brand-600 focus-within:ring-offset-2 ${activeProfileSet.has(profile.value) ? "border-brand-500 bg-white shadow-sm" : "border-brand-100 bg-brand-50 hover:border-brand-300 hover:bg-white"}`}
+          >
+            <input
+              type="checkbox"
+              checked={activeProfileSet.has(profile.value)}
+              disabled={savingProfiles}
+              onChange={(event) => toggleProfile(profile.value, event.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border-gray-300 text-brand-700 focus:ring-brand-600 disabled:cursor-wait"
+            />
+            <span>
+              <strong className="block text-gray-950">{profile[lang]}</strong>
+              <span className="mt-1 block text-xs leading-5 text-gray-600">{lang === "sw" ? profile.hintSw : profile.hintEn}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <button type="button" disabled={savingProfiles || !profilesChanged} onClick={saveProfiles} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+          {savingProfiles ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Tractor className="h-4 w-4" />}
+          {savingProfiles ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi aina" : "Save profiles")}
+        </button>
+        <p className={`text-xs leading-5 ${profilesChanged ? "font-semibold text-amber-800" : "text-gray-600"}`} aria-live="polite">
+          {profilesChanged
+            ? (lang === "sw" ? "Una mabadiliko ambayo hayajahifadhiwa." : "You have unsaved profile changes.")
+            : savedProfiles.length
+              ? (lang === "sw" ? "Aina zimehifadhiwa. Sasa unaweza kuongeza kundi hapa chini." : "Profiles saved. You can now add a group below.")
+              : (lang === "sw" ? "Chagua angalau aina moja ili kuendelea." : "Choose at least one profile to continue.")}
+        </p>
+      </div>
+    </section>
 
     {selectedProfiles.includes("DAIRY") && <section className="border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-950"><Milk className="mr-2 inline h-4 w-4" /><strong>{lang === "sw" ? "Maziwa:" : "Dairy:"}</strong> {lang === "sw" ? "Kwa sasa tumia millilitre (ml) kama stock ya msingi; 1,000 ml ni litre 1. Unaweza kupakia ml kuwa chupa ya litre 1 kwa sehemu ya Kifurushi." : "Use millilitres (ml) as the base stock for now; 1,000 ml equals one litre. You can pack ml into a one-litre bottle below."}</section>}
 
-    <section className="grid gap-5 lg:grid-cols-2"><form onSubmit={addGroup} className="border border-gray-200 bg-white p-5"><h2 className="font-bold text-gray-950">{lang === "sw" ? "Ongeza kundi la ufugaji" : "Add a farm group"}</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label={lang === "sw" ? "Jina la kundi" : "Group name"} value={groupForm.name} onChange={(value) => setGroupForm({ ...groupForm, name: value })} placeholder={lang === "sw" ? "Mfano: Banda A - Layers" : "For example: Layer house A"} required /><SelectField label={lang === "sw" ? "Aina" : "Profile"} value={groupForm.profileType} onChange={(value) => setGroupForm({ ...groupForm, profileType: value as ProfileType })}>{selectedProfiles.map((type) => <option key={type} value={type}>{profileLabel(type, lang)}</option>)}</SelectField><Field label={lang === "sw" ? "Idadi ya kuanzia" : "Opening animals"} value={groupForm.currentAnimals} onChange={(value) => setGroupForm({ ...groupForm, currentAnimals: value })} type="number" placeholder="100" /><Field label={lang === "sw" ? "Dokezo (hiari)" : "Note (optional)"} value={groupForm.note} onChange={(value) => setGroupForm({ ...groupForm, note: value })} /></div><button disabled={saving || !selectedProfiles.length} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Plus className="h-4 w-4" />{lang === "sw" ? "Ongeza kundi" : "Add group"}</button></form>
+    <section className="grid gap-5 lg:grid-cols-2"><form onSubmit={addGroup} className="border border-gray-200 bg-white p-5"><h2 className="font-bold text-gray-950">{lang === "sw" ? "Hatua ya 2: Ongeza kundi la ufugaji" : "Step 2: Add a farm group"}</h2><p className="mt-1 text-xs leading-5 text-gray-500">{lang === "sw" ? "Kundi linaweza kuwa banda, zizi, herd au batch unayofuatilia." : "A group can be a house, pen, herd, or batch you track."}</p><fieldset disabled={saving || profilesChanged || !savedProfiles.length} className="disabled:opacity-60"><div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label={lang === "sw" ? "Jina la kundi" : "Group name"} value={groupForm.name} onChange={(value) => setGroupForm({ ...groupForm, name: value })} placeholder={lang === "sw" ? "Mfano: Banda A - Layers" : "For example: Layer house A"} required /><SelectField label={lang === "sw" ? "Aina" : "Profile"} value={groupForm.profileType} onChange={(value) => setGroupForm({ ...groupForm, profileType: value as ProfileType })}><option value="">{lang === "sw" ? "Chagua aina" : "Choose profile"}</option>{savedProfiles.map((type) => <option key={type} value={type}>{profileLabel(type, lang)}</option>)}</SelectField><Field label={lang === "sw" ? "Idadi ya kuanzia" : "Opening animals"} value={groupForm.currentAnimals} onChange={(value) => setGroupForm({ ...groupForm, currentAnimals: value })} type="number" placeholder="100" /><Field label={lang === "sw" ? "Dokezo (hiari)" : "Note (optional)"} value={groupForm.note} onChange={(value) => setGroupForm({ ...groupForm, note: value })} /></div><button disabled={saving || profilesChanged || !savedProfiles.length} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-4 w-4" />{lang === "sw" ? "Ongeza kundi" : "Add group"}</button></fieldset>{(profilesChanged || !savedProfiles.length) && <p className="mt-3 text-xs font-semibold leading-5 text-amber-800">{lang === "sw" ? "Chagua na uhifadhi aina ya ufugaji kwenye Hatua ya 1 kwanza." : "Choose and save a farm profile in Step 1 first."}</p>}</form>
       <form onSubmit={addEvent} className="border border-gray-200 bg-white p-5"><h2 className="font-bold text-gray-950">{lang === "sw" ? "Rekodi mabadiliko ya mifugo" : "Record animal change"}</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><SelectField label={lang === "sw" ? "Kundi" : "Group"} value={eventForm.groupId} onChange={(value) => setEventForm({ ...eventForm, groupId: value })}><option value="">{lang === "sw" ? "Chagua kundi" : "Choose group"}</option>{activeGroups.map((group) => <option key={group.id} value={group.id}>{group.name} ({group.currentAnimals})</option>)}</SelectField><SelectField label={lang === "sw" ? "Tukio" : "Event"} value={eventForm.type} onChange={(value) => setEventForm({ ...eventForm, type: value })}><option value="ADDITION">{lang === "sw" ? "Ongezeko" : "Addition"}</option><option value="MORTALITY">{lang === "sw" ? "Vifo" : "Mortality"}</option><option value="CULL">{lang === "sw" ? "Kuondoa/kuchuja" : "Cull / remove"}</option></SelectField><Field label={lang === "sw" ? "Idadi" : "Quantity"} value={eventForm.quantity} onChange={(value) => setEventForm({ ...eventForm, quantity: value })} type="number" required /><Field label={lang === "sw" ? "Tarehe" : "Date"} value={eventForm.occurredAt} onChange={(value) => setEventForm({ ...eventForm, occurredAt: value })} type="date" required /><div className="sm:col-span-2"><Field label={lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"} value={eventForm.note} onChange={(value) => setEventForm({ ...eventForm, note: value })} /></div></div><button disabled={saving || !activeGroups.length} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2 text-sm font-semibold text-brand-800 disabled:opacity-60"><ClipboardList className="h-4 w-4" />{lang === "sw" ? "Hifadhi tukio" : "Save event"}</button></form>
     </section>
 

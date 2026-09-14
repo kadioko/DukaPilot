@@ -205,6 +205,10 @@ const update = asyncHandler(async (req, res) => {
     select: SAFE_STAFF_SELECT,
   });
 
+  if (!staff.isActive) {
+    await prisma.pushSubscription.updateMany({ where: { shopId, staffId: staff.id, isActive: true }, data: { isActive: false } });
+  }
+
   req.audit = { action: "staff.update", resourceType: "staff", resourceId: staff.id };
   res.json({ staff });
 });

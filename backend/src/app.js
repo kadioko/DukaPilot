@@ -32,7 +32,8 @@ const stockCountRoutes = require("./routes/stockCount.routes");
 const cashSessionRoutes = require("./routes/cashSession.routes");
 const stockReceiptRoutes = require("./routes/stockReceipt.routes");
 const foodPreparationRoutes = require("./routes/foodPreparation.routes");
-const farmRoutes = require("./routes/farm.routes");
+  const farmRoutes = require("./routes/farm.routes");
+  const cropRoutes = require("./routes/crop.routes");
 const referralRoutes = require("./routes/referral.routes");
 const quotationRoutes = require("./routes/quotation.routes");
 const publicQuotationRoutes = require("./routes/publicQuotation.routes");
@@ -80,7 +81,7 @@ const corsOptions = {
     return callback(error);
   },
   credentials: true,
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-DukaPilot-Language", "X-DukaPilot-Branch"],
   optionsSuccessStatus: 204,
 };
@@ -169,7 +170,8 @@ app.use("/api/stock-counts", stockCountRoutes);
 app.use("/api/cash-sessions", cashSessionRoutes);
 app.use("/api/stock-receipts", stockReceiptRoutes);
 app.use("/api/food-preparation", foodPreparationRoutes);
-app.use("/api/farm", farmRoutes);
+  app.use("/api/farm", farmRoutes);
+  app.use("/api/crops", cropRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/quotations", quotationRoutes);
 

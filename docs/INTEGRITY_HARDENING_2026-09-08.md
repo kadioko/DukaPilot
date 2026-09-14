@@ -40,3 +40,24 @@ This release closes the highest-risk findings from the live-system review.
 CI runs the backend unit suite, frontend typecheck and production Playwright suite,
 dependency audits, Android wrapper checks, and a disposable PostgreSQL deletion test.
 Live nTZS settlement and migration application remain deployment gates.
+
+## Follow-up hardening - 10 September 2026
+
+- Staff sessions are represented as merchant actors even when their owning account is
+  also a DukaPilot platform administrator. Platform-admin routes reject every staff session.
+- Debt collection now compares the debt amount, amount already collected, and status in
+  one guarded update. A concurrent edit produces a conflict instead of an over-collection.
+- Stock counts are claimed once and completed in a serializable transaction. Adjustment
+  application requires stock to still match the opening snapshot, protecting later sales
+  and receipts from being overwritten.
+- Push queues and delivery history are permission-aware for staff. Delivery processing
+  rechecks active staff access, and private lock-screen previews hide the notification title.
+- Account anonymization now covers quotation defaults/signatures/sections/items, stock
+  movement notes, food recipes and batches, and farm groups, events, production, and packing.
+- Offline sale queues and local sync history are separated by business, branch, and actor.
+  Unscoped records from older builds are quarantined and surfaced without exposing their details.
+- Public Help performs optional session discovery and remains available to signed-out users.
+
+Verification includes 142 backend unit tests, 28 Playwright checks, frontend
+typechecking, and four PostgreSQL integrity tests on a disposable database with all 39
+migrations applied.

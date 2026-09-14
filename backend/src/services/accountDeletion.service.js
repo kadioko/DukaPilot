@@ -40,7 +40,12 @@ async function anonymizeMerchantAccount(userId) {
     await tx.recurringExpense.updateMany({ where: { shopId: { in: shopIds } }, data: { title: "Deleted recurring expense", vendor: null, note: null, isActive: false } });
     await tx.order.updateMany({ where: { shopId: { in: shopIds } }, data: { note: null } });
     await tx.stockReceipt.updateMany({ where: { shopId: { in: shopIds } }, data: { invoiceNumber: null, note: null, receivedBy: null } });
+    await tx.stockMovement.updateMany({ where: { product: { shopId: { in: shopIds } } }, data: { note: null } });
     await tx.cashSession.updateMany({ where: { shopId: { in: shopIds } }, data: { openedByName: "Deleted staff", note: null } });
+    await tx.quotationSettings.updateMany({
+      where: { shopId: { in: shopIds } },
+      data: { defaultPaymentTerms: null, defaultTerms: null, defaultCustomerNote: null, signatureName: null, signatureUrl: null },
+    });
     await tx.quotationShare.deleteMany({ where: { quotation: { shopId: { in: shopIds } } } });
     await tx.quotationRevision.deleteMany({ where: { quotation: { shopId: { in: shopIds } } } });
     await tx.quotation.updateMany({
@@ -52,7 +57,26 @@ async function anonymizeMerchantAccount(userId) {
         rejectionReason: null, cancellationReason: null,
       },
     });
-    await tx.quotationItem.updateMany({ where: { quotation: { shopId: { in: shopIds } } }, data: { description: null, internalNote: null } });
+    await tx.quotationSection.updateMany({ where: { quotation: { shopId: { in: shopIds } } }, data: { name: "Deleted section" } });
+    await tx.quotationItem.updateMany({ where: { quotation: { shopId: { in: shopIds } } }, data: { name: "Deleted quotation item", description: null, internalNote: null } });
+    await tx.foodRecipe.updateMany({ where: { shopId: { in: shopIds } }, data: { name: "Deleted recipe", instructions: null, isActive: false } });
+    await tx.foodPreparationBatch.updateMany({ where: { shopId: { in: shopIds } }, data: { additionalCostNote: null, note: null, preparedBy: null } });
+    await tx.farmGroup.updateMany({ where: { shopId: { in: shopIds } }, data: { name: "Deleted group", note: null, isActive: false } });
+    await tx.farmAnimalEvent.updateMany({ where: { group: { shopId: { in: shopIds } } }, data: { note: null, recordedBy: null } });
+    await tx.farmProductionBatch.updateMany({ where: { shopId: { in: shopIds } }, data: { additionalCostNote: null, note: null, producedBy: null } });
+    await tx.farmPackConversion.updateMany({ where: { shopId: { in: shopIds } }, data: { note: null, convertedBy: null } });
+    // Field plans and buyer commitments are operational data with direct
+    // identifiers, so deletion removes them rather than retaining aliases.
+    await tx.cropBuyerContract.deleteMany({ where: { shopId: { in: shopIds } } });
+    await tx.cropFieldTask.deleteMany({ where: { shopId: { in: shopIds } } });
+    await tx.cropIrrigationLog.deleteMany({ where: { shopId: { in: shopIds } } });
+    await tx.cropWeatherAlert.deleteMany({ where: { shopId: { in: shopIds } } });
+    await tx.cropSeasonBudget.deleteMany({ where: { cropCycle: { shopId: { in: shopIds } } } });
+    await tx.cropHarvestGrade.updateMany({ where: { harvestBatch: { shopId: { in: shopIds } } }, data: { note: null, recordedBy: null } });
+    await tx.cropPlot.updateMany({ where: { shopId: { in: shopIds } }, data: { name: "Deleted plot", location: null, note: null, isActive: false } });
+    await tx.cropCycle.updateMany({ where: { shopId: { in: shopIds } }, data: { cropName: "Deleted crop", variety: null, note: null, status: "CANCELLED", closedAt: new Date(), unrecoveredCost: 0, costReconciledAt: null } });
+    await tx.cropInputUsage.updateMany({ where: { shopId: { in: shopIds } }, data: { title: "Deleted crop input", note: null, recordedBy: null } });
+    await tx.cropHarvestBatch.updateMany({ where: { shopId: { in: shopIds } }, data: { note: null, recordedBy: null } });
     await tx.report.updateMany({ where: { userId }, data: { title: "Deleted support report", description: "Account deleted", adminNotes: null } });
     await tx.auditLog.updateMany({ where: { userId }, data: { ipAddress: null, userAgent: null, metadata: Prisma.DbNull } });
     const anonymizedShopData = {

@@ -20,16 +20,34 @@ function retryAt(attemptCount) {
   return new Date(Date.now() + minutes * 60 * 1000);
 }
 
+function staffCanReceiveKind(staff, kind) {
+  if (!staff?.isActive) return false;
+  if (kind === "LOW_STOCK") return Boolean(staff.canManageStock);
+  if (kind === "DEBT_DUE") return Boolean(staff.canViewReports);
+  if (kind === "QUOTATION_REMINDER") return Boolean(staff.canViewQuotations);
+  if (kind === "DAILY_ASSISTANT") return Boolean(staff.canUseAssistant && staff.canViewReports);
+  // Billing and unknown shop-wide alerts are owner-only.
+  return false;
+}
+
 async function queueForShop(shopId, kind, message) {
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { shopId, isActive: true },
-    select: { id: true },
+    select: { id: true, staffId: true },
   });
   if (!subscriptions.length) return false;
+  const staffIds = subscriptions.map((subscription) => subscription.staffId).filter(Boolean);
+  const staff = staffIds.length ? await prisma.staffMember.findMany({
+    where: { id: { in: staffIds }, shopId, isActive: true },
+    select: { id: true, isActive: true, canManageStock: true, canViewReports: true, canViewQuotations: true, canUseAssistant: true },
+  }) : [];
+  const staffById = new Map(staff.map((member) => [member.id, member]));
+  const eligible = subscriptions.filter((subscription) => !subscription.staffId || staffCanReceiveKind(staffById.get(subscription.staffId), kind));
+  if (!eligible.length) return false;
 
   const dayKey = new Date().toISOString().slice(0, 10);
   const created = await prisma.pushDelivery.createMany({
-    data: subscriptions.map((subscription) => ({
+    data: eligible.map((subscription) => ({
       shopId,
       subscriptionId: subscription.id,
       kind,
@@ -134,6 +152,12 @@ async function processPushDeliveries(limit = 100) {
     orderBy: { createdAt: "asc" },
     take: Math.min(Math.max(Number(limit) || 100, 1), 500),
   });
+  const staffIds = [...new Set(deliveries.map((delivery) => delivery.subscription?.staffId).filter(Boolean))];
+  const activeStaff = staffIds.length ? await prisma.staffMember.findMany({
+    where: { id: { in: staffIds }, isActive: true },
+    select: { id: true, shopId: true, isActive: true, canManageStock: true, canViewReports: true, canViewQuotations: true, canUseAssistant: true },
+  }) : [];
+  const staffById = new Map(activeStaff.map((member) => [member.id, member]));
   let sent = 0;
   let failed = 0;
   for (const delivery of deliveries) {
@@ -148,6 +172,16 @@ async function processPushDeliveries(limit = 100) {
       await prisma.pushDelivery.update({ where: { id: delivery.id }, data: { status: "SKIPPED", lastError: "Inactive subscription", leaseId: null, leaseExpiresAt: null } });
       continue;
     }
+    if (subscription.staffId) {
+      const staff = staffById.get(subscription.staffId);
+      if (!staff || staff.shopId !== delivery.shopId || !staffCanReceiveKind(staff, delivery.kind)) {
+        await prisma.$transaction([
+          prisma.pushDelivery.update({ where: { id: delivery.id }, data: { status: "SKIPPED", lastError: "Staff access no longer permits this alert", leaseId: null, leaseExpiresAt: null } }),
+          ...(!staff || !staff.isActive ? [prisma.pushSubscription.update({ where: { id: subscription.id }, data: { isActive: false } })] : []),
+        ]);
+        continue;
+      }
+    }
     const preferenceKey = { LOW_STOCK: "lowStock", DEBT_DUE: "debtDue", SUBSCRIPTION: "subscriptionExpiry", DAILY_ASSISTANT: "dailyAssistant" }[delivery.kind];
     const preferences = delivery.shop?.notificationPreference;
     if (preferenceKey && preferences && preferences[preferenceKey] === false) {
@@ -157,8 +191,9 @@ async function processPushDeliveries(limit = 100) {
     try {
       const hideDetails = preferences?.privatePreview !== false;
       const language = delivery.shop?.user?.language || delivery.shop?.parentShop?.user?.language || "sw";
+      const privateTitle = language === "en" ? "DukaPilot shop update" : "Taarifa ya duka kutoka DukaPilot";
       const privateBody = language === "en" ? "Open DukaPilot to view this shop update." : "Fungua DukaPilot kuona taarifa hii ya duka.";
-      await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ title: delivery.title, body: hideDetails ? privateBody : delivery.body, href: delivery.href, tag: delivery.kind }));
+      await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ title: hideDetails ? privateTitle : delivery.title, body: hideDetails ? privateBody : delivery.body, href: delivery.href, tag: delivery.kind }));
       await prisma.$transaction([
         prisma.pushDelivery.update({ where: { id: delivery.id }, data: { status: "SENT", sentAt: new Date(), attemptCount: { increment: 1 }, lastError: null, leaseId: null, leaseExpiresAt: null } }),
         prisma.pushSubscription.update({ where: { id: subscription.id }, data: { lastSeenAt: new Date(), failureCount: 0 } }),
@@ -178,4 +213,4 @@ async function processPushDeliveries(limit = 100) {
   return { configured: true, processed: deliveries.length, sent, failed };
 }
 
-module.exports = { configured, queueForShop, queueShopAlerts, processPushDeliveries };
+module.exports = { configured, queueForShop, queueShopAlerts, processPushDeliveries, staffCanReceiveKind };

@@ -10,6 +10,7 @@ import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
 import DateSelect from "@/components/ui/DateSelect";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
 import ReceiptActions from "@/components/sales/ReceiptActions";
+import { legacyPendingOfflineSalesCount, offlineSalesScope, scopedOfflineKey, setActiveOfflineSalesScope } from "@/lib/offlineSalesStorage";
 
 interface Product {
   id: string;
@@ -86,35 +87,33 @@ const PAYMENT_METHODS = [
   { value: "CREDIT", labelKey: "sales.credit", color: "orange" },
 ];
 
-const PENDING_SALES_KEY = "dukapilot_pending_sales";
-const SYNC_HISTORY_KEY = "dukapilot_sales_sync_history";
 const SYNC_DEVICE_KEY = "dukapilot_sync_device_id";
 const SYNC_DEVICE_LABEL_KEY = "dukapilot_sync_device_label";
 
-function readPendingSales(): PendingSale[] {
-  if (typeof window === "undefined") return [];
+function readPendingSales(scope: string | null): PendingSale[] {
+  if (typeof window === "undefined" || !scope) return [];
   try {
-    return JSON.parse(window.localStorage.getItem(PENDING_SALES_KEY) || "[]");
+    return JSON.parse(window.localStorage.getItem(scopedOfflineKey("pending", scope)) || "[]");
   } catch {
     return [];
   }
 }
 
-function writePendingSales(sales: PendingSale[]) {
-  window.localStorage.setItem(PENDING_SALES_KEY, JSON.stringify(sales));
+function writePendingSales(scope: string, sales: PendingSale[]) {
+  window.localStorage.setItem(scopedOfflineKey("pending", scope), JSON.stringify(sales));
 }
 
-function readSyncHistory(): SyncEvent[] {
-  if (typeof window === "undefined") return [];
+function readSyncHistory(scope: string | null): SyncEvent[] {
+  if (typeof window === "undefined" || !scope) return [];
   try {
-    return JSON.parse(window.localStorage.getItem(SYNC_HISTORY_KEY) || "[]");
+    return JSON.parse(window.localStorage.getItem(scopedOfflineKey("history", scope)) || "[]");
   } catch {
     return [];
   }
 }
 
-function writeSyncHistory(events: SyncEvent[]) {
-  window.localStorage.setItem(SYNC_HISTORY_KEY, JSON.stringify(events.slice(0, 10)));
+function writeSyncHistory(scope: string, events: SyncEvent[]) {
+  window.localStorage.setItem(scopedOfflineKey("history", scope), JSON.stringify(events.slice(0, 10)));
 }
 
 function newLocalId() {
@@ -192,6 +191,8 @@ export default function SalesPage() {
   const [syncHistory, setSyncHistory] = useState<SyncEvent[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [offlineScope, setOfflineScope] = useState<string | null>(null);
+  const [legacyPendingCount, setLegacyPendingCount] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
   const [assistantIntent, setAssistantIntent] = useState("");
   const [canViewFinancials, setCanViewFinancials] = useState(true);
@@ -209,10 +210,14 @@ export default function SalesPage() {
   const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    getCurrentSession<{ user: { role: string; staff?: { permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
+    getCurrentSession<{ user: { id: string; role: string; businessShopId?: string; shop?: { id?: string; parentShopId?: string | null }; staff?: { id?: string; permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
       .then((data) => {
         setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports));
         setCanManageStock(data.user.role === "ADMIN" || !data.user.staff || Boolean(data.user.staff.permissions?.canManageStock));
+        const scope = offlineSalesScope(data.user);
+        setOfflineScope(scope);
+        setActiveOfflineSalesScope(scope);
+        setLegacyPendingCount(legacyPendingOfflineSalesCount());
       })
       .catch(() => setCanViewFinancials(false));
     api.get<{ customers: CustomerRecord[] }>("/debts/customers")
@@ -259,10 +264,10 @@ export default function SalesPage() {
   }, []);
 
   const syncPendingSales = useCallback(async () => {
-    if (syncingRef.current) return;
+    if (syncingRef.current || !offlineScope) return;
     syncingRef.current = true;
     setSyncing(true);
-    const pending = readPendingSales();
+    const pending = readPendingSales(offlineScope);
     if (pending.length === 0) {
       setPendingSales([]);
       setLastSyncAt(new Date().toISOString());
@@ -305,10 +310,10 @@ export default function SalesPage() {
           reportSyncEvent({ status: "FAILED", total: sale.total, message, attempts: nextSale.attempts, localId: sale.id });
         }
       }
-      writePendingSales(remaining);
+      writePendingSales(offlineScope, remaining);
       if (events.length > 0) {
-        const nextHistory = [...events, ...readSyncHistory()];
-        writeSyncHistory(nextHistory);
+        const nextHistory = [...events, ...readSyncHistory(offlineScope)];
+        writeSyncHistory(offlineScope, nextHistory);
         setSyncHistory(nextHistory.slice(0, 10));
       }
       setPendingSales(remaining);
@@ -321,11 +326,12 @@ export default function SalesPage() {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [lang, refreshProducts, toast]);
+  }, [lang, offlineScope, refreshProducts, toast]);
 
   useEffect(() => {
-    setPendingSales(readPendingSales());
-    setSyncHistory(readSyncHistory());
+    if (!offlineScope) return;
+    setPendingSales(readPendingSales(offlineScope));
+    setSyncHistory(readSyncHistory(offlineScope));
     setIsOnline(typeof navigator === "undefined" ? true : navigator.onLine);
     syncPendingSales().catch(() => {});
     const handleOnline = () => {
@@ -362,7 +368,8 @@ export default function SalesPage() {
   }, []);
 
   function clearSyncHistory() {
-    writeSyncHistory([]);
+    if (!offlineScope) return;
+    writeSyncHistory(offlineScope, []);
     setSyncHistory([]);
   }
 
@@ -374,7 +381,8 @@ export default function SalesPage() {
       : "Remove this offline sale? Only do this if you recorded it manually.");
     if (!confirmed) return;
     const nextPending = pendingSales.filter((item) => item.id !== id);
-    writePendingSales(nextPending);
+    if (!offlineScope) return;
+    writePendingSales(offlineScope, nextPending);
     setPendingSales(nextPending);
     reportSyncEvent({ status: "REMOVED", total: sale.total, message: sale.lastError, attempts: sale.attempts || 0, localId: sale.id });
     toast(lang === "sw" ? "Mauzo ya bila intaneti yameondolewa." : "Offline sale removed.", "success");
@@ -584,9 +592,9 @@ export default function SalesPage() {
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : t("common.error", lang);
       const canQueue = typeof navigator !== "undefined" && (!navigator.onLine || message.includes("Unable to reach"));
-      if (canQueue) {
+      if (canQueue && offlineScope) {
         const queued = [
-          ...readPendingSales(),
+          ...readPendingSales(offlineScope),
           { id: clientReference, branchId: selectedBranchId(), createdAt: new Date().toISOString(), total, attempts: 0, payload },
         ];
         const queuedEvent = {
@@ -596,9 +604,9 @@ export default function SalesPage() {
           total,
           message: lang === "sw" ? "Sale saved locally until internet returns." : "Sale saved locally until internet returns.",
         };
-        const nextHistory = [queuedEvent, ...readSyncHistory()];
-        writePendingSales(queued);
-        writeSyncHistory(nextHistory);
+        const nextHistory = [queuedEvent, ...readSyncHistory(offlineScope)];
+        writePendingSales(offlineScope, queued);
+        writeSyncHistory(offlineScope, nextHistory);
         reportSyncEvent({ status: "QUEUED", total, message: queuedEvent.message, attempts: 0, localId: queued[queued.length - 1].id });
         setPendingSales(queued);
         setSyncHistory(nextHistory.slice(0, 10));
@@ -711,6 +719,23 @@ export default function SalesPage() {
           </div>
         )}
 
+        {view === "pos" && legacyPendingCount > 0 && (
+          <section className="mb-4 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-700" />
+            <div>
+              <p className="font-semibold">{lang === "sw" ? "Mauzo ya zamani yamehifadhiwa kwa usalama" : "Older offline sales are safely quarantined"}</p>
+              <p className="mt-1 text-xs leading-5 text-blue-800">
+                {lang === "sw"
+                  ? `Simu hii ina mauzo ${legacyPendingCount} kutoka toleo la zamani ambayo hayajaunganishwa na akaunti ya sasa. Hayatasawazishwa moja kwa moja. Wasiliana na support kabla ya kuyafuta.`
+                  : `This phone has ${legacyPendingCount} sale(s) from an older version that are not tied to the current account. They will not sync automatically. Contact support before removing them.`}
+              </p>
+              <a href="https://wa.me/255743910580?text=Nahitaji%20msaada%20wa%20mauzo%20ya%20offline%20ya%20toleo%20la%20zamani" className="mt-2 inline-flex font-semibold text-blue-800 underline underline-offset-2">
+                WhatsApp support
+              </a>
+            </div>
+          </section>
+        )}
+
         {view === "pos" && (pendingSales.length > 0 || syncHistory.length > 0) && (
           <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -721,7 +746,7 @@ export default function SalesPage() {
                 </div>
                 <p className="text-xs text-amber-800">
                   {pendingSales.length > 0
-                    ? (lang === "sw" ? `Mauzo ${pendingSales.length} yanasubiri. Kila moja litajaribu tena intaneti ikirudi.` : `${pendingSales.length} sale(s) waiting. Each sale retries when internet returns.`)
+                    ? (lang === "sw" ? `Mauzo ${pendingSales.length} ya akaunti hii yanasubiri. Ukurasa huu ukiwa wazi, yatajaribu tena intaneti ikirudi.` : `${pendingSales.length} sale(s) for this account are waiting. While this page remains open, they retry when internet returns.`)
                     : (lang === "sw" ? "Hakuna mauzo yanayosubiri kusawazishwa." : "No sales are waiting to sync.")}
                 </p>
                 <p className="mt-1 text-[11px] text-amber-700">

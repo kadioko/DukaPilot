@@ -13,10 +13,10 @@ const steps = [
   {
     href: "/settings",
     icon: Settings,
-    en: "Set up your shop",
-    sw: "Weka taarifa za duka",
-    enBody: "Add your shop name, location, language, and contact details.",
-    swBody: "Weka jina la duka, eneo, lugha na mawasiliano.",
+    en: "Set up your business",
+    sw: "Weka taarifa za duka/biashara",
+    enBody: "Add your shop or business name, location, language, and contact details.",
+    swBody: "Weka jina la duka/biashara, eneo, lugha na mawasiliano.",
   },
   {
     href: "/inventory",
@@ -109,8 +109,8 @@ export default function QuickStartGuide({ lang }: QuickStartGuideProps) {
               </div>
               <p className="relative mt-4 max-w-sm text-sm leading-6 text-brand-100">
                 {isSwahili
-                  ? "Anza na hatua hizi. Duka lako litakuwa tayari kurekodi mauzo, kutengeneza nukuu, na kupata ushauri wa AI."
-                  : "Start with these steps. Your shop will be ready to record sales, make quotations, and receive AI guidance."}
+                  ? "Anza na hatua hizi. Duka au biashara yako itakuwa tayari kurekodi mauzo, kutengeneza nukuu, na kupata ushauri wa AI."
+                  : "Start with these steps. Your business will be ready to record sales, make quotations, and receive AI guidance."}
               </p>
             </header>
 

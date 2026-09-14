@@ -4,6 +4,7 @@ const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTim
 const { normalizePhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
+const { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations } = require("../lib/cropHarvestSales");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -201,6 +202,8 @@ const create = asyncHandler(async (req, res) => {
       });
     }
 
+    await allocateCropHarvestForSale(tx, shopId, newSale.items);
+
     if (normalizedPaymentMethod === "CREDIT") {
       const previousCustomer = await tx.debt.findFirst({
         where: { shopId, customerPhone: normalizedCustomerPhone },
@@ -272,6 +275,7 @@ const voidSale = asyncHandler(async (req, res) => {
     if (guarded.count !== 1) throw Object.assign(new Error("Sale changed before it could be voided. Refresh and try again."), { status: 409 });
 
     const receiptLabel = existing.receiptNumber ? `#${String(existing.receiptNumber).padStart(6, "0")}` : `#${existing.id.slice(-6)}`;
+    await reverseCropHarvestSaleAllocations(tx, existing.items.map((item) => item.id));
     for (const item of existing.items) {
       // Service quotation lines have no stock to return.
       if (!item.productId) continue;

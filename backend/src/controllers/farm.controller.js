@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { getFarmConfiguration } = require("../lib/farmAccess");
 
 const PROFILE_TYPES = new Set(["LAYERS", "BROILERS", "DAIRY", "BEEF", "GOATS_SHEEP", "PIGS", "MIXED"]);
 const EVENT_TYPES = new Set(["ADDITION", "MORTALITY", "CULL"]);
@@ -80,7 +81,8 @@ const overview = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 12));
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const [profiles, groups, batches, totalBatches, recentConversions, production, losses] = await Promise.all([
+  const [configuration, profiles, groups, batches, totalBatches, recentConversions, production, losses] = await Promise.all([
+    getFarmConfiguration(shopId),
     prisma.farmProfile.findMany({ where: { shopId }, orderBy: { type: "asc" } }),
     prisma.farmGroup.findMany({ where: { shopId }, orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }], take: 100 }),
     prisma.farmProductionBatch.findMany({ where: { shopId }, include: batchInclude(), orderBy: { producedAt: "desc" }, skip: (page - 1) * limit, take: limit }),
@@ -96,6 +98,7 @@ const overview = asyncHandler(async (req, res) => {
   ]);
 
   res.json({
+    configuration,
     profiles,
     groups,
     batches: batches.map((batch) => redactBatch(batch, req)),
@@ -112,6 +115,21 @@ const overview = asyncHandler(async (req, res) => {
       ...(canViewFinancials(req) ? { productionCost: production._sum.totalCost || 0 } : {}),
     },
   });
+});
+
+const saveConfiguration = asyncHandler(async (req, res) => {
+  if (req.user.staffId) return res.status(403).json({ error: "Only the business owner can change farm setup" });
+  const shopId = await getShopIdForUser(req.user);
+  const hasLivestock = req.body.hasLivestock === true;
+  const hasCrops = req.body.hasCrops === true;
+  if (!hasLivestock && !hasCrops) return res.status(400).json({ error: "Choose crops, livestock, or both" });
+  const configuration = await prisma.farmSettings.upsert({
+    where: { shopId },
+    create: { shopId, hasLivestock, hasCrops },
+    update: { hasLivestock, hasCrops },
+  });
+  req.audit = { action: "farm.configuration.save", resourceType: "farm_settings", resourceId: configuration.id, metadata: { hasLivestock, hasCrops } };
+  res.json({ configuration: { ...configuration, isFarm: true, needsSetup: false, category: "farm" } });
 });
 
 const saveProfiles = asyncHandler(async (req, res) => {
@@ -269,4 +287,4 @@ const packOutput = asyncHandler(async (req, res) => {
   res.status(201).json({ conversion: redactConversion(conversion, req) });
 });
 
-module.exports = { overview, saveProfiles, createGroup, recordAnimalEvent, createProduction, packOutput, costsFor, redactBatch, redactConversion };
+module.exports = { overview, saveConfiguration, saveProfiles, createGroup, recordAnimalEvent, createProduction, packOutput, costsFor, redactBatch, redactConversion };

@@ -22,22 +22,26 @@ Owner: DukaPilot Privacy Owner (platform admin), Necuva Group Limited
 
 Completion date: 2026-08-25
 
-Database workflow verification date: 2026-09-09
+Database workflow verification date: 2026-09-10
 
 Completed by: DukaPilot Privacy Owner (platform admin)
 
 Outcome: The public intake, identity-verification requirements, deletion scope,
 30-day completion statement, partial-deletion option, and 90-day retention
-statement were verified. The CI PostgreSQL test creates a synthetic owner, root shop,
-branch, customer, debt collection, subscription payment, and checkout; it then runs
-the production anonymization service and verifies that access and identifying data
-are removed while required financial records retain referential integrity. No real
-customer or production data is used.
+statement were verified. The PostgreSQL test creates a synthetic owner, root shop,
+branch, customer, debt collection, subscription payment, checkout, quotation and
+signature settings, stock notes, food preparation records, livestock records, crop
+plots/cycles/input/harvest records, and farm records. It then
+runs the production anonymization service and verifies that access and identifying
+data are removed while required financial records retain referential integrity. No
+real customer or production data is used.
 
 Automated evidence: `backend/tests/postgresIntegrity.test.js`, configured in the
 `postgres-integrity` CI job after applying all migrations to a disposable database.
-The test passed in GitHub Actions run
-`https://github.com/kadioko/DukaPilot/actions/runs/34288036715`.
+The earlier core workflow passed in GitHub Actions run
+`https://github.com/kadioko/DukaPilot/actions/runs/34288036715`. The expanded field
+coverage passed locally on 2026-09-10 against a disposable PostgreSQL database after
+all 39 migrations; the next CI run is the durable verification record for this expansion.
 
 ## Retention expiry
 

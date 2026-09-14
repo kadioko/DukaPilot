@@ -7,6 +7,7 @@ const { normalizePhone, phoneLookupValues, isValidPhone } = require("../lib/phon
 
 const VALID_ROLES = new Set(["MERCHANT", "SUPPLIER"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
+const VALID_SHOP_CATEGORIES = new Set(["grocery", "pharmacy", "beauty", "bar", "restaurant", "hardware", "electronics", "clothing", "livestock", "farm", "general"]);
 
 // Access token: 1 hour. Refresh token: 30 days.
 const ACCESS_TOKEN_EXPIRY = "1h";
@@ -153,7 +154,8 @@ function issueAccessToken(user, staff = null) {
     {
       userId: user.id,
       phone: staff?.phone || user.phone,
-      role: user.role,
+      role: staff ? "MERCHANT" : user.role,
+      accountRole: user.role,
       staffId: staff?.id,
       staffRole: staff?.role,
       sessionVersion: staff?.sessionVersion ?? user.sessionVersion,
@@ -184,7 +186,7 @@ const register = asyncHandler(async (req, res) => {
   const role = normalizeText(req.body.role || "MERCHANT").toUpperCase();
   const shopName = normalizeText(req.body.shopName);
   const shopLocation = normalizeText(req.body.shopLocation);
-  const shopCategory = normalizeText(req.body.shopCategory);
+  const shopCategory = normalizeText(req.body.shopCategory).toLowerCase();
   const shopDistrict = normalizeText(req.body.shopDistrict);
   const attribution = normalizeAttribution(req.body.acquisition);
   const referralCode = normalizeReferralCode(req.body.referralCode);
@@ -203,6 +205,10 @@ const register = asyncHandler(async (req, res) => {
 
   if (!VALID_ROLES.has(role)) {
     return res.status(400).json({ error: "Invalid role selected" });
+  }
+
+  if (role === "MERCHANT" && shopCategory && !VALID_SHOP_CATEGORIES.has(shopCategory)) {
+    return res.status(400).json({ error: "Choose a valid business category" });
   }
 
   const [existing, existingStaff] = await Promise.all([
@@ -242,7 +248,7 @@ const register = asyncHandler(async (req, res) => {
 
       await tx.shop.create({
         data: {
-          name: shopName || `${name}'s Duka`,
+          name: shopName || `${name}'s Business`,
           location: shopLocation || "Dar es Salaam",
           district: shopDistrict || null,
           category: shopCategory || "general",
@@ -321,7 +327,8 @@ const login = asyncHandler(async (req, res) => {
       where: { phone: { in: phoneValues } },
       include: { shop: { include: { user: true, parentShop: { include: { user: true } } } } },
     });
-    if (!staff || !staff.isActive || !staff.pin) return res.status(401).json({ error: "Invalid phone or PIN" });
+    if (!staff) return res.status(404).json({ error: "No account found for this phone number", code: "ACCOUNT_NOT_FOUND" });
+    if (!staff.isActive || !staff.pin) return res.status(401).json({ error: "Invalid phone or PIN" });
     const match = await bcrypt.compare(pin, staff.pin);
     if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
     if (!activePlan(staff.shop)) {
@@ -338,7 +345,7 @@ const login = asyncHandler(async (req, res) => {
   const refreshToken = issueRefreshToken(accountUser, staff);
   const profile = staff ? await getStaffProfile(staff.id) : await getProfile(accountUser.id);
   setAuthCookies(res, accessToken, refreshToken);
-  req.audit = { action: "auth.login", resourceType: staff ? "staff" : "user", resourceId: staff?.id || accountUser.id, metadata: { role: accountUser.role, staffRole: staff?.role } };
+  req.audit = { action: "auth.login", resourceType: staff ? "staff" : "user", resourceId: staff?.id || accountUser.id, metadata: { role: staff ? "MERCHANT" : accountUser.role, accountRole: accountUser.role, staffRole: staff?.role } };
   res.json({ user: profile });
 });
 
@@ -553,7 +560,8 @@ async function getStaffProfile(staffId) {
     id: staff.shop.user.id,
     phone: staff.phone || staff.shop.user.phone,
     name: staff.name,
-    role: staff.shop.user.role,
+    role: "MERCHANT",
+    accountRole: staff.shop.user.role,
     language: staff.language || staff.shop.user.language,
     shop: {
       id: staff.shop.id,

@@ -200,10 +200,20 @@ export default function PricingPage() {
           <p className="text-gray-500 text-sm">{copy.subtitle[lang]}</p>
         </div>
 
+        <nav aria-label={lang === "sw" ? "Muhtasari wa mipango" : "Plan summary"} className="mb-6 grid grid-cols-3 overflow-hidden rounded-lg border border-gray-200 bg-white md:hidden">
+          {plans.map((plan) => (
+            <a key={plan.id} href={`#plan-${plan.id.toLowerCase()}`} className={`min-w-0 px-2 py-3 text-center ${plan.id === "BASIC" ? "bg-brand-50" : ""}`}>
+              <span className="block truncate text-xs font-bold text-gray-900">{plan.name[lang]}</span>
+              <span className="mt-1 block text-[11px] font-semibold text-brand-700">{plan.price === 0 ? copy.free[lang] : formatTZS(plan.price)}</span>
+            </a>
+          ))}
+        </nav>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
           {plans.map((plan) => (
             <div
               key={plan.id}
+              id={`plan-${plan.id.toLowerCase()}`}
               className={`bg-white rounded-2xl border-2 ${plan.color} p-6 relative ${
                 plan.highlight ? "shadow-lg shadow-brand-100" : ""
               }`}

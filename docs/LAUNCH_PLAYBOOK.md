@@ -58,7 +58,7 @@ Primary buyer:
 
 Supported adjacent vertical:
 
-- Poultry and livestock farms can choose **Ufugaji wa Mifugo na Kuku** and add production tracking for feed, groups, output, loss, and packing. This is a focused advantage for qualified farm leads, not a reason to change the retail-first homepage, ads, or founder pitch. Lead with the same commercial outcomes: stock, sales, cash, customers, and profit clarity.
+- Crop and livestock farms can choose **Mazao na Ufugaji**, then select Crops, Livestock, or Both. Crop users can track plots, inputs, harvest stock, and sales; livestock users can track feed, groups, output, loss, and packing. This is a focused advantage for qualified farm leads, not a reason to change the retail-first homepage, ads, or founder pitch. Lead with the same commercial outcomes: stock, sales, cash, customers, and profit clarity.
 
 Primary pain:
 

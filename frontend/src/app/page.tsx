@@ -3,7 +3,7 @@ import Image from "next/image";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api, getCurrentSession, getFriendlyErrorMessage, hasSessionHint, markSessionActive } from "@/lib/api";
+import { ApiError, api, getCurrentSession, getFriendlyErrorMessage, hasSessionHint, markSessionActive } from "@/lib/api";
 import {
   ArrowRight,
   BadgeDollarSign,
@@ -54,6 +54,7 @@ const SHOP_CATEGORIES = [
   { value: "electronics", sw: "Umeme / Simu", en: "Electronics" },
   { value: "clothing", sw: "Nguo", en: "Clothing" },
   { value: "livestock", sw: "Ufugaji wa Mifugo na Kuku", en: "Livestock & Poultry Farm" },
+  { value: "farm", sw: "Mazao na Ufugaji", en: "Crop & Livestock Farm" },
   { value: "general", sw: "Bidhaa Mchanganyiko", en: "General / Mixed" },
 ];
 
@@ -120,6 +121,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [accountNotFound, setAccountNotFound] = useState(false);
   const [name, setName] = useState("");
   const [shopName, setShopName] = useState("");
   const [shopLocation, setShopLocation] = useState("");
@@ -188,6 +190,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
 
   function resetForms() {
     setError("");
+    setAccountNotFound(false);
     setForgotMsg("");
     setForgotStep("phone");
     setForgotPhone("");
@@ -206,6 +209,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setAccountNotFound(false);
 
     const normalizedPhone = normalizePhone(phone);
     const normalizedPin = pin.trim();
@@ -290,6 +294,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         router.push("/dashboard");
       }
     } catch (err: unknown) {
+      setAccountNotFound(view === "login" && err instanceof ApiError && err.code === "ACCOUNT_NOT_FOUND");
       setError(err instanceof Error ? getFriendlyErrorMessage(err.message, lang) : t("auth.error", lang));
     } finally {
       setLoading(false);
@@ -447,7 +452,9 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               </p>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mb-4 text-sm">{error}</div>
+                <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mb-4 text-sm">
+                  <p>{error}</p>
+                </div>
               )}
               {forgotMsg && (
                 <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 mb-4 text-sm">{forgotMsg}</div>
@@ -562,7 +569,10 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               </p>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mb-4 text-sm">{error}</div>
+                <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mb-4 text-sm">
+                  <p>{error}</p>
+                  {accountNotFound && <button type="button" onClick={() => switchView("register")} className="mt-2 font-semibold text-brand-800 underline underline-offset-2">{lang === "sw" ? "Tengeneza akaunti" : "Create an account"}</button>}
+                </div>
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -618,7 +628,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                     {role === "MERCHANT" && (
                       <details className="rounded-lg border border-gray-200 p-3">
                         <summary className="cursor-pointer text-sm font-medium text-gray-700">
-                          {lang === "sw" ? "Ongeza maelezo ya duka (hiari)" : "Add shop details (optional)"}
+                          {lang === "sw" ? "Ongeza maelezo ya duka/biashara (hiari)" : "Add shop/business details (optional)"}
                         </summary>
                         <div className="mt-3 space-y-4">
                         <div>
@@ -628,7 +638,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
                             type="text"
                             value={shopName}
                             onChange={(e) => setShopName(e.target.value)}
-                            placeholder="Duka la Amina"
+                            placeholder={lang === "sw" ? "Mfano: Duka la Amina au Amina Hardware" : "For example: Amina Shop or Amina Hardware"}
                             autoComplete="organization"
                             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />

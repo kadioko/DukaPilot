@@ -1,85 +1,145 @@
 # Farm Operations
 
-DukaPilot remains a commercial system for Tanzanian shops: sales, stock, cash, customers, debts, receipts, and supplier buying are its core. Farm Operations is a focused, category-aware production layer for a poultry or livestock merchant who needs to turn farm inputs into sellable output without double-counting cost or cash.
+DukaPilot's commercial core is sales, stock, cash, customers, debts, expenses,
+supplier buying, and reports. Farm Operations adds a focused layer so a small
+farm can connect field or livestock activity to inventory and normal sales
+without recording the same cost twice.
 
-It does not replace the normal DukaPilot workflow. Eggs, milk, animals, or harvested output still sell through the usual POS, customer order, receipt, debt, and reporting flows.
+## Farm type and access
 
-## Who sees it
+There are two farm categories:
 
-Set the shop category to **Livestock & Poultry Farm** / **Ufugaji wa Mifugo na Kuku** in Settings. The **Farm** / **Ufugaji** navigation item, farm help guide, and farm AI actions appear only for that category. The API checks the category too, so another category cannot use farm endpoints by guessing a URL.
+- **Livestock & Poultry Farm** / **Ufugaji wa Mifugo na Kuku** keeps the
+  existing livestock workflow.
+- **Crop & Livestock Farm** / **Mazao na Ufugaji** opens a Farm setup where
+  the owner chooses **Crops**, **Livestock**, or **Both**.
 
-An owner can then choose one or more operating profiles:
+The API checks both category and selected farm mode. A crop-only farm does not
+receive animal-group forms, and a livestock-only farm cannot call crop routes by
+guessing a URL. Owners set the farm type. Staff need \`canManageFarm\` to record
+farm work; this permission does not grant report access.
 
-- Layers / eggs
-- Broilers
-- Dairy
-- Beef cattle
-- Goats and sheep
-- Pigs
-- Mixed livestock
+## Crop workflow
 
-Profiles are activities, not a second shop category. A farm can begin with layers and add dairy later.
+1. In **Crops**, use **Starter products** to create zero-stock input products
+   for \`Mbegu\`, \`NPK Mbolea\`, and \`Dawa ya mimea\`. When a cycle is
+   selected, it also creates a dedicated output product such as
+   \`Mahindi - Shamba A\`. Prices and stock quantities are still set by the
+   farmer in **Inventory**.
+2. In **Crops**, add a plot, field, bed, or greenhouse with its location and
+   area in acres, hectares, or square metres.
+3. Start a crop cycle with a plot, crop, optional variety, planting date, and
+   expected harvest. Maize, beans, rice, vegetables, cassava, sunflower,
+   tomatoes, onions, and custom crop names are supported.
+4. Record inputs against that cycle. A stocked seed, fertilizer, or pesticide
+   reduces inventory only when used. Direct labour, transport, and irrigation
+   costs are allocated to the crop cycle.
+5. Record each harvest with a dedicated output product. It becomes normal
+   sellable inventory immediately, ready for POS, catalog, or customer orders.
 
-## First setup
+### Repeated harvests and cost integrity
 
-1. In **Inventory**, create the supplies and sellable outputs. For a layers farm this could be `Layer feed` (kg), `Egg` (each), and `Egg tray` (tray).
-2. Receive feed, medicine, packaging, and other supplies through **Receive Stock**. They remain stock until they are actually used.
-3. Open **Farm** and select the production profiles used by the farm.
-4. Add a flock, pen, herd, or batch. Use a group rather than creating a record for every chicken or low-value animal.
-5. Record additions, mortality, or culls as they happen.
+One crop cycle can have multiple harvest batches. This supports tomatoes,
+vegetables, and other crops picked over several days. Before the first pick,
+set the cycle's expected total yield. That total is fixed once harvesting begins
+and gives DukaPilot a stable, auditable basis for allocating costs.
 
-## Daily layers / eggs workflow
+Every input-to-harvest allocation is stored in a durable ledger. Inputs entered
+later are allocated fairly as later harvests arrive. When the owner closes a
+cycle, any remaining unallocated cost is added only to unsold harvest stock. A
+sale that already happened keeps its original recorded cost. If all harvest
+stock has already been sold, the remaining cost is kept as unrecovered cycle
+cost instead of silently rewriting historic profit.
 
-1. Receive feed and egg trays through **Receive Stock**.
-2. In **Farm > Record production**, choose the flock and the sellable `Egg` product.
-3. Enter expected and actual eggs collected, then add the feed, medicine, and packaging actually consumed. The supplies are reduced only after the batch saves.
-4. Record cracked or unsellable eggs as the difference between expected and actual output.
-5. DukaPilot increases individual egg stock and calculates the batch's estimated cost per egg from consumed supplies and any direct cost.
-6. In **Pack farm output**, convert 30 individual eggs into one `Egg tray` product. This moves existing stock and cost; it does not create a second purchase.
-7. Sell eggs or trays normally through POS, QR shop orders, receipts, customers, and debts.
+Produce can also be split into grades such as Grade A and Grade B. Grades cannot
+exceed the harvest quantity.
 
-## Other farm profiles
+Use a dedicated output product for a harvest, such as \`Maize Field A\`, rather
+than an already-stocked generic \`Maize\` product. The first harvest is blocked if
+the selected product already has another stock source. That makes crop sales
+allocation and profit reporting meaningful.
 
-The same group and production foundation applies to broilers, dairy, cattle, goats, sheep, and pigs:
+## Reporting and privacy
 
-- **Broilers:** chick batch, feed/medicine used, mortality, then live-bird or harvested output.
-- **Dairy:** herd or group, feed/medicine used, collected milk, and spoilage. For now use `ml` as the base stock unit: 1,000 ml equals one litre. Pack ml into bottles with the packing flow.
-- **Cattle, goats, sheep, and pigs:** use groups or pens, record additions and losses, consume inputs, then add saleable animals or harvested outputs by head or a suitable stock unit.
+Each cycle shows harvested quantity, wastage, remaining harvest stock, and sold
+quantity. Owners, admins, and staff with report permission also see input cost,
+cost per area, realised revenue, and realised profit. Farm staff without report
+permission can record plots, cycles, inputs, harvests, and status changes but do
+not receive financial values.
 
-This first release intentionally does not offer veterinary diagnosis, treatment advice, breeding records, animal-weight charts, or individual tags for every animal. Those are future tools for larger farms, not requirements for a small farm to begin operating.
+Harvest sale allocation uses crop harvest lots in FIFO order for dedicated crop
+products. Voiding a sale restores the lot allocation, remaining quantity, and
+cost. A direct cash crop cost joins an open Daily Close session once; do not also
+enter it as an Expense.
 
-## Cost and cash rules
+## Field plan
 
-Farm accounting follows the same principle as Food Preparation:
+The **Field plan** link in Crops is the mobile workspace for recurring field
+work. It provides:
 
-- Supplies received but not used are **inventory**, not immediate ordinary expenses.
-- The cost of feed, medicine, packaging, and other supplies moves into the farm output only when a production batch consumes them.
-- An optional direct production cost (for example labour, water, or charcoal) is added to the batch cost.
-- When that direct cost is paid in **Cash**, it appears once as a cash-out in **Daily Close**. Do **not** enter the same payment again in Expenses.
-- A farm batch updates the output product's current estimated unit cost. Sale records preserve their sale-time cost, so sales reports continue to calculate realized profit from the cost at sale time.
+- irrigation logs by crop cycle;
+- assigned field tasks and completion status;
+- harvest grades;
+- manual weather observations and resolution status; and
+- owner-only seasonal budgets and buyer commitments.
 
-The cost shown while producing is an **estimated production cost**, not a claim of exact realized profit. Weighted-average/FIFO costing is a later upgrade for farms that need more precise costing across many batches.
+Weather observations intentionally record what the farm saw. They are not a
+forecast service and must not be used as pesticide, health, or agronomy advice.
+Actual crop revenue is still recorded through **Sales**; a buyer commitment is
+only a planning record. Field staff with farm permission can record field work,
+but do not receive cost, price, budget, buyer-price, revenue, or profit fields.
 
-## Staff and privacy
+## Livestock workflow
 
-In **Staff**, owners can enable **Manage farm production** / **Kusimamia uzalishaji wa shamba** for a member of staff. That permission is separate from selling, stock, expenses, and reports.
+Livestock operations remain available for layers, broilers, dairy, beef, goats
+and sheep, pigs, and mixed livestock. Farmers can create flocks, pens, herds, or
+batches; record additions, mortality, and culls; consume feed and supplies; add
+eggs, milk, or other output to stock; and pack output such as eggs into trays.
 
-- A cashier may sell eggs, milk, or other farm outputs only if they have normal selling permission.
-- A farm-production staff member may manage groups, losses, production, and packing.
-- Cost figures in farm production history are redacted for staff without report access.
-- Owners and managers retain their existing full access.
+## AI and offline behaviour
 
-## Farm AI
+For eligible Pro accounts, the assistant can flag unrecorded layer production,
+livestock losses, crop cycles with no inputs, harvests due within seven days,
+harvest stock that remains unsold after a week, a crop with no irrigation record
+for seven days, overdue field tasks, and unresolved manual field warnings.
+These are operational prompts, not veterinary, crop-health, pesticide, weather,
+or agronomy advice.
 
-For Pro shops, the AI Assistant can surface farm operation reminders for eligible staff: production not recorded for an active layer group, recent animal loss, and unusually high output waste. These are operational prompts only. DukaPilot does not provide veterinary, disease, treatment, or animal-health advice.
+Crop inputs and harvests have a safe browser retry queue. If the connection
+drops while the Crop operations screen is open, the pending operation is scoped
+to the current business, branch, and actor. It keeps the same client request ID
+when it retries, so the backend cannot deduct stock or create a harvest twice.
+The screen shows the pending count and offers a manual retry; switching branches
+is blocked until it is resolved.
 
-## Deployment
+Irrigation, field tasks, grades, buyer commitments, and weather observations
+remain online-only for now. They will join the queue only after real-farm QA has
+confirmed the appropriate conflict rules for each record type. An offline app
+restart still opens the standard fallback rather than a full cached crop screen.
 
-The Farm Operations migration is additive and runs automatically in Railway through the production startup migration step. For a manual deployment:
+## Database and deployment
 
-```powershell
+The additive migration is:
+
+\`\`\`text
+20260914001000_crop_operations
+20260914002000_crop_operations_v2
+\`\`\`
+
+Together they add farm settings, crop plots and cycles, input usages, harvest
+batches, harvest-sale allocations, durable input-cost allocations, seasonal
+budgets, irrigation logs, field tasks, buyer commitments, harvest grades, manual
+weather alerts, and client request keys for duplicate-safe crop retries.
+
+Deploy the backend migration before publishing the frontend:
+
+\`\`\`powershell
 cd backend
 npm run db:deploy
-```
+\`\`\`
 
-Then deploy the backend before the frontend so the `/api/farm` endpoints and database tables are available when the Farm screen is published.
+Railway production startup also runs \`prisma migrate deploy\`. After deployment,
+verify a crop farm can choose Crops, Livestock, or Both; add a plot and cycle;
+create starter products; use stock as an input; record direct labour; record two
+harvest batches against a planned total; sell the harvest; close the cycle; and
+see the owner report while a farm staff account cannot see money or profit.

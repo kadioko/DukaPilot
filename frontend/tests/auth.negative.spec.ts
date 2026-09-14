@@ -38,6 +38,25 @@ test("shows login error for invalid credentials", async ({ page }) => {
   await expect(page.getByText(/invalid phone number or pin|nambari ya simu au PIN si sahihi/i)).toBeVisible();
 });
 
+test("explains when a phone number has no account and offers registration", async ({ page }) => {
+  await page.route("**/*api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "No account found for this phone number", code: "ACCOUNT_NOT_FOUND" }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('input[type="tel"]').fill("+255700000003");
+  await page.locator('input[inputmode="numeric"]').fill("9999");
+  await page.locator('form button[type="submit"]').click();
+
+  await expect(page.getByRole("alert").filter({ hasText: /no account with this phone number|hakuna akaunti yenye nambari hii/i })).toBeVisible();
+  await page.getByRole("button", { name: /create an account|tengeneza akaunti/i }).click();
+  await expect(page.getByRole("heading", { name: /register|jisajili/i })).toBeVisible();
+});
+
 test("mobile homepage keeps navigation compact until the menu is opened", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
