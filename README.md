@@ -39,6 +39,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
 - **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
 - **Railway Pro operations:** [docs/PRO_OPERATIONS_RUNBOOK.md](./docs/PRO_OPERATIONS_RUNBOOK.md) - Upgrade checklist, backup/restore drills, production monitoring, Sentry review, and incident evidence
+- **Railway Hobby local backups:** [docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md](./docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md) - Verified local PostgreSQL archives, daily Windows scheduling, retention, and restore drills without saving Railway credentials locally
 - **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
 - **Product test gate:** [TESTING.md](./TESTING.md)
 - **Android release build:** [docs/ANDROID_RELEASE_BUILD.md](./docs/ANDROID_RELEASE_BUILD.md)

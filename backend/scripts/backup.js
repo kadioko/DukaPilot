@@ -1,153 +1,146 @@
 #!/usr/bin/env node
 /**
- * DukaPilot — PostgreSQL backup script
+ * DukaPilot PostgreSQL backup
  *
- * Creates a gzipped pg_dump and (optionally) uploads it to S3-compatible
- * object storage (Cloudflare R2 / AWS S3) so a copy survives even a full
- * Railway volume wipe.
+ * Creates a PostgreSQL custom archive, verifies it immediately, records a
+ * checksum manifest, and optionally sends it to S3-compatible storage.
  *
- * Usage:
- *   node scripts/backup.js
- *
- * Required env vars:
- *   DATABASE_URL — PostgreSQL connection URL (or DATABASE_MIGRATE_URL public proxy)
- *
- * Local backup (always runs):
- *   BACKUP_DIR          — Directory to write backups to (default: ./backups)
- *   BACKUP_RETAIN_DAYS  — Days to keep backups (default: 7)
- *
- * Off-site backup (runs only if BACKUP_S3_BUCKET is set):
- *   BACKUP_S3_BUCKET            — bucket name
- *   BACKUP_S3_ENDPOINT          — S3 endpoint. For R2:
- *                                 https://<account_id>.r2.cloudflarestorage.com
- *   BACKUP_S3_REGION            — region (default "auto", correct for R2)
- *   BACKUP_S3_ACCESS_KEY_ID     — access key id
- *   BACKUP_S3_SECRET_ACCESS_KEY — secret access key
- *   BACKUP_S3_PREFIX            — key prefix (default "dukapilot-backups/")
- *
- * On Railway: this runs as a daily cron (see railway.toml). The container
- * must have pg_dump available (the Dockerfile installs postgresql-client).
+ * The local Windows task invokes this through `railway run`, so credentials
+ * stay in Railway's environment and are never written to this machine.
  */
 
 require("dotenv").config();
+const crypto = require("crypto");
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.DATABASE_MIGRATE_URL;
+const DATABASE_URL = process.env.BACKUP_DATABASE_URL || process.env.DATABASE_MIGRATE_URL || process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error("[backup] ERROR: DATABASE_URL is not set");
+  console.error("[backup] BACKUP_DATABASE_URL, DATABASE_MIGRATE_URL, or DATABASE_URL is required.");
   process.exit(1);
 }
 
-const BACKUP_DIR = process.env.BACKUP_DIR || path.join(__dirname, "..", "backups");
-const RETAIN_DAYS = parseInt(process.env.BACKUP_RETAIN_DAYS || "7", 10);
+const BACKUP_DIR = path.resolve(process.env.LOCAL_BACKUP_DIR || process.env.BACKUP_DIR || path.join(__dirname, "..", "backups"));
+const RETAIN_DAYS = Math.max(1, Number.parseInt(process.env.BACKUP_RETAIN_DAYS || "7", 10) || 7);
+const PG_DUMP = process.env.PG_DUMP_PATH || "pg_dump";
+const PG_RESTORE = process.env.PG_RESTORE_PATH || "pg_restore";
+const DOCKER_POSTGRES_IMAGE = process.env.BACKUP_DOCKER_POSTGRES_IMAGE || "postgres:16-alpine";
 
-// Ensure backup directory exists
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 const now = new Date();
 const timestamp = now.toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
-const filename = `dukapilot-backup-${timestamp}.sql.gz`;
+const filename = `dukapilot-backup-${timestamp}.dump`;
 const filepath = path.join(BACKUP_DIR, filename);
+const manifestPath = path.join(BACKUP_DIR, `${filename}.json`);
 
-console.log(`[backup] Starting backup at ${now.toISOString()}`);
-console.log(`[backup] Output: ${filepath}`);
-
-// Run pg_dump and gzip
-const result = spawnSync(
-  "sh",
-  ["-c", `pg_dump "${DATABASE_URL}" | gzip > "${filepath}"`],
-  { stdio: "inherit" }
-);
-
-if (result.status !== 0) {
-  console.error("[backup] pg_dump failed with exit code:", result.status);
-  if (result.error) console.error("[backup] Error:", result.error.message);
-  process.exit(1);
+function run(command, args, label) {
+  const result = spawnSync(command, args, { stdio: "inherit", windowsHide: true });
+  if (result.error) throw new Error(`${label}: ${result.error.message}`);
+  if (result.status !== 0) throw new Error(`${label} exited with code ${result.status}`);
 }
 
-const stat = fs.statSync(filepath);
-const sizeMB = (stat.size / (1024 * 1024)).toFixed(2);
-console.log(`[backup] Local backup complete: ${filename} (${sizeMB} MB)`);
+function isAvailable(command, args = ["--version"]) {
+  const result = spawnSync(command, args, { stdio: "ignore", windowsHide: true });
+  return !result.error && result.status === 0;
+}
 
-// Delete local backups older than RETAIN_DAYS
-const cutoff = Date.now() - RETAIN_DAYS * 24 * 60 * 60 * 1000;
-let deleted = 0;
-for (const file of fs.readdirSync(BACKUP_DIR)) {
-  if (!file.startsWith("dukapilot-backup-") || !file.endsWith(".sql.gz")) continue;
-  const fullPath = path.join(BACKUP_DIR, file);
-  const fileStat = fs.statSync(fullPath);
-  if (fileStat.mtimeMs < cutoff) {
-    fs.unlinkSync(fullPath);
-    deleted++;
-    console.log(`[backup] Deleted old local backup: ${file}`);
+function useDocker() {
+  return isAvailable("docker", ["version", "--format", "{{.Server.Version}}"]);
+}
+
+function dockerMountArgs() {
+  return ["--mount", `type=bind,source=${BACKUP_DIR},target=/backups`];
+}
+
+function createArchive() {
+  const dumpArgs = [`--dbname=${DATABASE_URL}`, "--format=custom", "--compress=9", `--file=${filepath}`];
+  if (isAvailable(PG_DUMP)) {
+    run(PG_DUMP, dumpArgs, "pg_dump");
+    return "local pg_dump";
   }
+  if (useDocker()) {
+    run("docker", ["run", "--rm", ...dockerMountArgs(), DOCKER_POSTGRES_IMAGE, "pg_dump", `--dbname=${DATABASE_URL}`, "--format=custom", "--compress=9", `--file=/backups/${filename}`], "Docker pg_dump");
+    return `Docker (${DOCKER_POSTGRES_IMAGE})`;
+  }
+  throw new Error("pg_dump is not installed and Docker Desktop is unavailable. Install PostgreSQL client tools or start Docker Desktop, then try again.");
 }
-console.log(`[backup] Local cleanup complete: ${deleted} old backup(s) removed`);
 
-// ── Off-site upload to S3 / Cloudflare R2 ──────────────────────────────────
-async function uploadToS3() {
-  const bucket = process.env.BACKUP_S3_BUCKET;
-  if (!bucket) {
-    console.log("[backup] BACKUP_S3_BUCKET not set — skipping off-site upload.");
+function verifyArchive() {
+  if (isAvailable(PG_RESTORE)) {
+    run(PG_RESTORE, ["--list", filepath], "pg_restore archive verification");
     return;
   }
+  if (useDocker()) {
+    run("docker", ["run", "--rm", ...dockerMountArgs(), DOCKER_POSTGRES_IMAGE, "pg_restore", "--list", `/backups/${filename}`], "Docker pg_restore archive verification");
+    return;
+  }
+  throw new Error("The backup was created but cannot be verified because pg_restore and Docker Desktop are unavailable.");
+}
 
-  const {
-    S3Client,
-    PutObjectCommand,
-    ListObjectsV2Command,
-    DeleteObjectsCommand,
-  } = require("@aws-sdk/client-s3");
+function sha256(file) {
+  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+}
 
+function deleteExpiredBackups() {
+  const cutoff = Date.now() - RETAIN_DAYS * 24 * 60 * 60 * 1000;
+  let deleted = 0;
+  for (const entry of fs.readdirSync(BACKUP_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !/^dukapilot-backup-.*\.(dump|sql\.gz)$/.test(entry.name)) continue;
+    const fullPath = path.join(BACKUP_DIR, entry.name);
+    if (fs.statSync(fullPath).mtimeMs >= cutoff) continue;
+    fs.unlinkSync(fullPath);
+    const matchingManifest = path.join(BACKUP_DIR, `${entry.name}.json`);
+    if (fs.existsSync(matchingManifest)) fs.unlinkSync(matchingManifest);
+    deleted++;
+  }
+  console.log(`[backup] Retention cleanup removed ${deleted} old backup(s).`);
+}
+
+async function uploadToS3() {
+  const bucket = process.env.BACKUP_S3_BUCKET;
+  if (!bucket) return;
+  const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = require("@aws-sdk/client-s3");
   const prefix = process.env.BACKUP_S3_PREFIX || "dukapilot-backups/";
   const client = new S3Client({
     region: process.env.BACKUP_S3_REGION || "auto",
     endpoint: process.env.BACKUP_S3_ENDPOINT || undefined,
-    credentials: {
-      accessKeyId: process.env.BACKUP_S3_ACCESS_KEY_ID,
-      secretAccessKey: process.env.BACKUP_S3_SECRET_ACCESS_KEY,
-    },
+    credentials: { accessKeyId: process.env.BACKUP_S3_ACCESS_KEY_ID, secretAccessKey: process.env.BACKUP_S3_SECRET_ACCESS_KEY },
   });
-
   const key = `${prefix}${filename}`;
-  console.log(`[backup] Uploading to s3://${bucket}/${key} ...`);
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: fs.createReadStream(filepath),
-      ContentType: "application/gzip",
-    })
-  );
-  console.log("[backup] Off-site upload complete.");
-
-  // Retention on the bucket: delete objects older than RETAIN_DAYS
-  const listed = await client.send(
-    new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix })
-  );
-  const stale = (listed.Contents || []).filter(
-    (o) => o.LastModified && o.LastModified.getTime() < cutoff
-  );
-  if (stale.length > 0) {
-    await client.send(
-      new DeleteObjectsCommand({
-        Bucket: bucket,
-        Delete: { Objects: stale.map((o) => ({ Key: o.Key })) },
-      })
-    );
-    console.log(`[backup] Off-site cleanup: removed ${stale.length} old object(s).`);
-  }
+  await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: fs.createReadStream(filepath), ContentType: "application/octet-stream" }));
+  await client.send(new PutObjectCommand({ Bucket: bucket, Key: `${key}.json`, Body: fs.createReadStream(manifestPath), ContentType: "application/json" }));
+  const cutoff = Date.now() - RETAIN_DAYS * 24 * 60 * 60 * 1000;
+  const listed = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }));
+  const stale = (listed.Contents || []).filter((item) => item.LastModified && item.LastModified.getTime() < cutoff);
+  if (stale.length) await client.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: stale.map((item) => ({ Key: item.Key })) } }));
+  console.log(`[backup] Off-site upload complete: s3://${bucket}/${key}`);
 }
 
-uploadToS3()
-  .then(() => {
-    console.log("[backup] Done.");
-  })
-  .catch((err) => {
-    // Off-site upload failure should not silently pass — exit non-zero so the
-    // cron is marked failed and you get alerted, but the local dump still exists.
-    console.error("[backup] Off-site upload FAILED:", err.message);
-    process.exit(1);
-  });
+async function main() {
+  console.log(`[backup] Starting ${now.toISOString()}`);
+  console.log(`[backup] Writing archive to ${filepath}`);
+  const tool = createArchive();
+  if (!fs.existsSync(filepath) || fs.statSync(filepath).size === 0) throw new Error("pg_dump reported success but produced no archive");
+  verifyArchive();
+  const stat = fs.statSync(filepath);
+  const manifest = {
+    format: "postgresql-custom",
+    createdAt: now.toISOString(),
+    filename,
+    bytes: stat.size,
+    sha256: sha256(filepath),
+    tool,
+  };
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+  console.log(`[backup] Verified ${filename} (${(stat.size / (1024 * 1024)).toFixed(2)} MB, sha256 ${manifest.sha256.slice(0, 12)}...).`);
+  deleteExpiredBackups();
+  await uploadToS3();
+  console.log("[backup] Complete.");
+}
+
+main().catch((error) => {
+  console.error(`[backup] FAILED: ${error.message}`);
+  process.exit(1);
+});

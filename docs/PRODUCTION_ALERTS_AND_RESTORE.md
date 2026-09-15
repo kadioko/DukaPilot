@@ -34,16 +34,20 @@ See `docs/SENTRY_MONITORING.md` for coverage, limits, testing, and incident resp
 
 ## Restore Drill
 
-Never restore into the live Railway database. Create an empty, temporary PostgreSQL database and download a recent encrypted/off-site backup to a secure machine.
+Never restore into the live Railway database. Create an empty, temporary PostgreSQL database and use a recent verified PostgreSQL custom archive from the protected local backup folder or approved off-site storage.
 
 ```powershell
 $env:RESTORE_DRILL_DATABASE_URL = "postgresql://...temporary-drill-db..."
-$env:RESTORE_DRILL_BACKUP_FILE = "C:\secure\dukapilot-backup.sql.gz"
+$env:RESTORE_DRILL_BACKUP_FILE = "C:\Users\USER\DukaPilot-Backups\dukapilot-backup-YYYY-MM-DD_HH-MM-SS.dump"
 $env:RESTORE_DRILL_CONFIRM = "RESTORE_INTO_NON_PRODUCTION"
 cd backend
 npm run db:restore-drill
 ```
 
-Success means the restore completes and the script prints row counts for users, shops, products, and sales. Record the date, backup timestamp, duration, operator, and row counts in the incident log. Destroy the temporary database and downloaded backup after the drill.
+Success means the restore completes and the script prints row counts for users, shops, products, and sales. Record the date, backup timestamp, archive checksum, duration, operator, and row counts in the incident log. Destroy the temporary database and any downloaded working copy after the drill.
 
 Run this every quarter and after any backup-storage or migration change.
+
+For the current Railway Hobby local backup schedule, storage location, retention,
+and Windows/Docker prerequisites, see
+[Local Railway Hobby Backups](./LOCAL_RAILWAY_HOBBY_BACKUPS.md).

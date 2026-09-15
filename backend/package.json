@@ -22,6 +22,8 @@
     "test:postgres-integrity": "node --test tests/postgresIntegrity.test.js",
     "test:prod-api": "node --test tests/api.test.js",
     "db:backup": "node scripts/backup.js",
+    "db:backup:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-local-backup.ps1",
+    "db:backup:install-task": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-local-backup-task.ps1",
     "db:restore-drill": "node scripts/restore-drill.js",
     "sentry:test": "node scripts/sentry-test-event.js",
     "email:dns-check": "node scripts/email-dns-check.js",

@@ -33,8 +33,11 @@ when someone reviews and acts on it.
 
 ## Backups And Restore Drills
 
-1. Enable the Railway PostgreSQL backup option and record its retention period
-   and accountable owner in the private operations record.
+1. Before the Railway plan upgrade, keep the tracked daily local archive running
+   and verify it from the backup log. See
+   [Local Railway Hobby Backups](./LOCAL_RAILWAY_HOBBY_BACKUPS.md). After the
+   upgrade, enable the selected Railway PostgreSQL backup option and record its
+   retention period and accountable owner in the private operations record.
 2. Keep an additional encrypted export only in an access-controlled company
    storage location when the selected plan or process requires it. Never store a
    production SQL dump in the repository, a public Drive link, or an unmanaged
@@ -46,7 +49,7 @@ when someone reviews and acts on it.
 
    ```powershell
    cd backend
-   npm run db:backup
+   npm run db:backup:local
    npm run db:restore-drill
    ```
 
