@@ -6,7 +6,7 @@ test("signed-out visitors remain on the public Help page", async ({ page }) => {
   await page.goto("/help?lang=en");
 
   await expect(page).toHaveURL(/\/help/);
-  await expect(page.getByRole("heading", { level: 1, name: "Get help running your shop better" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Get help running your business better" })).toBeVisible();
 });
 
 test("mobile Demo exposes sign-in details before its walkthrough", async ({ page }) => {

@@ -1,6 +1,6 @@
 # DukaPilot Launch Playbook
 
-Last updated: 2026-08-11
+Last updated: 2026-09-15
 
 This is the working plan for turning the live DukaPilot product into active merchants, paid shops, and supplier relationships.
 
@@ -17,7 +17,7 @@ What is strong:
 - The domain, HTTPS redirect, Vercel hosting, Railway API, and production database are working.
 - Backend Sentry monitoring is live on Railway with founder email alerts; the alert path was tested on 2026-08-06.
 - Frontend browser and Next.js server monitoring are live through Vercel and the `javascript-nextjs` Sentry project.
-- Push launch: deploy migration `20260722001000_push_notifications_and_app_usage`, set `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` in Railway, then create a dedicated Railway cron service with start command `npm run push:process` and schedule `0 5 * * *` UTC. Do not expose or commit the private VAPID key.
+- Push notifications are opt-in per browser/device. Before enabling merchant alerts, verify that `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` are present only in Railway, and that the dedicated `npm run push:process` Railway cron is running. Do not expose or commit the private VAPID key.
 - The product already has the critical merchant workflow: registration, inventory, sales, debts, expenses, staff, billing, catalog/QR customer orders, supplier orders with landed-cost receiving, Daily Close, receipt sharing/printing, AI assistant, Swahili/English, and WhatsApp support.
 - Pricing is understandable for Tanzania: free trial, TZS 15,000/month Basic, TZS 35,000/month Pro.
 - The product has a natural sales motion: WhatsApp support plus M-Pesa payment reference verification.
@@ -262,19 +262,20 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 
 ## Release Gate - 1.5.0
 
-- Railway migration: `20260811090000_cash_close_and_stock_receipts` (and all prior migrations).
+- Railway migrations: production must be through `20260915001000_staff_cash_session_permission`, including the crop/field-operation migrations immediately before it.
 - Production monitor passes once after Railway and Vercel deploy.
 - Railway logs include `[sentry] Initialized`, and the backend alert drill reaches both Sentry and founder email.
 - Basic account can use one active staff account and cannot use AI routes; Pro and active trial include unlimited staff and AI.
 - Duplicate payment reference returns the existing confirmation without extending time again.
 - Customer orders follow `PENDING -> CONFIRMED -> OUT_FOR_DELIVERY -> DELIVERED`.
 - Supplier orders are received through Receive Stock, which records supplier, costs, stock movements, and marks the order delivered in one transaction.
-- A cashier can close only their own Daily Close session; owner review shows expected cash, counted cash, and variance.
+- A cashier can close only their own Daily Close session; owners see every team drawer, and a manager with **Manage team shifts** can review/close a staff drawer after counting cash without receiving Reports or profit.
 - Receipt file sharing and browser printing work after a completed sale; test a paired Android Bluetooth printer where a merchant uses one.
 - Mobile Orders has no horizontal page overflow; Sales shows the sticky cart summary.
 - Public catalog contains only published, non-demo shops and supports pagination.
 - Android `1.0.3` / version code `4` targets API 36 and is signed with the existing upload key before Play Console upload.
 - For local release builds, copy `android/keystores/signing.properties.example` to the ignored `signing.properties` file and keep its credentials in the password manager, never Git.
+- The local Railway Hobby backup task has produced a current verified archive and is scheduled daily. See [Local Railway Hobby Backups](./LOCAL_RAILWAY_HOBBY_BACKUPS.md); perform an isolated restore drill at least quarterly.
 
 ## Immediate Next Product Improvements
 

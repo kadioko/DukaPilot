@@ -205,7 +205,9 @@ DukaPilot/
 │   ├── scripts/
 │   │   ├── seed-demo-history.js   # Guarded 30-day demo sales history
 │   │   ├── migrate-and-start.js   # Railway startup: migrate then start
-│   │   ├── backup.js              # pg_dump + gzip backup
+│   │   ├── backup.js              # Verified pg_dump custom archive + checksum manifest
+│   │   ├── run-local-backup.ps1   # Railway Hobby local backup wrapper
+│   │   ├── install-local-backup-task.ps1 # Daily Windows backup schedule
 │   │   ├── smoke-test.js          # Production smoke checks
 │   │   └── production-monitor.js  # Health/CORS/catalog/login monitor
 │   ├── src/
@@ -428,7 +430,7 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Latest launch migration:** `20260722001000_push_notifications_and_app_usage` adds per-shop browser subscriptions, alert preferences, delivery retries, and authenticated Android shortcut analytics.
+- **Current production migration sequence:** through `20260915001000_staff_cash_session_permission`. The latest changes add crop/field operation retry safety and explicit manager team-shift oversight; see [Farm Operations](./docs/FARM_OPERATIONS.md) and [Staff Access Guide](./docs/STAFF_ACCESS_GUIDE.md).
 
 ### Deployment Checklist
 
@@ -455,7 +457,7 @@ For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm
 ### Launch Notes
 
 - Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, expense-entry, staff, and reports access for staff sessions. A shop attendant can sell, adjust stock, record debts, and record expenses without seeing shop-wide profit reports or buying costs.
-- Offline support includes an already-open Sales screen, an account/shop/staff-scoped browser queue, merchant sync history, and admin sync failure resolution by shop/device. Reopening the app without a connection still shows `/offline.html`; broader offline editing for inventory, debts, expenses, and catalog checkout is not enabled.
+- Offline support includes an already-open Sales screen and, for farms, already-open Crop operations or Field plan screens. Queued work is scoped to the business, branch, and actor, with retry history and admin sync-failure resolution by shop/device. Reopening the app without a connection still shows `/offline.html`; inventory, debts, expenses, stock counts, Daily Close, and catalog checkout remain online-only.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired or suspended shops can still view data and open **Billing**, where they can pay, submit a reference, and see the reactivation steps. Operational changes such as new sales, stock edits, expenses, staff changes, and orders resume after an admin verifies payment.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.

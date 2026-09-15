@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "DukaPilot Help - Programu ya Stock, POS Tanzania, Mfumo wa Duka",
+  title: "DukaPilot Help - POS, Biashara na Mashamba Tanzania",
   description:
-    "Help for using DukaPilot: setup, POS sales, inventory, service quotations, estimates, catalog links, staff, offline sales, subscription payments, and AI Assistant.",
+    "Help for using DukaPilot: business setup, POS sales, inventory, Daily Close, crop and livestock operations, quotations, staff access, offline sync, payments, and AI Assistant.",
   keywords: [
     "DukaPilot help",
     "programu ya stock",
@@ -14,6 +14,9 @@ export const metadata: Metadata = {
     "shop management help",
     "quotation software Tanzania",
     "estimate app Tanzania",
+    "Daily Close Tanzania",
+    "farm management Tanzania",
+    "crop records Tanzania",
   ],
   alternates: {
     canonical: "/help",
@@ -21,7 +24,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "DukaPilot Help",
     description:
-      "Get help with setup, sales, inventory, debts, catalog links, staff access, offline sales, payments, and AI Assistant.",
+      "Get help with business setup, sales, inventory, Daily Close, crops, staff access, offline sync, payments, and AI Assistant.",
     url: "/help",
     siteName: "DukaPilot",
     type: "website",

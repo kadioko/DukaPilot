@@ -48,10 +48,10 @@ const faqs = [
     enAnswer: "Your data is not deleted when the plan expires. You can still view existing records, but creating or changing records requires reactivation.",
   },
   {
-    sw: "DukaPilot inafaa kwa ufugaji?",
-    en: "Can DukaPilot work for a farm?",
-    swAnswer: "Ndiyo. Chagua Ufugaji wa Mifugo na Kuku wakati wa usajili au Settings. Mbali na mauzo, stock, pesa na wateja, utaona makundi ya mifugo, matumizi ya feed, uzalishaji na packing. Hii ni mfumo wa biashara na uzalishaji, si ushauri wa afya ya mifugo.",
-    enAnswer: "Yes. Choose Livestock & Poultry Farm during registration or in Settings. Alongside sales, stock, cash, and customers, it adds animal groups, feed use, production, and packing. It is a commercial and production tool, not animal-health advice.",
+    sw: "DukaPilot inafaa kwa mashamba?",
+    en: "Can DukaPilot work for farms?",
+    swAnswer: "Ndiyo. Chagua Ufugaji wa Mifugo na Kuku kwa mifugo, au Mazao na Ufugaji kwa mazao, mifugo, au vyote. Pamoja na mauzo, stock, pesa na wateja, unaweza kufuatilia plots, msimu wa zao, pembejeo, mavuno, feed, uzalishaji na packing. Ni mfumo wa biashara na uzalishaji, si ushauri wa afya ya mifugo au kilimo.",
+    enAnswer: "Yes. Choose Livestock & Poultry Farm for livestock, or Crop & Livestock Farm for crops, livestock, or both. Alongside sales, stock, cash, and customers, it tracks plots, crop cycles, inputs, harvests, feed, production, and packing. It is a commercial and production tool, not veterinary or agronomy advice.",
   },
 ];
 
@@ -66,7 +66,7 @@ export default function PublicFAQSection() {
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 lg:grid-cols-[0.8fr_1.2fr]">
         <div>
           <p className="text-sm font-bold text-brand-700">{lang === "sw" ? "Uhakika kabla ya kuanza" : "Confidence before you start"}</p>
-          <h2 className="mt-2 text-2xl font-bold text-gray-950 sm:text-3xl">{lang === "sw" ? "Maswali ya wamiliki wa maduka" : "Questions shop owners ask"}</h2>
+          <h2 className="mt-2 text-2xl font-bold text-gray-950 sm:text-3xl">{lang === "sw" ? "Maswali ya wamiliki wa biashara" : "Questions business owners ask"}</h2>
           <div className="mt-5 space-y-3 text-sm text-gray-700">
             {proofPoints.map((item) => <p key={item} className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 flex-shrink-0 text-brand-700" />{item}</p>)}
           </div>
