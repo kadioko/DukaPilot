@@ -50,6 +50,7 @@ interface SessionResponse {
   session: CashSession | null;
   sessions: CashSession[];
   canManageAllSessions: boolean;
+  canOpenOwnSession: boolean;
 }
 
 interface HistoryResponse {
@@ -79,6 +80,7 @@ export default function DailyClosePage() {
   const [saving, setSaving] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyFilters, setHistoryFilters] = useState({ status: "CLOSED", from: "", to: "", search: "" });
+  const [managedSessionId, setManagedSessionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,8 +136,7 @@ export default function DailyClosePage() {
     }
   }
 
-  async function closeSession() {
-    if (!data?.session) return;
+  async function closeSession(session: CashSession) {
     const value = Number(countedCash);
     if (!Number.isInteger(value) || value < 0) {
       toast(lang === "sw" ? "Hesabu pesa halisi kwa namba kamili." : "Enter the counted cash as a whole amount.", "error");
@@ -143,11 +144,12 @@ export default function DailyClosePage() {
     }
     setSaving(true);
     try {
-      const result = await api.post<{ session: CashSession }>(`/cash-sessions/${data.session.id}/close`, { countedCash: value, note: closeNote.trim() || undefined }, lang);
+      const result = await api.post<{ session: CashSession }>(`/cash-sessions/${session.id}/close`, { countedCash: value, note: closeNote.trim() || undefined }, lang);
       const variance = result.session.variance || 0;
       toast(variance === 0 ? (lang === "sw" ? "Siku imefungwa. Pesa zinalingana." : "Day closed. Cash balances.") : (lang === "sw" ? "Siku imefungwa. Angalia tofauti ya pesa." : "Day closed. Review the cash variance."), variance === 0 ? "success" : "info");
       setCountedCash("");
       setCloseNote("");
+      setManagedSessionId(null);
       await Promise.all([load(), loadHistory()]);
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : "Could not close session", "error");
@@ -158,8 +160,15 @@ export default function DailyClosePage() {
 
   if (loading) return <AppShell><div className="flex h-64 items-center justify-center"><RefreshCw className="h-6 w-6 animate-spin text-brand-600" /></div></AppShell>;
 
-  const current = data?.session;
+  const current = data?.session || null;
   const todaySessions = data?.sessions || [];
+  const managedSession = data?.canManageAllSessions && managedSessionId
+    ? todaySessions.find((session) => session.id === managedSessionId && session.status === "OPEN") || null
+    : null;
+  const closeTarget = managedSession || current;
+  const openTeamSessions = data?.canManageAllSessions
+    ? todaySessions.filter((session) => session.status === "OPEN" && session.id !== current?.id)
+    : [];
   const pagination = history?.pagination;
   return (
     <AppShell>
@@ -169,7 +178,9 @@ export default function DailyClosePage() {
           <button type="button" onClick={() => { load(); loadHistory(); }} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title={lang === "sw" ? "Sasisha" : "Refresh"} aria-label={lang === "sw" ? "Sasisha" : "Refresh"}><RefreshCw className="h-4 w-4" /></button>
         </header>
 
-        {!current ? <OpenShiftCard lang={lang} saving={saving} openingCash={openingCash} openNote={openNote} onOpeningCash={setOpeningCash} onOpenNote={setOpenNote} onOpen={openSession} /> : <CloseShiftCard lang={lang} saving={saving} session={current} countedCash={countedCash} closeNote={closeNote} onCountedCash={setCountedCash} onCloseNote={setCloseNote} onClose={closeSession} />}
+        {!closeTarget ? (data?.canOpenOwnSession === false ? <ShiftSupervisorCard lang={lang} teamOpenCount={openTeamSessions.length} /> : <OpenShiftCard lang={lang} saving={saving} openingCash={openingCash} openNote={openNote} teamOpenCount={openTeamSessions.length} onOpeningCash={setOpeningCash} onOpenNote={setOpenNote} onOpen={openSession} />) : <CloseShiftCard lang={lang} saving={saving} session={closeTarget} managedSession={Boolean(managedSession)} countedCash={countedCash} closeNote={closeNote} onCountedCash={setCountedCash} onCloseNote={setCloseNote} onClose={() => closeSession(closeTarget)} onReturnToOwn={managedSession && current ? () => { setManagedSessionId(null); setCountedCash(""); setCloseNote(""); } : undefined} />}
+
+        {data?.canManageAllSessions && openTeamSessions.length > 0 && <section className="border border-blue-200 bg-blue-50 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold text-gray-950">{lang === "sw" ? `Shift ${openTeamSessions.length} za timu ziko wazi` : `${openTeamSessions.length} team shift${openTeamSessions.length === 1 ? "" : "s"} open`}</h2><p className="mt-1 max-w-2xl text-sm leading-5 text-gray-600">{lang === "sw" ? "Kila shift ni ya mtu aliyefungua. Mauzo ya staff hayachanganywi na shift yako; kagua au funga shift ya staff tu baada ya kuhesabu droo yake." : "Each shift belongs to the person who opened it. Staff sales stay in their own shift; review or close a staff shift only after counting that drawer."}</p></div><span className="rounded-md bg-white px-2.5 py-1 text-xs font-bold text-blue-800">{lang === "sw" ? "USIMAMIZI" : "TEAM VIEW"}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{openTeamSessions.map((session) => <article key={session.id} className="border border-blue-100 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-gray-950">{session.openedByName}</p><p className="mt-1 text-xs text-gray-500">{lang === "sw" ? "Ilifunguliwa" : "Opened"} {localTime(session.openedAt, lang)}</p></div><span className="rounded-md bg-green-50 px-2 py-1 text-xs font-bold text-green-700">{lang === "sw" ? "WAZI" : "OPEN"}</span></div><div className="mt-3 flex items-end justify-between gap-3"><div><p className="text-xs text-gray-500">{lang === "sw" ? "Pesa inayotarajiwa" : "Expected cash"}</p><p className="text-sm font-bold text-gray-950">{formatTZS(session.summary.expectedCash)}</p></div><button type="button" onClick={() => { setManagedSessionId(session.id); setCountedCash(""); setCloseNote(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="min-h-10 border border-blue-300 px-3 text-xs font-semibold text-blue-900 hover:bg-blue-50">{lang === "sw" ? "Kagua / funga" : "Review / close"}</button></div></article>)}</div></section>}
 
         <section>
           <div className="mb-3 flex items-center gap-2"><CalendarDays className="h-4 w-4 text-brand-700" /><h2 className="text-base font-bold text-gray-950">{data?.canManageAllSessions ? (lang === "sw" ? "Shift za leo" : "Today's sessions") : (lang === "sw" ? "Shift zangu za leo" : "My sessions today")}</h2></div>
@@ -192,12 +203,16 @@ export default function DailyClosePage() {
   );
 }
 
-function OpenShiftCard({ lang, saving, openingCash, openNote, onOpeningCash, onOpenNote, onOpen }: { lang: string; saving: boolean; openingCash: string; openNote: string; onOpeningCash: (value: string) => void; onOpenNote: (value: string) => void; onOpen: () => void }) {
-  return <section className="border border-brand-200 bg-brand-50 p-5"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700"><WalletCards className="h-5 w-5" /></span><div><h2 className="font-semibold text-gray-950">{lang === "sw" ? "Fungua shift ya leo" : "Open today's shift"}</h2><p className="mt-1 text-sm leading-5 text-gray-600">{lang === "sw" ? "Weka pesa iliyoanza kwenye droo kabla ya kuuza." : "Record the cash already in the drawer before you sell."}</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Pesa ya kuanzia (TZS)" : "Opening cash (TZS)"}</span><input value={openingCash} onChange={(event) => onOpeningCash(event.target.value)} inputMode="numeric" type="number" min="0" step="1" className="rounded-lg border border-gray-300 px-3 py-3" /></label><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><input value={openNote} onChange={(event) => onOpenNote(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3" placeholder={lang === "sw" ? "Mfano: Shift ya asubuhi" : "For example: morning shift"} /></label></div><button type="button" disabled={saving} onClick={onOpen} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><CircleDollarSign className="h-4 w-4" />{saving ? "..." : (lang === "sw" ? "Fungua shift" : "Open shift")}</button></section>;
+function OpenShiftCard({ lang, saving, openingCash, openNote, teamOpenCount, onOpeningCash, onOpenNote, onOpen }: { lang: string; saving: boolean; openingCash: string; openNote: string; teamOpenCount: number; onOpeningCash: (value: string) => void; onOpenNote: (value: string) => void; onOpen: () => void }) {
+  return <section className="border border-brand-200 bg-brand-50 p-5"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-brand-700"><WalletCards className="h-5 w-5" /></span><div><h2 className="font-semibold text-gray-950">{lang === "sw" ? "Fungua shift yako ya leo" : "Open your shift for today"}</h2><p className="mt-1 text-sm leading-5 text-gray-600">{teamOpenCount > 0 ? (lang === "sw" ? `Kuna shift ${teamOpenCount} ya staff iliyo wazi hapa chini. Hii itafungua shift tofauti ya droo yako; mauzo hayatachanganywa.` : `${teamOpenCount} staff shift${teamOpenCount === 1 ? " is" : "s are"} already open below. This opens a separate shift for your drawer; sales will not be mixed.`) : (lang === "sw" ? "Weka pesa iliyoanza kwenye droo kabla ya kuuza." : "Record the cash already in the drawer before you sell.")}</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Pesa ya kuanzia (TZS)" : "Opening cash (TZS)"}</span><input value={openingCash} onChange={(event) => onOpeningCash(event.target.value)} inputMode="numeric" type="number" min="0" step="1" className="rounded-lg border border-gray-300 px-3 py-3" /></label><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><input value={openNote} onChange={(event) => onOpenNote(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3" placeholder={lang === "sw" ? "Mfano: Shift ya asubuhi" : "For example: morning shift"} /></label></div><button type="button" disabled={saving} onClick={onOpen} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><CircleDollarSign className="h-4 w-4" />{saving ? "..." : (lang === "sw" ? "Fungua shift" : "Open shift")}</button></section>;
 }
 
-function CloseShiftCard({ lang, saving, session, countedCash, closeNote, onCountedCash, onCloseNote, onClose }: { lang: string; saving: boolean; session: CashSession; countedCash: string; closeNote: string; onCountedCash: (value: string) => void; onCloseNote: (value: string) => void; onClose: () => void }) {
-  return <section className="border border-green-200 bg-white p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-green-500" /><h2 className="font-semibold text-gray-950">{lang === "sw" ? "Shift inaendelea" : "Shift in progress"}</h2></div><p className="mt-1 text-sm text-gray-500">{session.openedByName} - {lang === "sw" ? "imefunguliwa" : "opened"} {localTime(session.openedAt, lang)}</p></div><span className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">{lang === "sw" ? "WAZI" : "OPEN"}</span></div><SessionSummaryCard summary={session.summary} openingCash={session.openingCash} lang={lang} /><div className="mt-5 border-t border-gray-100 pt-4"><h3 className="font-semibold text-gray-950">{lang === "sw" ? "Funga shift" : "Close shift"}</h3><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Pesa uliyoihesabu (TZS)" : "Cash counted (TZS)"}</span><input value={countedCash} onChange={(event) => onCountedCash(event.target.value)} inputMode="numeric" type="number" min="0" step="1" className="rounded-lg border border-gray-300 px-3 py-3" /></label><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo ya kufunga (hiari)" : "Closing note (optional)"}</span><input value={closeNote} onChange={(event) => onCloseNote(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3" /></label></div><button type="button" disabled={saving || countedCash === ""} onClick={onClose} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><LockKeyhole className="h-4 w-4" />{saving ? "..." : (lang === "sw" ? "Funga siku" : "Close day")}</button></div></section>;
+function ShiftSupervisorCard({ lang, teamOpenCount }: { lang: string; teamOpenCount: number }) {
+  return <section className="border border-blue-200 bg-blue-50 p-5"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-blue-700"><WalletCards className="h-5 w-5" /></span><div><h2 className="font-semibold text-gray-950">{lang === "sw" ? "Usimamizi wa shift za timu" : "Team shift supervision"}</h2><p className="mt-1 max-w-2xl text-sm leading-5 text-gray-600">{teamOpenCount > 0 ? (lang === "sw" ? `Kuna shift ${teamOpenCount} ya staff iliyo wazi hapa chini. Unaweza kukagua au kufunga droo hizo baada ya kuhesabu pesa; huwezi kufungua shift ya mauzo bila ruhusa ya Kuuza.` : `${teamOpenCount} staff shift${teamOpenCount === 1 ? " is" : "s are"} open below. You can review or close those drawers after counting cash; you cannot open a sales shift without Sell permission.`) : (lang === "sw" ? "Unaweza kukagua shift za timu zinapofunguliwa. Ruhusa ya Kuuza inahitajika kufungua shift yako ya mauzo." : "You can review team shifts when they open. Sell permission is required to open your own sales drawer.")}</p></div></div></section>;
+}
+
+function CloseShiftCard({ lang, saving, session, managedSession, countedCash, closeNote, onCountedCash, onCloseNote, onClose, onReturnToOwn }: { lang: string; saving: boolean; session: CashSession; managedSession: boolean; countedCash: string; closeNote: string; onCountedCash: (value: string) => void; onCloseNote: (value: string) => void; onClose: () => void; onReturnToOwn?: () => void }) {
+  return <section className="border border-green-200 bg-white p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-green-500" /><h2 className="font-semibold text-gray-950">{managedSession ? (lang === "sw" ? "Unakagua shift ya staff" : "Reviewing a staff shift") : (lang === "sw" ? "Shift yako inaendelea" : "Your shift is in progress")}</h2></div><p className="mt-1 text-sm text-gray-500">{session.openedByName} - {lang === "sw" ? "imefunguliwa" : "opened"} {localTime(session.openedAt, lang)}</p>{managedSession && <p className="mt-2 max-w-xl text-sm leading-5 text-amber-800">{lang === "sw" ? "Hii ni droo ya staff. Hesabu pesa ya droo hii kabla ya kufunga; shift yako binafsi haibadiliki." : "This is the staff member's drawer. Count this drawer before closing; your own shift is unchanged."}</p>}</div><span className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">{lang === "sw" ? "WAZI" : "OPEN"}</span></div><SessionSummaryCard summary={session.summary} openingCash={session.openingCash} lang={lang} /><div className="mt-5 border-t border-gray-100 pt-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-gray-950">{lang === "sw" ? "Funga shift" : "Close shift"}</h3>{onReturnToOwn && <button type="button" onClick={onReturnToOwn} className="min-h-9 text-xs font-semibold text-brand-800 hover:underline">{lang === "sw" ? "Rudi kwenye shift yangu" : "Return to my shift"}</button>}</div><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Pesa uliyoihesabu (TZS)" : "Cash counted (TZS)"}</span><input value={countedCash} onChange={(event) => onCountedCash(event.target.value)} inputMode="numeric" type="number" min="0" step="1" className="rounded-lg border border-gray-300 px-3 py-3" /></label><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo ya kufunga (hiari)" : "Closing note (optional)"}</span><input value={closeNote} onChange={(event) => onCloseNote(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3" /></label></div><button type="button" disabled={saving || countedCash === ""} onClick={onClose} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-gray-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><LockKeyhole className="h-4 w-4" />{saving ? "..." : (lang === "sw" ? "Funga siku" : "Close day")}</button></div></section>;
 }
 
 function SessionHistoryRow({ session, lang, showDate = true }: { session: CashSession; lang: string; showDate?: boolean }) {

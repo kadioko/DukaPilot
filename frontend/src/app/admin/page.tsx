@@ -266,6 +266,7 @@ interface AdminSyncEvent {
   message?: string | null;
   attempts: number;
   localId?: string | null;
+  operationKind?: "SALE" | "CROP_FIELD";
   resolutionStatus?: "OPEN" | "CONTACTED" | "RESOLVED";
   resolutionNote?: string | null;
   contactedAt?: string | null;
@@ -422,6 +423,7 @@ export default function AdminPage() {
   const [syncShopFilter, setSyncShopFilter] = useState("");
   const [syncDeviceFilter, setSyncDeviceFilter] = useState("");
   const [syncStatusFilter, setSyncStatusFilter] = useState("");
+  const [syncOperationFilter, setSyncOperationFilter] = useState("");
   const [loadingSyncEvents, setLoadingSyncEvents] = useState(false);
   const [smsMonitoring, setSmsMonitoring] = useState<SmsMonitoring | null>(null);
   const [loadingSmsMonitoring, setLoadingSmsMonitoring] = useState(false);
@@ -714,16 +716,18 @@ export default function AdminPage() {
     setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
   }
 
-  async function refreshSyncEvents(patch?: { shopId?: string; deviceId?: string; status?: string }) {
+  async function refreshSyncEvents(patch?: { shopId?: string; deviceId?: string; status?: string; operationKind?: string }) {
     const nextShopId = patch?.shopId ?? syncShopFilter;
     const nextDeviceId = patch?.deviceId ?? syncDeviceFilter;
     const nextStatus = patch?.status ?? syncStatusFilter;
+    const nextOperationKind = patch?.operationKind ?? syncOperationFilter;
     setLoadingSyncEvents(true);
     try {
       const params = new URLSearchParams({ limit: "150" });
       if (nextShopId) params.set("shopId", nextShopId);
       if (nextDeviceId) params.set("deviceId", nextDeviceId);
       if (nextStatus) params.set("status", nextStatus);
+      if (nextOperationKind) params.set("operationKind", nextOperationKind);
       const data = await api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>(`/sync/admin/events?${params.toString()}`);
       setSyncEvents(data.events);
       setSyncDevices(data.devices);
@@ -752,8 +756,9 @@ export default function AdminPage() {
     setSyncShopFilter(nextShop);
     setSyncDeviceFilter(nextDevice);
     setSyncStatusFilter("");
+    setSyncOperationFilter("");
     setTab("sync");
-    refreshSyncEvents({ shopId: nextShop, deviceId: nextDevice, status: "" }).catch(console.error);
+    refreshSyncEvents({ shopId: nextShop, deviceId: nextDevice, status: "", operationKind: "" }).catch(console.error);
   }
 
   function displayDeviceLabel(deviceId?: string | null, label?: string | null, ownerName?: string | null) {
@@ -2355,7 +2360,7 @@ export default function AdminPage() {
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">Offline Sync History</h2>
-                  <p className="text-xs text-gray-500">Drill into queued, synced, failed, and removed offline sales by shop and device.</p>
+                  <p className="text-xs text-gray-500">Drill into queued, synced, failed, and removed sales or crop-field records by shop and device.</p>
                 </div>
                 <button
                   onClick={() => refreshSyncEvents().catch(console.error)}
@@ -2366,7 +2371,7 @@ export default function AdminPage() {
                   Refresh
                 </button>
               </div>
-              <div className="grid gap-2 md:grid-cols-4">
+              <div className="grid gap-2 md:grid-cols-5">
                 <select
                   value={syncShopFilter}
                   onChange={(e) => {
@@ -2401,12 +2406,26 @@ export default function AdminPage() {
                   <option value="FAILED">Failed</option>
                   <option value="REMOVED">Removed</option>
                 </select>
+                <select
+                  value={syncOperationFilter}
+                  onChange={(e) => {
+                    setSyncOperationFilter(e.target.value);
+                    refreshSyncEvents({ operationKind: e.target.value }).catch(console.error);
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  aria-label="Filter sync operations"
+                >
+                  <option value="">All operations</option>
+                  <option value="SALE">Sales</option>
+                  <option value="CROP_FIELD">Crop field</option>
+                </select>
                 <button
                   onClick={() => {
                     setSyncShopFilter("");
                     setSyncDeviceFilter("");
                     setSyncStatusFilter("");
-                    refreshSyncEvents({ shopId: "", deviceId: "", status: "" }).catch(console.error);
+                    setSyncOperationFilter("");
+                    refreshSyncEvents({ shopId: "", deviceId: "", status: "", operationKind: "" }).catch(console.error);
                   }}
                   className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
@@ -2505,6 +2524,7 @@ export default function AdminPage() {
                               event.status === "QUEUED" ? "bg-amber-100 text-amber-700" :
                             "bg-gray-100 text-gray-700"
                           }`}>{event.status}</span>
+                          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-800">{event.operationKind === "CROP_FIELD" ? "Crop field" : "Sale"}</span>
                           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                             event.resolutionStatus === "RESOLVED" ? "bg-green-100 text-green-700" :
                             event.resolutionStatus === "CONTACTED" ? "bg-blue-100 text-blue-700" :
@@ -2517,7 +2537,7 @@ export default function AdminPage() {
                         </div>
                         <p className="mt-1 text-sm text-gray-600">{event.message || "No message recorded"}</p>
                         <p className="mt-1 text-xs text-gray-400">
-                          Owner: {event.shop?.user?.name || "Unknown"} {event.shop?.user?.phone ? `- ${event.shop.user.phone}` : ""} - Local sale: {event.localId || "-"}
+                          Owner: {event.shop?.user?.name || "Unknown"} {event.shop?.user?.phone ? `- ${event.shop.user.phone}` : ""} - Local record: {event.localId || "-"}
                         </p>
                         {event.resolutionNote && <p className="mt-1 rounded-lg bg-gray-50 px-2 py-1 text-xs text-gray-600">Note: {event.resolutionNote}</p>}
                         <div className="mt-2 flex flex-wrap gap-1.5">

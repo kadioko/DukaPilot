@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { allocateInputCostsToHarvest, reconcileCropCycleCosts } = require("../services/cropCosting.service");
+const { findCropOperationReceipt, recordCropOperationReceipt } = require("../services/cropOfflineReceipt.service");
 
 const CYCLE_STATUSES = new Set(["PLANNED", "PLANTED", "GROWING", "HARVESTING", "CLOSED", "CANCELLED"]);
 const INPUT_CATEGORIES = new Set(["SEED", "FERTILIZER", "PESTICIDE", "LABOUR", "TRANSPORT", "IRRIGATION", "OTHER"]);
@@ -48,6 +49,31 @@ function areaMilli(value) {
 function clientRequestId(value) {
   const id = String(value || "").trim();
   return /^[a-zA-Z0-9_-]{8,100}$/.test(id) ? id : null;
+}
+
+function expectedUpdatedAt(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function assertExpectedVersion(resource, expected, label) {
+  if (expected && resource.updatedAt && resource.updatedAt.getTime() !== expected.getTime()) {
+    throw Object.assign(new Error(`${label} changed while this device was offline. Refresh it before trying again.`), { status: 409 });
+  }
+}
+
+async function replayFieldOperation(client, { shopId, requestId, operation, resourceType, load }) {
+  const receipt = await findCropOperationReceipt(client, shopId, requestId, operation);
+  if (!receipt) return null;
+  if (receipt.resourceType !== resourceType) {
+    throw Object.assign(new Error("This offline retry key was already used for a different field record"), { status: 409 });
+  }
+  const resource = await load(receipt.resourceId);
+  if (!resource) {
+    throw Object.assign(new Error("The original field record is no longer available"), { status: 409 });
+  }
+  return resource;
 }
 
 function ownerCanManageFinancials(req) {
@@ -393,6 +419,7 @@ function requireFinancialOwner(req, res) {
 const operationsOverview = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const financialsVisible = canViewFinancials(req);
+  const financialPlanningVisible = ownerCanManageFinancials(req);
   const [cycles, irrigationLogs, tasks, contracts, weatherAlerts, staff] = await Promise.all([
     prisma.cropCycle.findMany({
       where: { shopId },
@@ -438,10 +465,11 @@ const operationsOverview = asyncHandler(async (req, res) => {
 
   res.json({
     financialsVisible,
-    cycles: cycles.map(({ seasonBudget, ...cycle }) => ({ ...cycle, seasonBudget: financialsVisible ? seasonBudget : null })),
+    financialPlanningVisible,
+    cycles: cycles.map(({ seasonBudget, ...cycle }) => ({ ...cycle, seasonBudget: financialPlanningVisible ? seasonBudget : null })),
     irrigationLogs,
     tasks: tasks.map((task) => ({ ...task, assignedStaffName: task.assignedStaffId ? staffNames.get(task.assignedStaffId) || null : null })),
-    contracts: contracts.map((contract) => financialsVisible ? contract : { ...contract, unitPrice: null }),
+    contracts: financialPlanningVisible ? contracts : [],
     weatherAlerts,
     farmStaff: staff.filter((member) => member.canManageFarm),
   });
@@ -529,38 +557,92 @@ const createTask = asyncHandler(async (req, res) => {
   const dueAt = req.body.dueAt ? parseDate(req.body.dueAt) : null;
   const note = shortText(req.body.note, 1000);
   const requestedAssignee = String(req.body.assignedStaffId || "").trim() || null;
+  const requestId = clientRequestId(req.body.clientRequestId);
   if (!title || !TASK_PRIORITIES.has(priority) || (req.body.dueAt && !dueAt)) return res.status(400).json({ error: "Enter a task, valid priority, and valid due date" });
-  if (cropCycleId && !await findCycleForShop(prisma, cropCycleId, shopId)) return res.status(404).json({ error: "Crop cycle not found" });
 
-  let assignedStaffId = requestedAssignee;
-  if (req.user.staffId) {
-    if (requestedAssignee && requestedAssignee !== req.user.staffId) return res.status(403).json({ error: "Field staff can assign tasks only to themselves" });
-    assignedStaffId = req.user.staffId;
-  } else if (assignedStaffId) {
-    const member = await prisma.staffMember.findFirst({ where: { id: assignedStaffId, shopId, isActive: true, canManageFarm: true }, select: { id: true } });
-    if (!member) return res.status(400).json({ error: "Choose an active field staff member" });
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const replay = await replayFieldOperation(tx, {
+        shopId, requestId, operation: "TASK_CREATE", resourceType: "crop_field_task",
+        load: (id) => tx.cropFieldTask.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) return { task: replay, reused: true };
+      if (cropCycleId && !await findCycleForShop(tx, cropCycleId, shopId)) throw Object.assign(new Error("Crop cycle not found"), { status: 404 });
+
+      let assignedStaffId = requestedAssignee;
+      if (req.user.staffId) {
+        if (requestedAssignee && requestedAssignee !== req.user.staffId) throw Object.assign(new Error("Field staff can assign tasks only to themselves"), { status: 403 });
+        assignedStaffId = req.user.staffId;
+      } else if (assignedStaffId) {
+        const member = await tx.staffMember.findFirst({ where: { id: assignedStaffId, shopId, isActive: true, canManageFarm: true }, select: { id: true } });
+        if (!member) throw Object.assign(new Error("Choose an active field staff member"), { status: 400 });
+      }
+      const task = await tx.cropFieldTask.create({ data: { shopId, cropCycleId, title, priority, dueAt, note, assignedStaffId, recordedBy: req.user.staffId || req.user.userId } });
+      await recordCropOperationReceipt(tx, { shopId, clientRequestId: requestId, operation: "TASK_CREATE", resourceType: "crop_field_task", resourceId: task.id });
+      return { task, reused: false };
+    });
+  } catch (error) {
+    if (requestId && error?.code === "P2002") {
+      const replay = await replayFieldOperation(prisma, {
+        shopId, requestId, operation: "TASK_CREATE", resourceType: "crop_field_task",
+        load: (id) => prisma.cropFieldTask.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) result = { task: replay, reused: true };
+    }
+    if (!result) throw error;
   }
-  const task = await prisma.cropFieldTask.create({ data: { shopId, cropCycleId, title, priority, dueAt, note, assignedStaffId, recordedBy: req.user.staffId || req.user.userId } });
-  req.audit = { action: "crop.task.create", resourceType: "crop_field_task", resourceId: task.id, metadata: { cropCycleId, priority, assignedStaffId } };
-  res.status(201).json({ task });
+  req.audit = { action: result.reused ? "crop.task.reused" : "crop.task.create", resourceType: "crop_field_task", resourceId: result.task.id, metadata: { cropCycleId, priority } };
+  res.status(result.reused ? 200 : 201).json(result);
 });
 
 const updateTask = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const task = await prisma.cropFieldTask.findFirst({ where: { id: req.params.id, shopId } });
-  if (!task) return res.status(404).json({ error: "Field task not found" });
-  if (req.user.staffId && task.assignedStaffId !== req.user.staffId && task.recordedBy !== req.user.staffId) {
-    return res.status(403).json({ error: "You can update only your own field tasks" });
+  const requestId = clientRequestId(req.body.clientRequestId);
+  const expected = expectedUpdatedAt(req.body.expectedUpdatedAt);
+  if (expected === undefined) return res.status(400).json({ error: "Invalid task version" });
+  const requestedStatus = req.body.status === undefined ? undefined : String(req.body.status).toUpperCase();
+  const requestedPriority = req.body.priority === undefined ? undefined : String(req.body.priority).toUpperCase();
+  const status = requestedStatus;
+  const priority = requestedPriority;
+  if ((status && !TASK_STATUSES.has(status)) || (priority && !TASK_PRIORITIES.has(priority))) return res.status(400).json({ error: "Choose valid task status and priority" });
+
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const replay = await replayFieldOperation(tx, {
+        shopId, requestId, operation: "TASK_UPDATE", resourceType: "crop_field_task",
+        load: (id) => tx.cropFieldTask.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) return { task: replay, reused: true };
+      const task = await tx.cropFieldTask.findFirst({ where: { id: req.params.id, shopId } });
+      if (!task) throw Object.assign(new Error("Field task not found"), { status: 404 });
+      if (req.user.staffId && task.assignedStaffId !== req.user.staffId && task.recordedBy !== req.user.staffId) throw Object.assign(new Error("You can update only your own field tasks"), { status: 403 });
+      const nextStatus = status || task.status;
+      const nextPriority = priority || task.priority;
+      if (!TASK_STATUSES.has(nextStatus) || !TASK_PRIORITIES.has(nextPriority)) throw Object.assign(new Error("Choose valid task status and priority"), { status: 400 });
+      assertExpectedVersion(task, expected, "This field task");
+      const updated = await tx.cropFieldTask.updateMany({
+        where: { id: task.id, shopId, updatedAt: task.updatedAt },
+        data: { status: nextStatus, priority: nextPriority, completedAt: nextStatus === "DONE" ? (task.completedAt || new Date()) : null },
+      });
+      if (updated.count !== 1) throw Object.assign(new Error("This field task changed while this device was offline. Refresh it before trying again."), { status: 409 });
+      const current = await tx.cropFieldTask.findFirst({ where: { id: task.id, shopId } });
+      await recordCropOperationReceipt(tx, { shopId, clientRequestId: requestId, operation: "TASK_UPDATE", resourceType: "crop_field_task", resourceId: task.id });
+      return { task: current, reused: false };
+    });
+  } catch (error) {
+    if (requestId && error?.code === "P2002") {
+      const replay = await replayFieldOperation(prisma, {
+        shopId, requestId, operation: "TASK_UPDATE", resourceType: "crop_field_task",
+        load: (id) => prisma.cropFieldTask.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) result = { task: replay, reused: true };
+    }
+    if (!result) throw error;
   }
-  const status = req.body.status === undefined ? task.status : String(req.body.status).toUpperCase();
-  const priority = req.body.priority === undefined ? task.priority : String(req.body.priority).toUpperCase();
-  if (!TASK_STATUSES.has(status) || !TASK_PRIORITIES.has(priority)) return res.status(400).json({ error: "Choose valid task status and priority" });
-  const updated = await prisma.cropFieldTask.update({
-    where: { id: task.id },
-    data: { status, priority, completedAt: status === "DONE" ? (task.completedAt || new Date()) : null },
-  });
-  req.audit = { action: "crop.task.update", resourceType: "crop_field_task", resourceId: updated.id, metadata: { status, priority } };
-  res.json({ task: updated });
+  req.audit = { action: result.reused ? "crop.task.update_reused" : "crop.task.update", resourceType: "crop_field_task", resourceId: result.task.id, metadata: { status: result.task.status, priority: result.task.priority } };
+  res.json(result);
 });
 
 const saveBudget = asyncHandler(async (req, res) => {
@@ -591,25 +673,75 @@ const createBuyerContract = asyncHandler(async (req, res) => {
   const unitPrice = req.body.unitPrice === undefined || req.body.unitPrice === "" ? null : Number(req.body.unitPrice);
   const deliveryAt = req.body.deliveryAt ? parseDate(req.body.deliveryAt) : null;
   const note = shortText(req.body.note, 1000);
+  const requestId = clientRequestId(req.body.clientRequestId);
   if (!buyerName || !produceName || !quantity || (unitPrice !== null && (!Number.isInteger(unitPrice) || unitPrice < 0)) || (req.body.deliveryAt && !deliveryAt)) {
     return res.status(400).json({ error: "Enter buyer, produce, whole quantity, and valid delivery details" });
   }
-  if (cropCycleId && !await findCycleForShop(prisma, cropCycleId, shopId)) return res.status(404).json({ error: "Crop cycle not found" });
-  const contract = await prisma.cropBuyerContract.create({ data: { shopId, cropCycleId, buyerName, buyerPhone, produceName, quantity, unit, unitPrice, deliveryAt, note, recordedBy: req.user.userId } });
-  req.audit = { action: "crop.buyer_contract.create", resourceType: "crop_buyer_contract", resourceId: contract.id, metadata: { cropCycleId, quantity, unitPrice } };
-  res.status(201).json({ contract });
+
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const replay = await replayFieldOperation(tx, {
+        shopId, requestId, operation: "BUYER_CONTRACT_CREATE", resourceType: "crop_buyer_contract",
+        load: (id) => tx.cropBuyerContract.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) return { contract: replay, reused: true };
+      if (cropCycleId && !await findCycleForShop(tx, cropCycleId, shopId)) throw Object.assign(new Error("Crop cycle not found"), { status: 404 });
+      const contract = await tx.cropBuyerContract.create({ data: { shopId, cropCycleId, buyerName, buyerPhone, produceName, quantity, unit, unitPrice, deliveryAt, note, recordedBy: req.user.userId } });
+      await recordCropOperationReceipt(tx, { shopId, clientRequestId: requestId, operation: "BUYER_CONTRACT_CREATE", resourceType: "crop_buyer_contract", resourceId: contract.id });
+      return { contract, reused: false };
+    });
+  } catch (error) {
+    if (requestId && error?.code === "P2002") {
+      const replay = await replayFieldOperation(prisma, {
+        shopId, requestId, operation: "BUYER_CONTRACT_CREATE", resourceType: "crop_buyer_contract",
+        load: (id) => prisma.cropBuyerContract.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) result = { contract: replay, reused: true };
+    }
+    if (!result) throw error;
+  }
+  req.audit = { action: result.reused ? "crop.buyer_contract.reused" : "crop.buyer_contract.create", resourceType: "crop_buyer_contract", resourceId: result.contract.id, metadata: { cropCycleId, quantity, unitPrice } };
+  res.status(result.reused ? 200 : 201).json(result);
 });
 
 const updateBuyerContract = asyncHandler(async (req, res) => {
   if (!requireFinancialOwner(req, res)) return;
   const shopId = await getShopIdForUser(req.user);
-  const contract = await prisma.cropBuyerContract.findFirst({ where: { id: req.params.id, shopId } });
-  if (!contract) return res.status(404).json({ error: "Buyer contract not found" });
+  const requestId = clientRequestId(req.body.clientRequestId);
+  const expected = expectedUpdatedAt(req.body.expectedUpdatedAt);
+  if (expected === undefined) return res.status(400).json({ error: "Invalid buyer commitment version" });
   const status = String(req.body.status || "").toUpperCase();
   if (!CONTRACT_STATUSES.has(status)) return res.status(400).json({ error: "Choose a valid buyer contract status" });
-  const updated = await prisma.cropBuyerContract.update({ where: { id: contract.id }, data: { status } });
-  req.audit = { action: "crop.buyer_contract.status", resourceType: "crop_buyer_contract", resourceId: updated.id, metadata: { status } };
-  res.json({ contract: updated });
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const replay = await replayFieldOperation(tx, {
+        shopId, requestId, operation: "BUYER_CONTRACT_UPDATE", resourceType: "crop_buyer_contract",
+        load: (id) => tx.cropBuyerContract.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) return { contract: replay, reused: true };
+      const contract = await tx.cropBuyerContract.findFirst({ where: { id: req.params.id, shopId } });
+      if (!contract) throw Object.assign(new Error("Buyer contract not found"), { status: 404 });
+      assertExpectedVersion(contract, expected, "This buyer commitment");
+      const updated = await tx.cropBuyerContract.updateMany({ where: { id: contract.id, shopId, updatedAt: contract.updatedAt }, data: { status } });
+      if (updated.count !== 1) throw Object.assign(new Error("This buyer commitment changed while this device was offline. Refresh it before trying again."), { status: 409 });
+      const current = await tx.cropBuyerContract.findFirst({ where: { id: contract.id, shopId } });
+      await recordCropOperationReceipt(tx, { shopId, clientRequestId: requestId, operation: "BUYER_CONTRACT_UPDATE", resourceType: "crop_buyer_contract", resourceId: contract.id });
+      return { contract: current, reused: false };
+    });
+  } catch (error) {
+    if (requestId && error?.code === "P2002") {
+      const replay = await replayFieldOperation(prisma, {
+        shopId, requestId, operation: "BUYER_CONTRACT_UPDATE", resourceType: "crop_buyer_contract",
+        load: (id) => prisma.cropBuyerContract.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) result = { contract: replay, reused: true };
+    }
+    if (!result) throw error;
+  }
+  req.audit = { action: result.reused ? "crop.buyer_contract.status_reused" : "crop.buyer_contract.status", resourceType: "crop_buyer_contract", resourceId: result.contract.id, metadata: { status: result.contract.status } };
+  res.json(result);
 });
 
 const recordHarvestGrade = asyncHandler(async (req, res) => {
@@ -619,22 +751,53 @@ const recordHarvestGrade = asyncHandler(async (req, res) => {
   const quantity = optionalPositiveInteger(req.body.quantity);
   const unit = shortText(req.body.unit, 30);
   const note = shortText(req.body.note, 500);
+  const requestId = clientRequestId(req.body.clientRequestId);
+  const expected = expectedUpdatedAt(req.body.expectedUpdatedAt);
+  if (expected === undefined) return res.status(400).json({ error: "Invalid harvest grade version" });
   if (!harvestBatchId || !grade || !quantity) return res.status(400).json({ error: "Enter a grade and whole quantity" });
-  const result = await prisma.$transaction(async (tx) => {
-    const batch = await tx.cropHarvestBatch.findFirst({ where: { id: harvestBatchId, shopId }, select: { id: true, actualYield: true, outputProduct: { select: { unit: true } } } });
-    if (!batch) throw Object.assign(new Error("Harvest batch not found"), { status: 404 });
-    const grades = await tx.cropHarvestGrade.findMany({ where: { harvestBatchId: batch.id }, select: { grade: true, quantity: true } });
-    const gradedOtherThanCurrent = grades.filter((row) => row.grade !== grade).reduce((sum, row) => sum + row.quantity, 0);
-    if (gradedOtherThanCurrent + quantity > batch.actualYield) throw Object.assign(new Error("Grades cannot exceed harvested quantity"), { status: 409 });
-    const result = await tx.cropHarvestGrade.upsert({
-      where: { harvestBatchId_grade: { harvestBatchId: batch.id, grade } },
-      create: { harvestBatchId: batch.id, grade, quantity, unit: unit || batch.outputProduct.unit, note, recordedBy: req.user.staffId || req.user.userId },
-      update: { quantity, unit: unit || batch.outputProduct.unit, note, recordedBy: req.user.staffId || req.user.userId },
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const replay = await replayFieldOperation(tx, {
+        shopId, requestId, operation: "HARVEST_GRADE_SAVE", resourceType: "crop_harvest_grade",
+        load: (id) => tx.cropHarvestGrade.findFirst({ where: { id, harvestBatch: { shopId } } }),
+      });
+      if (replay) return { grade: replay, reused: true };
+      const batch = await tx.cropHarvestBatch.findFirst({ where: { id: harvestBatchId, shopId }, select: { id: true, actualYield: true, outputProduct: { select: { unit: true } } } });
+      if (!batch) throw Object.assign(new Error("Harvest batch not found"), { status: 404 });
+      const [grades, existing] = await Promise.all([
+        tx.cropHarvestGrade.findMany({ where: { harvestBatchId: batch.id }, select: { id: true, grade: true, quantity: true } }),
+        tx.cropHarvestGrade.findFirst({ where: { harvestBatchId: batch.id, grade } }),
+      ]);
+      const gradedOtherThanCurrent = grades.filter((row) => row.grade !== grade).reduce((sum, row) => sum + row.quantity, 0);
+      if (gradedOtherThanCurrent + quantity > batch.actualYield) throw Object.assign(new Error("Grades cannot exceed harvested quantity"), { status: 409 });
+      let saved;
+      if (existing) {
+        assertExpectedVersion(existing, expected, "This harvest grade");
+        const updated = await tx.cropHarvestGrade.updateMany({
+          where: { id: existing.id, updatedAt: existing.updatedAt },
+          data: { quantity, unit: unit || batch.outputProduct.unit, note, recordedBy: req.user.staffId || req.user.userId },
+        });
+        if (updated.count !== 1) throw Object.assign(new Error("This harvest grade changed while this device was offline. Refresh it before trying again."), { status: 409 });
+        saved = await tx.cropHarvestGrade.findUnique({ where: { id: existing.id } });
+      } else {
+        saved = await tx.cropHarvestGrade.create({ data: { harvestBatchId: batch.id, grade, quantity, unit: unit || batch.outputProduct.unit, note, recordedBy: req.user.staffId || req.user.userId } });
+      }
+      await recordCropOperationReceipt(tx, { shopId, clientRequestId: requestId, operation: "HARVEST_GRADE_SAVE", resourceType: "crop_harvest_grade", resourceId: saved.id });
+      return { grade: saved, reused: false };
     });
-    return result;
-  });
-  req.audit = { action: "crop.harvest.grade", resourceType: "crop_harvest_grade", resourceId: result.id, metadata: { harvestBatchId, grade, quantity } };
-  res.json({ grade: result });
+  } catch (error) {
+    if (requestId && error?.code === "P2002") {
+      const replay = await replayFieldOperation(prisma, {
+        shopId, requestId, operation: "HARVEST_GRADE_SAVE", resourceType: "crop_harvest_grade",
+        load: (id) => prisma.cropHarvestGrade.findFirst({ where: { id, harvestBatch: { shopId } } }),
+      });
+      if (replay) result = { grade: replay, reused: true };
+    }
+    if (!result) throw error;
+  }
+  req.audit = { action: result.reused ? "crop.harvest.grade_reused" : "crop.harvest.grade", resourceType: "crop_harvest_grade", resourceId: result.grade.id, metadata: { harvestBatchId, grade, quantity } };
+  res.status(result.reused ? 200 : 201).json(result);
 });
 
 const createWeatherAlert = asyncHandler(async (req, res) => {
@@ -646,27 +809,79 @@ const createWeatherAlert = asyncHandler(async (req, res) => {
   const message = shortText(req.body.message, 500);
   const startsAt = parseDate(req.body.startsAt);
   const expiresAt = req.body.expiresAt ? parseDate(req.body.expiresAt) : null;
+  const requestId = clientRequestId(req.body.clientRequestId);
   if (!message || !startsAt || !WEATHER_SEVERITIES.has(severity) || (req.body.expiresAt && (!expiresAt || expiresAt < startsAt))) {
     return res.status(400).json({ error: "Enter a weather observation, severity, and valid dates" });
   }
-  if (cropPlotId) {
-    const plot = await prisma.cropPlot.findFirst({ where: { id: cropPlotId, shopId }, select: { id: true } });
-    if (!plot) return res.status(404).json({ error: "Crop plot not found" });
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const replay = await replayFieldOperation(tx, {
+        shopId, requestId, operation: "WEATHER_ALERT_CREATE", resourceType: "crop_weather_alert",
+        load: (id) => tx.cropWeatherAlert.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) return { alert: replay, reused: true };
+      if (cropPlotId) {
+        const plot = await tx.cropPlot.findFirst({ where: { id: cropPlotId, shopId }, select: { id: true } });
+        if (!plot) throw Object.assign(new Error("Crop plot not found"), { status: 404 });
+      }
+      if (cropCycleId && !await findCycleForShop(tx, cropCycleId, shopId)) throw Object.assign(new Error("Crop cycle not found"), { status: 404 });
+      const alert = await tx.cropWeatherAlert.create({ data: { shopId, cropPlotId, cropCycleId, type, severity, message, source: "MANUAL", startsAt, expiresAt, recordedBy: req.user.staffId || req.user.userId } });
+      await recordCropOperationReceipt(tx, { shopId, clientRequestId: requestId, operation: "WEATHER_ALERT_CREATE", resourceType: "crop_weather_alert", resourceId: alert.id });
+      return { alert, reused: false };
+    });
+  } catch (error) {
+    if (requestId && error?.code === "P2002") {
+      const replay = await replayFieldOperation(prisma, {
+        shopId, requestId, operation: "WEATHER_ALERT_CREATE", resourceType: "crop_weather_alert",
+        load: (id) => prisma.cropWeatherAlert.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) result = { alert: replay, reused: true };
+    }
+    if (!result) throw error;
   }
-  if (cropCycleId && !await findCycleForShop(prisma, cropCycleId, shopId)) return res.status(404).json({ error: "Crop cycle not found" });
-  const alert = await prisma.cropWeatherAlert.create({ data: { shopId, cropPlotId, cropCycleId, type, severity, message, source: "MANUAL", startsAt, expiresAt, recordedBy: req.user.staffId || req.user.userId } });
-  req.audit = { action: "crop.weather_alert.create", resourceType: "crop_weather_alert", resourceId: alert.id, metadata: { cropPlotId, cropCycleId, severity } };
-  res.status(201).json({ alert });
+  req.audit = { action: result.reused ? "crop.weather_alert.reused" : "crop.weather_alert.create", resourceType: "crop_weather_alert", resourceId: result.alert.id, metadata: { cropPlotId, cropCycleId, severity } };
+  res.status(result.reused ? 200 : 201).json(result);
 });
 
 const updateWeatherAlert = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const requestId = clientRequestId(req.body.clientRequestId);
+  const expected = expectedUpdatedAt(req.body.expectedUpdatedAt);
+  if (expected === undefined) return res.status(400).json({ error: "Invalid weather observation version" });
   if (typeof req.body.isResolved !== "boolean") return res.status(400).json({ error: "Choose whether the weather observation is resolved" });
-  const alert = await prisma.cropWeatherAlert.findFirst({ where: { id: req.params.id, shopId } });
-  if (!alert) return res.status(404).json({ error: "Weather observation not found" });
-  const updated = await prisma.cropWeatherAlert.update({ where: { id: alert.id }, data: { isResolved: req.body.isResolved, resolvedAt: req.body.isResolved ? new Date() : null } });
-  req.audit = { action: "crop.weather_alert.resolve", resourceType: "crop_weather_alert", resourceId: updated.id, metadata: { isResolved: updated.isResolved } };
-  res.json({ alert: updated });
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const replay = await replayFieldOperation(tx, {
+        shopId, requestId, operation: "WEATHER_ALERT_UPDATE", resourceType: "crop_weather_alert",
+        load: (id) => tx.cropWeatherAlert.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) return { alert: replay, reused: true };
+      const alert = await tx.cropWeatherAlert.findFirst({ where: { id: req.params.id, shopId } });
+      if (!alert) throw Object.assign(new Error("Weather observation not found"), { status: 404 });
+      assertExpectedVersion(alert, expected, "This weather observation");
+      const updated = await tx.cropWeatherAlert.updateMany({
+        where: { id: alert.id, shopId, updatedAt: alert.updatedAt },
+        data: { isResolved: req.body.isResolved, resolvedAt: req.body.isResolved ? new Date() : null },
+      });
+      if (updated.count !== 1) throw Object.assign(new Error("This weather observation changed while this device was offline. Refresh it before trying again."), { status: 409 });
+      const current = await tx.cropWeatherAlert.findFirst({ where: { id: alert.id, shopId } });
+      await recordCropOperationReceipt(tx, { shopId, clientRequestId: requestId, operation: "WEATHER_ALERT_UPDATE", resourceType: "crop_weather_alert", resourceId: alert.id });
+      return { alert: current, reused: false };
+    });
+  } catch (error) {
+    if (requestId && error?.code === "P2002") {
+      const replay = await replayFieldOperation(prisma, {
+        shopId, requestId, operation: "WEATHER_ALERT_UPDATE", resourceType: "crop_weather_alert",
+        load: (id) => prisma.cropWeatherAlert.findFirst({ where: { id, shopId } }),
+      });
+      if (replay) result = { alert: replay, reused: true };
+    }
+    if (!result) throw error;
+  }
+  req.audit = { action: result.reused ? "crop.weather_alert.resolve_reused" : "crop.weather_alert.resolve", resourceType: "crop_weather_alert", resourceId: result.alert.id, metadata: { isResolved: result.alert.isResolved } };
+  res.json(result);
 });
 
 module.exports = {

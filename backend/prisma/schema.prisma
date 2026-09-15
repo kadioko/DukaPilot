@@ -213,6 +213,7 @@ model Shop {
   subscriptionPayments     SubscriptionPayment[]
   subscriptionCheckouts    SubscriptionCheckout[]
   offlineSyncEvents        OfflineSyncEvent[]
+  cropOperationReceipts    CropOperationReceipt[]
   assistantActions         AssistantAction[]
   pushSubscriptions        PushSubscription[]
   notificationPreference   NotificationPreference?
@@ -384,6 +385,7 @@ model OfflineSyncEvent {
   message          String?
   attempts         Int       @default(0)
   localId          String?
+  operationKind    String    @default("SALE")
   resolutionStatus String    @default("OPEN")
   resolutionNote   String?
   contactedAt      DateTime?
@@ -393,7 +395,25 @@ model OfflineSyncEvent {
   @@index([shopId, createdAt])
   @@index([status, createdAt])
   @@index([resolutionStatus, createdAt])
+  @@index([shopId, operationKind, createdAt])
   @@map("offline_sync_events")
+}
+
+// A durable receipt makes a queued field operation safe to replay after a
+// dropped response. The resource itself remains the source of truth.
+model CropOperationReceipt {
+  id              String   @id @default(cuid())
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  clientRequestId String
+  operation       String
+  resourceType    String
+  resourceId      String
+  createdAt       DateTime @default(now())
+
+  @@unique([shopId, clientRequestId])
+  @@index([shopId, createdAt])
+  @@map("crop_operation_receipts")
 }
 
 model AssistantAction {
@@ -1075,6 +1095,7 @@ model StaffMember {
   canManageStaff               Boolean   @default(false)
   canViewReports               Boolean   @default(false)
   canRecordExpenses            Boolean   @default(false)
+  canManageCashSessions        Boolean   @default(false)
   canUseAssistant              Boolean   @default(false)
   canViewQuotations            Boolean   @default(false)
   canCreateQuotations          Boolean   @default(false)
@@ -1653,6 +1674,7 @@ model CropHarvestGrade {
   note           String?
   recordedBy     String?
   createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@unique([harvestBatchId, grade])
   @@map("crop_harvest_grades")

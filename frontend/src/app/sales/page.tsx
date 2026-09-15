@@ -143,7 +143,7 @@ function getSyncDeviceLabel() {
 }
 
 function reportSyncEvent(event: { status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED"; total?: number; message?: string; attempts?: number; localId?: string }) {
-  api.post("/sync/events", { ...event, deviceId: getSyncDeviceId(), deviceLabel: getSyncDeviceLabel() }).catch(() => {});
+  api.post("/sync/events", { ...event, operationKind: "SALE", deviceId: getSyncDeviceId(), deviceLabel: getSyncDeviceLabel() }).catch(() => {});
 }
 
 function formatSyncTime(value: string | null) {

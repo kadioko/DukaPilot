@@ -10,6 +10,11 @@ function normalizeStatus(value) {
   return ["QUEUED", "SYNCED", "FAILED", "REMOVED"].includes(status) ? status : "FAILED";
 }
 
+function normalizeOperationKind(value) {
+  const kind = String(value || "SALE").toUpperCase();
+  return ["SALE", "CROP_FIELD"].includes(kind) ? kind : "SALE";
+}
+
 const createEvent = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const event = await prisma.offlineSyncEvent.create({
@@ -22,6 +27,7 @@ const createEvent = asyncHandler(async (req, res) => {
       message: String(req.body.message || "").trim() || null,
       attempts: Math.max(0, Number(req.body.attempts) || 0),
       localId: String(req.body.localId || "").trim() || null,
+      operationKind: normalizeOperationKind(req.body.operationKind),
     },
   });
   req.audit = { action: "offlineSync.event", resourceType: "offline_sync", resourceId: event.id, metadata: { status: event.status } };
@@ -31,8 +37,9 @@ const createEvent = asyncHandler(async (req, res) => {
 const myEvents = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const limit = Math.min(Number(req.query.limit) || 30, 100);
+  const operationKind = String(req.query.operationKind || "").trim().toUpperCase();
   const events = await prisma.offlineSyncEvent.findMany({
-    where: { shopId },
+    where: { shopId, ...(["SALE", "CROP_FIELD"].includes(operationKind) ? { operationKind } : {}) },
     orderBy: { createdAt: "desc" },
     take: limit,
   });
@@ -44,10 +51,12 @@ const adminEvents = asyncHandler(async (req, res) => {
   const shopId = String(req.query.shopId || "").trim();
   const deviceId = String(req.query.deviceId || "").trim();
   const status = String(req.query.status || "").trim().toUpperCase();
+  const operationKind = String(req.query.operationKind || "").trim().toUpperCase();
   const where = {};
   if (shopId) where.shopId = shopId;
   if (deviceId) where.deviceId = deviceId;
   if (["QUEUED", "SYNCED", "FAILED", "REMOVED"].includes(status)) where.status = status;
+  if (["SALE", "CROP_FIELD"].includes(operationKind)) where.operationKind = operationKind;
 
   const events = await prisma.offlineSyncEvent.findMany({
     where,

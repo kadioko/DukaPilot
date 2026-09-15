@@ -38,6 +38,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Crop, livestock, and mixed-farm setup; plots, crop cycles, inputs, harvest-to-stock, livestock production, staff privacy, cash rules, and farm AI boundaries
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
 - **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
+- **Railway Pro operations:** [docs/PRO_OPERATIONS_RUNBOOK.md](./docs/PRO_OPERATIONS_RUNBOOK.md) - Upgrade checklist, backup/restore drills, production monitoring, Sentry review, and incident evidence
 - **Field sales kit:** [docs/FIELD_SALES_KIT.md](./docs/FIELD_SALES_KIT.md)
 - **Product test gate:** [TESTING.md](./TESTING.md)
 - **Android release build:** [docs/ANDROID_RELEASE_BUILD.md](./docs/ANDROID_RELEASE_BUILD.md)
@@ -68,7 +69,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
 | **Supplier ordering** | Browse supplier catalog products, import them into inventory with a chosen retail price, then order and restock them safely |
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
-| **Daily Close / Z-report** | Cashiers open and close their own cash session; sales, cash debt collections, and cash expenses reconcile to expected cash and variance |
+| **Daily Close / Z-report** | Cashiers open and close their own cash session; owners see every active drawer, and trusted managers can be granted team-shift review/close without access to reports or profit |
 | **Receipt files and printing** | Share a receipt as WhatsApp text, PNG, or PDF, or print via the device print dialog to a paired Bluetooth thermal printer |
 | **One-tap reorder** | Repeat any previous order with a single button |
 | **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |

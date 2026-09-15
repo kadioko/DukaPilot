@@ -4,10 +4,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BarChart3, CalendarDays, ClipboardList, LoaderCircle, MapPin, PackagePlus, Sprout, Tractor, WalletCards, Wheat } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
-import { api, ApiError, formatTZS, getCurrentSession } from "@/lib/api";
+import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 import { newCropOperationId, readPendingCropOperations, setActiveOfflineCropScope, type PendingCropOperation, writePendingCropOperations } from "@/lib/offlineCropStorage";
+import { shouldQueueCropOperation, syncPendingCropOperations as syncCropQueue } from "@/lib/offlineCropSync";
 import { offlineSalesScope } from "@/lib/offlineSalesStorage";
 
 type CycleStatus = "PLANNED" | "PLANTED" | "GROWING" | "HARVESTING" | "CLOSED" | "CANCELLED";
@@ -93,22 +94,18 @@ export default function CropsPage() {
     const pending = readPendingCropOperations(offlineScope);
     if (!pending.length) return;
     setSyncingCrops(true);
-    const remaining: PendingCropOperation[] = [];
-    let synced = 0;
-    for (const operation of pending) {
-      try {
-        await api.post(operation.path, operation.payload, lang);
-        synced += 1;
-      } catch (error) {
-        remaining.push({ ...operation, attempts: operation.attempts + 1, lastError: error instanceof Error ? error.message : "Could not sync crop record" });
+    try {
+      const result = await syncCropQueue(offlineScope, lang);
+      setPendingCropOperations(result.remaining);
+      if (result.synced) {
+        toast(sw ? "Rekodi za mazao zimesawazishwa." : "Crop records synced.", "success");
+        await load();
       }
-    }
-    writePendingCropOperations(offlineScope, remaining);
-    setPendingCropOperations(remaining);
-    setSyncingCrops(false);
-    if (synced) {
-      toast(sw ? "Rekodi za mazao zimesawazishwa." : "Crop records synced.", "success");
-      await load();
+      if (result.needsAttention) {
+        toast(sw ? "Baadhi ya rekodi za mazao zinahitaji kufunguliwa na kusasishwa kabla ya kutumwa tena." : "Some crop records need review before they can sync.", "error");
+      }
+    } finally {
+      setSyncingCrops(false);
     }
   }
 
@@ -121,11 +118,10 @@ export default function CropsPage() {
   }, [offlineScope, lang]);
 
   function queueCropOperation(operation: PendingCropOperation, error: unknown) {
-    const status = error instanceof ApiError ? error.status : undefined;
-    const offline = typeof navigator !== "undefined" && !navigator.onLine;
-    if (!offlineScope || (status && status >= 400 && status < 500) || (!offline && status)) return false;
-    const next = [...readPendingCropOperations(offlineScope), { ...operation, lastError: error instanceof Error ? error.message : undefined }];
-    writePendingCropOperations(offlineScope, next);
+    const scope = offlineScope;
+    if (!scope || !shouldQueueCropOperation(scope, error)) return false;
+    const next = [...readPendingCropOperations(scope), { ...operation, lastError: error instanceof Error ? error.message : undefined }];
+    writePendingCropOperations(scope, next);
     setPendingCropOperations(next);
     return true;
   }
@@ -166,7 +162,7 @@ export default function CropsPage() {
         : { cropCycleId: inputForm.cropCycleId, category: inputForm.category, title: inputForm.title.trim(), totalCost: Number(inputForm.totalCost), paymentMethod: inputForm.paymentMethod, usedAt: inputForm.usedAt, note: inputForm.note.trim() || undefined, clientRequestId };
       try { await api.post("/crops/inputs", payload, lang); }
       catch (error) {
-        if (queueCropOperation({ id: clientRequestId, path: "/crops/inputs", payload, createdAt: new Date().toISOString(), attempts: 0 }, error)) {
+        if (queueCropOperation({ id: clientRequestId, path: "/crops/inputs", method: "POST", label: sw ? "Pembejeo" : "Crop input", payload, createdAt: new Date().toISOString(), attempts: 0 }, error)) {
           toast(sw ? "Pembejeo imesubiri kusawazishwa ukipata mtandao." : "Input is queued and will sync when you are back online.", "success");
           return;
         }
@@ -186,7 +182,7 @@ export default function CropsPage() {
       const payload = { ...harvestForm, expectedYield: harvestForm.expectedYield ? Number(harvestForm.expectedYield) : undefined, actualYield: Number(harvestForm.actualYield), wasteQuantity: Number(harvestForm.wasteQuantity || 0), note: harvestForm.note.trim() || undefined, clientRequestId };
       try { await api.post("/crops/harvests", payload, lang); }
       catch (error) {
-        if (queueCropOperation({ id: clientRequestId, path: "/crops/harvests", payload, createdAt: new Date().toISOString(), attempts: 0 }, error)) {
+        if (queueCropOperation({ id: clientRequestId, path: "/crops/harvests", method: "POST", label: sw ? "Mavuno" : "Harvest", payload, createdAt: new Date().toISOString(), attempts: 0 }, error)) {
           toast(sw ? "Mavuno yamesubiri kusawazishwa ukipata mtandao." : "Harvest is queued and will sync when you are back online.", "success");
           return;
         }

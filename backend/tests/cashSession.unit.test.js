@@ -70,6 +70,34 @@ test("staff daily-close history remains scoped to that staff member", async () =
   assert.equal(findManyArgs.where.status, "CLOSED");
 });
 
+test("a manager with team-shift permission sees every active shop drawer", async () => {
+  let findManyArgs;
+  const prismaMock = {
+    cashSession: {
+      findFirst: async () => null,
+      findMany: async (args) => {
+        findManyArgs = args;
+        return [{ id: "cashier-session", shopId: "shop-1", status: "OPEN", openingCash: 10000, openedById: "staff:staff-4", openedByName: "Asha", openedAt: new Date("2026-09-15T06:00:00Z") }];
+      },
+    },
+    sale: { groupBy: async () => [] },
+    debtPayment: { groupBy: async () => [] },
+    quotationPayment: { groupBy: async () => [] },
+    expense: { groupBy: async () => [] },
+  };
+  const controller = loadController(prismaMock);
+  const res = response();
+
+  await controller.current({ user: { userId: "manager-user", staffId: "staff-manager", role: "MERCHANT", permissions: { canManageCashSessions: true } } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.canManageAllSessions, true);
+  assert.equal(res.payload.canOpenOwnSession, false);
+  assert.equal(findManyArgs.where.shopId, "shop-1");
+  assert.equal(findManyArgs.where.openedById, undefined);
+  assert.equal(res.payload.sessions[0].openedByName, "Asha");
+});
+
 test("daily close counts cash stock receipts and direct cooking costs once as cash-out", async () => {
   const prismaMock = {
     sale: { aggregate: async () => ({ _sum: { totalAmount: 50000 }, _count: { id: 2 } }) },

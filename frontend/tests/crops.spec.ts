@@ -51,7 +51,7 @@ test("field plan keeps money planning owner-only and gives farmers practical fie
     const path = new URL(request.url()).pathname.replace(/^.*\/api/, "");
     if (path === "/auth/me") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Farm", category: "farm" }, features: { staff: true, assistant: true } } }) });
     if (path === "/crops/operations") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
-      financialsVisible: true,
+      financialsVisible: true, financialPlanningVisible: true,
       cycles: [{ id: "cycle-1", cropName: "Tomatoes", status: "GROWING", plot: { name: "Greenhouse" }, harvestBatches: [{ id: "harvest-1", actualYield: 20, remainingQuantity: 20, harvestAt: "2026-09-14", outputProduct: { name: "Tomatoes - Greenhouse", unit: "kg" }, grades: [] }], seasonBudget: null }],
       irrigationLogs: [], tasks: [], contracts: [], weatherAlerts: [], farmStaff: [{ id: "staff-1", name: "Juma" }],
     }) });

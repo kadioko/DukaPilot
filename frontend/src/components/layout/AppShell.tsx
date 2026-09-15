@@ -53,6 +53,7 @@ interface User {
       canManageStaff: boolean;
       canViewReports: boolean;
       canRecordExpenses: boolean;
+      canManageCashSessions: boolean;
       canUseAssistant: boolean;
       canViewQuotations: boolean;
     };
@@ -69,7 +70,8 @@ interface NavItem {
   labelKey?: string;
   label?: string;
   icon: typeof LayoutDashboard;
-  permission?: "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations";
+  permission?: "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations";
+  anyPermissions?: Array<NonNullable<NavItem["permission"]>>;
   feature?: "staff" | "assistant" | "exports";
   ownerOnly?: boolean;
   shopCategories?: string[];
@@ -80,7 +82,7 @@ const merchantNav: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports", group: "overview" },
   { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canUseAssistant", feature: "assistant", group: "ai" },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell", group: "sell" },
-  { href: "/daily-close", labelKey: "nav.dailyClose", icon: WalletCards, permission: "canSell", group: "sell" },
+  { href: "/daily-close", labelKey: "nav.dailyClose", icon: WalletCards, anyPermissions: ["canSell", "canManageCashSessions"], group: "sell" },
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell", group: "sell" },
   { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell", group: "sell" },
   { href: "/quotations", labelKey: "nav.quotations", icon: FileText, permission: "canViewQuotations", group: "sell" },
@@ -125,6 +127,30 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [subscription, setSubscription] = useState<{ daysLeft: number | null; status?: string; isActive?: boolean } | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
 
+  function staffHome() {
+    const permissions = user?.staff?.permissions;
+    if (permissions?.canSell) return "/sales";
+    if (permissions?.canManageCashSessions) return "/daily-close";
+    if (permissions?.canManageStock) return "/inventory";
+    if (permissions?.canManageFarm) return "/farm";
+    return "/settings";
+  }
+
+  function staffCanUseCurrentPage() {
+    const permissions = user?.staff?.permissions;
+    if (!permissions) return true;
+    if (pathname === "/dashboard" || pathname.startsWith("/profit")) return permissions.canViewReports;
+    if (pathname === "/daily-close" || pathname.startsWith("/daily-close/")) return permissions.canSell || permissions.canManageCashSessions;
+    if (["/sales", "/debts", "/orders/customers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canSell;
+    if (["/inventory", "/receiving", "/barcodes", "/suppliers", "/orders"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canManageStock;
+    if (pathname === "/farm" || pathname.startsWith("/farm/") || pathname === "/crops" || pathname.startsWith("/crops/")) return permissions.canManageFarm;
+    if (pathname === "/expenses" || pathname.startsWith("/expenses/")) return permissions.canRecordExpenses;
+    if (pathname === "/assistant" || pathname.startsWith("/assistant/")) return permissions.canUseAssistant;
+    if (pathname === "/quotations" || pathname.startsWith("/quotations/")) return permissions.canViewQuotations;
+    if (pathname === "/staff" || pathname.startsWith("/staff/") || pathname === "/billing" || pathname.startsWith("/billing/") || pathname === "/branches" || pathname.startsWith("/branches/") || pathname === "/referrals" || pathname.startsWith("/referrals/")) return permissions.canManageStaff;
+    return true;
+  }
+
   useEffect(() => {
     getCurrentSession<{ user: User }>()
       .then((d) => {
@@ -137,6 +163,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
       .catch(() => router.push("/"))
       .finally(() => setAuthLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    if (!user?.staff || staffCanUseCurrentPage()) return;
+    const destination = staffHome();
+    if (pathname !== destination) router.replace(destination);
+  }, [pathname, router, user]);
 
   useEffect(() => {
     if (user?.role === "MERCHANT") {
@@ -182,7 +214,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     : user?.role === "SUPPLIER"
       ? supplierNav
       : merchantNav.filter((item) =>
-          (!user?.staff || !item.permission || user.staff.permissions[item.permission]) &&
+          (!user?.staff || (!item.permission || user.staff.permissions[item.permission]) && (!item.anyPermissions || item.anyPermissions.some((permission) => user.staff?.permissions[permission]))) &&
           (!item.feature || user?.features?.[item.feature] !== false) &&
           (!item.ownerOnly || !user?.staff) &&
           (!item.shopCategories || item.shopCategories.includes(String(user?.shop?.category || "").toLowerCase()))

@@ -105,17 +105,29 @@ for seven days, overdue field tasks, and unresolved manual field warnings.
 These are operational prompts, not veterinary, crop-health, pesticide, weather,
 or agronomy advice.
 
-Crop inputs and harvests have a safe browser retry queue. If the connection
-drops while the Crop operations screen is open, the pending operation is scoped
-to the current business, branch, and actor. It keeps the same client request ID
-when it retries, so the backend cannot deduct stock or create a harvest twice.
-The screen shows the pending count and offers a manual retry; switching branches
-is blocked until it is resolved.
+Crop inputs, harvests, irrigation logs, field tasks, harvest grades, buyer
+commitments, and manual weather observations use a safe browser retry queue. If
+the connection drops while the Crop operations or Field plan screen is open,
+the pending operation is scoped to the current business, branch, and actor. It
+keeps the same client request ID when it retries, so the backend cannot deduct
+stock, create a harvest, or duplicate a field record twice. Updates also carry
+the record version they started from; an older offline update is held for review
+instead of overwriting newer work from another phone.
 
-Irrigation, field tasks, grades, buyer commitments, and weather observations
-remain online-only for now. They will join the queue only after real-farm QA has
-confirmed the appropriate conflict rules for each record type. An offline app
-restart still opens the standard fallback rather than a full cached crop screen.
+The Crop and Field plan screens show the pending count and offer a manual retry.
+The existing Admin > Offline sync watch labels crop-field events separately from
+sales events, retains the device label, and lets support mark a failed retry
+Open, Contacted, or Resolved. A failed item stays on the originating shop's
+device until the farmer opens or refreshes the record and sends a current
+version.
+
+This is intentionally **not** a full offline accounting system. Seasonal
+budgets, expenses, debt payments, stock receiving/adjustments/counts, staff and
+permission changes, subscriptions, branch transfers, quotations, and cash-close
+workflows remain online-only. Each affects money, stock, authority, or a shared
+ledger and needs a separate reconciliation design before it can safely queue.
+An offline app restart still opens the standard fallback rather than a fully
+cached crop workspace.
 
 ## Database and deployment
 
@@ -124,12 +136,14 @@ The additive migration is:
 \`\`\`text
 20260914001000_crop_operations
 20260914002000_crop_operations_v2
+20260914003000_crop_field_offline_sync
 \`\`\`
 
 Together they add farm settings, crop plots and cycles, input usages, harvest
 batches, harvest-sale allocations, durable input-cost allocations, seasonal
 budgets, irrigation logs, field tasks, buyer commitments, harvest grades, manual
-weather alerts, and client request keys for duplicate-safe crop retries.
+weather alerts, durable field-operation receipts, crop-field sync event labels,
+and client request keys for duplicate-safe crop retries.
 
 Deploy the backend migration before publishing the frontend:
 

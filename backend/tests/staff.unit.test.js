@@ -31,6 +31,29 @@ test("new staff with a phone receive the default 1234 PIN and canonical Tanzania
   assert.equal(created.canSell, true);
   assert.equal(created.canManageStock, false);
   assert.equal(created.canRecordExpenses, true);
+  assert.equal(created.canManageCashSessions, false);
+});
+
+test("new managers can review team cash sessions by default", async () => {
+  let created;
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    user: { findFirst: async () => null },
+    staffMember: {
+      findFirst: async () => null,
+      create: async ({ data }) => { created = data; return { id: "staff-1", ...data }; },
+    },
+  } };
+  delete require.cache[shopAccessPath];
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const res = response();
+
+  await controller.create({ user: { userId: "owner-1" }, body: { name: "Asha", phone: "0712345678", role: "MANAGER" } }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(created.canSell, true);
+  assert.equal(created.canManageCashSessions, true);
 });
 
 test("Basic limits the owner to one active staff member", async () => {
@@ -96,7 +119,7 @@ test("Basic cannot grant staff AI access", async () => {
 
 test("deactivating staff revokes their active push subscriptions", async () => {
   let revokedWhere;
-  const existing = { id: "staff-1", shopId: "shop-1", name: "Asha", phone: "+255712345678", role: "CASHIER", isActive: true, canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canUseAssistant: false };
+  const existing = { id: "staff-1", shopId: "shop-1", name: "Asha", phone: "+255712345678", role: "CASHIER", isActive: true, canSell: true, canManageStock: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canManageCashSessions: false, canUseAssistant: false };
   require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
     shop: { findUnique: async () => ({ id: "shop-1" }) },
     staffMember: {

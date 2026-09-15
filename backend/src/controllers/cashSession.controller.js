@@ -8,7 +8,11 @@ function asyncHandler(fn) {
 }
 
 function canManageAllSessions(req) {
-  return req.user.role === "ADMIN" || !req.user.staffId;
+  return req.user.role === "ADMIN" || !req.user.staffId || Boolean(req.user.permissions?.canManageCashSessions);
+}
+
+function canOpenOwnSession(req) {
+  return !req.user.staffId || Boolean(req.user.permissions?.canSell);
 }
 
 function paginationValue(value, fallback, maximum) {
@@ -185,6 +189,7 @@ const current = asyncHandler(async (req, res) => {
     session: session ? decoratedSessions.find((item) => item.id === session.id) || { ...session, summary: await summarizeSession(prisma, session) } : null,
     sessions: decoratedSessions,
     canManageAllSessions: canManageAllSessions(req),
+    canOpenOwnSession: canOpenOwnSession(req),
   });
 });
 

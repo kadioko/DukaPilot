@@ -16,6 +16,7 @@ interface StaffMember {
   canManageStaff: boolean;
   canViewReports: boolean;
   canRecordExpenses: boolean;
+  canManageCashSessions: boolean;
   canUseAssistant: boolean;
   canViewQuotations: boolean;
   canCreateQuotations: boolean;
@@ -40,7 +41,7 @@ interface SubscriptionStatus {
 const roles = ["MANAGER", "CASHIER", "STOCK_CLERK", "OWNER"];
 const roleGuides = {
   OWNER: { en: "Full shop access, including staff, reports, stock, sales, and expenses.", sw: "Anaweza kila kitu: staff, ripoti, stock, mauzo na matumizi." },
-  MANAGER: { en: "Runs day-to-day operations with the same default permissions as Owner.", sw: "Anaendesha shughuli za kila siku akiwa na ruhusa zote za msingi." },
+  MANAGER: { en: "Runs day-to-day operations and can review or close team shifts by default.", sw: "Anaendesha shughuli za kila siku na anaweza kukagua au kufunga shift za timu kwa chaguo la msingi." },
   CASHIER: { en: "Records sales and handles the POS. Cannot view reports, stock, staff, or expenses.", sw: "Anauza kwa POS. Haoni ripoti, stock, staff au matumizi." },
   STOCK_CLERK: { en: "Manages inventory, receiving, and stock counts. Cannot sell or view finances.", sw: "Anasimamia inventory, kupokea bidhaa na stock count. Hauzi wala haoni fedha." },
 };
@@ -72,7 +73,7 @@ export default function StaffPage() {
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
     await load();
   }
@@ -84,6 +85,7 @@ export default function StaffPage() {
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",
     canRecordExpenses: lang === "sw" ? "Kurekodi matumizi" : "Record expenses",
+    canManageCashSessions: lang === "sw" ? "Kusimamia shift za timu" : "Manage team shifts",
     canUseAssistant: lang === "sw" ? "Kutumia Msaidizi wa AI" : "Use AI Assistant",
     canViewQuotations: lang === "sw" ? "Kuona nukuu" : "View quotations",
     canCreateQuotations: lang === "sw" ? "Kutengeneza nukuu" : "Create quotations",

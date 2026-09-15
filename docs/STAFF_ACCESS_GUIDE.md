@@ -13,7 +13,7 @@ When an owner adds a staff member, they enter the staff member's phone number. T
 | Role | Default access | Best for |
 | --- | --- | --- |
 | Owner | Sales, stock, staff, reports, expenses | A trusted senior person running the whole shop |
-| Manager | Sales, stock, staff, reports, expenses | Day-to-day shop manager |
+| Manager | Sales, stock, staff, reports, expenses, and team-shift review/close | Day-to-day shop manager |
 | Cashier | Sales, POS, their own Daily Close session when Sell is enabled | Counter cashier |
 | Stock Clerk | Inventory, Receive Stock, barcode labels, stock count | Storekeeper or stock assistant |
 
@@ -21,7 +21,9 @@ The owner can fine-tune permissions per individual after creating them. Deactiva
 
 ## Cashier Daily Close
 
-When a cashier has **Sell** permission, they can open a Daily Close cash session, record the opening cash, and close only their own session. DukaPilot reconciles that session's cash sales, cash debt collections, and cash expenses against the amount they count in the drawer. A cashier cannot close another staff member's session. Owners can review every session for the day.
+When a cashier has **Sell** permission, they can open a Daily Close cash session, record the opening cash, and close only their own session. DukaPilot reconciles that session's cash sales, cash debt collections, and cash expenses against the amount they count in the drawer. A cashier cannot close another staff member's session.
+
+Each cashier's shift is a separate drawer. If an owner also sells, the owner opens a separate shift; the two cash totals never mix. Owners can always view and close every active team shift. An owner may also tick **Manage team shifts** for a trusted manager; that permission reveals all team shifts and permits review/close after the manager physically counts that staff drawer. It can work without **Sell**, but that supervisor cannot open a personal sales drawer unless **Sell** is also enabled. It does not grant business reports, stock, staff administration, or other permissions by itself.
 
 Cashiers without **Reports** still do not receive buying cost, profit, margin, or shop-wide financial analytics.
 

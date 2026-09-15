@@ -13,7 +13,7 @@ At close, the cashier enters the cash physically counted. DukaPilot calculates:
 - expected cash
 - counted cash and variance
 
-Owners can see all of today's sessions; staff can see and close only their own session. Historic transactions made before this release are intentionally not backfilled into a session.
+Owners can see all of today's sessions and may open their own separate cash session when they sell. Staff can see and close only their own session, unless the owner explicitly grants a trusted manager **Manage team shifts**. That permission lets the manager review and close a staff drawer after counting it; it can be granted without **Sell**, but then the manager cannot open a personal sales drawer. It never merges drawers or moves sales between sessions. Historic transactions made before this release are intentionally not backfilled into a session.
 
 Only **cash** activity recorded while that cashier's session is open contributes to its expected cash. M-Pesa, bank, credit, and transactions recorded before opening a session stay outside the close figure. This makes the close a clear accountability tool, not a retroactive accounting adjustment.
 

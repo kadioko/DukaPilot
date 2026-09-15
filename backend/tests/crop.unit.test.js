@@ -111,6 +111,40 @@ test("a crop cycle accepts a second harvest when its expected total yield was se
   assert.equal(res.payload.batch.totalCost, 18000);
 });
 
+test("a retried offline field task reuses its durable receipt instead of creating a second task", async () => {
+  const tasks = [];
+  const receipts = [];
+  const tx = {
+    cropOperationReceipt: {
+      findUnique: async ({ where }) => receipts.find((receipt) => receipt.shopId === where.shopId_clientRequestId.shopId && receipt.clientRequestId === where.shopId_clientRequestId.clientRequestId) || null,
+      create: async ({ data }) => { const receipt = { id: `receipt-${receipts.length + 1}`, ...data }; receipts.push(receipt); return receipt; },
+    },
+    cropCycle: { findFirst: async () => ({ id: "cycle-1" }) },
+    cropFieldTask: {
+      create: async ({ data }) => { const task = { id: `task-${tasks.length + 1}`, ...data, updatedAt: new Date() }; tasks.push(task); return task; },
+      findFirst: async ({ where }) => tasks.find((task) => task.id === where.id && task.shopId === where.shopId) || null,
+    },
+    staffMember: { findFirst: async () => null },
+  };
+  const controller = loadController({ $transaction: async (fn) => fn(tx) });
+  const request = {
+    user: { userId: "owner-1", role: "MERCHANT" },
+    body: { cropCycleId: "cycle-1", title: "Water Field A", priority: "HIGH", clientRequestId: "crop_task_retry_0001" },
+  };
+
+  const first = response();
+  await controller.createTask(request, first);
+  const retry = response();
+  await controller.createTask(request, retry);
+
+  assert.equal(first.statusCode, 201);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(first.payload.reused, false);
+  assert.equal(retry.payload.reused, true);
+  assert.equal(tasks.length, 1);
+  assert.equal(receipts.length, 1);
+});
+
 test("crop harvest sale allocations are FIFO and reverse when a sale is voided", async () => {
   const updates = [];
   const allocations = [];
