@@ -130,13 +130,16 @@ async function authenticate(req, res, next) {
 
 function requireRole(...roles) {
   return (req, res, next) => {
-    if (roles.includes("ADMIN") && req.user.staffId) {
+    // Staff sessions are deliberately normalized to MERCHANT in authenticate.
+    // They must pass normal merchant routes when an assigned permission permits
+    // it, even if that route also supports a platform admin. Only an endpoint
+    // that is exclusively for platform admins should show the admin-session
+    // denial and remain unreachable to staff.
+    if (roles.includes(req.user.role)) return next();
+    if (req.user.staffId && roles.length === 1 && roles[0] === "ADMIN") {
       return res.status(403).json({ error: "Platform admin access is not available to staff sessions" });
     }
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    next();
+    return res.status(403).json({ error: "Forbidden" });
   };
 }
 

@@ -79,6 +79,11 @@ test("staff of an admin-owned shop cannot inherit platform-admin access", async 
   const adminRes = response();
   requireRole("ADMIN")(req, adminRes, () => assert.fail("staff reached platform admin route"));
   assert.equal(adminRes.statusCode, 403);
+  assert.equal(adminRes.payload.error, "Platform admin access is not available to staff sessions");
+
+  let merchantRouteReached = false;
+  requireRole("MERCHANT", "ADMIN")(req, response(), () => { merchantRouteReached = true; });
+  assert.equal(merchantRouteReached, true, "staff must reach merchant routes that also support platform admins");
 
   const staffRes = response();
   requirePermission("canManageStaff")(req, staffRes, () => assert.fail("cashier managed staff"));

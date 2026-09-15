@@ -296,3 +296,57 @@ test("inventory shows the real total and lets merchants reach later product page
   await expect(page.getByText("Product 101")).toBeVisible();
   await expect(page.getByText("101-101 of 101 products")).toBeVisible();
 });
+
+test("stock staff can load inventory without an admin-access warning", async ({ page }) => {
+  const products = [{
+    id: "staff-product-1",
+    name: "Brake Pads",
+    unit: "pcs",
+    buyingPrice: 12000,
+    sellingPrice: 18000,
+    currentStock: 7,
+    minimumStock: 2,
+    isActive: true,
+    expiryDate: null,
+    doesNotExpire: true,
+  }];
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("dukapilot_token", "playwright-stock-staff-token");
+  });
+  await page.route("**/*api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        user: {
+          name: "KD Team",
+          role: "MERCHANT",
+          language: "en",
+          shop: { name: "KD Spare Parts" },
+          staff: { role: "CASHIER", permissions: { canSell: true, canManageStock: true, canManageFarm: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canManageCashSessions: false, canViewQuotations: false } },
+        },
+      }),
+    });
+  });
+  await page.route("**/*api/products/low-stock*", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
+  });
+  await page.route("**/*api/products?*", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products }) });
+  });
+  await page.route("**/*api/suppliers", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ suppliers: [] }) });
+  });
+  await page.route("**/*api/subscription/status", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
+  });
+  await page.route("**/*api/notifications", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) });
+  });
+
+  await page.goto("/inventory");
+
+  await expect(page.getByText("Brake Pads")).toBeVisible();
+  await expect(page.getByText("Platform admin access is not available to staff sessions")).not.toBeVisible();
+});
