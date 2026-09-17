@@ -17,6 +17,7 @@ const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 const CONFIRMATION = "REFRESH_DUKAPILOT_DEMO_SHOWCASE";
 const DEMO_PIN = "1234";
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+const SEED_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
 
 const merchants = [
   { key: "grocery", phone: "+255700000002", owner: "Mama Amina", shop: "Duka la Amina", location: "Mbagala", district: "Temeke", category: "grocery", language: "sw" },
@@ -201,7 +202,7 @@ async function ensureFreshActivity(shop, key, products, expenseTitle) {
       create: { id: id(key, "fresh-expense"), shopId: shop.id, title: expenseTitle, amount: 12000, category: "UTILITIES", paymentMethod: "CASH", spentAt: daysAgo(0, 9), note: "Fresh showcase operating cost" },
       update: { title: expenseTitle, amount: 12000, category: "UTILITIES", paymentMethod: "CASH", spentAt: daysAgo(0, 9), note: "Fresh showcase operating cost" },
     });
-  });
+  }, SEED_TRANSACTION_OPTIONS);
 }
 
 async function seedCashierDemo(shop, pinHash) {
@@ -317,7 +318,7 @@ async function seedKitchen(shop, key, config) {
       create: { id: id(key, "movement-in"), type: "IN", quantity: config.actualYield, note: `Food preparation: ${config.recipeName}`, productId: output.id, foodPreparationBatchId: batchId, createdAt: daysAgo(0, 11) },
       update: { type: "IN", quantity: config.actualYield, note: `Food preparation: ${config.recipeName}`, productId: output.id, foodPreparationBatchId: batchId, createdAt: daysAgo(0, 11) },
     });
-  });
+  }, SEED_TRANSACTION_OPTIONS);
   await ensureFreshActivity(shop, key, [output, ...products], config.expenseTitle);
 }
 
@@ -413,7 +414,7 @@ async function seedCropFarm(shop) {
     await tx.cropFieldTask.upsert({ where: { id: id(key, "task") }, create: { id: id(key, "task"), shopId: shop.id, cropCycleId: tomatoCycleId, title: "Inspect tomato leaves for pests", status: "TODO", priority: "HIGH", dueAt: daysFromNow(1, 8), note: "Walk the greenhouse before irrigation." }, update: { cropCycleId: tomatoCycleId, title: "Inspect tomato leaves for pests", status: "TODO", priority: "HIGH", dueAt: daysFromNow(1, 8), note: "Walk the greenhouse before irrigation.", completedAt: null } });
     await tx.cropBuyerContract.upsert({ where: { id: id(key, "buyer") }, create: { id: id(key, "buyer"), shopId: shop.id, cropCycleId: maizeCycleId, buyerName: "Kibaha Grain Market", buyerPhone: "+255700000099", produceName: "Mahindi Grade A", quantity: 100, unit: "kg", unitPrice: 1500, deliveryAt: daysFromNow(2, 9), status: "AGREED", note: "Collect after moisture check." }, update: { cropCycleId: maizeCycleId, buyerName: "Kibaha Grain Market", buyerPhone: "+255700000099", produceName: "Mahindi Grade A", quantity: 100, unit: "kg", unitPrice: 1500, deliveryAt: daysFromNow(2, 9), status: "AGREED", note: "Collect after moisture check." } });
     await tx.cropWeatherAlert.upsert({ where: { id: id(key, "weather") }, create: { id: id(key, "weather"), shopId: shop.id, cropPlotId: tomatoPlotId, cropCycleId: tomatoCycleId, type: "RAIN", severity: "WATCH", message: "Check greenhouse drainage after heavy rain.", source: "MANUAL", startsAt: daysAgo(0, 8), isResolved: false }, update: { cropPlotId: tomatoPlotId, cropCycleId: tomatoCycleId, type: "RAIN", severity: "WATCH", message: "Check greenhouse drainage after heavy rain.", source: "MANUAL", startsAt: daysAgo(0, 8), isResolved: false, resolvedAt: null } });
-  });
+  }, SEED_TRANSACTION_OPTIONS);
 
   const saleId = id(key, "fresh-sale");
   const saleItemId = id(key, "fresh-sale-item");
@@ -427,7 +428,7 @@ async function seedCropFarm(shop) {
     await tx.saleItem.create({ data: { id: saleItemId, saleId, productId: bySku["CROP-MAIZE-A"].id, name: "Mahindi - Shamba A", unit: "kg", quantity: 30, unitPrice: 1500, buyingPrice: 708, totalPrice: 45000 } });
     await tx.cropHarvestAllocation.upsert({ where: { id: id(key, "sale-allocation") }, create: { id: id(key, "sale-allocation"), harvestBatchId: harvestOneId, saleItemId, quantity: 30, revenue: 45000, cost: 21240 }, update: { harvestBatchId: harvestOneId, saleItemId, quantity: 30, revenue: 45000, cost: 21240 } });
     await tx.expense.upsert({ where: { id: id(key, "fresh-expense") }, create: { id: id(key, "fresh-expense"), shopId: shop.id, title: "Greenhouse water", amount: 18000, category: "UTILITIES", paymentMethod: "CASH", spentAt: daysAgo(0, 9), note: "Fresh crop showcase operating cost" }, update: { title: "Greenhouse water", amount: 18000, category: "UTILITIES", paymentMethod: "CASH", spentAt: daysAgo(0, 9), note: "Fresh crop showcase operating cost" } });
-  });
+  }, SEED_TRANSACTION_OPTIONS);
 }
 
 async function seedLivestockFarm(shop) {
@@ -478,7 +479,7 @@ async function seedLivestockFarm(shop) {
       await tx.stockMovement.upsert({ where: { id: id(key, "production-in", batch.id) }, create: { id: id(key, "production-in", batch.id), type: "IN", quantity: batch.actualYield, note: `Farm production: ${batch.note}`, productId: batch.output.id, createdAt: daysAgo(0, 10) }, update: { type: "IN", quantity: batch.actualYield, note: `Farm production: ${batch.note}`, productId: batch.output.id, createdAt: daysAgo(0, 10) } });
     }
     await tx.farmPackConversion.upsert({ where: { id: id(key, "egg-pack") }, create: { id: id(key, "egg-pack"), shopId: shop.id, inputProductId: bySku["FARM-EGGS"].id, outputProductId: bySku["FARM-EGG-TRAY"].id, inputQuantity: 360, outputQuantity: 12, totalCost: 112680, unitCost: 9390, note: "Packed eggs into trays", convertedAt: daysAgo(0, 12) }, update: { inputProductId: bySku["FARM-EGGS"].id, outputProductId: bySku["FARM-EGG-TRAY"].id, inputQuantity: 360, outputQuantity: 12, totalCost: 112680, unitCost: 9390, note: "Packed eggs into trays", convertedAt: daysAgo(0, 12) } });
-  });
+  }, SEED_TRANSACTION_OPTIONS);
   await ensureFreshActivity(shop, key, [bySku["FARM-EGG-TRAY"], ...products], "Pump water for farm");
 }
 
