@@ -5,11 +5,11 @@ import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { AlertTriangle, Bell, ChevronRight, CircleCheck, CreditCard, HandCoins, Package, RefreshCw, ShoppingBag, WifiOff } from "lucide-react";
+import { AlertTriangle, Bell, ChevronRight, CircleCheck, CreditCard, FileText, HandCoins, Package, RefreshCw, ShoppingBag, WifiOff } from "lucide-react";
 
 interface NotificationItem {
   id: string;
-  type: "LOW_STOCK" | "DEBT" | "CUSTOMER_ORDER" | "SYNC" | "SUBSCRIPTION";
+  type: "LOW_STOCK" | "DEBT" | "CUSTOMER_ORDER" | "SYNC" | "SUBSCRIPTION" | "QUOTATION";
   severity: "URGENT" | "WARNING" | "ACTION";
   title: string;
   titleSw: string;
@@ -19,12 +19,13 @@ interface NotificationItem {
   count: number;
 }
 
-const icons = {
+const icons: Record<NotificationItem["type"], typeof Bell> = {
   LOW_STOCK: Package,
   DEBT: HandCoins,
   CUSTOMER_ORDER: ShoppingBag,
   SYNC: WifiOff,
   SUBSCRIPTION: CreditCard,
+  QUOTATION: FileText,
 };
 
 export default function NotificationsPage() {
@@ -81,7 +82,8 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-3">
             {items.map((item) => {
-              const Icon = icons[item.type];
+              // Keep alerts usable even if a newer backend sends a type before this UI updates.
+              const Icon = icons[item.type] || Bell;
               return (
                 <Link key={item.id} href={item.href} className="flex min-h-24 items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 transition-colors hover:border-brand-300 hover:bg-brand-50/40">
                   <div className={`rounded-lg p-2.5 ${item.severity === "URGENT" ? "bg-red-50 text-red-700" : item.severity === "WARNING" ? "bg-amber-50 text-amber-700" : "bg-brand-50 text-brand-700"}`}><Icon className="h-5 w-5" /></div>
