@@ -59,6 +59,18 @@ interface ProductPagination {
   totalPages: number;
 }
 
+type StockStatus = "ALL" | "LOW" | "OUT" | "IN_STOCK";
+type ExpiryFilter = "ALL" | "EXPIRING_SOON" | "EXPIRED";
+
+interface StockSummary {
+  total: number;
+  lowStock: number;
+  outOfStock: number;
+  inStock: number;
+  expiringSoon: number;
+  expired: number;
+}
+
 const PRODUCTS_PER_PAGE = 50;
 
 function expiryStatus(p: Product, lang: string): { label: string; color: string } | null {
@@ -88,7 +100,22 @@ export default function InventoryPage() {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("action") || "";
   });
-  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [stockStatus, setStockStatus] = useState<StockStatus>(() => {
+    if (typeof window === "undefined") return "ALL";
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("stockStatus");
+    if (["ALL", "LOW", "OUT", "IN_STOCK"].includes(requested || "")) return requested as StockStatus;
+    return params.get("lowStock") === "true" ? "LOW" : "ALL";
+  });
+  const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>(() => {
+    if (typeof window === "undefined") return "ALL";
+    const requested = new URLSearchParams(window.location.search).get("expiryStatus");
+    return ["ALL", "EXPIRING_SOON", "EXPIRED"].includes(requested || "") ? requested as ExpiryFilter : "ALL";
+  });
+  const [supplierId, setSupplierId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("supplierId") || "";
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<ProductPagination>({
     page: 1,
@@ -96,7 +123,14 @@ export default function InventoryPage() {
     total: 0,
     totalPages: 0,
   });
-  const [stockSummary, setStockSummary] = useState({ lowStock: 0, outOfStock: 0 });
+  const [stockSummary, setStockSummary] = useState<StockSummary>({
+    total: 0,
+    lowStock: 0,
+    outOfStock: 0,
+    inStock: 0,
+    expiringSoon: 0,
+    expired: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -134,10 +168,12 @@ export default function InventoryPage() {
       if (search) params.set("search", search);
       params.set("page", String(currentPage));
       params.set("limit", String(PRODUCTS_PER_PAGE));
-      if (lowStockOnly) params.set("lowStock", "true");
-      const [data, lowStockData] = await Promise.all([
+      if (stockStatus !== "ALL") params.set("stockStatus", stockStatus);
+      if (expiryFilter !== "ALL") params.set("expiryStatus", expiryFilter);
+      if (supplierId) params.set("supplierId", supplierId);
+      const [data, summaryData] = await Promise.all([
         api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?${params}`),
-        api.get<{ products: Product[] }>("/products/low-stock").catch(() => null),
+        api.get<{ summary: StockSummary }>("/products/summary").catch(() => null),
       ]);
       if (requestId !== latestLoad.current) return;
       const nextPagination = data.pagination || {
@@ -152,12 +188,7 @@ export default function InventoryPage() {
       }
       setProducts(data.products);
       setPagination(nextPagination);
-      if (lowStockData) {
-        setStockSummary({
-          lowStock: lowStockData.products.filter((product) => product.currentStock > 0).length,
-          outOfStock: lowStockData.products.filter((product) => product.currentStock === 0).length,
-        });
-      }
+      if (summaryData) setStockSummary(summaryData.summary);
     } catch (value: unknown) {
       if (requestId === latestLoad.current) {
         toast(value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia bidhaa." : "Could not load products."), "error");
@@ -165,9 +196,20 @@ export default function InventoryPage() {
     } finally {
       if (requestId === latestLoad.current) setLoading(false);
     }
-  }, [search, lowStockOnly, currentPage, toast, lang]);
+  }, [search, stockStatus, expiryFilter, supplierId, currentPage, toast, lang]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (search) params.set("search", search); else params.delete("search");
+    if (stockStatus !== "ALL") params.set("stockStatus", stockStatus); else params.delete("stockStatus");
+    if (expiryFilter !== "ALL") params.set("expiryStatus", expiryFilter); else params.delete("expiryStatus");
+    if (supplierId) params.set("supplierId", supplierId); else params.delete("supplierId");
+    // Retain legacy links when opened, but use the precise status filter going forward.
+    params.delete("lowStock");
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, [search, stockStatus, expiryFilter, supplierId]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("action") === "add") {
@@ -405,8 +447,8 @@ export default function InventoryPage() {
         )}
 
         {/* Filters */}
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
+        <div className="mb-4 space-y-2">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
@@ -417,31 +459,82 @@ export default function InventoryPage() {
               className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
-          <button
-            onClick={() => { setLowStockOnly((current) => !current); setCurrentPage(1); }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-              lowStockOnly
-                ? "bg-amber-50 border-amber-300 text-amber-700"
-                : "bg-white border-gray-300 text-gray-600"
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{t("inventory.lowStockOnly", lang)}</span>
-          </button>
-        </div>
 
-        {/* Summary stats */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          {[
-            { label: t("inventory.allProducts", lang), value: pagination.total },
-            { label: t("inventory.lowStockCount", lang), value: stockSummary.lowStock, color: "text-amber-600" },
-            { label: t("inventory.outOfStockCount", lang), value: stockSummary.outOfStock, color: "text-red-600" },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
-              <p className={`text-lg font-bold ${stat.color || "text-gray-900"}`}>{stat.value}</p>
-              <p className="text-xs text-gray-500">{stat.label}</p>
-            </div>
-          ))}
+          <div
+            className="flex gap-2 overflow-x-auto pb-1"
+            role="group"
+            aria-label={t("inventory.stockFilters", lang)}
+          >
+            {[
+              { value: "ALL" as const, label: t("inventory.allProducts", lang), count: stockSummary.total, icon: Package, active: "bg-brand-50 border-brand-300 text-brand-800" },
+              { value: "LOW" as const, label: t("inventory.lowStockCount", lang), count: stockSummary.lowStock, icon: AlertTriangle, active: "bg-amber-50 border-amber-300 text-amber-800" },
+              { value: "OUT" as const, label: t("inventory.outOfStockCount", lang), count: stockSummary.outOfStock, icon: X, active: "bg-red-50 border-red-300 text-red-800" },
+              { value: "IN_STOCK" as const, label: t("inventory.inStock", lang), count: stockSummary.inStock, icon: Package, active: "bg-emerald-50 border-emerald-300 text-emerald-800" },
+            ].map((filter) => {
+              const Icon = filter.icon;
+              const isSelected = stockStatus === filter.value;
+              return (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => { setStockStatus(filter.value); setCurrentPage(1); }}
+                  aria-pressed={isSelected}
+                  className={`shrink-0 inline-flex min-h-10 items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    isSelected ? filter.active : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{filter.label}</span>
+                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-xs font-semibold tabular-nums">{filter.count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="min-w-0">
+              <span className="sr-only">{t("inventory.supplierFilter", lang)}</span>
+              <select
+                value={supplierId}
+                onChange={(event) => { setSupplierId(event.target.value); setCurrentPage(1); }}
+                aria-label={t("inventory.supplierFilter", lang)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">{t("inventory.allSuppliers", lang)}</option>
+                {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </select>
+            </label>
+            <label className="min-w-0">
+              <span className="sr-only">{t("inventory.expiryFilter", lang)}</span>
+              <select
+                value={expiryFilter}
+                onChange={(event) => { setExpiryFilter(event.target.value as ExpiryFilter); setCurrentPage(1); }}
+                aria-label={t("inventory.expiryFilter", lang)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="ALL">{t("inventory.allExpiry", lang)}</option>
+                <option value="EXPIRING_SOON">{t("inventory.expiringSoon", lang)} ({stockSummary.expiringSoon})</option>
+                <option value="EXPIRED">{t("inventory.expired", lang)} ({stockSummary.expired})</option>
+              </select>
+            </label>
+          </div>
+
+          {(search || stockStatus !== "ALL" || expiryFilter !== "ALL" || supplierId) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStockStatus("ALL");
+                setExpiryFilter("ALL");
+                setSupplierId("");
+                setCurrentPage(1);
+              }}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+              {t("inventory.clearFilters", lang)}
+            </button>
+          )}
         </div>
 
         {/* Product list */}
@@ -450,8 +543,16 @@ export default function InventoryPage() {
         ) : products.length === 0 ? (
           <div className="text-center py-16">
             <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">{t("inventory.noProducts", lang)}</p>
-            <p className="text-gray-400 text-sm mt-1">{t("inventory.noProductsHint", lang)}</p>
+            <p className="text-gray-500 font-medium">
+              {search || stockStatus !== "ALL" || expiryFilter !== "ALL" || supplierId
+                ? t("inventory.noMatchingProducts", lang)
+                : t("inventory.noProducts", lang)}
+            </p>
+            <p className="text-gray-400 text-sm mt-1">
+              {search || stockStatus !== "ALL" || expiryFilter !== "ALL" || supplierId
+                ? t("inventory.noMatchingProductsHint", lang)
+                : t("inventory.noProductsHint", lang)}
+            </p>
           </div>
         ) : (
           <>

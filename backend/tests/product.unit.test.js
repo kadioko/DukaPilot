@@ -104,6 +104,67 @@ test("low-stock pagination asks PostgreSQL for one page before loading product d
   assert.deepEqual(res.payload.products.map((item) => item.id), ["prod-3"]);
 });
 
+test("stock filters keep low-stock products separate from out-of-stock products", async () => {
+  const queries = [];
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $queryRaw: async (strings, ...values) => {
+      const sql = strings.join(" ");
+      queries.push({ sql, values });
+      return sql.includes("COUNT") ? [{ count: 1 }] : [{ id: "prod-low" }];
+    },
+    product: {
+      findMany: async () => [{ id: "prod-low", name: "Low brake pads", currentStock: 2, minimumStock: 5 }],
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.list({ user: { userId: "user-1" }, query: { stockStatus: "LOW", page: "1", limit: "50" } }, res);
+
+  assert.equal(res.payload.pagination.total, 1);
+  assert.deepEqual(res.payload.products.map((item) => item.id), ["prod-low"]);
+  assert.ok(queries.some(({ values }) => values.some((value) => value?.strings?.join(" ").includes('"currentStock" > 0 AND "currentStock" <= "minimumStock"'))));
+});
+
+test("out-of-stock filters use an exact zero-stock query and retain supplier filters", async () => {
+  let findManyArgs;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findMany: async (args) => { findManyArgs = args; return []; },
+      count: async () => 0,
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.list({ user: { userId: "user-1" }, query: { stockStatus: "OUT", supplierId: "supplier-1" } }, res);
+
+  assert.equal(findManyArgs.where.currentStock, 0);
+  assert.equal(findManyArgs.where.supplierId, "supplier-1");
+});
+
+test("inventory summary returns whole-shop stock and expiry counts", async () => {
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $queryRaw: async () => [{ total: 18, lowStock: 3, outOfStock: 2, inStock: 16, expiringSoon: 4, expired: 1 }],
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.getSummary({ user: { userId: "user-1" } }, res);
+
+  assert.deepEqual(res.payload.summary, {
+    total: 18,
+    lowStock: 3,
+    outOfStock: 2,
+    inStock: 16,
+    expiringSoon: 4,
+    expired: 1,
+  });
+});
+
 test("getLowStock returns only database-filtered low-stock products", async () => {
   const prismaMock = {
     $queryRaw: async (query) => String(query).includes("COUNT")

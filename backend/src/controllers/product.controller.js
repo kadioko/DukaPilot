@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { Prisma } = require("@prisma/client");
 const { parse } = require("csv-parse/sync");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { inferBarcodeType, validateBarcode, nextInternalBarcode } = require("../lib/barcode");
@@ -181,44 +182,55 @@ function parseProductImport(csv) {
   return { errors, products };
 }
 
-async function lowStockPage(shopId, search, skip, take) {
+async function lowStockPage(shopId, {
+  search,
+  skip,
+  take,
+  includeOutOfStock = true,
+  supplierId,
+  expiryStatus = "ALL",
+}) {
   const term = String(search || "").trim();
   const barcode = term.toUpperCase();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiryLimit = new Date(today);
+  expiryLimit.setDate(expiryLimit.getDate() + 30);
+  expiryLimit.setHours(23, 59, 59, 999);
+  const stockFilter = includeOutOfStock
+    ? Prisma.sql`AND "currentStock" <= "minimumStock"`
+    : Prisma.sql`AND "currentStock" > 0 AND "currentStock" <= "minimumStock"`;
+  const supplierFilter = supplierId ? Prisma.sql`AND "supplierId" = ${supplierId}` : Prisma.empty;
+  const expiryFilter = expiryStatus === "EXPIRING_SOON"
+    ? Prisma.sql`AND "doesNotExpire" = false AND "expiryDate" >= ${today} AND "expiryDate" <= ${expiryLimit}`
+    : expiryStatus === "EXPIRED"
+      ? Prisma.sql`AND "doesNotExpire" = false AND "expiryDate" < ${today}`
+      : Prisma.empty;
+  const searchFilter = term
+    ? Prisma.sql`AND (name ILIKE ${`%${term}%`} OR sku ILIKE ${`%${term}%`} OR barcode = ${barcode})`
+    : Prisma.empty;
   let idRows;
   let countRows;
-  if (term) {
-    [idRows, countRows] = await Promise.all([
-      prisma.$queryRaw`
-        SELECT id FROM products
-        WHERE "shopId" = ${shopId}
-          AND "isActive" = true
-          AND "currentStock" <= "minimumStock"
-          AND (name ILIKE ${`%${term}%`} OR sku ILIKE ${`%${term}%`} OR barcode = ${barcode})
-        ORDER BY "currentStock" ASC, name ASC
-        LIMIT ${take} OFFSET ${skip}`,
-      prisma.$queryRaw`
-        SELECT COUNT(*)::int AS count FROM products
-        WHERE "shopId" = ${shopId}
-          AND "isActive" = true
-          AND "currentStock" <= "minimumStock"
-          AND (name ILIKE ${`%${term}%`} OR sku ILIKE ${`%${term}%`} OR barcode = ${barcode})`,
-    ]);
-  } else {
-    [idRows, countRows] = await Promise.all([
-      prisma.$queryRaw`
-        SELECT id FROM products
-        WHERE "shopId" = ${shopId}
-          AND "isActive" = true
-          AND "currentStock" <= "minimumStock"
-        ORDER BY "currentStock" ASC, name ASC
-        LIMIT ${take} OFFSET ${skip}`,
-      prisma.$queryRaw`
-        SELECT COUNT(*)::int AS count FROM products
-        WHERE "shopId" = ${shopId}
-          AND "isActive" = true
-          AND "currentStock" <= "minimumStock"`,
-    ]);
-  }
+  [idRows, countRows] = await Promise.all([
+    prisma.$queryRaw`
+      SELECT id FROM products
+      WHERE "shopId" = ${shopId}
+        AND "isActive" = true
+        ${stockFilter}
+        ${supplierFilter}
+        ${expiryFilter}
+        ${searchFilter}
+      ORDER BY "currentStock" ASC, name ASC
+      LIMIT ${take} OFFSET ${skip}`,
+    prisma.$queryRaw`
+      SELECT COUNT(*)::int AS count FROM products
+      WHERE "shopId" = ${shopId}
+        AND "isActive" = true
+        ${stockFilter}
+        ${supplierFilter}
+        ${expiryFilter}
+        ${searchFilter}`,
+  ]);
 
   const ids = idRows.map((row) => row.id);
   if (!ids.length) return { products: [], total: Number(countRows[0]?.count || 0) };
@@ -232,12 +244,36 @@ async function lowStockPage(shopId, search, skip, take) {
 
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { lowStock, search, page = 1, limit = 50 } = req.query;
+  const {
+    lowStock,
+    stockStatus = "ALL",
+    expiryStatus = "ALL",
+    supplierId,
+    search,
+    page = 1,
+    limit = 50,
+  } = req.query;
   const pageNumber = Math.max(Number(page) || 1, 1);
   const limitNumber = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const skip = (pageNumber - 1) * limitNumber;
 
   const where = { shopId, isActive: true };
+  if (supplierId) where.supplierId = supplierId;
+  if (stockStatus === "OUT") where.currentStock = 0;
+  if (stockStatus === "IN_STOCK") where.currentStock = { gt: 0 };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (expiryStatus === "EXPIRING_SOON") {
+    const expiryLimit = new Date(today);
+    expiryLimit.setDate(expiryLimit.getDate() + 30);
+    expiryLimit.setHours(23, 59, 59, 999);
+    where.doesNotExpire = false;
+    where.expiryDate = { gte: today, lte: expiryLimit };
+  }
+  if (expiryStatus === "EXPIRED") {
+    where.doesNotExpire = false;
+    where.expiryDate = { lt: today };
+  }
   if (search) where.OR = [
     { name: { contains: search, mode: "insensitive" } },
     { sku: { contains: search, mode: "insensitive" } },
@@ -253,8 +289,16 @@ const list = asyncHandler(async (req, res) => {
   };
   let products;
   let total;
-  if (lowStock === "true") {
-    ({ products, total } = await lowStockPage(shopId, search, skip, limitNumber));
+  if (stockStatus === "LOW" || lowStock === "true") {
+    ({ products, total } = await lowStockPage(shopId, {
+      search,
+      skip,
+      take: limitNumber,
+      supplierId,
+      expiryStatus,
+      // Existing notification links intentionally keep showing both low and empty stock.
+      includeOutOfStock: stockStatus !== "LOW" || lowStock === "true",
+    }));
   } else {
     [products, total] = await Promise.all([
       prisma.product.findMany({ ...productsQuery, skip, take: limitNumber }),
@@ -361,6 +405,36 @@ const create = asyncHandler(async (req, res) => {
   });
 
   res.status(201).json({ product: redactProduct(product, req) });
+});
+
+const getSummary = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiryLimit = new Date(today);
+  expiryLimit.setDate(expiryLimit.getDate() + 30);
+  expiryLimit.setHours(23, 59, 59, 999);
+  const [summary = {}] = await prisma.$queryRaw`
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE "currentStock" > 0 AND "currentStock" <= "minimumStock")::int AS "lowStock",
+      COUNT(*) FILTER (WHERE "currentStock" = 0)::int AS "outOfStock",
+      COUNT(*) FILTER (WHERE "currentStock" > 0)::int AS "inStock",
+      COUNT(*) FILTER (WHERE "doesNotExpire" = false AND "expiryDate" >= ${today} AND "expiryDate" <= ${expiryLimit})::int AS "expiringSoon",
+      COUNT(*) FILTER (WHERE "doesNotExpire" = false AND "expiryDate" < ${today})::int AS expired
+    FROM products
+    WHERE "shopId" = ${shopId} AND "isActive" = true`;
+
+  res.json({
+    summary: {
+      total: Number(summary.total || 0),
+      lowStock: Number(summary.lowStock || 0),
+      outOfStock: Number(summary.outOfStock || 0),
+      inStock: Number(summary.inStock || 0),
+      expiringSoon: Number(summary.expiringSoon || 0),
+      expired: Number(summary.expired || 0),
+    },
+  });
 });
 
 const update = asyncHandler(async (req, res) => {
@@ -504,8 +578,12 @@ const remove = asyncHandler(async (req, res) => {
 const getLowStock = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const limit = Math.min(Math.max(Number(req.query?.limit) || 100, 1), 200);
-  const { products, total } = await lowStockPage(shopId, req.query?.search, 0, limit);
+  const { products, total } = await lowStockPage(shopId, {
+    search: req.query?.search,
+    skip: 0,
+    take: limit,
+  });
   res.json({ products: products.map((product) => redactProduct(product, req)), total, limited: total > products.length });
 });
 
-module.exports = { list, get, create, update, importCsv, remove, getLowStock, lowStockPage };
+module.exports = { list, getSummary, get, create, update, importCsv, remove, getLowStock, lowStockPage };

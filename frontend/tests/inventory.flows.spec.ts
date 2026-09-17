@@ -38,11 +38,11 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     });
   });
 
-  await page.route("**/*api/products/low-stock*", async (route) => {
+  await page.route("**/*api/products/summary", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ products: products.filter((item) => item.currentStock <= item.minimumStock) }),
+      body: JSON.stringify({ summary: { total: products.length, lowStock: 0, outOfStock: 0, inStock: products.length, expiringSoon: 0, expired: 0 } }),
     });
   });
 
@@ -170,7 +170,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/selling price|bei ya kuuza/i).fill("3500");
   await page.getByLabel(/current stock|idadi iliyopo/i).fill("8");
   await page.getByLabel(/minimum stock|kiwango cha chini/i).fill("2");
-  await page.getByLabel(/supplier|msambazaji/i).selectOption("sup-1");
+  await page.getByLabel(/^supplier$|^msambazaji$/i).selectOption("sup-1");
   await page.getByLabel(/does not expire|haiishi muda/i).check();
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
@@ -257,8 +257,8 @@ test("inventory shows the real total and lets merchants reach later product page
       body: JSON.stringify({ user: { name: "Test Merchant", role: "MERCHANT", language: "en", shop: { name: "Test Shop" } } }),
     });
   });
-  await page.route("**/*api/products/low-stock*", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
+  await page.route("**/*api/products/summary", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ summary: { total: products.length, lowStock: 0, outOfStock: 0, inStock: products.length, expiringSoon: 0, expired: 0 } }) });
   });
   await page.route("**/*api/suppliers", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ suppliers: [] }) });
@@ -329,8 +329,8 @@ test("stock staff can load inventory without an admin-access warning", async ({ 
       }),
     });
   });
-  await page.route("**/*api/products/low-stock*", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [] }) });
+  await page.route("**/*api/products/summary", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ summary: { total: products.length, lowStock: 0, outOfStock: 0, inStock: products.length, expiringSoon: 0, expired: 0 } }) });
   });
   await page.route("**/*api/products?*", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products }) });
@@ -349,4 +349,85 @@ test("stock staff can load inventory without an admin-access warning", async ({ 
 
   await expect(page.getByText("Brake Pads")).toBeVisible();
   await expect(page.getByText("Platform admin access is not available to staff sessions")).not.toBeVisible();
+});
+
+test("inventory filters stock status, supplier, and expiry without hiding other products", async ({ page }) => {
+  const suppliers = [
+    { id: "supplier-1", name: "Jumla Traders", phone: "+255700000001" },
+    { id: "supplier-2", name: "Mtaa Parts", phone: "+255700000002" },
+  ];
+  const products = [
+    { id: "available", name: "Brake Pads", unit: "pcs", buyingPrice: 12000, sellingPrice: 18000, currentStock: 12, minimumStock: 5, isActive: true, doesNotExpire: true, supplier: suppliers[0] },
+    { id: "low", name: "Engine Oil", unit: "litre", buyingPrice: 8000, sellingPrice: 12000, currentStock: 2, minimumStock: 5, isActive: true, doesNotExpire: false, expiryDate: "2026-10-01T00:00:00.000Z", supplier: suppliers[0] },
+    { id: "out", name: "Spark Plug", unit: "pcs", buyingPrice: 3000, sellingPrice: 5000, currentStock: 0, minimumStock: 3, isActive: true, doesNotExpire: true, supplier: suppliers[1] },
+    { id: "expired", name: "Expired Coolant", unit: "litre", buyingPrice: 5000, sellingPrice: 8000, currentStock: 8, minimumStock: 2, isActive: true, doesNotExpire: false, expiryDate: "2026-01-01T00:00:00.000Z", supplier: suppliers[1] },
+  ];
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
+  });
+  await page.route("**/*api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: { name: "Test Merchant", role: "MERCHANT", language: "en", shop: { name: "Test Shop" } } }),
+    });
+  });
+  await page.route("**/*api/products/summary", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ summary: { total: 4, lowStock: 1, outOfStock: 1, inStock: 3, expiringSoon: 1, expired: 1 } }),
+    });
+  });
+  await page.route("**/*api/suppliers", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ suppliers }) });
+  });
+  await page.route("**/*api/subscription/status", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
+  });
+  await page.route("**/*api/notifications", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) });
+  });
+  await page.route("**/*api/products?*", async (route) => {
+    const url = new URL(route.request().url());
+    const stockStatus = url.searchParams.get("stockStatus") || "ALL";
+    const expiryStatus = url.searchParams.get("expiryStatus") || "ALL";
+    const supplierId = url.searchParams.get("supplierId") || "";
+    const filtered = products.filter((product) => {
+      if (stockStatus === "LOW" && !(product.currentStock > 0 && product.currentStock <= product.minimumStock)) return false;
+      if (stockStatus === "OUT" && product.currentStock !== 0) return false;
+      if (stockStatus === "IN_STOCK" && product.currentStock <= 0) return false;
+      if (expiryStatus === "EXPIRING_SOON" && product.id !== "low") return false;
+      if (expiryStatus === "EXPIRED" && product.id !== "expired") return false;
+      return !supplierId || product.supplier?.id === supplierId;
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ products: filtered, pagination: { page: 1, limit: 50, total: filtered.length, totalPages: 1 } }),
+    });
+  });
+
+  await page.goto("/inventory");
+  await expect(page.getByText("Brake Pads")).toBeVisible();
+
+  await page.getByRole("button", { name: /low stock/i }).click();
+  await expect(page.getByText("Engine Oil")).toBeVisible();
+  await expect(page.getByText("Spark Plug")).not.toBeVisible();
+
+  await page.getByRole("button", { name: /out of stock/i }).click();
+  await expect(page.getByText("Spark Plug")).toBeVisible();
+  await expect(page.getByText("Engine Oil")).not.toBeVisible();
+
+  await page.getByRole("button", { name: /all products/i }).click();
+  await page.getByLabel("Expiry").selectOption("EXPIRED");
+  await expect(page.getByText("Expired Coolant")).toBeVisible();
+  await expect(page.getByText("Brake Pads")).not.toBeVisible();
+
+  await page.getByRole("button", { name: /clear filters/i }).click();
+  await page.getByLabel("Supplier filter").selectOption("supplier-1");
+  await expect(page.getByText("Brake Pads")).toBeVisible();
+  await expect(page.getByText("Engine Oil")).toBeVisible();
+  await expect(page.getByText("Spark Plug")).not.toBeVisible();
 });

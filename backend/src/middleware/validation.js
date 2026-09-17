@@ -58,6 +58,9 @@ const productUpdateValidation = [
 
 const productListValidation = [
   query("lowStock").optional().isIn(["true", "false"]).withMessage("lowStock must be true or false"),
+  query("stockStatus").optional().isIn(["ALL", "LOW", "OUT", "IN_STOCK"]).withMessage("Invalid stock status"),
+  query("expiryStatus").optional().isIn(["ALL", "EXPIRING_SOON", "EXPIRED"]).withMessage("Invalid expiry status"),
+  query("supplierId").optional().isString().withMessage("supplierId must be a string"),
   query("search").optional().isString().withMessage("search must be a string"),
   query("page").optional().isInt({ min: 1 }).withMessage("page must be 1 or greater"),
   query("limit").optional().isInt({ min: 1, max: 200 }).withMessage("limit must be between 1 and 200"),

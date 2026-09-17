@@ -49,7 +49,7 @@ const list = asyncHandler(async (req, res) => {
       titleSw: `Bidhaa ${lowStock.length} zina stock ndogo`,
       description: outCount ? `${outCount} item${outCount === 1 ? " is" : "s are"} out of stock.` : `${lowStock[0].name} needs attention first.`,
       descriptionSw: outCount ? `Bidhaa ${outCount} zimeisha kabisa.` : `${lowStock[0].name} inahitaji kuagizwa kwanza.`,
-      href: "/inventory?lowStock=true",
+      href: "/inventory?stockStatus=LOW",
       count: lowStock.length,
     });
   }

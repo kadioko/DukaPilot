@@ -91,7 +91,7 @@ async function queueShopAlerts({ afterId = null, limit = 100 } = {}) {
       queued += Number(await queueForShop(shop.id, "LOW_STOCK", {
         title: sw ? "DukaPilot: stock inahitaji uangalizi" : "DukaPilot: stock needs attention",
         body: sw ? `${lowStock[0].name}${lowStock.length > 1 ? ` na bidhaa nyingine ${lowStock.length - 1}` : ""} inahitaji kuagizwa.` : `${lowStock[0].name}${lowStock.length > 1 ? ` and ${lowStock.length - 1} more item${lowStock.length === 2 ? "" : "s"}` : ""} need restocking.`,
-        href: "/inventory?lowStock=true",
+        href: "/inventory?stockStatus=LOW",
       }));
     }
 
