@@ -157,3 +157,11 @@ verify a crop farm can choose Crops, Livestock, or Both; add a plot and cycle;
 create starter products; use stock as an input; record direct labour; record two
 harvest batches against a planned total; sell the harvest; close the cycle; and
 see the owner report while a farm staff account cannot see money or profit.
+
+## Demo accounts
+
+Use `Kijani Mazao Farm` for a crops-only walkthrough and `Upendo Poultry & Pigs
+Farm` for livestock. Both are refreshed through the guarded showcase seed, with
+plots, harvests, field work, layers, pigs, production, and packing already
+visible. Login details and the safe refresh command are in
+[Demo Showcase Seeding](./DEMO_SHOWCASE_SEEDING.md).

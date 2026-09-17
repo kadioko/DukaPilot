@@ -91,11 +91,20 @@ Merchant and supplier demo PINs: `1234`. Admin credentials are intentionally not
 | --- | --- | --- | --- |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED — every scenario (see below)** |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders in Jumla supplier portal |
-| Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, wholesale sales, bar category |
+| Cashier / stock | +255700000008 | Rehema - Sales & Stock / Duka la Amina | Can sell and manage stock without reports, profit, staff, or billing access |
+| Merchant | +255700000004 | Hassan Juma / Hassan Bar & Kitchen | Bar — drinks, prepared food, recipe, and current batch |
+| Merchant | +255700000009 | Mama Ntilie / Mama Ntilie Restaurant | Restaurant — ingredients, prepared plates, recipe, and current batch |
+| Merchant | +255700000012 | Asha Macha / Kijani Mazao Farm | Crops-only farm — plots, cycles, inputs, two harvests, field plan, grades, and crop sale |
+| Merchant | +255700000013 | Musa Selemani / Upendo Poultry & Pigs Farm | Layers and pigs — groups, feed, production, egg packing, and farm sale |
 | Merchant | +255700000005 | Fatuma Ally / Fatuma Beauty Shop | Beauty, online channel, out-of-stock scenario |
 | **Supplier** | **+255700000001** | **Jumla Traders Ltd** | **FEATURED — every order status in portal** |
 | Supplier | +255700000006 | Rafiki Beverages Ltd | Hassan's beverage supplier |
 | Supplier | +255700000007 | Beauty Supplies TZ | Fatuma's cosmetics supplier |
+
+The public demo PIN is `1234` for every account in this table. Refresh these
+accounts with the guarded `npm run db:seed-demo-showcase` command; see
+[Demo Showcase Seeding](./docs/DEMO_SHOWCASE_SEEDING.md). Do not use real
+customer details or payment references in any demo account.
 
 ---
 

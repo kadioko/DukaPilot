@@ -49,3 +49,10 @@ Do not record a chicken purchase in both places. Recording it as a normal expens
 Food preparation batches are intentionally immutable after saving. If staff make a mistake, use a stock adjustment with a clear note, then prepare a corrected batch. This preserves the audit trail instead of rewriting past stock history.
 
 Packaged drinks, bottles, cans, and barcode products do not need food preparation. Continue receiving and selling them through the normal inventory flow.
+
+## Demo accounts
+
+Use `Hassan Bar & Kitchen` to show bar drinks plus prepared chicken portions,
+and `Mama Ntilie Restaurant` to show a daily meal recipe and prepared plates.
+Both include a current food-preparation batch and are refreshed with the guarded
+showcase seed documented in [Demo Showcase Seeding](./DEMO_SHOWCASE_SEEDING.md).

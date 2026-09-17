@@ -368,6 +368,8 @@ npm run dev         # runs on :3000
 
 For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm run db:seed-demo-history` from `backend/`. It redistributes existing demo sales across 30 days before adding any missing history; it never enables backdating in the live sales API. Read [docs/DEMO_HISTORY_SEEDING.md](./docs/DEMO_HISTORY_SEEDING.md) before running it against a hosted database.
 
+To refresh the complete public business showcase used on `/demo`, run the separate guarded command `npm run db:seed-demo-showcase`. It creates or refreshes only named `isDemo` shops, their current operational examples, and the public cashier demo. Read [docs/DEMO_SHOWCASE_SEEDING.md](./docs/DEMO_SHOWCASE_SEEDING.md) before using it against Railway.
+
 ### Local Verification Checklist
 
 - Backend health responds at `http://localhost:4000/health`
@@ -475,10 +477,15 @@ Merchant and supplier demo PINs: `1234`. Admin credentials are not published in 
 | --- | --- | --- | --- |
 | **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED** — 12 products (all stock/expiry states), 10 sales (all payment methods + wholesale + online), 5 supplier order statuses, 6 customer order statuses, stock movements IN/OUT/ADJUSTMENT |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders from Jumla Traders visible in supplier portal |
-| Merchant | +255700000004 | Hassan Juma / Hassan Bar & Wines | Bar, Buguruni (Ilala) — wholesale sales + Rafiki Beverages orders |
+| Cashier / stock | +255700000008 | Rehema - Sales & Stock / Duka la Amina | Can sell and manage stock without reports or profit access |
+| Merchant | +255700000004 | Hassan Juma / Hassan Bar & Kitchen | Bar, Buguruni (Ilala) — drinks, prepared food, recipe, and current batch |
+| Merchant | +255700000009 | Mama Ntilie / Mama Ntilie Restaurant | Restaurant — ingredients, menu plates, recipe, and current batch |
+| Merchant | +255700000012 | Asha Macha / Kijani Mazao Farm | Crops-only farm — plots, cycles, inputs, two harvests, field plan, and crop sale |
+| Merchant | +255700000013 | Musa Selemani / Upendo Poultry & Pigs Farm | Livestock farm — layers, pigs, feed, egg/pork production, and egg packing |
 | Merchant | +255700000005 | Fatuma Ally / Fatuma Beauty Shop | Beauty shop, Tegeta (Kinondoni) — online channel + Beauty Supplies TZ orders |
 | **Supplier** | **+255700000001** | **Jumla Traders Ltd** | **FEATURED** — all 5 order statuses visible in supplier portal, orders from 2 merchants |
 | Supplier | +255700000006 | Rafiki Beverages Ltd | Hassan's beverage supplier |
 | Supplier | +255700000007 | Beauty Supplies TZ | Fatuma's cosmetics supplier |
 
 > For a full per-scenario breakdown of what is seeded for Mama Amina and Jumla Traders, see [TESTING.md](./TESTING.md#featured-accounts--all-scenarios-reference).
+> For the repeatable bar, restaurant, crop, livestock, and cashier showcase data, see [Demo Showcase Seeding](./docs/DEMO_SHOWCASE_SEEDING.md).
