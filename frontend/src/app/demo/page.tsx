@@ -53,7 +53,7 @@ export default function DemoPage() {
             ))}
           </div>
           <p className="mt-4 text-xs leading-5 text-gray-500">{lang === "sw" ? "Hizi ni akaunti za majaribio tu. Usiongeze taarifa binafsi za wateja au malipo halisi." : "These are test accounts only. Do not add real customer details or real payments."}</p>
-          <Link href="/" className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
+          <Link href="/#sign-in" className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
             {lang === "sw" ? "Fungua login ya demo" : "Open demo login"}
             <ArrowRight className="h-4 w-4" />
           </Link>
@@ -65,7 +65,7 @@ export default function DemoPage() {
           body={lang === "sw"
             ? "Tumia akaunti za demo kuona mauzo, stock, maagizo, madeni, matumizi, nukuu za bei, staff, bar/restaurant, mashamba na AI Assistant. PIN zote ni 1234."
             : "Use demo accounts to see sales, stock, orders, debts, expenses, quotations, staff, bar/restaurant operations, farms, and the AI Assistant. All PINs are 1234."}
-          primaryCta={{ href: "/", label: lang === "sw" ? "Fungua login" : "Open login" }}
+          primaryCta={{ href: "/#sign-in", label: lang === "sw" ? "Fungua login" : "Open login" }}
           secondaryCta={{
             href: "https://wa.me/255743910580?text=Nataka%20kusaidiwa%20kuweka%20mfumo%20baada%20ya%20onyesho%20la%20DukaPilot",
             label: lang === "sw" ? "Nataka kuweka mfumo" : "I want setup",
@@ -93,7 +93,7 @@ export default function DemoPage() {
         </section>
         <ProductProofSection />
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
+          <Link href="/#sign-in" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
             {lang === "sw" ? "Fungua login" : "Open login"}
             <ArrowRight className="h-4 w-4" />
           </Link>

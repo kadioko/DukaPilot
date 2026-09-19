@@ -31,3 +31,17 @@ test("mobile Contact leads with WhatsApp and has one page heading", async ({ pag
   expect(await page.locator("h1").count()).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("mobile public menu sends visitors to the sign-in panel", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/pricing?lang=en");
+
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("link", { name: "Sign in", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/#sign-in$/);
+  const signInPanel = page.locator("#sign-in");
+  await expect(signInPanel).toBeVisible();
+  expect(await signInPanel.evaluate((element) => element.getBoundingClientRect().top < window.innerHeight)).toBe(true);
+});

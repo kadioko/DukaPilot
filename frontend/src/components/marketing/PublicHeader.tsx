@@ -21,10 +21,13 @@ interface PublicHeaderProps {
   lang?: Lang;
   onLanguageChange?: (lang: Lang) => void;
   onStart?: () => void;
+  onSignIn?: () => void;
   className?: string;
 }
 
-export default function PublicHeader({ lang: langProp, onLanguageChange, onStart, className }: PublicHeaderProps) {
+const signInHref = "/#sign-in";
+
+export default function PublicHeader({ lang: langProp, onLanguageChange, onStart, onSignIn, className }: PublicHeaderProps) {
   const appLang = useLang();
   const lang = langProp || appLang;
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -33,6 +36,10 @@ export default function PublicHeader({ lang: langProp, onLanguageChange, onStart
     setMobileOpen(false);
     trackMarketingEvent("store_click");
     onStart?.();
+  };
+  const handleSignIn = () => {
+    setMobileOpen(false);
+    onSignIn?.();
   };
 
   const startControl = onStart ? (
@@ -59,7 +66,7 @@ export default function PublicHeader({ lang: langProp, onLanguageChange, onStart
           <div className="grid grid-cols-2 gap-1 rounded-lg bg-white/10 p-1">
             {(["sw", "en"] as const).map((language) => <button key={language} type="button" onClick={() => changeLanguage(language)} className={clsx("min-h-0 rounded-md px-3 py-2 text-xs font-bold", lang === language ? "bg-white text-brand-800" : "text-brand-50 hover:bg-white/10")}>{language.toUpperCase()}</button>)}
           </div>
-          <Link prefetch={false} href="/" className="rounded-lg px-3 py-2 text-sm font-semibold text-white hover:bg-white/10">{lang === "sw" ? "Ingia" : "Sign in"}</Link>
+          <Link prefetch={false} href={signInHref} onClick={handleSignIn} className="rounded-lg px-3 py-2 text-sm font-semibold text-white hover:bg-white/10">{lang === "sw" ? "Ingia" : "Sign in"}</Link>
           {startControl}
         </div>
         <div className="flex items-center gap-2 lg:hidden">
@@ -67,7 +74,7 @@ export default function PublicHeader({ lang: langProp, onLanguageChange, onStart
           <button type="button" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen} aria-label={mobileOpen ? "Close menu" : "Open menu"} className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-brand-800">{mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}</button>
         </div>
       </div>
-      {mobileOpen && <div className="absolute left-0 right-0 top-full border-t border-white/15 bg-[#0d6b3c] p-4 shadow-xl lg:hidden"><nav className="grid grid-cols-2 gap-1 text-sm font-semibold text-brand-50">{navItems.map((item) => <Link prefetch={false} key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-3 hover:bg-white/15">{item[lang]}</Link>)}</nav><div className="mt-3 grid grid-cols-2 gap-2"><Link prefetch={false} href="/" className="flex min-h-11 items-center justify-center rounded-lg border border-white/30 text-sm font-bold">{lang === "sw" ? "Ingia" : "Sign in"}</Link>{startControl}</div></div>}
+      {mobileOpen && <div className="absolute left-0 right-0 top-full border-t border-white/15 bg-[#0d6b3c] p-4 shadow-xl lg:hidden"><nav className="grid grid-cols-2 gap-1 text-sm font-semibold text-brand-50">{navItems.map((item) => <Link prefetch={false} key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-3 hover:bg-white/15">{item[lang]}</Link>)}</nav><div className="mt-3 grid grid-cols-2 gap-2"><Link prefetch={false} href={signInHref} onClick={handleSignIn} className="flex min-h-11 items-center justify-center rounded-lg border border-white/30 text-sm font-bold">{lang === "sw" ? "Ingia" : "Sign in"}</Link>{startControl}</div></div>}
     </header>
   );
 }

@@ -156,6 +156,22 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   }, [searchParams]);
 
   useEffect(() => {
+    const openSignIn = () => {
+      if (window.location.hash !== "#sign-in") return;
+      setView("login");
+      requestAnimationFrame(() => {
+        const signInPanel = document.getElementById("sign-in");
+        signInPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+        signInPanel?.focus({ preventScroll: true });
+      });
+    };
+
+    openSignIn();
+    window.addEventListener("hashchange", openSignIn);
+    return () => window.removeEventListener("hashchange", openSignIn);
+  }, []);
+
+  useEffect(() => {
     if (view !== "forgot") return;
     let cancelled = false;
     api.get<{ sms: boolean; whatsapp: boolean }>("/auth/otp/channels", lang)
@@ -347,7 +363,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
 
   return (
     <div className="min-h-screen bg-[linear-gradient(135deg,#0b5d34_0%,#13763f_44%,#0d342c_100%)] px-4 py-3 lg:px-8 lg:py-4">
-      <PublicHeader lang={lang} onLanguageChange={setAppLanguage} onStart={() => switchView("register")} className="top-3 mx-auto max-w-6xl rounded-lg border" />
+      <PublicHeader lang={lang} onLanguageChange={setAppLanguage} onStart={() => switchView("register")} onSignIn={() => switchView("login")} className="top-3 mx-auto max-w-6xl rounded-lg border" />
 
       <div className="mx-auto grid min-h-[calc(100vh-6rem)] w-full max-w-6xl items-center gap-7 py-6 lg:grid-cols-[1.08fr_420px] lg:gap-8 lg:py-8">
         <section className="text-white">
@@ -436,7 +452,7 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
           </div>
         </section>
 
-        <div className="w-full max-w-sm justify-self-center lg:justify-self-end">
+        <div id="sign-in" tabIndex={-1} className="w-full max-w-sm scroll-mt-24 justify-self-center outline-none lg:justify-self-end">
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-xl p-6">
           {/* ===== FORGOT PIN VIEW ===== */}
