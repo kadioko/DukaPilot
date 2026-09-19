@@ -37,6 +37,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
 - **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Crop, livestock, and mixed-farm setup; plots, crop cycles, inputs, harvest-to-stock, livestock production, staff privacy, cash rules, and farm AI boundaries
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
+- **Merchant Balance:** [docs/MERCHANT_BALANCE_WALLET.md](./docs/MERCHANT_BALANCE_WALLET.md) - Pooled nTZS settlement, isolated business ledgers, safe deposits/withdrawals, fees, and reconciliation
 - **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
 - **Railway Pro operations:** [docs/PRO_OPERATIONS_RUNBOOK.md](./docs/PRO_OPERATIONS_RUNBOOK.md) - Upgrade checklist, backup/restore drills, production monitoring, Sentry review, and incident evidence
 - **Railway Hobby local backups:** [docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md](./docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md) - Verified local PostgreSQL archives, daily Windows scheduling, retention, and restore drills without saving Railway credentials locally
@@ -76,6 +77,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Quotations and estimates** | Build customer-safe Kiswahili or English quotations for services, projects, labour, materials, and stock; track idempotent deposits/refunds, acceptance, revisions, Daily Close cash handling, reminders, and conversion to one sale without counting a quote as revenue |
+| **Merchant Balance** | Owner-only prepaid merchant balance with nTZS deposit and withdrawal workflows, fee preview, retry-safe settlement, and separation from sales, expenses, Daily Close, and subscriptions |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
 | **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations for stock, debts, expenses, orders, accepted quotations, deposits, and expiring estimates, with why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
@@ -111,6 +113,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **AI analytics** | Track assistant actions, opened/completed/dismissed rates, and top action types |
 | **Sync support** | View offline sync failures by shop/device, rename devices, and mark issues Open, Contacted, or Resolved |
 | **SMS monitoring** | Platform-admin-only live NextSMS balance and recent delivery status, with masked recipients and no SMS body or PIN-code access |
+| **Merchant-wallet reconciliation** | Review pooled provider funds, merchant liabilities, pending settlements, masked transaction history, and audit-logged evidence-backed corrections |
 | **Audit log viewer** | Searchable log of all significant actions |
 
 ---
@@ -415,6 +418,13 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 | `WHATSAPP_ENABLE_FREEFORM` | Optional | Keep `false`; set `true` only for customer-initiated 24-hour WhatsApp service windows |
 | `META_WHATSAPP_VERIFY_TOKEN` | Required for Meta webhooks | Random secret entered both in Railway and Meta's webhook verification screen. |
 | `META_WHATSAPP_APP_SECRET` | Required for Meta webhooks | App Secret from Meta App Settings; validates signed delivery callbacks. Never commit it. |
+| `NTZS_MERCHANT_BALANCE_ENABLED` | Required to launch wallet | Keep `false` until controlled deposit/withdrawal reconciliation has passed. Separate from subscription checkout. |
+| `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` | Recommended for first live test | Comma-separated root shop IDs permitted to initiate wallet operations; leave empty only for a full rollout. |
+| `NTZS_MERCHANT_BALANCE_USER_ID` | Required to launch wallet | Private nTZS pooled merchant-balance user ID; Railway only. |
+| `NTZS_MERCHANT_BALANCE_WALLET_ADDRESS` | Required operational record | Private nTZS pooled settlement wallet address; Railway only, never send to a browser. |
+| `NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS` | Optional | DukaPilot withdrawal fee in basis points; default `200` = 2%. |
+| `NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS` | Optional | Minimum recipient amount; default `5000`. |
+| `MERCHANT_WALLET_RECONCILE_CRON_SECRET` | Required to automate wallet payout checks | Strong random value shared only with the GitHub Actions secret of the same name. |
 | `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
 | `BACKUP_RETAIN_DAYS` | Optional | Days to keep backups (default: `7`) |
 
@@ -432,7 +442,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Current production migration sequence:** through `20260915001000_staff_cash_session_permission`. The latest changes add crop/field operation retry safety and explicit manager team-shift oversight; see [Farm Operations](./docs/FARM_OPERATIONS.md) and [Staff Access Guide](./docs/STAFF_ACCESS_GUIDE.md).
+- **Current production migration sequence:** through `20260919090000_merchant_wallets`. The latest migration adds the merchant-balance ledger; see [Merchant Balance](./docs/MERCHANT_BALANCE_WALLET.md) before enabling live provider operations.
 
 ### Deployment Checklist
 
@@ -462,6 +472,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - Offline support includes an already-open Sales screen and, for farms, already-open Crop operations or Field plan screens. Queued work is scoped to the business, branch, and actor, with retry history and admin sync-failure resolution by shop/device. Reopening the app without a connection still shows `/offline.html`; inventory, debts, expenses, stock counts, Daily Close, and catalog checkout remain online-only.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired or suspended shops can still view data and open **Billing**, where they can pay, submit a reference, and see the reactivation steps. Operational changes such as new sales, stock edits, expenses, staff changes, and orders resume after an admin verifies payment.
+- Merchant Balance is intentionally independent from subscriptions and Daily Close. Only business owners can access it, and it remains disabled until the nTZS deposit and withdrawal acceptance checklist has passed.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Debt collections guard the debt amount, prior collection total, and status together. Stock-count completion refuses to overwrite sales or receipts recorded after the count began, and one count can only be finalized once.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.

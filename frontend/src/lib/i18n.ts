@@ -34,6 +34,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "nav.customerOrders": { sw: "Maagizo ya Wateja", en: "Customer Orders" },
   "nav.quotations": { sw: "Nukuu za Bei", en: "Quotations" },
   "nav.billing": { sw: "Malipo na Plan", en: "Billing" },
+  "nav.wallet": { sw: "Salio la Duka", en: "Merchant Balance" },
   "nav.supplierPortal": { sw: "Portal ya Msambazaji", en: "Supplier Portal" },
   "nav.reportIssue": { sw: "Ripoti Tatizo", en: "Report Issue" },
   "nav.referrals": { sw: "Mialiko na Zawadi", en: "Refer & Earn" },

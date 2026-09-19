@@ -38,6 +38,10 @@ async function anonymizeMerchantAccount(userId) {
     await tx.service.updateMany({ where: { shopId: { in: shopIds } }, data: { name: "Deleted service", description: null, isActive: false } });
     await tx.expense.updateMany({ where: { shopId: { in: shopIds } }, data: { title: "Deleted expense", vendor: null, note: null } });
     await tx.recurringExpense.updateMany({ where: { shopId: { in: shopIds } }, data: { title: "Deleted recurring expense", vendor: null, note: null, isActive: false } });
+    await tx.merchantWalletTransaction.updateMany({
+      where: { shopId: rootId },
+      data: { payerPhone: null, recipientPhone: null, recipientName: null, providerInstruction: null, requestedByUserId: null, metadata: Prisma.DbNull },
+    });
     await tx.order.updateMany({ where: { shopId: { in: shopIds } }, data: { note: null } });
     await tx.stockReceipt.updateMany({ where: { shopId: { in: shopIds } }, data: { invoiceNumber: null, note: null, receivedBy: null } });
     await tx.stockMovement.updateMany({ where: { product: { shopId: { in: shopIds } } }, data: { note: null } });

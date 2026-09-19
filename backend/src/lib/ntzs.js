@@ -1,9 +1,26 @@
 const crypto = require("node:crypto");
 
 const PRICES = Object.freeze({ BASIC: 15000, PRO: 35000 });
+const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 
 function configured() {
   return process.env.NTZS_ENABLED === "true" && /^ntzs_live_/.test((process.env.NTZS_API_KEY || "").trim()) && Boolean((process.env.NTZS_WEBHOOK_SECRET || "").trim());
+}
+
+// Merchant balances use a separate, explicitly enabled provider user wallet.
+// Keeping this flag independent from subscription checkout prevents a deploy
+// from accidentally enabling either money flow on behalf of the other.
+function merchantWalletConfigured() {
+  return process.env.NTZS_MERCHANT_BALANCE_ENABLED === "true"
+    && /^ntzs_live_/.test((process.env.NTZS_API_KEY || "").trim())
+    && Boolean((process.env.NTZS_WEBHOOK_SECRET || "").trim())
+    && UUID_PATTERN.test(String(process.env.NTZS_MERCHANT_BALANCE_USER_ID || "").trim());
+}
+
+function merchantWalletUserId() {
+  const value = String(process.env.NTZS_MERCHANT_BALANCE_USER_ID || "").trim();
+  if (!UUID_PATTERN.test(value)) throw Object.assign(new Error("Merchant balance wallet is not configured"), { status: 503 });
+  return value;
 }
 
 async function request(path, options = {}) {
@@ -13,8 +30,14 @@ async function request(path, options = {}) {
     headers: { Authorization: `Bearer ${process.env.NTZS_API_KEY.trim()}`, "Content-Type": "application/json", ...options.headers },
     signal: AbortSignal.timeout(12000),
   });
-  const body = await response.json();
-  if (!response.ok) throw Object.assign(new Error("Payment provider unavailable"), { status: 502 });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    // nTZS documents both { code } and { error: "machine_code" } failure
+    // shapes. Preserve the machine-readable code so money flows can decide
+    // whether they must hold funds for reconciliation.
+    const providerCode = body?.code || body?.error?.code || (typeof body?.error === "string" ? body.error : null);
+    throw Object.assign(new Error("Payment provider unavailable"), { status: 502, providerStatus: response.status, providerCode });
+  }
   return body;
 }
 
@@ -23,6 +46,17 @@ function verifyDeposit(checkout, deposit) {
     throw Object.assign(new Error("Payment verification mismatch. Contact support."), { status: 409 });
   }
   return deposit.status === "completed";
+}
+
+function verifyMerchantDeposit(transaction, deposit, providerUserId) {
+  if (!deposit || deposit.id !== transaction.providerId
+    || deposit.amountTzs !== transaction.amountTzs
+    || deposit.paymentMethod !== "mobile_money"
+    || deposit.livemode === false
+    || (deposit.userId && deposit.userId !== providerUserId)) {
+    throw Object.assign(new Error("Merchant deposit verification mismatch. Contact support."), { status: 409 });
+  }
+  return String(deposit.status || "").toLowerCase() === "completed";
 }
 
 function verifySignature(rawBody, timestamp, signature, secret) {
@@ -42,4 +76,14 @@ function renewalEnd(shop, now = new Date()) {
   return end;
 }
 
-module.exports = { PRICES, configured, request, verifyDeposit, verifySignature, renewalEnd };
+module.exports = {
+  PRICES,
+  configured,
+  merchantWalletConfigured,
+  merchantWalletUserId,
+  request,
+  verifyDeposit,
+  verifyMerchantDeposit,
+  verifySignature,
+  renewalEnd,
+};

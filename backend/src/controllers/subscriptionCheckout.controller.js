@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const ntzs = require("../lib/ntzs");
+const merchantWallet = require("../services/merchantWallet.service");
 const { getBillingShopIdForUser: getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone } = require("../lib/phone");
 const { priceSubscription, validateBranchCapacity } = require("../lib/subscriptionPricing");
@@ -161,6 +162,10 @@ const adminRetryException = wrap(async (req, res) => {
 const webhook = wrap(async (req, res) => {
   if (!ntzs.verifySignature(req.rawBody, req.headers["x-webhook-timestamp"], req.headers["x-webhook-signature"], process.env.NTZS_WEBHOOK_SECRET)) return res.status(401).json({ error: "Invalid signature" });
   const event = req.body;
+  // Wallet events are verified again against the provider record before the
+  // internal ledger changes. Returning 503 for a matching event that cannot
+  // yet be reconciled asks the provider to retry rather than losing it.
+  if (event.data?.livemode !== false && await merchantWallet.reconcileWebhook(event)) return res.json({ received: true });
   if (event.type !== "deposit.completed" || event.data?.livemode !== true) return res.json({ received: true });
   if (typeof event.data.depositId !== "string") return res.status(400).json({ error: "Invalid deposit" });
   const record = await prisma.subscriptionCheckout.findUnique({ where: { providerId: event.data.depositId } });

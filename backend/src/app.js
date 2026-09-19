@@ -36,6 +36,7 @@ const foodPreparationRoutes = require("./routes/foodPreparation.routes");
   const cropRoutes = require("./routes/crop.routes");
 const referralRoutes = require("./routes/referral.routes");
 const quotationRoutes = require("./routes/quotation.routes");
+const merchantWalletRoutes = require("./routes/merchantWallet.routes");
 const publicQuotationRoutes = require("./routes/publicQuotation.routes");
 const metaWhatsAppWebhookRoutes = require("./routes/metaWhatsAppWebhook.routes");
 const cronRoutes = require("./routes/cron.routes");
@@ -174,6 +175,7 @@ app.use("/api/food-preparation", foodPreparationRoutes);
   app.use("/api/crops", cropRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/quotations", quotationRoutes);
+app.use("/api/wallet", merchantWalletRoutes);
 
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "API route not found" });

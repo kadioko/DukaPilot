@@ -212,6 +212,9 @@ model Shop {
   additionalBranchSlots    Int                     @default(0)
   subscriptionPayments     SubscriptionPayment[]
   subscriptionCheckouts    SubscriptionCheckout[]
+  merchantWallet           MerchantWallet?        @relation("MerchantWalletBusiness")
+  merchantWalletTransactions MerchantWalletTransaction[] @relation("MerchantWalletTransactions")
+  merchantWalletEntries    MerchantWalletEntry[]  @relation("MerchantWalletEntries")
   offlineSyncEvents        OfflineSyncEvent[]
   cropOperationReceipts    CropOperationReceipt[]
   assistantActions         AssistantAction[]
@@ -372,6 +375,85 @@ model SubscriptionPayment {
 
   @@index([shopId, paidAt])
   @@map("subscription_payments")
+}
+
+// A business has one internal DukaPilot balance. The provider-facing wallet is
+// deliberately shared and configured only on the server; merchants never see
+// or control that provider identity directly.
+model MerchantWallet {
+  id             String                      @id @default(cuid())
+  businessShopId String                      @unique
+  businessShop   Shop                        @relation("MerchantWalletBusiness", fields: [businessShopId], references: [id], onDelete: Cascade)
+  balanceTzs     Int                         @default(0)
+  transactions   MerchantWalletTransaction[]
+  entries        MerchantWalletEntry[]
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  @@index([balanceTzs])
+  @@map("merchant_wallets")
+}
+
+// Provider interactions are separate from entries so a pending mobile-money
+// request can reserve a balance without pretending that it has settled.
+model MerchantWalletTransaction {
+  id                String                @id @default(cuid())
+  walletId          String
+  wallet            MerchantWallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  shopId            String
+  shop              Shop                  @relation("MerchantWalletTransactions", fields: [shopId], references: [id], onDelete: Cascade)
+  kind              String
+  status            String                @default("PENDING")
+  requestKey        String                @unique
+  amountTzs         Int
+  platformFeeTzs    Int                   @default(0)
+  providerFeeTzs    Int                   @default(0)
+  totalDebitTzs     Int                   @default(0)
+  payerPhone        String?
+  recipientPhone    String?
+  recipientName     String?
+  payoutRail        String?
+  providerId        String?               @unique
+  providerQuoteId   String?
+  providerStatus    String?
+  providerInstruction String?
+  failureCode       String?
+  failureReason     String?
+  requestedByUserId String?
+  completedAt       DateTime?
+  reversedAt        DateTime?
+  metadata          Json?
+  entries           MerchantWalletEntry[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([shopId, status, createdAt])
+  @@index([walletId, createdAt])
+  @@index([status, updatedAt])
+  @@map("merchant_wallet_transactions")
+}
+
+// Entries are immutable. A failure or reversal is represented by a new
+// compensating entry, never by editing or deleting an earlier movement.
+model MerchantWalletEntry {
+  id              String                     @id @default(cuid())
+  walletId        String
+  wallet          MerchantWallet             @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  transactionId   String
+  transaction     MerchantWalletTransaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  shopId          String
+  shop            Shop                       @relation("MerchantWalletEntries", fields: [shopId], references: [id], onDelete: Cascade)
+  type            String
+  direction       String
+  amountTzs       Int
+  balanceAfterTzs Int
+  description     String?
+  createdAt       DateTime                   @default(now())
+
+  @@unique([transactionId, type])
+  @@index([walletId, createdAt])
+  @@index([shopId, createdAt])
+  @@map("merchant_wallet_entries")
 }
 
 model OfflineSyncEvent {

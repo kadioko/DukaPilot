@@ -30,6 +30,7 @@ import {
   Gift,
   FileText,
   Building2,
+  Landmark,
 } from "lucide-react";
 import { clearToken, api, getCurrentSession, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -96,6 +97,7 @@ const merchantNav: NavItem[] = [
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },
   { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canRecordExpenses", group: "money" },
   { href: "/profit", labelKey: "nav.profit", icon: ChartNoAxesCombined, permission: "canViewReports", group: "money" },
+  { href: "/wallet", labelKey: "nav.wallet", icon: Landmark, ownerOnly: true, group: "money" },
   { href: "/billing", labelKey: "nav.billing", icon: CreditCard, permission: "canManageStaff", group: "money" },
   { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff", feature: "staff", group: "manage" },
   { href: "/branches", label: "Branches / Matawi", icon: Building2, ownerOnly: true, group: "manage" },
@@ -106,6 +108,7 @@ const merchantNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { href: "/admin", label: "Admin", icon: LayoutDashboard },
+  { href: "/admin/wallet", label: "Merchant Wallets", icon: Landmark },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck },
   { href: "/reports", label: "Reports", icon: AlertTriangle },
 ];
@@ -147,6 +150,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     if (pathname === "/expenses" || pathname.startsWith("/expenses/")) return permissions.canRecordExpenses;
     if (pathname === "/assistant" || pathname.startsWith("/assistant/")) return permissions.canUseAssistant;
     if (pathname === "/quotations" || pathname.startsWith("/quotations/")) return permissions.canViewQuotations;
+    if (pathname === "/wallet" || pathname.startsWith("/wallet/")) return false;
     if (pathname === "/staff" || pathname.startsWith("/staff/") || pathname === "/billing" || pathname.startsWith("/billing/") || pathname === "/branches" || pathname.startsWith("/branches/") || pathname === "/referrals" || pathname.startsWith("/referrals/")) return permissions.canManageStaff;
     return true;
   }

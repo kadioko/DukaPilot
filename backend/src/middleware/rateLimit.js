@@ -112,4 +112,59 @@ const subscriptionPaymentLimiter = rateLimit({
   message: { error: "Please wait a minute before checking payment again." },
 });
 
-module.exports = { apiRateLimiter, authRateLimiter, publicRateLimiter, publicEventRateLimiter, publicOrderRateLimiter, otpRequestRateLimiter, statusRateLimiter, subscriptionPaymentLimiter };
+function walletActorKey(req) {
+  return `${String(req.user?.userId || "unknown")}:${String(req.user?.businessShopId || req.user?.shopId || "no-shop")}`;
+}
+
+// Wallet endpoints trigger paid external operations. Their limits are much
+// tighter than ordinary API calls and are shared through Redis in production.
+const merchantWalletDepositLimiter = rateLimit({
+  ...sharedOptions,
+  store: sharedStore("merchant-wallet-deposit"),
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  keyGenerator: walletActorKey,
+  message: { error: "Too many deposit prompts. Wait a few minutes before trying again." },
+});
+
+const merchantWalletQuoteLimiter = rateLimit({
+  ...sharedOptions,
+  store: sharedStore("merchant-wallet-quote"),
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: walletActorKey,
+  message: { error: "Too many withdrawal quotes. Wait a few minutes before trying again." },
+});
+
+const merchantWalletWithdrawalLimiter = rateLimit({
+  ...sharedOptions,
+  store: sharedStore("merchant-wallet-withdrawal"),
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  keyGenerator: walletActorKey,
+  message: { error: "Too many withdrawal attempts. Wait before trying again." },
+});
+
+const merchantWalletReconcileLimiter = rateLimit({
+  ...sharedOptions,
+  store: sharedStore("merchant-wallet-reconcile"),
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: walletActorKey,
+  message: { error: "Too many balance checks. Please wait a moment." },
+});
+
+module.exports = {
+  apiRateLimiter,
+  authRateLimiter,
+  publicRateLimiter,
+  publicEventRateLimiter,
+  publicOrderRateLimiter,
+  otpRequestRateLimiter,
+  statusRateLimiter,
+  subscriptionPaymentLimiter,
+  merchantWalletDepositLimiter,
+  merchantWalletQuoteLimiter,
+  merchantWalletWithdrawalLimiter,
+  merchantWalletReconcileLimiter,
+};
