@@ -2,6 +2,8 @@ const crypto = require("node:crypto");
 
 const PRICES = Object.freeze({ BASIC: 15000, PRO: 35000 });
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const COMPLETED_DEPOSIT_STATUSES = new Set(["minted", "completed", "succeeded", "paid"]);
+const FAILED_DEPOSIT_STATUSES = new Set(["failed", "rejected", "cancelled", "canceled", "expired", "reversed", "refunded"]);
 
 function configured() {
   return process.env.NTZS_ENABLED === "true" && /^ntzs_live_/.test((process.env.NTZS_API_KEY || "").trim()) && Boolean((process.env.NTZS_WEBHOOK_SECRET || "").trim());
@@ -42,10 +44,15 @@ async function request(path, options = {}) {
 }
 
 function verifyDeposit(checkout, deposit) {
-  if (deposit.id !== checkout.providerId || deposit.amountTzs !== checkout.amount || deposit.paymentMethod !== "mobile_money" || deposit.livemode === false) {
+  if (deposit.id !== checkout.providerId
+    || deposit.amountTzs !== checkout.amount
+    || deposit.paymentMethod !== "mobile_money"
+    || deposit.livemode === false
+    || (deposit.userId && checkout.providerUserId && deposit.userId !== checkout.providerUserId)
+    || deposit.collectToTreasury === false) {
     throw Object.assign(new Error("Payment verification mismatch. Contact support."), { status: 409 });
   }
-  return deposit.status === "completed";
+  return isDepositCompletedStatus(deposit.status);
 }
 
 function verifyMerchantDeposit(transaction, deposit, providerUserId) {
@@ -56,7 +63,23 @@ function verifyMerchantDeposit(transaction, deposit, providerUserId) {
     || (deposit.userId && deposit.userId !== providerUserId)) {
     throw Object.assign(new Error("Merchant deposit verification mismatch. Contact support."), { status: 409 });
   }
-  return String(deposit.status || "").toLowerCase() === "completed";
+  return isDepositCompletedStatus(deposit.status);
+}
+
+function depositStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isDepositCompletedStatus(value) {
+  return COMPLETED_DEPOSIT_STATUSES.has(depositStatus(value));
+}
+
+function isDepositTerminalFailureStatus(value) {
+  return FAILED_DEPOSIT_STATUSES.has(depositStatus(value));
+}
+
+function isDepositReviewStatus(value) {
+  return depositStatus(value) === "review";
 }
 
 function verifySignature(rawBody, timestamp, signature, secret) {
@@ -84,6 +107,9 @@ module.exports = {
   request,
   verifyDeposit,
   verifyMerchantDeposit,
+  isDepositCompletedStatus,
+  isDepositTerminalFailureStatus,
+  isDepositReviewStatus,
   verifySignature,
   renewalEnd,
 };

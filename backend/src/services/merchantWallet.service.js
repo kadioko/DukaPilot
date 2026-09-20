@@ -92,12 +92,6 @@ function providerState(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function isCompletedProviderStatus(value) {
-  // nTZS deposits are terminal when the collection has minted nTZS into the
-  // destination wallet. Other providers commonly use completed/succeeded/paid.
-  return ["minted", "completed", "succeeded", "paid"].includes(providerState(value));
-}
-
 function isTerminalFailureStatus(value) {
   return TERMINAL_FAILURE_STATUSES.has(providerState(value));
 }
@@ -424,7 +418,7 @@ async function reconcileDeposit(transactionId) {
     return transaction;
   }
   try {
-    if (isCompletedProviderStatus(provider.status)) {
+    if (ntzs.isDepositCompletedStatus(provider.status)) {
       ntzs.verifyMerchantDeposit(transaction, provider, ntzs.merchantWalletUserId());
       return completeDeposit(transaction.id, provider);
     }
@@ -436,7 +430,7 @@ async function reconcileDeposit(transactionId) {
       failureReason: "The provider deposit details did not match the original request.",
     });
   }
-  if (isTerminalFailureStatus(provider.status)) return reverseDeposit(transaction.id, provider, "The provider did not complete this deposit.");
+  if (ntzs.isDepositTerminalFailureStatus(provider.status)) return reverseDeposit(transaction.id, provider, "The provider did not complete this deposit.");
   return updateUnsettledTransaction(transaction.id, {
     providerStatus: cleanShortText(provider.status, 80),
     status: transaction.status === "REVIEW" ? "REVIEW" : "PENDING",

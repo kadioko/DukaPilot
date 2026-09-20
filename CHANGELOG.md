@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added scheduled reconciliation for nTZS subscription checkouts alongside merchant-wallet operations, so a delayed webhook does not leave a known provider payment stuck.
 - Added stable public DukaPilot logo URLs in PNG, SVG, and JPG formats, with a canonical brand-assets guide for partners, campaigns, and platform uploads.
 - Added Food Preparation for restaurants and bars: reusable recipes, ingredient deductions, prepared portions, expected versus actual yield, waste, direct cooking costs, immutable batch history, and cost per portion.
 - Added a clearly-labelled total-grocery-bill receiving option. It allocates a receipt using recent buying prices (or quantities when there is no price history) and marks the allocation as estimated.
@@ -22,6 +23,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Expanded Billing's nTZS option with supported-network guidance, exact amount and plan confirmation, PIN safety, automatic-activation instructions, clearer pending/review states, and a fresh-attempt action after a terminal failure.
+- Centralized nTZS deposit status handling across subscription and merchant-wallet flows, including live `minted` success and `rejected` failure states, stable per-business payer references, and treasury-destination verification when returned.
 - Fixed merchant-balance deposit reconciliation so nTZS `minted` collections credit the merchant ledger exactly once and `rejected` collections exit review/pending as failed without adding balance.
 - Updated the Android release to target Android 16 (API 36), meeting the Google Play update requirement effective 31 August 2026.
 - Raised the Android wrapper's Java compatibility to Java 17 and disabled device backup for the business app wrapper.

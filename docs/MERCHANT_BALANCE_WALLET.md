@@ -137,9 +137,10 @@ after the pilot has passed.
 Set the same strong random value as `MERCHANT_WALLET_RECONCILE_CRON_SECRET` in
 Railway and as the GitHub Actions secret with that exact name. The
 [`merchant-wallet-reconcile` workflow](../.github/workflows/merchant-wallet-reconcile.yml)
-checks known provider payout IDs every 15 minutes. It intentionally does not
-re-send an operation with no provider ID: that case remains in review until an
-owner or platform admin presses Check, preserving the original idempotency key.
+checks known merchant-wallet and subscription provider IDs every 15 minutes.
+It intentionally does not re-send an operation with no provider ID: that case
+remains in review until an owner or platform admin presses Check, preserving
+the original idempotency key.
 
 ## Controlled Production Rollout
 

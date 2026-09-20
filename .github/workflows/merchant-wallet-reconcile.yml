@@ -1,4 +1,4 @@
-name: Merchant Wallet Reconciliation
+name: nTZS Payment Reconciliation
 
 on:
   schedule:
@@ -12,12 +12,12 @@ jobs:
   reconcile:
     runs-on: ubuntu-latest
     steps:
-      - name: Reconcile known nTZS wallet operations
+      - name: Reconcile known nTZS wallet and subscription operations
         env:
           WALLET_CRON_SECRET: ${{ secrets.MERCHANT_WALLET_RECONCILE_CRON_SECRET }}
         run: |
           if [ -z "$WALLET_CRON_SECRET" ]; then
-            echo "Merchant wallet reconciliation is not configured yet."
+            echo "nTZS payment reconciliation is not configured yet."
             exit 0
           fi
           curl --fail --silent --show-error --request POST \

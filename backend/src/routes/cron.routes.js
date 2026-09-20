@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const router = require("express").Router();
 const { runQuotationReminders } = require("../services/quotationReminder.service");
 const { reconcilePending } = require("../services/merchantWallet.service");
+const { reconcilePendingCheckouts } = require("../controllers/subscriptionCheckout.controller");
 
 function authorized(req, secretName) {
   const secret = process.env[secretName];
@@ -16,12 +17,16 @@ router.post("/quotation-reminders", async (req, res, next) => {
   try { res.json(await runQuotationReminders()); } catch (error) { next(error); }
 });
 
-// nTZS sends signed deposit events, but its payout lifecycle is read back by
-// ID. This bounded sweep settles known pending records without ever resuming a
-// provider request whose response ID was lost.
+// nTZS sends signed deposit events, but a delayed webhook must not leave a
+// wallet deposit, payout, or subscription checkout stuck. This bounded sweep
+// only reads back known provider IDs; it never starts a new provider request.
 router.post("/merchant-wallet-reconcile", async (req, res, next) => {
   if (!authorized(req, "MERCHANT_WALLET_RECONCILE_CRON_SECRET")) return res.status(401).json({ error: "Unauthorized cron request" });
-  try { res.json(await reconcilePending(100)); } catch (error) { next(error); }
+  try {
+    const merchantWallet = await reconcilePending(100);
+    const subscriptions = await reconcilePendingCheckouts(100);
+    res.json({ merchantWallet, subscriptions });
+  } catch (error) { next(error); }
 });
 
 module.exports = router;

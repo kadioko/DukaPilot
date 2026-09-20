@@ -4,15 +4,18 @@ const crypto = require("node:crypto");
 const path = require("node:path");
 const ntzs = require("../src/lib/ntzs");
 
-const checkout = { id: "checkout-1", shopId: "shop-1", providerId: "provider-1", amount: 15000, plan: "BASIC", status: "PENDING" };
-const deposit = { id: "provider-1", amountTzs: 15000, paymentMethod: "mobile_money", status: "completed" };
+const checkout = { id: "checkout-1", shopId: "shop-1", providerId: "provider-1", providerUserId: "payer-1", amount: 15000, plan: "BASIC", status: "PENDING" };
+const deposit = { id: "provider-1", userId: "payer-1", amountTzs: 15000, paymentMethod: "mobile_money", status: "completed", collectToTreasury: true };
 
 test("verified completion requires exact ID, integer amount and payment method", () => {
   assert.equal(ntzs.verifyDeposit(checkout, deposit), true);
-  for (const patch of [{ id: "other" }, { amountTzs: "15000" }, { amountTzs: 14999 }, { paymentMethod: "card" }, { livemode: false }]) {
+  assert.equal(ntzs.verifyDeposit(checkout, { ...deposit, status: "minted" }), true);
+  for (const patch of [{ id: "other" }, { userId: "other-payer" }, { amountTzs: "15000" }, { amountTzs: 14999 }, { paymentMethod: "card" }, { livemode: false }, { collectToTreasury: false }]) {
     assert.throws(() => ntzs.verifyDeposit(checkout, { ...deposit, ...patch }), /mismatch/);
   }
-  for (const status of ["submitted", "pending", "review", "failed"]) assert.equal(ntzs.verifyDeposit(checkout, { ...deposit, status }), false);
+  for (const status of ["submitted", "pending", "review", "failed", "rejected"]) assert.equal(ntzs.verifyDeposit(checkout, { ...deposit, status }), false);
+  assert.equal(ntzs.isDepositTerminalFailureStatus("rejected"), true);
+  assert.equal(ntzs.isDepositReviewStatus("review"), true);
 });
 
 test("webhooks reject bad signatures, stale payloads and changed bodies", () => {
@@ -67,7 +70,11 @@ test("reconciliation activates once and never overrides suspension or pending pa
   const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
   const db = {
     $queryRaw: async () => [],
-    subscriptionCheckout: { findUnique: async () => current, update: async ({ data }) => (current = { ...current, ...data }) },
+    subscriptionCheckout: {
+      findUnique: async () => current,
+      findMany: async () => [current],
+      update: async ({ data }) => (current = { ...current, ...data }),
+    },
     subscriptionPayment: { create: async () => { payments++; } },
     shop: { count: async () => 0, findUnique: async () => shop, update: async ({ data }) => { updates++; shop = { ...shop, ...data }; } },
   };
@@ -76,11 +83,16 @@ test("reconciliation activates once and never overrides suspension or pending pa
   const original = ntzs.request;
   ntzs.request = async () => provider;
   try {
-    const { reconcile, ownerOnly, publicCheckout } = require("../src/controllers/subscriptionCheckout.controller");
+    const { reconcile, reconcilePendingCheckouts, ownerOnly, publicCheckout, providerDefinitelyRejectedInitiation } = require("../src/controllers/subscriptionCheckout.controller");
+    assert.equal(providerDefinitelyRejectedInitiation({ providerStatus: 400 }), true);
+    assert.equal(providerDefinitelyRejectedInitiation({ providerCode: "initiation_failed" }), true);
+    assert.equal(providerDefinitelyRejectedInitiation({ providerStatus: 409 }), false);
+    assert.equal(providerDefinitelyRejectedInitiation({ providerStatus: 429 }), false);
+    assert.equal(providerDefinitelyRejectedInitiation({ providerStatus: 503 }), false);
     provider.status = "pending";
     await reconcile(current);
     assert.equal(payments, 0);
-    provider.status = "completed";
+    provider.status = "minted";
     await reconcile(current);
     await reconcile(current);
     assert.equal(payments, 1);
@@ -91,6 +103,16 @@ test("reconciliation activates once and never overrides suspension or pending pa
     await reconcile(current);
     assert.equal(current.status, "REVIEW");
     assert.equal(payments, 1);
+    current = { ...checkout }; shop.isActive = true; provider.status = "rejected";
+    await reconcile(current);
+    assert.equal(current.status, "FAILED");
+    assert.equal(current.activeShopKey, null);
+    assert.equal(payments, 1);
+    current = { ...checkout }; provider.status = "completed";
+    const sweep = await reconcilePendingCheckouts(10);
+    assert.equal(sweep.checked, 1);
+    assert.equal(sweep.results[0].status, "CONFIRMED");
+    assert.equal(payments, 2);
     assert.equal("phone" in publicCheckout({ ...checkout, phone: "private" }), false);
     let denied;
     ownerOnly({ user: { role: "MERCHANT", staffId: "staff" } }, { status: (code) => { denied = code; return { json: () => {} }; } }, () => assert.fail("Staff allowed"));
@@ -116,8 +138,10 @@ test("review recovery reuses the original checkout for provider idempotency", as
   try {
     const { initiateProviderCheckout } = require(controllerPath);
     const result = await initiateProviderCheckout(record);
-    assert.equal(calls[0].options.headers["Idempotency-Key"], `payer:${record.id}`);
+    assert.equal(calls[0].options.headers["Idempotency-Key"], `payer:${record.shopId}`);
+    assert.equal(JSON.parse(calls[0].options.body).externalId, `dukapilot-shop:${record.shopId}`);
     assert.equal(calls[1].options.headers["Idempotency-Key"], record.id);
+    assert.equal(JSON.parse(calls[1].options.body).collectToTreasury, true);
     assert.equal(result.providerId, "33333333-3333-4333-8333-333333333333");
     assert.equal(result.status, "PENDING");
   } finally {

@@ -8,6 +8,21 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(nex
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const publicCheckout = ({ id, plan, amount, status, createdAt, kind, extraBranches }) => ({ id, plan, amount, status, createdAt, kind, extraBranches });
 
+function providerDefinitelyRejectedInitiation(error) {
+  const code = String(error?.providerCode || error?.code || "").toLowerCase();
+  return code === "initiation_failed" || [400, 401, 403, 404].includes(Number(error?.providerStatus));
+}
+
+async function markCheckoutAfterProviderError(checkoutId, error) {
+  const current = await prisma.subscriptionCheckout.findUnique({ where: { id: checkoutId } });
+  if (!current || ["CONFIRMED", "FAILED"].includes(current.status)) return current;
+  const failed = !current.providerId && providerDefinitelyRejectedInitiation(error);
+  return prisma.subscriptionCheckout.update({
+    where: { id: current.id },
+    data: { status: failed ? "FAILED" : "REVIEW", ...(failed ? { activeShopKey: null } : {}) },
+  });
+}
+
 function ownerOnly(req, res, next) {
   if (req.user.staffId || req.user.role !== "MERCHANT") return res.status(403).json({ error: "Only the shop owner can pay for a subscription." });
   next();
@@ -20,8 +35,8 @@ async function initiateProviderCheckout(record) {
   if (!providerUserId) {
     const payer = await ntzs.request("/users", {
       method: "POST",
-      headers: { "Idempotency-Key": `payer:${record.id}` },
-      body: JSON.stringify({ externalId: `dukapilot-checkout:${record.id}`, email: `checkout-${record.id}@payments.dukapilot.com`, name: shop.user?.name || "DukaPilot merchant", phone: record.phone.slice(1) }),
+      headers: { "Idempotency-Key": `payer:${record.shopId}` },
+      body: JSON.stringify({ externalId: `dukapilot-shop:${record.shopId}`, email: `shop-${record.shopId}@payments.dukapilot.com`, name: shop.user?.name || "DukaPilot merchant", phone: record.phone.slice(1) }),
     });
     if (typeof payer.id !== "string" || !/^[a-f0-9-]{36}$/i.test(payer.id)) throw new Error("Missing payer identifier");
     providerUserId = payer.id;
@@ -72,10 +87,12 @@ const createCheckout = wrap(async (req, res) => {
   let record = checkout.record;
   try {
     record = await initiateProviderCheckout(record);
-  } catch {
-    // An uncertain provider result may already have charged the phone. Keep the
-    // pending lock; never issue another prompt automatically or lose this key.
-    record = await prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { status: "REVIEW" } });
+    record = await reconcile(record);
+  } catch (error) {
+    // Keep uncertain results locked because the phone may already have been
+    // charged. Only a deterministic pre-collection rejection releases the
+    // shop to start a fresh checkout.
+    record = await markCheckoutAfterProviderError(record.id, error);
   }
   res.status(201).json(publicCheckout(record));
 });
@@ -89,9 +106,10 @@ async function reconcile(checkout) {
     const current = await tx.subscriptionCheckout.findUnique({ where: { id: checkout.id } });
     if (current.status === "CONFIRMED" || current.status === "FAILED") return current;
     if (!completed) {
+      const failed = ntzs.isDepositTerminalFailureStatus(deposit.status);
       return tx.subscriptionCheckout.update({ where: { id: current.id }, data: {
-        status: deposit.status === "failed" ? "FAILED" : deposit.status === "review" ? "REVIEW" : "PENDING",
-        ...(deposit.status === "failed" ? { activeShopKey: null } : {}),
+        status: failed ? "FAILED" : ntzs.isDepositReviewStatus(deposit.status) ? "REVIEW" : "PENDING",
+        ...(failed ? { activeShopKey: null } : {}),
       } });
     }
     const shop = await tx.shop.findUnique({ where: { id: current.shopId } });
@@ -128,8 +146,8 @@ const retryCheckout = wrap(async (req, res) => {
   try {
     if (!record.providerId) record = await initiateProviderCheckout(record);
     record = await reconcile(record);
-  } catch {
-    record = await prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { status: "REVIEW" } });
+  } catch (error) {
+    record = await markCheckoutAfterProviderError(record.id, error);
   }
   req.audit = { action: "subscription.checkout.retry", resourceType: "subscription_checkout", resourceId: record.id, metadata: { shopId } };
   res.json(publicCheckout(record));
@@ -152,8 +170,8 @@ const adminRetryException = wrap(async (req, res) => {
   try {
     if (!record.providerId) record = await initiateProviderCheckout(record);
     record = await reconcile(record);
-  } catch {
-    record = await prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { status: "REVIEW" } });
+  } catch (error) {
+    record = await markCheckoutAfterProviderError(record.id, error);
   }
   req.audit = { action: "admin.subscription.checkoutRetried", resourceType: "subscription_checkout", resourceId: record.id, metadata: { adminId: req.user.userId, shopId: record.shopId, status: record.status } };
   res.json({ checkout: publicCheckout(record) });
@@ -175,4 +193,23 @@ const webhook = wrap(async (req, res) => {
   res.json({ received: true });
 });
 
-module.exports = { ownerOnly, getCheckoutConfig, createCheckout, checkCheckout, retryCheckout, adminListExceptions, adminRetryException, webhook, reconcile, publicCheckout, initiateProviderCheckout };
+async function reconcilePendingCheckouts(limit = 100) {
+  const take = Math.min(Math.max(Number(limit) || 100, 1), 100);
+  const checkouts = await prisma.subscriptionCheckout.findMany({
+    where: { status: { in: ["PENDING", "REVIEW"] }, providerId: { not: null } },
+    orderBy: { updatedAt: "asc" },
+    take,
+  });
+  const results = [];
+  for (const checkout of checkouts) {
+    try {
+      const current = await reconcile(checkout);
+      results.push({ id: checkout.id, status: current?.status || checkout.status });
+    } catch {
+      results.push({ id: checkout.id, status: "REVIEW" });
+    }
+  }
+  return { checked: checkouts.length, results };
+}
+
+module.exports = { ownerOnly, getCheckoutConfig, createCheckout, checkCheckout, retryCheckout, adminListExceptions, adminRetryException, webhook, reconcile, reconcilePendingCheckouts, publicCheckout, initiateProviderCheckout, providerDefinitelyRejectedInitiation };

@@ -8,8 +8,9 @@
 ## Why DukaPilot
 
 Subscription payment paths and nTZS launch requirements are documented in
-[Subscription payments](docs/subscription-payments.md). Online checkout is disabled
-until provider verification and payment acceptance tests are complete.
+[Subscription payments](docs/subscription-payments.md). The owner-only nTZS
+checkout sends a mobile-money prompt and activates a verified subscription
+without exposing provider credentials or requiring a manual payment reference.
 
 Tanzania has over **1 million informal operators** in Dar es Salaam alone, with wholesale/retail as the single largest segment. These merchants lose money every day from:
 
@@ -66,7 +67,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
 | **Expense tracking** | Overview-first expense ledger with Cash/M-Pesa/Bank payment methods, notes, search and date/category/vendor filters, edit/delete controls, duplicate-entry warning, and monthly templates that record only when a merchant confirms the payment |
 | **Staff roles** | Basic includes one active staff member; Pro includes unlimited staff. Live permissions and deactivation are enforced on every request, including sell, stock, expense-entry, and report visibility |
-| **Billing page** | Merchants can see plan status, official M-Pesa/Mix by Yas payment options, submit references, and contact WhatsApp support |
+| **Billing page** | Merchants can see plan status, pay through official Lipa numbers with manual reference review, or use nTZS mobile-money checkout for automatic verified activation |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
@@ -419,13 +420,16 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 | `WHATSAPP_ENABLE_FREEFORM` | Optional | Keep `false`; set `true` only for customer-initiated 24-hour WhatsApp service windows |
 | `META_WHATSAPP_VERIFY_TOKEN` | Required for Meta webhooks | Random secret entered both in Railway and Meta's webhook verification screen. |
 | `META_WHATSAPP_APP_SECRET` | Required for Meta webhooks | App Secret from Meta App Settings; validates signed delivery callbacks. Never commit it. |
+| `NTZS_API_KEY` | Required for nTZS payments | Live provider key stored in Railway only; never expose it to Vercel or the browser. |
+| `NTZS_WEBHOOK_SECRET` | Required for nTZS payments | Verifies signed provider callbacks using the raw request body. Railway only. |
+| `NTZS_ENABLED` | Required for online subscriptions | Enables owner-only nTZS subscription checkout. Independent from Merchant Balance. |
 | `NTZS_MERCHANT_BALANCE_ENABLED` | Required to launch wallet | Keep `false` until controlled deposit/withdrawal reconciliation has passed. Separate from subscription checkout. |
 | `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` | Recommended for first live test | Comma-separated root shop IDs permitted to initiate wallet operations; leave empty only for a full rollout. |
 | `NTZS_MERCHANT_BALANCE_USER_ID` | Required to launch wallet | Private nTZS pooled merchant-balance user ID; Railway only. |
 | `NTZS_MERCHANT_BALANCE_WALLET_ADDRESS` | Required operational record | Private nTZS pooled settlement wallet address; Railway only, never send to a browser. |
 | `NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS` | Optional | DukaPilot withdrawal fee in basis points; default `200` = 2%. |
 | `NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS` | Optional | Minimum recipient amount; default `5000`. |
-| `MERCHANT_WALLET_RECONCILE_CRON_SECRET` | Required to automate wallet payout checks | Strong random value shared only with the GitHub Actions secret of the same name. |
+| `MERCHANT_WALLET_RECONCILE_CRON_SECRET` | Required to automate nTZS checks | Strong random value shared only with the GitHub Actions secret of the same name; the bounded job reconciles known wallet and subscription provider IDs. |
 | `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
 | `BACKUP_RETAIN_DAYS` | Optional | Days to keep backups (default: `7`) |
 
@@ -472,8 +476,8 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, expense-entry, staff, and reports access for staff sessions. A shop attendant can sell, adjust stock, record debts, and record expenses without seeing shop-wide profit reports or buying costs.
 - Offline support includes an already-open Sales screen and, for farms, already-open Crop operations or Field plan screens. Queued work is scoped to the business, branch, and actor, with retry history and admin sync-failure resolution by shop/device. Reopening the app without a connection still shows `/offline.html`; inventory, debts, expenses, stock counts, Daily Close, and catalog checkout remain online-only.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
-- Expired or suspended shops can still view data and open **Billing**, where they can pay, submit a reference, and see the reactivation steps. Operational changes such as new sales, stock edits, expenses, staff changes, and orders resume after an admin verifies payment.
-- Merchant Balance is intentionally independent from subscriptions and Daily Close. Only business owners can access it, and it remains disabled until the nTZS deposit and withdrawal acceptance checklist has passed.
+- Expired shops can still view data and open **Billing**, where they can use nTZS for automatic verified activation or submit a manual payment reference for admin review. Deliberately suspended shops must contact support before paying. Operational changes resume after activation.
+- Merchant Balance is intentionally independent from subscriptions and Daily Close. Only business owners can access it; the private production pilot is controlled by its own flag and shop allowlist.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Debt collections guard the debt amount, prior collection total, and status together. Stock-count completion refuses to overwrite sales or receipts recorded after the count began, and one count can only be finalized once.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.

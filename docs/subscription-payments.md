@@ -10,33 +10,29 @@ Choose Basic (TZS 15,000/month) or Pro (TZS 35,000/month) in Billing.
    to 0743910580. Check the recipient on the phone before paying. Submit the
    reference for admin verification; submitting a reference is not activation.
 2. nTZS online: when enabled, an owner enters a Tanzanian mobile number and
-  approves the collection prompt on the phone. nTZS creates a provider-side payer
-  reference solely for the collection and collects directly to DukaPilot's treasury;
-  it does not expose a wallet or API key to the browser. Never enter the mobile-money PIN
-   in DukaPilot. Check payment status after approval. A verified completed deposit
-   creates one confirmed subscription payment and adds one calendar month.
+   approves the collection prompt on the phone. nTZS creates or reuses a
+   provider-side payer reference for that business and collects directly to
+   DukaPilot's treasury; it does not expose a wallet or API key to the browser.
+   Never enter the mobile-money PIN in DukaPilot. A verified `completed` or
+   `minted` deposit creates one confirmed subscription payment and activates or
+   extends the selected plan automatically. No manual reference is required.
 
-## Deployment gate
+## Production configuration
 
-This integration is not yet approved for live customer payments. On 6 September
-2026 the provider dashboard showed Collections enabled but KYB "Not started".
-No real collection was initiated as part of this implementation.
-
-- Complete nTZS KYB and confirm permission to collect to the business treasury.
-- Rotate the API key shared in chat. Set NTZS_API_KEY privately in Railway.
-- NTZS_API_KEY and NTZS_WEBHOOK_SECRET are configured as private Railway variables.
+- Keep `NTZS_API_KEY` and `NTZS_WEBHOOK_SECRET` in Railway private variables.
+- Set `NTZS_ENABLED=true` only when Collections and business verification are
+  active on the provider account. This flag is independent from Merchant Balance.
 - Deploy backend first with `npm run db:deploy` in backend. The additive
   migrations create subscription_checkouts/branch fields and do not modify old payments.
 - Configure provider webhook URL:
   https://dukapilotproduction.up.railway.app/api/webhooks/ntzs
-- Keep NTZS_ENABLED=false until controlled acceptance testing is completed.
-  Code currently requires a live key; sandbox end-to-end testing needs an isolated
-  environment and explicit test-mode wiring before using a provider test key.
-- Confirm signed webhook timestamp format and retry behavior with the provider.
-  Handler accepts epoch seconds/milliseconds within five minutes and signs the
+- The webhook handler accepts epoch seconds/milliseconds within five minutes and signs the
   exact timestamp + dot + raw JSON body using HMAC-SHA256.
-- Enable only after the checklist below passes. Never put keys in frontend env,
-  screenshots, Git, logs or customer messages.
+- Never put nTZS keys in Vercel, frontend variables, screenshots, Git, logs,
+  browser responses, or customer messages.
+- The scheduled nTZS reconciliation workflow uses the existing private
+  `MERCHANT_WALLET_RECONCILE_CRON_SECRET` and checks known wallet and
+  subscription provider IDs every 15 minutes.
 
 ## Payment integrity
 
@@ -48,8 +44,9 @@ Initiation timeouts remain REVIEW with the lock intact. Owners and administrator
 can retry/reconcile that same checkout; the backend reuses the original checkout ID
 and provider idempotency keys and records the action in the audit log. Never create
 a new checkout merely because the first provider response was lost.
-Provider readback verifies deposit ID, amount and payment method. Webhooks require
-a valid signature and live event, then perform the same authenticated readback.
+Provider readback verifies deposit ID, payer ID when returned, amount, payment
+method, treasury mode when returned, and live status. Webhooks require a valid
+signature and live event, then perform the same authenticated readback.
 No redirect, browser assertion, manual reference or unverified webhook activates access.
 Shop row locking serializes online renewals; payment insertion and plan extension
 are one transaction. Pending records do not enter confirmed-payment statistics.
@@ -58,20 +55,23 @@ are one transaction. Pending records do not enter confirmed-payment statistics.
 
 - One-month purchases only. Changes between prepaid plans require support; no
   automatic proration or conversion of Basic months into Pro months.
-- Failed collections require support before another attempt. Review/unknown outcomes
-  appear in the administrator payment-exceptions queue and must be reconciled against
-  nTZS before the pending lock can be released.
-- No automatic refund, recurring debit mandate, hosted card checkout or merchant
-  wallet features are implemented. The backend creates a provider payer reference
-  per checkout because nTZS requires it, then collects to DukaPilot's treasury.
-- Webhook delivery is the background completion path; owners can also check or retry
-  the original checkout manually. The admin review queue supports the same safe retry.
-  A scheduled provider-wide reconciliation worker remains a future reliability upgrade.
+- A confirmed provider failure releases the active checkout so the owner can
+  start a fresh request. Review/unknown outcomes keep their lock, appear in the
+  administrator payment-exceptions queue, and must be reconciled before another
+  payment is attempted.
+- No automatic refund, recurring debit mandate, or hosted card checkout is
+  implemented. Subscription checkout never spends a merchant's DukaPilot
+  balance. The backend reuses one provider payer reference per business and
+  collects subscription money into DukaPilot's treasury.
+- Webhook delivery is the first background completion path; owners can also
+  check or retry the original checkout manually. The admin review queue supports
+  the same safe retry. The scheduled nTZS reconciliation workflow also reads
+  back known pending/review provider IDs every 15 minutes.
 - Lost initiation responses without a deposit ID need provider-assisted matching
   using the saved checkout ID/idempotency key. Never guess a match by amount alone.
-- Manual payment recording and online renewals now share shop row-lock discipline.
-  Real database concurrency/rollback tests are still required before enabling
-  mixed concurrent manual/online renewals.
+- Manual payment recording and online renewals share shop row-lock discipline.
+  Repeat production restore, concurrency, and provider acceptance drills after
+  material payment or database changes.
 
 ## Acceptance checklist
 
@@ -91,4 +91,4 @@ charges. Live provider settlement still requires the controlled acceptance check
 - Test mobile English/Swahili, copy numbers, failed reference preservation.
 
 Official contract reviewed: https://www.ntzs.co.tz/developers and
-https://www.ntzs.co.tz/openapi.json (6 September 2026).
+https://www.ntzs.co.tz/openapi.json (20 September 2026).

@@ -203,9 +203,15 @@ export default function BillingPage() {
             <h2 className="font-bold">{lang === "sw" ? "Rejesha huduma ya duka lako" : "Reactivate your shop"}</h2>
             <p className="mt-1">{lang === "sw" ? "Usajili umeisha, hivyo mauzo mapya, stock na matumizi vimesimamishwa hadi malipo yahakikiwe. Data yako bado ipo salama na unaweza kuiona." : "The subscription has ended, so new sales, stock changes, and expenses are paused until payment is verified. Your data is still safe and available to view."}</p>
             <ol className="mt-3 list-decimal space-y-1 pl-5">
-              <li>{lang === "sw" ? "Chagua Basic au Pro, kisha lipa kwa namba rasmi hapa chini." : "Choose Basic or Pro, then pay using an official number below."}</li>
-              <li>{lang === "sw" ? "Weka reference ya muamala kwenye fomu ya malipo." : "Enter the transaction reference in the payment form."}</li>
-              <li>{lang === "sw" ? "Admin akithibitisha, duka litarudi active na utaendelea kutumia vipengele vyako." : "Once an admin verifies it, the shop becomes active and you can continue using its features."}</li>
+              {paymentPath === "ntzs" ? <>
+                <li>{lang === "sw" ? "Chagua Basic au Pro na uhakiki kiasi kinachoonyeshwa." : "Choose Basic or Pro and verify the displayed amount."}</li>
+                <li>{lang === "sw" ? "Weka namba ya mobile money, tuma ombi, kisha thibitisha kwenye simu yako." : "Enter your mobile-money number, send the request, and approve it on your phone."}</li>
+                <li>{lang === "sw" ? "nTZS ikithibitisha malipo, DukaPilot itawasha mpango moja kwa moja; hakuna reference ya kutuma kwa admin." : "After nTZS confirms payment, DukaPilot activates the plan automatically; no reference needs to be sent to an admin."}</li>
+              </> : <>
+                <li>{lang === "sw" ? "Chagua Basic au Pro, kisha lipa kwa namba rasmi hapa chini." : "Choose Basic or Pro, then pay using an official number below."}</li>
+                <li>{lang === "sw" ? "Weka reference ya muamala kwenye fomu ya malipo." : "Enter the transaction reference in the payment form."}</li>
+                <li>{lang === "sw" ? "Admin akithibitisha, duka litarudi active na utaendelea kutumia vipengele vyako." : "Once an admin verifies it, the shop becomes active and you can continue using its features."}</li>
+              </>}
             </ol>
           </section>
         )}
