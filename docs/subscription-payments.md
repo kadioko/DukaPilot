@@ -16,6 +16,12 @@ Choose Basic (TZS 15,000/month) or Pro (TZS 35,000/month) in Billing.
    Never enter the mobile-money PIN in DukaPilot. A verified `completed` or
    `minted` deposit creates one confirmed subscription payment and activates or
    extends the selected plan automatically. No manual reference is required.
+3. Merchant Balance: when enabled for the business, Billing shows the available
+   balance, exact server-calculated plan price, and balance after payment. The
+   owner explicitly confirms the debit. DukaPilot writes the balance debit,
+   confirmed subscription payment, and plan activation in one database
+   transaction. No withdrawal fee, new mobile-money prompt, or manual reference
+   applies. An insufficient balance cannot activate a plan or create a debit.
 
 ## Production configuration
 
@@ -48,8 +54,11 @@ Provider readback verifies deposit ID, payer ID when returned, amount, payment
 method, treasury mode when returned, and live status. Webhooks require a valid
 signature and live event, then perform the same authenticated readback.
 No redirect, browser assertion, manual reference or unverified webhook activates access.
-Shop row locking serializes online renewals; payment insertion and plan extension
-are one transaction. Pending records do not enter confirmed-payment statistics.
+Shop row locking serializes online renewals and Merchant Balance payments;
+payment insertion and plan extension are one transaction. Merchant Balance also
+locks the wallet and writes one immutable ledger debit. The same request key
+returns the original success instead of charging twice. Pending records do not
+enter confirmed-payment statistics.
 
 ## Support and limitations
 
@@ -60,9 +69,10 @@ are one transaction. Pending records do not enter confirmed-payment statistics.
   administrator payment-exceptions queue, and must be reconciled before another
   payment is attempted.
 - No automatic refund, recurring debit mandate, or hosted card checkout is
-  implemented. Subscription checkout never spends a merchant's DukaPilot
-  balance. The backend reuses one provider payer reference per business and
-  collects subscription money into DukaPilot's treasury.
+  implemented. The backend reuses one provider payer reference per business
+  for nTZS online checkout. Merchant Balance payment is an internal ledger
+  debit and does not call nTZS again; it converts that amount from customer
+  liability into recorded subscription revenue in the pooled reconciliation.
 - Webhook delivery is the first background completion path; owners can also
   check or retry the original checkout manually. The admin review queue supports
   the same safe retry. The scheduled nTZS reconciliation workflow also reads
@@ -89,6 +99,9 @@ charges. Live provider settlement still requires the controlled acceptance check
 - Repeat webhook and browser check; expiry must not move a second time.
 - Check month-end renewal, no future paid days lost, and manual-renewal concurrency.
 - Test mobile English/Swahili, copy numbers, failed reference preservation.
+- Test Merchant Balance with an exact balance, insufficient balance, an expired
+  subscription, a repeated request key, and a forced database failure. Confirm
+  that debit and activation either both commit or both roll back.
 
 Official contract reviewed: https://www.ntzs.co.tz/developers and
 https://www.ntzs.co.tz/openapi.json (20 September 2026).

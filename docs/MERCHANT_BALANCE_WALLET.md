@@ -4,8 +4,8 @@
 
 Merchant Balance gives a business owner a separate prepaid balance that can be
 funded and withdrawn through nTZS mobile money. It is deliberately not a POS
-cash drawer, a sales total, an expense account, a Daily Close amount, or a way
-to pay a DukaPilot subscription.
+cash drawer, a sales total, an expense account, or a Daily Close amount. An
+owner can use available balance to pay a DukaPilot subscription from Billing.
 
 The feature uses two distinct provider-side concepts:
 
@@ -19,7 +19,8 @@ another merchant's records.
 
 ## Who Can Use It
 
-- Only the business owner can view, deposit, withdraw, or check their balance.
+- Only the business owner can view, deposit, withdraw, check, or use the balance
+  for a DukaPilot subscription.
 - Staff cannot access it, even when they can sell, record expenses, or manage
   Daily Close.
 - Platform admins can reconcile all wallet transactions and make an
@@ -67,19 +68,39 @@ The recipient amount stays the amount the owner requested; provider fees are
 shown separately and are not silently absorbed by DukaPilot. The default
 minimum withdrawal is TZS 5,000.
 
+## Subscription Payment Flow
+
+1. Billing shows the owner the server-calculated subscription amount, available
+   Merchant Balance, and remaining balance after payment.
+2. The owner must explicitly confirm the exact debit. No withdrawal fee or new
+   mobile-money prompt applies.
+3. The backend locks both the root shop and wallet, then rechecks the plan,
+   branch capacity, subscription state, and available balance.
+4. One database transaction writes an immutable `SUBSCRIPTION_PAYMENT` debit,
+   creates the confirmed `subscription_payments` record, and activates or
+   extends the subscription. A failure rolls all three changes back.
+5. A client retry reuses the same request key and returns the original result;
+   it cannot debit the balance or extend the plan a second time.
+
+The debit reduces customer liability. Admin reconciliation separately includes
+completed Merchant Balance subscription payments as retained platform revenue,
+so provider funds continue to agree with customer liabilities plus retained
+platform value.
+
 ## Ledger and Reconciliation
 
 `merchant_wallets` stores one available balance per root business.
 `merchant_wallet_transactions` stores the provider workflow and status.
-`merchant_wallet_entries` is append-only: deposits, holds, reversals, and
-manual corrections are separate movements rather than overwritten balances.
+`merchant_wallet_entries` is append-only: deposits, holds, reversals,
+subscription debits, and manual corrections are separate movements rather than
+overwritten balances.
 
 The admin wallet screen shows:
 
 - customer liability: total internal merchant balances;
 - pooled nTZS provider balance;
 - settled expected pool balance: merchant liability plus completed retained
-  DukaPilot withdrawal fees;
+  DukaPilot withdrawal fees and Merchant Balance subscription revenue;
 - pending deposits and withdrawals;
 - a timing range for pending deposits and payouts: nTZS may mint a completed
   deposit before DukaPilot receives its signed event, or debit a payout
@@ -104,8 +125,9 @@ release; keep fee transfers documented and reconcile them before moving money.
   every pending or review transaction is resolved. It then anonymizes wallet
   phone and recipient data while retaining the financial ledger required for
   reconciliation.
-- Do not add wallet operations to sales, expenses, cash sessions, profit,
-  quotations, or subscription payment logic.
+- Do not add wallet deposits or withdrawals to sales, expenses, cash sessions,
+  profit, or quotations. Subscription use must go only through the atomic
+  owner-only Billing flow; never model it as a withdrawal or business expense.
 
 ## Railway Configuration
 
@@ -163,14 +185,19 @@ the original idempotency key.
 6. Confirm the admin pooled balance is within its expected range. If it is not,
    stop further wallet testing and reconcile the provider records before any
    manual correction or fee transfer.
-7. Keep the feature pilot-only or turn it off if either test cannot be
-   reconciled. Remove the pilot allowlist only after both tests are correct.
+7. With a test balance large enough for Basic, confirm Billing previews the
+   remaining balance, activates once, records one subscription payment, and
+   shows one ledger debit. Retry the same request key and verify no second debit
+   or subscription extension occurs.
+8. Keep the feature pilot-only or turn it off if any test cannot be
+   reconciled. Remove the pilot allowlist only after all acceptance tests pass.
 
 ## Current Scope
 
 - Tanzanian mobile-money deposits and withdrawals only.
 - One pooled provider settlement wallet and one isolated DukaPilot ledger per
-  root business; branches share their parent business balance.
+  root business; branches share their parent business balance. Owners can pay
+  DukaPilot subscriptions from sufficient available balance.
 - No automatic treasury fee sweep, bank payout, card funding, merchant-to-
   merchant transfer, interest, lending, or investment functionality.
 - A manual adjustment is an exceptional admin reconciliation tool, not normal

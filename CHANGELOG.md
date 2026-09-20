@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added owner-only subscription payment from Merchant Balance in Billing, with exact-price confirmation, insufficient-balance guidance, an atomic ledger debit plus activation, retry-key idempotency, and subscription revenue-aware provider reconciliation.
 - Added scheduled reconciliation for nTZS subscription checkouts alongside merchant-wallet operations, so a delayed webhook does not leave a known provider payment stuck.
 - Added stable public DukaPilot logo URLs in PNG, SVG, and JPG formats, with a canonical brand-assets guide for partners, campaigns, and platform uploads.
 - Added Food Preparation for restaurants and bars: reusable recipes, ingredient deductions, prepared portions, expected versus actual yield, waste, direct cooking costs, immutable batch history, and cost per portion.

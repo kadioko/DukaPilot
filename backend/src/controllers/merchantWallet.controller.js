@@ -83,6 +83,37 @@ const withdrawal = asyncHandler(async (req, res) => {
   res.status(result.reused ? 200 : 201).json({ transaction: wallet.publicTransaction(result.transaction), reused: result.reused });
 });
 
+const subscriptionPayment = asyncHandler(async (req, res) => {
+  const shopId = await merchantShopId(req);
+  const result = await wallet.paySubscriptionFromBalance({
+    shopId,
+    userId: req.user.userId,
+    requestKey: req.body.requestKey,
+    plan: req.body.plan,
+    kind: req.body.kind,
+    extraBranches: req.body.extraBranches,
+  });
+  req.audit = {
+    action: "merchant_wallet.subscription.pay",
+    resourceType: "merchant_wallet_transaction",
+    resourceId: result.transaction.id,
+    metadata: {
+      shopId,
+      amountTzs: result.transaction.amountTzs,
+      plan: result.transaction.metadata?.plan || req.body.plan,
+      kind: result.transaction.metadata?.kind || req.body.kind || "RENEWAL",
+      extraBranches: Number(result.transaction.metadata?.extraBranches ?? req.body.extraBranches ?? 0),
+      reused: result.reused,
+    },
+  };
+  res.status(result.reused ? 200 : 201).json({
+    transaction: wallet.publicTransaction(result.transaction),
+    balanceTzs: result.balanceTzs,
+    subscriptionEndsAt: result.subscriptionEndsAt,
+    reused: result.reused,
+  });
+});
+
 const reconcileOwn = asyncHandler(async (req, res) => {
   const shopId = await merchantShopId(req);
   const transaction = await prisma.merchantWalletTransaction.findFirst({ where: { id: req.params.id, shopId } });
@@ -147,6 +178,7 @@ module.exports = {
   deposit,
   withdrawalQuote,
   withdrawal,
+  subscriptionPayment,
   reconcileOwn,
   adminSummary,
   adminTransactions,

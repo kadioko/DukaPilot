@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import NtzsCheckout from "@/components/NtzsCheckout";
+import MerchantBalanceCheckout from "@/components/MerchantBalanceCheckout";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { Check, CheckCircle2, ClipboardCopy, MessageCircle, ReceiptText, Send, Smartphone } from "lucide-react";
@@ -207,6 +208,10 @@ export default function BillingPage() {
                 <li>{lang === "sw" ? "Chagua Basic au Pro na uhakiki kiasi kinachoonyeshwa." : "Choose Basic or Pro and verify the displayed amount."}</li>
                 <li>{lang === "sw" ? "Weka namba ya mobile money, tuma ombi, kisha thibitisha kwenye simu yako." : "Enter your mobile-money number, send the request, and approve it on your phone."}</li>
                 <li>{lang === "sw" ? "nTZS ikithibitisha malipo, DukaPilot itawasha mpango moja kwa moja; hakuna reference ya kutuma kwa admin." : "After nTZS confirms payment, DukaPilot activates the plan automatically; no reference needs to be sent to an admin."}</li>
+              </> : paymentPath === "balance" ? <>
+                <li>{lang === "sw" ? "Chagua Basic au Pro na uhakiki kiasi kinachoonyeshwa." : "Choose Basic or Pro and verify the displayed amount."}</li>
+                <li>{lang === "sw" ? "Hakikisha Salio la Duka linatosha, kisha thibitisha makato." : "Confirm that Merchant Balance is sufficient, then approve the debit."}</li>
+                <li>{lang === "sw" ? "Kiasi kitakatwa mara moja na mpango utawashwa bila kutuma reference kwa admin." : "The amount is debited once and the plan activates without sending a reference to an admin."}</li>
               </> : <>
                 <li>{lang === "sw" ? "Chagua Basic au Pro, kisha lipa kwa namba rasmi hapa chini." : "Choose Basic or Pro, then pay using an official number below."}</li>
                 <li>{lang === "sw" ? "Weka reference ya muamala kwenye fomu ya malipo." : "Enter the transaction reference in the payment form."}</li>
@@ -221,6 +226,7 @@ export default function BillingPage() {
           <div className="flex flex-wrap gap-5">
             <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "manual"} onChange={() => setPaymentPath("manual")} />{lang === "sw" ? "1. Lipa namba / Tuma pesa" : "1. Lipa number / Send money"}</label>
             <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "ntzs"} onChange={() => setPaymentPath("ntzs")} />2. nTZS online</label>
+            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "balance"} onChange={() => setPaymentPath("balance")} />{lang === "sw" ? "3. Salio la Duka" : "3. Merchant Balance"}</label>
           </div>
         </fieldset>
 
@@ -235,6 +241,7 @@ export default function BillingPage() {
         {quoteError ? <p role="alert" className="text-sm text-red-700">{quoteError}</p> : <p className="font-semibold">{lang === "sw" ? "Kiasi cha kulipa" : "Amount to pay"}: {quote ? formatTZS(quote.amount) : "..."}</p>}
         {kind === "BRANCH_ADDON" && <p className="text-sm text-gray-600">{lang === "sw" ? "TZS 10,000 kwa tawi kwa siku 30, kulingana na muda uliobaki. Tarehe ya usajili haibadiliki." : "TZS 10,000 per branch per 30 days, prorated for the remaining time. Your renewal date stays the same."}</p>}
         {paymentPath === "ntzs" && <NtzsCheckout plan={plan} extraBranches={plan === "PRO" ? extraBranches : 0} kind={kind} amount={quote?.amount} lang={lang} onConfirmed={() => { api.get<SubscriptionStatus>("/subscription/status", lang).then(setStatus).catch(() => setStatusError(true)); }} />}
+        {paymentPath === "balance" && <MerchantBalanceCheckout plan={plan} extraBranches={plan === "PRO" ? extraBranches : 0} kind={kind} amount={quote?.amount} lang={lang} onConfirmed={() => { api.get<SubscriptionStatus>("/subscription/status", lang).then(setStatus).catch(() => setStatusError(true)); }} />}
 
         {paymentPath === "manual" && <>
 

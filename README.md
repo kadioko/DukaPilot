@@ -67,7 +67,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Debt tracking** | Credit sales automatically create receivables; every repayment is stored as a dated payment record |
 | **Expense tracking** | Overview-first expense ledger with Cash/M-Pesa/Bank payment methods, notes, search and date/category/vendor filters, edit/delete controls, duplicate-entry warning, and monthly templates that record only when a merchant confirms the payment |
 | **Staff roles** | Basic includes one active staff member; Pro includes unlimited staff. Live permissions and deactivation are enforced on every request, including sell, stock, expense-entry, and report visibility |
-| **Billing page** | Merchants can see plan status, pay through official Lipa numbers with manual reference review, or use nTZS mobile-money checkout for automatic verified activation |
+| **Billing page** | Merchants can see plan status, pay through official Lipa numbers with manual reference review, use nTZS mobile-money checkout, or activate automatically from a sufficient Merchant Balance |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
 | **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
@@ -79,7 +79,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Quotations and estimates** | Build customer-safe Kiswahili or English quotations for services, projects, labour, materials, and stock; track idempotent deposits/refunds, acceptance, revisions, Daily Close cash handling, reminders, and conversion to one sale without counting a quote as revenue |
-| **Merchant Balance** | Owner-only prepaid merchant balance with nTZS deposit and withdrawal workflows, fee preview, retry-safe settlement, and separation from sales, expenses, Daily Close, and subscriptions |
+| **Merchant Balance** | Owner-only prepaid merchant balance with nTZS deposits and withdrawals, fee preview, retry-safe settlement, and atomic subscription payment without treating the debit as a shop expense |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
 | **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations for stock, debts, expenses, orders, accepted quotations, deposits, and expiring estimates, with why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
@@ -476,8 +476,8 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - Staff members can log in with their phone and PIN after the owner creates them on `/staff`; backend route permissions enforce sell, stock, expense-entry, staff, and reports access for staff sessions. A shop attendant can sell, adjust stock, record debts, and record expenses without seeing shop-wide profit reports or buying costs.
 - Offline support includes an already-open Sales screen and, for farms, already-open Crop operations or Field plan screens. Queued work is scoped to the business, branch, and actor, with retry history and admin sync-failure resolution by shop/device. Reopening the app without a connection still shows `/offline.html`; inventory, debts, expenses, stock counts, Daily Close, and catalog checkout remain online-only.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
-- Expired shops can still view data and open **Billing**, where they can use nTZS for automatic verified activation or submit a manual payment reference for admin review. Deliberately suspended shops must contact support before paying. Operational changes resume after activation.
-- Merchant Balance is intentionally independent from subscriptions and Daily Close. Only business owners can access it; the private production pilot is controlled by its own flag and shop allowlist.
+- Expired shops can still view data and open **Billing**, where they can use nTZS or a sufficient Merchant Balance for automatic activation, or submit a manual payment reference for admin review. Deliberately suspended shops must contact support before paying. Operational changes resume after activation.
+- Merchant Balance remains separate from sales, expenses, and Daily Close. Owners may apply it to DukaPilot subscriptions through the atomic Billing flow; staff cannot access it. The private production pilot is controlled by its own flag and shop allowlist.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Debt collections guard the debt amount, prior collection total, and status together. Stock-count completion refuses to overwrite sales or receipts recorded after the count began, and one count can only be finalized once.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.

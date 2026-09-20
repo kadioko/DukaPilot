@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const prisma = require("../lib/prisma");
 const ntzs = require("../lib/ntzs");
 const { normalizePhone } = require("../lib/phone");
+const { priceSubscription, validateBranchCapacity } = require("../lib/subscriptionPricing");
 
 const MAX_TZS = 2_000_000_000;
 const PENDING_STATUSES = new Set(["PENDING", "REVIEW"]);
@@ -216,6 +217,127 @@ async function appendEntry(tx, wallet, transaction, { type, direction, amountTzs
       balanceAfterTzs: nextBalance,
       description: cleanShortText(description, 500),
     },
+  });
+}
+
+function assertSameSubscriptionRetry(existing, { shopId, plan, kind, extraBranches }) {
+  const metadata = existing.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
+  if (existing.shopId !== shopId
+    || existing.kind !== "SUBSCRIPTION"
+    || existing.status !== "COMPLETED"
+    || metadata.plan !== plan
+    || metadata.kind !== kind
+    || Number(metadata.extraBranches || 0) !== extraBranches) {
+    throw failure("This payment retry key was already used with different details.", 409, "RETRY_KEY_CONFLICT");
+  }
+}
+
+async function paySubscriptionFromBalance({ shopId, userId, requestKey, plan, kind = "RENEWAL", extraBranches = 0 }) {
+  requireEnabled(shopId);
+  const key = validRequestKey(requestKey);
+  const normalizedPlan = String(plan || "").toUpperCase();
+  const normalizedKind = String(kind || "RENEWAL").toUpperCase();
+  const normalizedExtraBranches = Number(extraBranches || 0);
+
+  return prisma.$transaction(async (tx) => {
+    if (typeof tx.$queryRaw === "function") {
+      await tx.$queryRaw`SELECT "id" FROM "shops" WHERE "id" = ${shopId} FOR UPDATE`;
+    }
+
+    const existing = await tx.merchantWalletTransaction.findUnique({ where: { requestKey: key } });
+    if (existing) {
+      assertSameSubscriptionRetry(existing, {
+        shopId,
+        plan: normalizedPlan,
+        kind: normalizedKind,
+        extraBranches: normalizedExtraBranches,
+      });
+      const existingWallet = await tx.merchantWallet.findUnique({ where: { id: existing.walletId } });
+      const existingShop = await tx.shop.findUnique({ where: { id: shopId } });
+      return {
+        transaction: existing,
+        balanceTzs: existingWallet?.balanceTzs || 0,
+        subscriptionEndsAt: existingShop?.subscriptionEndsAt || null,
+        reused: true,
+      };
+    }
+
+    const shop = await tx.shop.findUnique({ where: { id: shopId } });
+    if (!shop) throw failure("Shop not found.", 404, "SHOP_NOT_FOUND");
+    const quote = priceSubscription(shop, {
+      plan: normalizedPlan,
+      kind: normalizedKind,
+      extraBranches: normalizedExtraBranches,
+      months: 1,
+    });
+    if (!shop.isActive) throw failure("Your shop is suspended. Contact support before paying.", 403, "SHOP_SUSPENDED");
+    if (shop.subscriptionEndsAt > new Date() && shop.plan !== quote.plan) {
+      throw failure("Contact support to change plans before your current subscription ends.", 409, "PLAN_CHANGE_REQUIRES_SUPPORT");
+    }
+    await validateBranchCapacity(tx, shopId, quote.plan, quote.extraBranches);
+
+    const wallet = await lockWallet(tx, shopId);
+    if (wallet.balanceTzs < quote.amount) {
+      throw failure("Your merchant balance is not enough for this subscription payment.", 409, "INSUFFICIENT_BALANCE");
+    }
+
+    const completedAt = new Date();
+    const transaction = await tx.merchantWalletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        shopId,
+        kind: "SUBSCRIPTION",
+        status: "COMPLETED",
+        requestKey: key,
+        amountTzs: quote.amount,
+        totalDebitTzs: quote.amount,
+        requestedByUserId: userId,
+        completedAt,
+        metadata: {
+          plan: quote.plan,
+          kind: quote.kind,
+          extraBranches: quote.extraBranches,
+          expectedEndsAt: quote.expectedEndsAt?.toISOString() || null,
+        },
+      },
+    });
+    await appendEntry(tx, wallet, transaction, {
+      type: "SUBSCRIPTION_PAYMENT",
+      direction: "DEBIT",
+      amountTzs: quote.amount,
+      description: `DukaPilot ${quote.plan} ${quote.kind === "BRANCH_ADDON" ? "branch capacity" : "subscription"}`,
+    });
+    await tx.subscriptionPayment.create({
+      data: {
+        shopId,
+        plan: quote.plan,
+        amount: quote.amount,
+        months: quote.kind === "BRANCH_ADDON" ? 0 : 1,
+        kind: quote.kind,
+        extraBranches: quote.extraBranches,
+        method: "MERCHANT_BALANCE",
+        reference: transaction.id,
+        normalizedReference: `WALLET:${transaction.id}`,
+        status: "CONFIRMED",
+        reviewedBy: userId,
+        reviewedAt: completedAt,
+        note: "Paid from DukaPilot Merchant Balance",
+      },
+    });
+    const updatedShop = await tx.shop.update({
+      where: { id: shopId },
+      data: {
+        plan: quote.plan,
+        additionalBranchSlots: quote.extraBranches,
+        ...(quote.kind === "BRANCH_ADDON" ? {} : { subscriptionEndsAt: ntzs.renewalEnd(shop, completedAt) }),
+      },
+    });
+    return {
+      transaction,
+      balanceTzs: wallet.balanceTzs,
+      subscriptionEndsAt: updatedShop.subscriptionEndsAt,
+      reused: false,
+    };
   });
 }
 
@@ -834,7 +956,7 @@ async function merchantWalletOverview(shopId, { page = 1, limit = 20, status, ki
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
   const wallet = await prisma.merchantWallet.findUnique({ where: { businessShopId: shopId } });
   const where = { shopId };
-  if (["DEPOSIT", "WITHDRAWAL", "ADJUSTMENT"].includes(String(kind || "").toUpperCase())) where.kind = String(kind).toUpperCase();
+  if (["DEPOSIT", "WITHDRAWAL", "ADJUSTMENT", "SUBSCRIPTION"].includes(String(kind || "").toUpperCase())) where.kind = String(kind).toUpperCase();
   if (["PENDING", "REVIEW", "COMPLETED", "FAILED", "REVERSED", "CANCELLED"].includes(String(status || "").toUpperCase())) where.status = String(status).toUpperCase();
   const [transactions, total, pendingDeposits, pendingWithdrawals] = await Promise.all([
     prisma.merchantWalletTransaction.findMany({ where, orderBy: { createdAt: "desc" }, skip: (safePage - 1) * safeLimit, take: safeLimit }),
@@ -858,7 +980,7 @@ async function listAdminTransactions({ page = 1, limit = 25, status, kind, searc
   const safePage = Math.min(Math.max(Number(page) || 1, 1), 100000);
   const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
   const where = {};
-  if (["DEPOSIT", "WITHDRAWAL", "ADJUSTMENT"].includes(String(kind || "").toUpperCase())) where.kind = String(kind).toUpperCase();
+  if (["DEPOSIT", "WITHDRAWAL", "ADJUSTMENT", "SUBSCRIPTION"].includes(String(kind || "").toUpperCase())) where.kind = String(kind).toUpperCase();
   if (["PENDING", "REVIEW", "COMPLETED", "FAILED", "REVERSED", "CANCELLED"].includes(String(status || "").toUpperCase())) where.status = String(status).toUpperCase();
   const query = String(search || "").trim().slice(0, 100);
   if (query) {
@@ -881,10 +1003,11 @@ async function listAdminTransactions({ page = 1, limit = 25, status, kind, searc
 }
 
 async function adminOverview() {
-  const [wallets, pending, completedFees] = await Promise.all([
+  const [wallets, pending, completedFees, completedSubscriptions] = await Promise.all([
     prisma.merchantWallet.aggregate({ _sum: { balanceTzs: true }, _count: { id: true } }),
     prisma.merchantWalletTransaction.groupBy({ by: ["kind", "status"], where: { status: { in: ["PENDING", "REVIEW"] } }, _sum: { amountTzs: true, totalDebitTzs: true }, _count: { id: true } }),
     prisma.merchantWalletTransaction.aggregate({ where: { kind: "WITHDRAWAL", status: "COMPLETED" }, _sum: { platformFeeTzs: true } }),
+    prisma.merchantWalletTransaction.aggregate({ where: { kind: "SUBSCRIPTION", status: "COMPLETED" }, _sum: { amountTzs: true } }),
   ]);
   let providerBalanceTzs = null;
   let providerError = null;
@@ -898,7 +1021,8 @@ async function adminOverview() {
   }
   const customerLiabilityTzs = wallets._sum.balanceTzs || 0;
   const retainedPlatformFeeTzs = completedFees._sum.platformFeeTzs || 0;
-  const settledExpectedBalanceTzs = customerLiabilityTzs + retainedPlatformFeeTzs;
+  const retainedSubscriptionRevenueTzs = completedSubscriptions._sum.amountTzs || 0;
+  const settledExpectedBalanceTzs = customerLiabilityTzs + retainedPlatformFeeTzs + retainedSubscriptionRevenueTzs;
   const pendingDeposits = pending.filter((row) => row.kind === "DEPOSIT").reduce((sum, row) => sum + (row._sum.amountTzs || 0), 0);
   const pendingWithdrawals = pending.filter((row) => row.kind === "WITHDRAWAL").reduce((sum, row) => sum + (row._sum.totalDebitTzs || 0), 0);
   // A payout can be pending before the provider debits its pool. In that
@@ -912,6 +1036,7 @@ async function adminOverview() {
     wallets: { count: wallets._count.id, customerLiabilityTzs },
     pending: { depositTzs: pendingDeposits, withdrawalTzs: pendingWithdrawals, count: pending.reduce((sum, row) => sum + row._count.id, 0) },
     retainedPlatformFeeTzs,
+    retainedSubscriptionRevenueTzs,
     provider: {
       balanceTzs: providerBalanceTzs,
       settledExpectedBalanceTzs,
@@ -1002,4 +1127,5 @@ module.exports = {
   listAdminTransactions,
   adminOverview,
   createAdminAdjustment,
+  paySubscriptionFromBalance,
 };

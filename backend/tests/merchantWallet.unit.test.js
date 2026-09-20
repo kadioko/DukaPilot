@@ -70,6 +70,67 @@ function depositTransactionDb(record) {
   };
 }
 
+function subscriptionPaymentDb(startingBalance = 20000) {
+  const wallet = { id: "merchant-wallet-subscription", businessShopId: "shop-1", balanceTzs: startingBalance };
+  const shop = { id: "shop-1", isActive: true, plan: "BASIC", additionalBranchSlots: 0, subscriptionEndsAt: null };
+  const transactions = new Map();
+  const entries = new Map();
+  const payments = [];
+  const tx = {
+    $queryRaw: async () => [],
+    merchantWallet: {
+      upsert: async () => ({ ...wallet }),
+      findUnique: async () => ({ ...wallet }),
+      updateMany: async ({ where, data }) => {
+        if (where.id !== wallet.id || where.balanceTzs !== wallet.balanceTzs) return { count: 0 };
+        Object.assign(wallet, data);
+        return { count: 1 };
+      },
+    },
+    merchantWalletTransaction: {
+      findUnique: async ({ where }) => {
+        if (where.requestKey) return transactions.get(where.requestKey) || null;
+        return [...transactions.values()].find((item) => item.id === where.id) || null;
+      },
+      create: async ({ data }) => {
+        const record = { id: `subscription-transaction-${transactions.size + 1}`, createdAt: new Date(), ...data };
+        transactions.set(data.requestKey, record);
+        return record;
+      },
+    },
+    merchantWalletEntry: {
+      findUnique: async ({ where }) => entries.get(`${where.transactionId_type.transactionId}:${where.transactionId_type.type}`) || null,
+      create: async ({ data }) => {
+        const entry = { id: `subscription-entry-${entries.size + 1}`, ...data };
+        entries.set(`${data.transactionId}:${data.type}`, entry);
+        return entry;
+      },
+    },
+    shop: {
+      findUnique: async () => ({ ...shop }),
+      count: async () => 0,
+      update: async ({ data }) => {
+        Object.assign(shop, data);
+        return { ...shop };
+      },
+    },
+    subscriptionPayment: {
+      create: async ({ data }) => {
+        payments.push(data);
+        return { id: `subscription-payment-${payments.length}`, ...data };
+      },
+    },
+  };
+  return {
+    prisma: { ...tx, $transaction: async (callback) => callback(tx) },
+    wallet,
+    shop,
+    transactions,
+    entries,
+    payments,
+  };
+}
+
 function merchantEnvironment() {
   const keys = [
     "NTZS_MERCHANT_BALANCE_ENABLED",
@@ -124,6 +185,59 @@ test("a pilot allowlist restricts new wallet operations to named root businesses
     assert.equal(wallet.merchantWalletEnabledForShop("shop-pilot"), true);
     assert.equal(wallet.merchantWalletEnabledForShop("shop-second"), true);
     assert.equal(wallet.merchantWalletEnabledForShop("shop-other"), false);
+  } finally {
+    restore();
+  }
+});
+
+test("merchant balance subscription payment debits and activates atomically only once", async () => {
+  const restore = merchantEnvironment();
+  const state = subscriptionPaymentDb(20000);
+  try {
+    const wallet = loadWallet(state.prisma);
+    const input = {
+      shopId: "shop-1",
+      userId: "owner-1",
+      requestKey: "11111111-1111-4111-8111-111111111111",
+      plan: "BASIC",
+      kind: "RENEWAL",
+      extraBranches: 0,
+    };
+
+    const first = await wallet.paySubscriptionFromBalance(input);
+    const retry = await wallet.paySubscriptionFromBalance(input);
+
+    assert.equal(first.reused, false);
+    assert.equal(retry.reused, true);
+    assert.equal(state.wallet.balanceTzs, 5000);
+    assert.equal(state.entries.size, 1);
+    assert.equal(state.payments.length, 1);
+    assert.equal(state.payments[0].method, "MERCHANT_BALANCE");
+    assert.equal(state.payments[0].amount, 15000);
+    assert.equal(state.shop.plan, "BASIC");
+    assert.ok(state.shop.subscriptionEndsAt instanceof Date);
+  } finally {
+    restore();
+  }
+});
+
+test("merchant balance subscription payment leaves all records unchanged when funds are insufficient", async () => {
+  const restore = merchantEnvironment();
+  const state = subscriptionPaymentDb(14999);
+  try {
+    const wallet = loadWallet(state.prisma);
+    await assert.rejects(wallet.paySubscriptionFromBalance({
+      shopId: "shop-1",
+      userId: "owner-1",
+      requestKey: "22222222-2222-4222-8222-222222222222",
+      plan: "BASIC",
+      kind: "RENEWAL",
+      extraBranches: 0,
+    }), { code: "INSUFFICIENT_BALANCE" });
+    assert.equal(state.wallet.balanceTzs, 14999);
+    assert.equal(state.entries.size, 0);
+    assert.equal(state.payments.length, 0);
+    assert.equal(state.shop.subscriptionEndsAt, null);
   } finally {
     restore();
   }

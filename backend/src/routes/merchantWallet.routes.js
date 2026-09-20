@@ -6,6 +6,7 @@ const {
   merchantWalletQuoteLimiter,
   merchantWalletWithdrawalLimiter,
   merchantWalletReconcileLimiter,
+  subscriptionPaymentLimiter,
 } = require("../middleware/rateLimit");
 
 // Platform operations intentionally live before owner routes. Staff accounts
@@ -23,6 +24,7 @@ router.get("/", controller.overview);
 router.post("/deposits", merchantWalletDepositLimiter, controller.deposit);
 router.post("/withdrawals/quote", merchantWalletQuoteLimiter, controller.withdrawalQuote);
 router.post("/withdrawals", merchantWalletWithdrawalLimiter, controller.withdrawal);
+router.post("/subscription-payments", subscriptionPaymentLimiter, controller.subscriptionPayment);
 router.post("/transactions/:id/check", merchantWalletReconcileLimiter, controller.reconcileOwn);
 
 module.exports = router;
