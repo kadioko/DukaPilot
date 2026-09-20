@@ -24,6 +24,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Fixed the production PostgreSQL wallet constraint so atomic Merchant Balance subscription payments can be recorded as `SUBSCRIPTION` transactions, and added database-level regression coverage.
+- Prepared Merchant Balance for all merchant owners by making an empty pilot allowlist the documented normal production setting while retaining the global emergency stop and optional incident allowlist.
 - Expanded Billing's nTZS option with supported-network guidance, exact amount and plan confirmation, PIN safety, automatic-activation instructions, clearer pending/review states, and a fresh-attempt action after a terminal failure.
 - Centralized nTZS deposit status handling across subscription and merchant-wallet flows, including live `minted` success and `rejected` failure states, stable per-business payer references, and treasury-destination verification when returned.
 - Fixed merchant-balance deposit reconciliation so nTZS `minted` collections credit the merchant ledger exactly once and `rejected` collections exit review/pending as failed without adding balance.

@@ -424,7 +424,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 | `NTZS_WEBHOOK_SECRET` | Required for nTZS payments | Verifies signed provider callbacks using the raw request body. Railway only. |
 | `NTZS_ENABLED` | Required for online subscriptions | Enables owner-only nTZS subscription checkout. Independent from Merchant Balance. |
 | `NTZS_MERCHANT_BALANCE_ENABLED` | Required to launch wallet | Keep `false` until controlled deposit/withdrawal reconciliation has passed. Separate from subscription checkout. |
-| `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` | Recommended for first live test | Comma-separated root shop IDs permitted to initiate wallet operations; leave empty only for a full rollout. |
+| `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` | Optional emergency rollout control | Leave empty for all merchant owners. Set comma-separated root shop IDs only to temporarily restrict new wallet operations. |
 | `NTZS_MERCHANT_BALANCE_USER_ID` | Required to launch wallet | Private nTZS pooled merchant-balance user ID; Railway only. |
 | `NTZS_MERCHANT_BALANCE_WALLET_ADDRESS` | Required operational record | Private nTZS pooled settlement wallet address; Railway only, never send to a browser. |
 | `NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS` | Optional | DukaPilot withdrawal fee in basis points; default `200` = 2%. |
@@ -447,7 +447,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Current production migration sequence:** through `20260919090000_merchant_wallets`. The latest migration adds the merchant-balance ledger; see [Merchant Balance](./docs/MERCHANT_BALANCE_WALLET.md) before enabling live provider operations.
+- **Current production migration sequence:** through `20260920120000_merchant_wallet_subscription_kind`. The latest migration permits subscription debits in the merchant-balance ledger; see [Merchant Balance](./docs/MERCHANT_BALANCE_WALLET.md) before changing live provider operations.
 
 ### Deployment Checklist
 
@@ -477,7 +477,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - Offline support includes an already-open Sales screen and, for farms, already-open Crop operations or Field plan screens. Queued work is scoped to the business, branch, and actor, with retry history and admin sync-failure resolution by shop/device. Reopening the app without a connection still shows `/offline.html`; inventory, debts, expenses, stock counts, Daily Close, and catalog checkout remain online-only.
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired shops can still view data and open **Billing**, where they can use nTZS or a sufficient Merchant Balance for automatic activation, or submit a manual payment reference for admin review. Deliberately suspended shops must contact support before paying. Operational changes resume after activation.
-- Merchant Balance remains separate from sales, expenses, and Daily Close. Owners may apply it to DukaPilot subscriptions through the atomic Billing flow; staff cannot access it. The private production pilot is controlled by its own flag and shop allowlist.
+- Merchant Balance remains separate from sales, expenses, and Daily Close. All merchant owners may deposit, withdraw, and apply sufficient balance to DukaPilot subscriptions through the atomic Billing flow; staff cannot access it. The feature flag remains the global emergency stop, and the optional shop allowlist can temporarily narrow access during an incident.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Debt collections guard the debt amount, prior collection total, and status together. Stock-count completion refuses to overwrite sales or receipts recorded after the count began, and one count can only be finalized once.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.

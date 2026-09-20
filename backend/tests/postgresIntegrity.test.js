@@ -14,6 +14,44 @@ if (!/localhost|127\.0\.0\.1|dukapilot_test/i.test(databaseUrl)) {
   throw new Error("PostgreSQL integrity tests require an explicitly named local test database");
 }
 
+test("merchant wallet database accepts subscription debits and rejects unknown transaction kinds", async (t) => {
+  const suffix = crypto.randomUUID();
+  const user = await prisma.user.create({ data: { phone: `wallet-kind-${suffix}`, pin: "not-a-real-pin", name: "Synthetic wallet owner" } });
+  const shop = await prisma.shop.create({ data: { name: "Synthetic wallet shop", location: "Test", userId: user.id, referralCode: `wallet-${suffix}` } });
+  const wallet = await prisma.merchantWallet.create({ data: { businessShopId: shop.id, balanceTzs: 20000 } });
+  t.after(async () => {
+    await prisma.shop.deleteMany({ where: { id: shop.id } });
+    await prisma.user.deleteMany({ where: { id: user.id } });
+  });
+
+  const subscription = await prisma.merchantWalletTransaction.create({
+    data: {
+      walletId: wallet.id,
+      shopId: shop.id,
+      kind: "SUBSCRIPTION",
+      status: "COMPLETED",
+      requestKey: crypto.randomUUID(),
+      amountTzs: 15000,
+      totalDebitTzs: 15000,
+      completedAt: new Date(),
+    },
+  });
+  assert.equal(subscription.kind, "SUBSCRIPTION");
+
+  await assert.rejects(
+    prisma.merchantWalletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        shopId: shop.id,
+        kind: "UNKNOWN",
+        status: "COMPLETED",
+        requestKey: crypto.randomUUID(),
+        amountTzs: 1,
+      },
+    }),
+  );
+});
+
 test("merchant deletion anonymizes a business with branches and retained financial records", async (t) => {
   const suffix = crypto.randomUUID();
   const user = await prisma.user.create({ data: { phone: `deleted-test-${suffix}`, pin: "not-a-real-pin", name: "Synthetic deletion owner" } });

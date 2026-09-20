@@ -144,6 +144,7 @@ function merchantEnvironment() {
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   Object.assign(process.env, {
     NTZS_MERCHANT_BALANCE_ENABLED: "true",
+    NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS: "",
     NTZS_MERCHANT_BALANCE_USER_ID: "11111111-1111-4111-8111-111111111111",
     NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS: "200",
     NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS: "5000",
@@ -185,6 +186,17 @@ test("a pilot allowlist restricts new wallet operations to named root businesses
     assert.equal(wallet.merchantWalletEnabledForShop("shop-pilot"), true);
     assert.equal(wallet.merchantWalletEnabledForShop("shop-second"), true);
     assert.equal(wallet.merchantWalletEnabledForShop("shop-other"), false);
+  } finally {
+    restore();
+  }
+});
+
+test("an empty pilot allowlist makes merchant balance available to every root business", () => {
+  const restore = merchantEnvironment();
+  try {
+    const wallet = loadWallet();
+    assert.equal(wallet.merchantWalletEnabledForShop("shop-one"), true);
+    assert.equal(wallet.merchantWalletEnabledForShop("shop-two"), true);
   } finally {
     restore();
   }

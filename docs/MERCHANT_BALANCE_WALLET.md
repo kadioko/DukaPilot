@@ -138,7 +138,7 @@ frontend:
 NTZS_API_KEY=<existing nTZS live key>
 NTZS_WEBHOOK_SECRET=<existing signed webhook secret>
 NTZS_MERCHANT_BALANCE_ENABLED=false
-NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS=<one root shop ID for the first live test>
+NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS=
 NTZS_MERCHANT_BALANCE_USER_ID=<private pooled merchant-balance nTZS user ID>
 NTZS_MERCHANT_BALANCE_WALLET_ADDRESS=<private provider wallet address>
 NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS=200
@@ -150,11 +150,12 @@ MERCHANT_WALLET_RECONCILE_CRON_SECRET=<strong random secret>
 from `NTZS_MERCHANT_BALANCE_ENABLED`. Turning on one must never turn on the
 other.
 
-`NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` is a comma-separated allowlist of root
-business IDs. While it has a value, only those owners can initiate a deposit
-or withdrawal; their branches share that same business balance. Existing
-pending operations can still be checked and reconciled. Leave it empty only
-after the pilot has passed.
+`NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` is an optional comma-separated
+allowlist of root business IDs. Normal production rollout leaves it empty so
+every merchant owner can initiate deposits, withdrawals, and subscription
+payments; branches share the parent business balance. Set an allowlist only
+as a temporary incident or controlled-rollout measure. Existing pending
+operations can still be checked and reconciled.
 
 Set the same strong random value as `MERCHANT_WALLET_RECONCILE_CRON_SECRET` in
 Railway and as the GitHub Actions secret with that exact name. The
@@ -166,8 +167,9 @@ the original idempotency key.
 
 ## Controlled Production Rollout
 
-1. Deploy the backend first so Railway applies migration
-   `20260919090000_merchant_wallets`.
+1. Deploy the backend first so Railway applies migrations
+   `20260919090000_merchant_wallets` and
+   `20260920120000_merchant_wallet_subscription_kind`.
 2. Confirm the nTZS webhook still reaches `/api/webhooks/ntzs` and uses the
    existing signed timestamp/signature headers. Add the wallet reconciliation
    secret in Railway and GitHub before enabling the feature.
@@ -189,8 +191,10 @@ the original idempotency key.
    remaining balance, activates once, records one subscription payment, and
    shows one ledger debit. Retry the same request key and verify no second debit
    or subscription extension occurs.
-8. Keep the feature pilot-only or turn it off if any test cannot be
-   reconciled. Remove the pilot allowlist only after all acceptance tests pass.
+8. For full availability, leave `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` empty.
+   If any live operation cannot be reconciled, use the allowlist to restrict
+   new operations or turn off the feature while existing pending records are
+   investigated.
 
 ## Current Scope
 
