@@ -1,5 +1,7 @@
 # DukaPilot First Ad Campaign
 
+Use the official logo files and stable public URLs documented in [BRAND_ASSETS.md](./BRAND_ASSETS.md). The PNG is the default for ad-platform uploads.
+
 Campaign goal:
 
 > Get WhatsApp conversations with Tanzanian shop owners, not generic website traffic.

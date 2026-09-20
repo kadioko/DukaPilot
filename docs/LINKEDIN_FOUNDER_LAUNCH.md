@@ -1,5 +1,7 @@
 # DukaPilot Founder LinkedIn Launch Kit
 
+Use the official logo files and stable public URLs documented in [BRAND_ASSETS.md](./BRAND_ASSETS.md). Use the PNG for image uploads and the SVG when preparing a high-resolution design.
+
 Use this when posting about DukaPilot from the founder account. The goal is to explain the mission clearly, invite real shop owners and partners into the story, and drive warm WhatsApp conversations.
 
 ## Main Founder Post

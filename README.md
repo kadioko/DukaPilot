@@ -47,6 +47,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Play Data Safety record:** [docs/PLAY_CONSOLE_DATA_SAFETY.md](./docs/PLAY_CONSOLE_DATA_SAFETY.md)
 - **Deletion-process test:** [docs/DATA_DELETION_REQUEST_TEST.md](./docs/DATA_DELETION_REQUEST_TEST.md)
 - **Marketing assets:** [marketing/README.md](./marketing/README.md)
+- **Official logo URLs:** [docs/BRAND_ASSETS.md](./docs/BRAND_ASSETS.md) - stable public PNG, SVG, and JPG links plus logo usage rules
 
 ---
 

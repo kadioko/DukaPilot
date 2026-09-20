@@ -1,5 +1,7 @@
 # DukaPilot Field Sales Kit
 
+For printable sheets, partner forms, and shared materials, use the official logo files and public URLs in [BRAND_ASSETS.md](./BRAND_ASSETS.md).
+
 Use this one-page kit when visiting shops. Print it, keep it on your phone, or send it to anyone helping with field onboarding.
 
 ## Who To Visit First

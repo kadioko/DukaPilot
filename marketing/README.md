@@ -4,6 +4,7 @@ This folder holds launch and store-listing assets for DukaPilot.
 
 ## Current Assets
 
+- Official public logo URLs and usage rules: `docs/BRAND_ASSETS.md`
 - `play-store-feature-graphic.png` - Play Store feature graphic.
 - `play-store-feature-graphic.svg` - Editable source for the feature graphic.
 - `brand/dukapilot-logo.jpg` - JPG export of the DukaPilot logo mark.
@@ -91,6 +92,7 @@ For ads and store listings, prioritize screenshots that show real merchant value
 
 ## Usage Notes
 
+- Use `https://www.dukapilot.com/brand/dukapilot-logo.png` when a public platform asks for a logo URL; use the SVG or JPG alternatives documented in `docs/BRAND_ASSETS.md` only when the destination requires them.
 - Use Kiswahili-first copy for Tanzanian acquisition.
 - Prefer WhatsApp-message campaigns for early paid ads.
 - Avoid generic "business software" language; lead with stock, profit, debts, and reordering.

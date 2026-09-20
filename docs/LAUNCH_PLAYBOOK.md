@@ -1,5 +1,7 @@
 # DukaPilot Launch Playbook
 
+Official logo files and stable public URLs are listed in [BRAND_ASSETS.md](./BRAND_ASSETS.md). Use the PNG URL for directories and partner forms unless they specifically request SVG or JPG.
+
 Last updated: 2026-09-15
 
 This is the working plan for turning the live DukaPilot product into active merchants, paid shops, and supplier relationships.

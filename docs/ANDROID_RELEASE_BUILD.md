@@ -1,5 +1,7 @@
 # Android Release Build
 
+The canonical public logo formats and usage rules are documented in [BRAND_ASSETS.md](./BRAND_ASSETS.md). Android launcher icons continue to use the size-specific assets in `frontend/public/logo/`.
+
 This guide produces the signed Android App Bundle (AAB) for DukaPilot.
 
 ## Scope

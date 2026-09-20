@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added stable public DukaPilot logo URLs in PNG, SVG, and JPG formats, with a canonical brand-assets guide for partners, campaigns, and platform uploads.
 - Added Food Preparation for restaurants and bars: reusable recipes, ingredient deductions, prepared portions, expected versus actual yield, waste, direct cooking costs, immutable batch history, and cost per portion.
 - Added a clearly-labelled total-grocery-bill receiving option. It allocates a receipt using recent buying prices (or quantities when there is no price history) and marks the allocation as estimated.
 - Added the in-app Bar and Restaurant Help guide and expanded the shareable restaurant operations guide.
