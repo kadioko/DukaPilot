@@ -43,4 +43,23 @@ function requireActiveSubscription(req, res, next) {
     .catch(next);
 }
 
-module.exports = { requireActiveSubscription, isSubscriptionActive };
+function isCatalogUnpublishOnly(req) {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const keys = Object.keys(body);
+  return req.method === "PATCH"
+    && keys.length === 1
+    && keys[0] === "isCatalogPublished"
+    && body.isCatalogPublished === false;
+}
+
+function requireActiveSubscriptionOrCatalogUnpublish(req, res, next) {
+  if (isCatalogUnpublishOnly(req)) return next();
+  return requireActiveSubscription(req, res, next);
+}
+
+module.exports = {
+  requireActiveSubscription,
+  requireActiveSubscriptionOrCatalogUnpublish,
+  isCatalogUnpublishOnly,
+  isSubscriptionActive,
+};

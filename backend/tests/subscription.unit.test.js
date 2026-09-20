@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const { isCatalogUnpublishOnly } = require("../src/middleware/subscription");
 
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const controllerPath = path.resolve(__dirname, "../src/controllers/subscription.controller.js");
@@ -13,6 +14,13 @@ function response() {
     json(payload) { this.payload = payload; return this; },
   };
 }
+
+test("an expired shop may only bypass billing to unpublish its public catalog", () => {
+  assert.equal(isCatalogUnpublishOnly({ method: "PATCH", body: { isCatalogPublished: false } }), true);
+  assert.equal(isCatalogUnpublishOnly({ method: "PATCH", body: { isCatalogPublished: true } }), false);
+  assert.equal(isCatalogUnpublishOnly({ method: "PATCH", body: { isCatalogPublished: false, name: "Changed" } }), false);
+  assert.equal(isCatalogUnpublishOnly({ method: "POST", body: { isCatalogPublished: false } }), false);
+});
 
 test("admin support access reactivates an expired shop on a paid plan", async () => {
   let updateData;
