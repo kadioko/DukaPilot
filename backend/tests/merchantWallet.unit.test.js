@@ -29,6 +29,47 @@ function transactionDb(record) {
   };
 }
 
+function depositTransactionDb(record) {
+  const wallet = { id: "merchant-wallet-1", businessShopId: record.shopId, balanceTzs: 0 };
+  const entries = new Map();
+  const tx = {
+    merchantWalletTransaction: {
+      findUnique: async () => ({ ...record }),
+      update: async ({ data }) => {
+        Object.assign(record, data);
+        return { ...record };
+      },
+      updateMany: async ({ where, data }) => {
+        if (where.id !== record.id || (where.status?.in && !where.status.in.includes(record.status))) return { count: 0 };
+        Object.assign(record, data);
+        return { count: 1 };
+      },
+    },
+    merchantWallet: {
+      upsert: async () => ({ ...wallet }),
+      findUnique: async () => ({ ...wallet }),
+      updateMany: async ({ where, data }) => {
+        if (where.id !== wallet.id || where.balanceTzs !== wallet.balanceTzs) return { count: 0 };
+        Object.assign(wallet, data);
+        return { count: 1 };
+      },
+    },
+    merchantWalletEntry: {
+      findUnique: async ({ where }) => entries.get(`${where.transactionId_type.transactionId}:${where.transactionId_type.type}`) || null,
+      create: async ({ data }) => {
+        const entry = { id: `entry-${entries.size + 1}`, ...data };
+        entries.set(`${data.transactionId}:${data.type}`, entry);
+        return entry;
+      },
+    },
+  };
+  return {
+    prisma: { ...tx, $transaction: async (callback) => callback(tx) },
+    wallet,
+    entries,
+  };
+}
+
 function merchantEnvironment() {
   const keys = [
     "NTZS_MERCHANT_BALANCE_ENABLED",
@@ -176,6 +217,77 @@ test("a deterministic provider conflict releases a reserved withdrawal", () => {
     "The withdrawal could not start."
   );
   assert.equal(result.uncertain, false);
+});
+
+test("an nTZS minted deposit credits the merchant balance exactly once", async () => {
+  const restore = merchantEnvironment();
+  const originalRequest = ntzs.request;
+  const record = {
+    id: "wallet-deposit-minted",
+    kind: "DEPOSIT",
+    status: "PENDING",
+    shopId: "shop-1",
+    providerId: "deposit-provider-minted",
+    amountTzs: 1500,
+  };
+  const state = depositTransactionDb(record);
+  try {
+    const wallet = loadWallet(state.prisma);
+    ntzs.request = async () => ({
+      id: record.providerId,
+      userId: process.env.NTZS_MERCHANT_BALANCE_USER_ID,
+      amountTzs: 1500,
+      paymentMethod: "mobile_money",
+      status: "minted",
+      livemode: true,
+    });
+
+    const first = await wallet.reconcileTransaction(record.id);
+    const retry = await wallet.reconcileTransaction(record.id);
+
+    assert.equal(first.status, "COMPLETED");
+    assert.equal(retry.status, "COMPLETED");
+    assert.equal(state.wallet.balanceTzs, 1500);
+    assert.equal(state.entries.size, 1);
+  } finally {
+    ntzs.request = originalRequest;
+    restore();
+  }
+});
+
+test("an nTZS rejected deposit fails without crediting the merchant balance", async () => {
+  const restore = merchantEnvironment();
+  const originalRequest = ntzs.request;
+  const record = {
+    id: "wallet-deposit-rejected",
+    kind: "DEPOSIT",
+    status: "REVIEW",
+    shopId: "shop-1",
+    providerId: "deposit-provider-rejected",
+    amountTzs: 1000,
+  };
+  const state = depositTransactionDb(record);
+  try {
+    const wallet = loadWallet(state.prisma);
+    ntzs.request = async () => ({
+      id: record.providerId,
+      userId: process.env.NTZS_MERCHANT_BALANCE_USER_ID,
+      amountTzs: 1000,
+      paymentMethod: "mobile_money",
+      status: "rejected",
+      livemode: true,
+    });
+
+    const result = await wallet.reconcileTransaction(record.id);
+
+    assert.equal(result.status, "FAILED");
+    assert.equal(state.wallet.balanceTzs, 0);
+    assert.equal(state.entries.size, 0);
+    assert.match(result.failureReason, /did not complete/i);
+  } finally {
+    ntzs.request = originalRequest;
+    restore();
+  }
 });
 
 test("a burned withdrawal remains pending until its mobile-money payout completes", async () => {

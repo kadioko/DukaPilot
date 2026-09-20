@@ -40,6 +40,11 @@ another merchant's records.
 5. A failed, cancelled, or reversed provider collection never becomes usable
    balance. A later reversal is recorded as a new compensating ledger entry.
 
+nTZS reports a successful on-ramp as `minted`; DukaPilot treats that as the
+terminal successful deposit state and credits the internal merchant ledger
+once. A provider `rejected` state is terminal failure and is removed from the
+pending total without creating a ledger credit.
+
 If a browser or provider response is interrupted, the original transaction can
 be checked again. DukaPilot resumes it with the same nTZS idempotency key, so
 it does not generate a second collection request.

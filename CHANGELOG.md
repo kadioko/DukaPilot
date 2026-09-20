@@ -22,6 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Fixed merchant-balance deposit reconciliation so nTZS `minted` collections credit the merchant ledger exactly once and `rejected` collections exit review/pending as failed without adding balance.
 - Updated the Android release to target Android 16 (API 36), meeting the Google Play update requirement effective 31 August 2026.
 - Raised the Android wrapper's Java compatibility to Java 17 and disabled device backup for the business app wrapper.
 - Corrected Trusted Web Activity navigation-bar divider metadata so Android system-bar styling is applied reliably.

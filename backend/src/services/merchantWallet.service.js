@@ -5,7 +5,7 @@ const { normalizePhone } = require("../lib/phone");
 
 const MAX_TZS = 2_000_000_000;
 const PENDING_STATUSES = new Set(["PENDING", "REVIEW"]);
-const TERMINAL_FAILURE_STATUSES = new Set(["failed", "cancelled", "canceled", "expired", "reversed", "refunded"]);
+const TERMINAL_FAILURE_STATUSES = new Set(["failed", "rejected", "cancelled", "canceled", "expired", "reversed", "refunded"]);
 const CERTAIN_NO_MOVEMENT_PROVIDER_CODES = new Set([
   "invalid_amount",
   "amount_too_large",
@@ -93,7 +93,9 @@ function providerState(value) {
 }
 
 function isCompletedProviderStatus(value) {
-  return ["completed", "succeeded", "paid"].includes(providerState(value));
+  // nTZS deposits are terminal when the collection has minted nTZS into the
+  // destination wallet. Other providers commonly use completed/succeeded/paid.
+  return ["minted", "completed", "succeeded", "paid"].includes(providerState(value));
 }
 
 function isTerminalFailureStatus(value) {
