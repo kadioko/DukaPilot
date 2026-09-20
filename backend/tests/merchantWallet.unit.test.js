@@ -12,6 +12,23 @@ function loadWallet(prismaMock = {}) {
   return require(servicePath);
 }
 
+function transactionDb(record) {
+  return {
+    merchantWalletTransaction: {
+      findUnique: async () => ({ ...record }),
+      update: async ({ data }) => {
+        Object.assign(record, data);
+        return { ...record };
+      },
+      updateMany: async ({ where, data }) => {
+        if (where.id !== record.id || (where.status?.in && !where.status.in.includes(record.status))) return { count: 0 };
+        Object.assign(record, data);
+        return { count: 1 };
+      },
+    },
+  };
+}
+
 function merchantEnvironment() {
   const keys = [
     "NTZS_MERCHANT_BALANCE_ENABLED",
@@ -152,6 +169,15 @@ test("withdrawals require the owner to confirm the exact server-side quote", () 
   );
 });
 
+test("a deterministic provider conflict releases a reserved withdrawal", () => {
+  const wallet = loadWallet();
+  const result = wallet.providerFailure(
+    { providerCode: "quote_stale", providerStatus: 409 },
+    "The withdrawal could not start."
+  );
+  assert.equal(result.uncertain, false);
+});
+
 test("a burned withdrawal remains pending until its mobile-money payout completes", async () => {
   const restore = merchantEnvironment();
   const originalRequest = ntzs.request;
@@ -165,12 +191,7 @@ test("a burned withdrawal remains pending until its mobile-money payout complete
     platformFeeTzs: 200,
     totalDebitTzs: 10582,
   };
-  const db = {
-    merchantWalletTransaction: {
-      findUnique: async () => record,
-      update: async ({ data }) => Object.assign(record, data),
-    },
-  };
+  const db = transactionDb(record);
   try {
     const wallet = loadWallet(db);
     ntzs.request = async () => ({
@@ -204,12 +225,7 @@ test("a completed burned withdrawal records the provider confirmation", async ()
     platformFeeTzs: 200,
     totalDebitTzs: 10582,
   };
-  const db = {
-    merchantWalletTransaction: {
-      findUnique: async () => record,
-      update: async ({ data }) => Object.assign(record, data),
-    },
-  };
+  const db = transactionDb(record);
   try {
     const wallet = loadWallet(db);
     ntzs.request = async () => ({
@@ -245,12 +261,7 @@ test("a compact nTZS burned withdrawal settles without a payoutStatus field", as
     platformFeeTzs: 200,
     totalDebitTzs: 10582,
   };
-  const db = {
-    merchantWalletTransaction: {
-      findUnique: async () => record,
-      update: async ({ data }) => Object.assign(record, data),
-    },
-  };
+  const db = transactionDb(record);
   try {
     const wallet = loadWallet(db);
     ntzs.request = async () => ({
@@ -284,12 +295,7 @@ test("a review deposit resumes the original provider request key rather than cre
     providerInstruction: null,
     requestKey: "11111111-1111-4111-8111-111111111111",
   };
-  const db = {
-    merchantWalletTransaction: {
-      findUnique: async () => record,
-      update: async ({ data }) => Object.assign(record, data),
-    },
-  };
+  const db = transactionDb(record);
   const calls = [];
   try {
     const wallet = loadWallet(db);
@@ -314,6 +320,43 @@ test("a review deposit resumes the original provider request key rather than cre
     assert.equal(JSON.parse(calls[0].options.body).phoneNumber, "255700000001");
     assert.equal(record.providerId, "deposit-provider-1");
     assert.equal(result.status, "REVIEW");
+  } finally {
+    ntzs.request = originalRequest;
+    restore();
+  }
+});
+
+test("a stale pending reconciliation cannot overwrite a completed withdrawal", async () => {
+  const restore = merchantEnvironment();
+  const originalRequest = ntzs.request;
+  const record = {
+    id: "wallet-withdrawal-race",
+    kind: "WITHDRAWAL",
+    status: "PENDING",
+    providerId: "withdrawal-provider-race",
+    amountTzs: 10000,
+    providerFeeTzs: 382,
+    platformFeeTzs: 200,
+    totalDebitTzs: 10582,
+  };
+  try {
+    const wallet = loadWallet(transactionDb(record));
+    ntzs.request = async () => {
+      record.status = "COMPLETED";
+      return {
+        id: record.providerId,
+        status: "burned",
+        payoutStatus: "pending",
+        receiveAmountTzs: 10000,
+        burnAmountTzs: 10382,
+        fees: { totalFeeTzs: 382 },
+      };
+    };
+
+    const result = await wallet.reconcileTransaction(record.id);
+
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(record.status, "COMPLETED");
   } finally {
     ntzs.request = originalRequest;
     restore();

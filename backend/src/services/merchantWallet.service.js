@@ -182,6 +182,13 @@ async function lockWallet(tx, shopId) {
   return wallet;
 }
 
+async function lockWalletTransaction(tx, transactionId) {
+  if (typeof tx.$queryRaw === "function") {
+    await tx.$queryRaw`SELECT "id" FROM "merchant_wallet_transactions" WHERE "id" = ${transactionId} FOR UPDATE`;
+  }
+  return tx.merchantWalletTransaction.findUnique({ where: { id: transactionId } });
+}
+
 async function appendEntry(tx, wallet, transaction, { type, direction, amountTzs, description, allowNegative = false }) {
   const amount = wholeTzs(amountTzs, "Ledger amount");
   if (!new Set(["CREDIT", "DEBIT"]).has(direction)) throw failure("Invalid wallet ledger direction.", 500, "LEDGER_DIRECTION_INVALID");
@@ -218,16 +225,13 @@ async function appendEntry(tx, wallet, transaction, { type, direction, amountTzs
 
 function providerFailure(error, defaultMessage) {
   const providerCode = cleanShortText(error?.providerCode || error?.code || "PROVIDER_UNAVAILABLE", 80);
-  const providerStatus = error?.providerStatus;
   // A response that is missing, transient, rate-limited, or reports an
   // unknown conflict may have reached the provider after our connection was
   // interrupted. Hold the ledger movement until it can be checked instead of
-  // ever returning money that may already be on its way to the recipient.
-  const uncertain = !Number.isInteger(providerStatus)
-    || providerStatus >= 500
-    || providerStatus === 409
-    || providerStatus === 429
-    || !CERTAIN_NO_MOVEMENT_PROVIDER_CODES.has(String(providerCode || "").toLowerCase());
+  // ever returning money that may already be on its way to the recipient. A
+  // documented deterministic rejection is safe to reverse even when nTZS
+  // reports it as HTTP 409 (for example, an expired quote).
+  const uncertain = !CERTAIN_NO_MOVEMENT_PROVIDER_CODES.has(String(providerCode || "").toLowerCase());
   return {
     failureCode: providerCode,
     failureReason: defaultMessage,
@@ -281,6 +285,14 @@ async function hydrateTransaction(id) {
     where: { id },
     include: { wallet: true, shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } } },
   });
+}
+
+async function updateUnsettledTransaction(id, data) {
+  await prisma.merchantWalletTransaction.updateMany({
+    where: { id, status: { in: Array.from(PENDING_STATUSES) } },
+    data,
+  });
+  return hydrateTransaction(id);
 }
 
 async function createDeposit({ shopId, userId, amountTzs, phone, requestKey }) {
@@ -347,17 +359,18 @@ async function createDeposit({ shopId, userId, amountTzs, phone, requestKey }) {
     return { transaction: reconciled || await hydrateTransaction(created.transaction.id), reused: false };
   } catch (error) {
     const failureInfo = providerFailure(error, "The deposit request could not be confirmed. No balance was added.");
-    const updated = await prisma.merchantWalletTransaction.update({
-      where: { id: created.transaction.id },
-      data: { status: failureInfo.uncertain ? "REVIEW" : "FAILED", failureCode: failureInfo.failureCode, failureReason: failureInfo.failureReason },
+    const updated = await updateUnsettledTransaction(created.transaction.id, {
+      status: failureInfo.uncertain ? "REVIEW" : "FAILED",
+      failureCode: failureInfo.failureCode,
+      failureReason: failureInfo.failureReason,
     });
-    return { transaction: await hydrateTransaction(updated.id), reused: false };
+    return { transaction: updated, reused: false };
   }
 }
 
 async function completeDeposit(transactionId, provider) {
   return prisma.$transaction(async (tx) => {
-    const current = await tx.merchantWalletTransaction.findUnique({ where: { id: transactionId } });
+    const current = await lockWalletTransaction(tx, transactionId);
     if (!current) return null;
     if (current.status === "REVERSED") return current;
     const wallet = await lockWallet(tx, current.shopId);
@@ -376,7 +389,7 @@ async function completeDeposit(transactionId, provider) {
 
 async function reverseDeposit(transactionId, provider, reason = "The provider reversed this deposit.") {
   return prisma.$transaction(async (tx) => {
-    const current = await tx.merchantWalletTransaction.findUnique({ where: { id: transactionId } });
+    const current = await lockWalletTransaction(tx, transactionId);
     if (!current || current.status === "REVERSED") return current;
     if (current.status !== "COMPLETED") {
       return tx.merchantWalletTransaction.update({
@@ -414,15 +427,17 @@ async function reconcileDeposit(transactionId) {
       return completeDeposit(transaction.id, provider);
     }
   } catch {
-    return prisma.merchantWalletTransaction.update({
-      where: { id: transaction.id },
-      data: { status: "REVIEW", providerStatus: cleanShortText(provider.status, 80), failureCode: "DEPOSIT_VERIFICATION_MISMATCH", failureReason: "The provider deposit details did not match the original request." },
+    return updateUnsettledTransaction(transaction.id, {
+      status: "REVIEW",
+      providerStatus: cleanShortText(provider.status, 80),
+      failureCode: "DEPOSIT_VERIFICATION_MISMATCH",
+      failureReason: "The provider deposit details did not match the original request.",
     });
   }
   if (isTerminalFailureStatus(provider.status)) return reverseDeposit(transaction.id, provider, "The provider did not complete this deposit.");
-  return prisma.merchantWalletTransaction.update({
-    where: { id: transaction.id },
-    data: { providerStatus: cleanShortText(provider.status, 80), status: transaction.status === "REVIEW" ? "REVIEW" : "PENDING" },
+  return updateUnsettledTransaction(transaction.id, {
+    providerStatus: cleanShortText(provider.status, 80),
+    status: transaction.status === "REVIEW" ? "REVIEW" : "PENDING",
   });
 }
 
@@ -508,7 +523,7 @@ async function holdWithdrawal(tx, wallet, transaction) {
 
 async function reverseWithdrawal(transactionId, provider, reason = "The provider did not complete this withdrawal.") {
   return prisma.$transaction(async (tx) => {
-    const current = await tx.merchantWalletTransaction.findUnique({ where: { id: transactionId } });
+    const current = await lockWalletTransaction(tx, transactionId);
     if (!current || ["FAILED", "REVERSED", "CANCELLED"].includes(current.status)) return current;
     const wasCompleted = current.status === "COMPLETED";
     const wallet = await lockWallet(tx, current.shopId);
@@ -547,16 +562,13 @@ async function reverseWithdrawal(transactionId, provider, reason = "The provider
 }
 
 async function completeWithdrawal(transactionId, provider) {
-  return prisma.merchantWalletTransaction.update({
-    where: { id: transactionId },
-    data: {
-      status: "COMPLETED",
-      providerStatus: cleanShortText(provider.status, 80) || "completed",
-      providerInstruction: safeProviderInstruction(provider.confirmationMessage || provider.message),
-      completedAt: new Date(),
-      failureCode: null,
-      failureReason: null,
-    },
+  return updateUnsettledTransaction(transactionId, {
+    status: "COMPLETED",
+    providerStatus: cleanShortText(provider.status, 80) || "completed",
+    providerInstruction: safeProviderInstruction(provider.confirmationMessage || provider.message),
+    completedAt: new Date(),
+    failureCode: null,
+    failureReason: null,
   });
 }
 
@@ -587,9 +599,11 @@ async function reconcileWithdrawal(transactionId) {
   try {
     verifyWithdrawalProviderResponse(transaction, provider);
   } catch {
-    return prisma.merchantWalletTransaction.update({
-      where: { id: transaction.id },
-      data: { status: "REVIEW", providerStatus: cleanShortText(provider.status, 80), failureCode: "WITHDRAWAL_VERIFICATION_MISMATCH", failureReason: "The provider withdrawal details did not match the original quote." },
+    return updateUnsettledTransaction(transaction.id, {
+      status: "REVIEW",
+      providerStatus: cleanShortText(provider.status, 80),
+      failureCode: "WITHDRAWAL_VERIFICATION_MISMATCH",
+      failureReason: "The provider withdrawal details did not match the original quote.",
     });
   }
   if (isCompletedWithdrawalProvider(provider)) {
@@ -597,9 +611,9 @@ async function reconcileWithdrawal(transactionId) {
     return completeWithdrawal(transaction.id, provider);
   }
   if (isTerminalWithdrawalFailure(provider)) return reverseWithdrawal(transaction.id, provider);
-  return prisma.merchantWalletTransaction.update({
-    where: { id: transaction.id },
-    data: { providerStatus: cleanShortText(provider.status, 80), status: transaction.status === "REVIEW" ? "REVIEW" : "PENDING" },
+  return updateUnsettledTransaction(transaction.id, {
+    providerStatus: cleanShortText(provider.status, 80),
+    status: transaction.status === "REVIEW" ? "REVIEW" : "PENDING",
   });
 }
 
@@ -693,9 +707,10 @@ async function createWithdrawal({ shopId, userId, amountTzs, phone, requestKey, 
   } catch (error) {
     const failureInfo = providerFailure(error, "The withdrawal request needs review before any balance is released.");
     if (failureInfo.uncertain || error?.uncertain) {
-      await prisma.merchantWalletTransaction.update({
-        where: { id: created.transaction.id },
-        data: { status: "REVIEW", failureCode: failureInfo.failureCode, failureReason: failureInfo.failureReason },
+      await updateUnsettledTransaction(created.transaction.id, {
+        status: "REVIEW",
+        failureCode: failureInfo.failureCode,
+        failureReason: failureInfo.failureReason,
       });
     } else {
       await reverseWithdrawal(created.transaction.id, null, "The provider could not start this withdrawal. Your balance was returned.");
@@ -741,9 +756,10 @@ async function resumeMerchantTransaction(transactionId) {
       return (await reconcileDeposit(transaction.id).catch(() => null)) || await hydrateTransaction(transaction.id);
     } catch (error) {
       const failureInfo = providerFailure(error, "The deposit request could not be confirmed. No balance was added.");
-      await prisma.merchantWalletTransaction.update({
-        where: { id: transaction.id },
-        data: { status: failureInfo.uncertain || error?.uncertain ? "REVIEW" : "FAILED", failureCode: failureInfo.failureCode, failureReason: failureInfo.failureReason },
+      await updateUnsettledTransaction(transaction.id, {
+        status: failureInfo.uncertain || error?.uncertain ? "REVIEW" : "FAILED",
+        failureCode: failureInfo.failureCode,
+        failureReason: failureInfo.failureReason,
       });
       return hydrateTransaction(transaction.id);
     }
@@ -780,9 +796,10 @@ async function resumeMerchantTransaction(transactionId) {
     } catch (error) {
       const failureInfo = providerFailure(error, "The withdrawal request needs review before any balance is released.");
       if (failureInfo.uncertain || error?.uncertain) {
-        await prisma.merchantWalletTransaction.update({
-          where: { id: transaction.id },
-          data: { status: "REVIEW", failureCode: failureInfo.failureCode, failureReason: failureInfo.failureReason },
+        await updateUnsettledTransaction(transaction.id, {
+          status: "REVIEW",
+          failureCode: failureInfo.failureCode,
+          failureReason: failureInfo.failureReason,
         });
       } else {
         await reverseWithdrawal(transaction.id, null, "The provider could not start this withdrawal. Your balance was returned.");
@@ -974,6 +991,7 @@ module.exports = {
   merchantWalletSettings,
   merchantWalletEnabledForShop,
   platformFeeTzs,
+  providerFailure,
   publicTransaction,
   adminTransaction,
   createDeposit,

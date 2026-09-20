@@ -68,6 +68,10 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function isFailedStatus(status: string) {
+  return ["FAILED", "REVERSED", "CANCELLED"].includes(status);
+}
+
 export default function WalletPage() {
   const lang = useLang();
   const sw = lang === "sw";
@@ -127,7 +131,11 @@ export default function WalletPage() {
       const result = await api.post<{ transaction: WalletTransaction; reused: boolean }>("/wallet/deposits", { amountTzs, phone: depositPhone, requestKey }, lang);
       setNotice(result.transaction.status === "COMPLETED"
         ? (sw ? "Amana imeongezwa kwenye salio lako." : "Your deposit has been added to the balance.")
-        : (sw ? "Ombi la amana limetumwa. Kamilisha uthibitisho kwenye simu yako; salio litaongezwa baada ya kuthibitishwa." : "Your deposit request was sent. Complete the prompt on your phone; the balance updates after confirmation."));
+        : isFailedStatus(result.transaction.status)
+          ? (result.transaction.failureReason || (sw ? "Amana haikukamilika. Hakuna salio lililoongezwa." : "The deposit did not complete. No balance was added."))
+          : result.transaction.canResume
+            ? (sw ? "Mtandao haukuthibitisha ombi. Tumia Kagua kwenye historia ili kuendelea salama bila kutuma ombi mara mbili." : "The provider did not confirm the request. Use Check in the history to resume safely without sending it twice.")
+            : (sw ? "Ombi la amana limetumwa. Kamilisha uthibitisho kwenye simu yako; salio litaongezwa baada ya kuthibitishwa." : "Your deposit request was sent. Complete the prompt on your phone; the balance updates after confirmation."));
       setDepositAmount("");
       setDepositOpen(false);
       setDepositRequestKey(null);
@@ -175,7 +183,11 @@ export default function WalletPage() {
       const result = await api.post<{ transaction: WalletTransaction }>("/wallet/withdrawals", { amountTzs, phone: withdrawalPhone, requestKey, confirmedQuote: { providerFeeTzs: withdrawalQuote.providerFeeTzs, totalDebitTzs: withdrawalQuote.totalDebitTzs, recipientName: withdrawalQuote.recipientName || null, payoutRail: withdrawalQuote.payoutRail || null } }, lang);
       setNotice(result.transaction.status === "COMPLETED"
         ? (sw ? "Utoaji umekamilika." : "The withdrawal is complete.")
-        : (sw ? "Utoaji unasubiri uthibitisho wa mtandao. Salio limehifadhiwa ili lisitolewe mara mbili." : "The withdrawal is awaiting provider confirmation. The balance is reserved so it cannot be paid twice."));
+        : isFailedStatus(result.transaction.status)
+          ? (result.transaction.failureReason || (sw ? "Utoaji haukukamilika. Kiasi kilichohifadhiwa kimerudishwa kwenye salio." : "The withdrawal did not complete. The reserved amount was returned to the balance."))
+          : result.transaction.canResume
+            ? (sw ? "Mtandao haukuthibitisha ombi. Tumia Kagua kwenye historia ili kuendelea salama bila kulipa mara mbili." : "The provider did not confirm the request. Use Check in the history to resume safely without paying twice.")
+            : (sw ? "Utoaji unasubiri uthibitisho wa mtandao. Salio limehifadhiwa ili lisitolewe mara mbili." : "The withdrawal is awaiting provider confirmation. The balance is reserved so it cannot be paid twice."));
       setWithdrawalAmount("");
       setWithdrawalQuote(null);
       setWithdrawalConfirmed(false);
@@ -197,9 +209,11 @@ export default function WalletPage() {
       const result = await api.post<{ transaction: WalletTransaction }>(`/wallet/transactions/${transaction.id}/check`, {}, lang);
       setNotice(result.transaction.status === "COMPLETED"
         ? (sw ? "Hali ya muamala imesasishwa." : "The transaction status is updated.")
-        : transaction.canResume
-          ? (sw ? "Ombi la awali limeendelea salama kwa namba ileile ya uthibitisho." : "The original request was safely resumed with the same verification key.")
-          : (sw ? "Muamala bado unasubiri uthibitisho wa mtandao." : "The transaction is still awaiting provider confirmation."));
+        : isFailedStatus(result.transaction.status)
+          ? (result.transaction.failureReason || (sw ? "Muamala haukukamilika." : "The transaction did not complete."))
+          : result.transaction.canResume
+            ? (sw ? "Ombi la awali linaweza kuendelea salama kwa namba ileile ya uthibitisho." : "The original request can be resumed safely with the same verification key.")
+            : (sw ? "Muamala bado unasubiri uthibitisho wa mtandao." : "The transaction is still awaiting provider confirmation."));
       await load(page);
     } catch (requestError) {
       setNotice(errorMessage(requestError, sw ? "Imeshindikana kukagua muamala." : "Could not check the transaction."));

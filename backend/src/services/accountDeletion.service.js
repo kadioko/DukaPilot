@@ -3,6 +3,19 @@ const bcrypt = require("bcryptjs");
 const { Prisma } = require("@prisma/client");
 const prisma = require("../lib/prisma");
 
+async function assertMerchantWalletCanBeDeleted(tx, rootId) {
+  const [wallet, unsettledTransactions] = await Promise.all([
+    tx.merchantWallet.findUnique({ where: { businessShopId: rootId }, select: { balanceTzs: true } }),
+    tx.merchantWalletTransaction.count({ where: { shopId: rootId, status: { in: ["PENDING", "REVIEW"] } } }),
+  ]);
+  if ((wallet?.balanceTzs || 0) !== 0 || unsettledTransactions > 0) {
+    throw Object.assign(new Error("Withdraw the merchant balance and resolve all pending wallet transactions before deleting this account."), {
+      status: 409,
+      code: "MERCHANT_WALLET_NOT_EMPTY",
+    });
+  }
+}
+
 async function anonymizeMerchantAccount(userId) {
   const disabledPin = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
   return prisma.$transaction(async (tx) => {
@@ -12,6 +25,7 @@ async function anonymizeMerchantAccount(userId) {
     });
     if (!user?.shop) throw Object.assign(new Error("Merchant shop not found"), { status: 404 });
     const rootId = user.shop.id;
+    await assertMerchantWalletCanBeDeleted(tx, rootId);
     const shops = await tx.shop.findMany({ where: { OR: [{ id: rootId }, { parentShopId: rootId }] }, select: { id: true } });
     const shopIds = shops.map((shop) => shop.id);
 
@@ -113,4 +127,4 @@ async function anonymizeMerchantAccount(userId) {
   });
 }
 
-module.exports = { anonymizeMerchantAccount };
+module.exports = { anonymizeMerchantAccount, assertMerchantWalletCanBeDeleted };

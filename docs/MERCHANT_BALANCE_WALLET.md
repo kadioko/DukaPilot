@@ -95,8 +95,10 @@ release; keep fee transfers documented and reconcile them before moving money.
   have purpose-specific rate limits. Redis shares those limits across Railway
   instances when configured.
 - Phone numbers are returned to merchants and admins only in masked form.
-- Account deletion anonymizes wallet phone and recipient data while retaining
-  necessary financial ledger amounts for reconciliation.
+- Account deletion is blocked until the available merchant balance is zero and
+  every pending or review transaction is resolved. It then anonymizes wallet
+  phone and recipient data while retaining the financial ledger required for
+  reconciliation.
 - Do not add wallet operations to sales, expenses, cash sessions, profit,
   quotations, or subscription payment logic.
 
@@ -144,7 +146,9 @@ owner or platform admin presses Check, preserving the original idempotency key.
 3. Keep `NTZS_MERCHANT_BALANCE_ENABLED=false` while checking the owner and
    admin screens, permissions, history, and zero-balance reconciliation.
 4. Set `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` to one test business's root shop
-   ID, then set the feature flag to `true`. Confirm a controlled low-value
+   ID. Use a private controlled test account, never a publicly documented demo
+   login for a wallet that can hold or withdraw real funds. Then set the
+   feature flag to `true`. Confirm a controlled low-value
    deposit: mobile prompt, signed webhook, provider record, one ledger credit,
    and one balance increase.
 5. Perform one controlled low-value withdrawal. Confirm the fee preview, one
