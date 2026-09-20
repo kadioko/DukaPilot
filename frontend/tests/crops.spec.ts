@@ -4,9 +4,9 @@ test("crop operations save inputs and harvests from a mobile-sized farm screen",
   const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
   await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route(/.*\/api\/.*/, async (route) => {
+  await page.route(/.*\/_?api\/.*/, async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname.replace(/^.*\/api/, "");
+    const path = new URL(request.url()).pathname.replace(/^.*\/_?api/, "");
     if (path === "/auth/me") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Farm", category: "farm" }, features: { staff: true, assistant: true, exports: true } } }) });
     if (path === "/crops" && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
       plots: [{ id: "plot-1", name: "Field A", location: "Kigamboni", areaMilli: 2000, areaUnit: "ACRE", isActive: true }],
@@ -46,9 +46,9 @@ test("crop operations save inputs and harvests from a mobile-sized farm screen",
 test("field plan keeps money planning owner-only and gives farmers practical field controls", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route(/.*\/api\/.*/, async (route) => {
+  await page.route(/.*\/_?api\/.*/, async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname.replace(/^.*\/api/, "");
+    const path = new URL(request.url()).pathname.replace(/^.*\/_?api/, "");
     if (path === "/auth/me") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Farm", category: "farm" }, features: { staff: true, assistant: true } } }) });
     if (path === "/crops/operations") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
       financialsVisible: true, financialPlanningVisible: true,

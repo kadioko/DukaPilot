@@ -50,6 +50,14 @@ test("inventory page has no critical accessibility violations with mocked auth",
     });
   });
 
+  await page.route("**/*api/products/summary", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ summary: { total: 0, lowStock: 0, outOfStock: 0, inStock: 0, expiringSoon: 0, expired: 0 } }),
+    });
+  });
+
   await page.route("**/*api/subscription/status", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "active", daysLeft: 30 }) });
   });

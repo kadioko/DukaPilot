@@ -6,10 +6,10 @@ test("farm profiles remain clickable and drive group creation", async ({ page })
 
   await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route(/.*\/api\/.*/, async (route) => {
+  await page.route(/.*\/_?api\/.*/, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const path = url.pathname.replace(/^.*\/api/, "");
+    const path = url.pathname.replace(/^.*\/_?api/, "");
 
     if (path === "/auth/me") {
       return route.fulfill({

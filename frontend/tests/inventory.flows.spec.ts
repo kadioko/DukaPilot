@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/*api/products/low-stock*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ products: [], total: 0 }),
+    });
+  });
+});
+
 test("inventory supports add, edit, and stock adjustment flows", async ({ page }) => {
   const suppliers = [{ id: "sup-1", name: "Jumla Traders", phone: "+255700000001" }];
   const products = [
