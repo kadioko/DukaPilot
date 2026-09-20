@@ -14,6 +14,7 @@ type WalletTransaction = {
   platformFeeTzs: number;
   providerFeeTzs: number;
   totalDebitTzs: number;
+  balanceEffectTzs?: number;
   recipientPhone?: string | null;
   recipientName?: string | null;
   payoutRail?: string | null;
@@ -35,6 +36,7 @@ type WalletResponse = {
 
 type WithdrawalQuote = {
   amountTzs: number;
+  phone: string;
   availableBalanceTzs: number;
   canWithdraw: boolean;
   platformFeeTzs: number;
@@ -66,6 +68,24 @@ function statusTone(status: string) {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function balanceEffectOf(transaction: WalletTransaction) {
+  if (Number.isSafeInteger(transaction.balanceEffectTzs)) return transaction.balanceEffectTzs || 0;
+  if (transaction.kind === "DEPOSIT" && transaction.status === "COMPLETED") return transaction.amountTzs;
+  if (transaction.kind === "WITHDRAWAL" && ["PENDING", "REVIEW", "COMPLETED"].includes(transaction.status)) return -transaction.totalDebitTzs;
+  if (transaction.kind === "SUBSCRIPTION" && transaction.status === "COMPLETED") return -transaction.amountTzs;
+  return 0;
+}
+
+function BalanceMovement({ transaction, sw }: { transaction: WalletTransaction; sw: boolean }) {
+  const effect = balanceEffectOf(transaction);
+  return <div>
+    {effect === 0
+      ? <p className="font-semibold text-gray-500">{sw ? "Hakuna badiliko la salio" : "No balance change"}</p>
+      : <p className={`font-bold ${effect > 0 ? "text-emerald-700" : "text-gray-950"}`}>{effect > 0 ? "+" : "-"}{formatTZS(Math.abs(effect))}</p>}
+    {transaction.kind === "WITHDRAWAL" && effect < 0 && <p className="mt-1 text-xs text-gray-500">{sw ? "Kupokea" : "Receive"}: {formatTZS(transaction.amountTzs)}</p>}
+  </div>;
 }
 
 function isFailedStatus(status: string) {
@@ -180,7 +200,7 @@ export default function WalletPage() {
     setSaving("withdrawal");
     setNotice("");
     try {
-      const result = await api.post<{ transaction: WalletTransaction }>("/wallet/withdrawals", { amountTzs, phone: withdrawalPhone, requestKey, confirmedQuote: { providerFeeTzs: withdrawalQuote.providerFeeTzs, totalDebitTzs: withdrawalQuote.totalDebitTzs, recipientName: withdrawalQuote.recipientName || null, payoutRail: withdrawalQuote.payoutRail || null } }, lang);
+      const result = await api.post<{ transaction: WalletTransaction }>("/wallet/withdrawals", { amountTzs, phone: withdrawalPhone, requestKey, confirmedQuote: { amountTzs: withdrawalQuote.amountTzs, phone: withdrawalQuote.phone, providerFeeTzs: withdrawalQuote.providerFeeTzs, totalDebitTzs: withdrawalQuote.totalDebitTzs, recipientName: withdrawalQuote.recipientName || null, payoutRail: withdrawalQuote.payoutRail || null } }, lang);
       setNotice(result.transaction.status === "COMPLETED"
         ? (sw ? "Utoaji umekamilika." : "The withdrawal is complete.")
         : isFailedStatus(result.transaction.status)
@@ -260,7 +280,7 @@ export default function WalletPage() {
       </section>}
 
       <section className="border border-gray-200 bg-white"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4"><div><h2 className="font-bold text-gray-950">{sw ? "Historia ya salio" : "Balance history"}</h2><p className="mt-1 text-sm text-gray-600">{sw ? "Kila amana, utoaji, malipo ya usajili na marekebisho hubaki kwenye historia." : "Every deposit, withdrawal, subscription payment, and correction remains in the history."}</p></div><span className="text-xs font-semibold text-gray-500">{data?.pagination.total || 0} {sw ? "miamala" : "transactions"}</span></div>
-        {loading ? <div className="p-8 text-center text-sm text-gray-500">{sw ? "Inapakia..." : "Loading..."}</div> : !data?.transactions.length ? <div className="p-8 text-center text-sm text-gray-500">{sw ? "Bado hakuna muamala wa salio." : "No merchant-balance transactions yet."}</div> : <div className="divide-y divide-gray-100">{data.transactions.map((transaction) => <article key={transaction.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-gray-950">{transaction.kind === "DEPOSIT" ? (sw ? "Amana" : "Deposit") : transaction.kind === "WITHDRAWAL" ? (sw ? "Utoaji" : "Withdrawal") : transaction.kind === "SUBSCRIPTION" ? (sw ? "Malipo ya usajili" : "Subscription payment") : (sw ? "Marekebisho" : "Adjustment")}</p><span className={`border px-2 py-0.5 text-[11px] font-bold ${statusTone(transaction.status)}`}>{transaction.status}</span></div><p className="mt-1 text-xs text-gray-500">{dateOf(transaction.createdAt, lang)}{transaction.recipientPhone ? ` · ${transaction.recipientPhone}` : ""}{transaction.payoutRail ? ` · ${transaction.payoutRail}` : ""}</p>{transaction.providerInstruction && <p className="mt-2 max-w-xl text-xs leading-5 text-gray-600">{transaction.providerInstruction}</p>}{transaction.failureReason && <p className="mt-2 max-w-xl text-xs leading-5 text-red-700">{transaction.failureReason}</p>}</div><div className="flex items-center gap-3 sm:text-right"><div><p className={`font-bold ${transaction.kind === "DEPOSIT" ? "text-emerald-700" : "text-gray-950"}`}>{transaction.kind === "DEPOSIT" ? "+" : "-"}{formatTZS(transaction.kind === "DEPOSIT" ? transaction.amountTzs : transaction.totalDebitTzs)}</p>{transaction.kind === "WITHDRAWAL" && <p className="mt-1 text-xs text-gray-500">{sw ? "Kupokea" : "Receive"}: {formatTZS(transaction.amountTzs)}</p>}</div>{["PENDING", "REVIEW"].includes(transaction.status) && <button type="button" onClick={() => void checkTransaction(transaction)} disabled={saving === transaction.id} className="inline-flex h-10 items-center gap-1 border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700 hover:border-brand-400 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${saving === transaction.id ? "animate-spin" : ""}`} />{sw ? "Kagua" : "Check"}</button>}</div></article>)}</div>}
+        {loading ? <div className="p-8 text-center text-sm text-gray-500">{sw ? "Inapakia..." : "Loading..."}</div> : !data?.transactions.length ? <div className="p-8 text-center text-sm text-gray-500">{sw ? "Bado hakuna muamala wa salio." : "No merchant-balance transactions yet."}</div> : <div className="divide-y divide-gray-100">{data.transactions.map((transaction) => <article key={transaction.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-gray-950">{transaction.kind === "DEPOSIT" ? (sw ? "Amana" : "Deposit") : transaction.kind === "WITHDRAWAL" ? (sw ? "Utoaji" : "Withdrawal") : transaction.kind === "SUBSCRIPTION" ? (sw ? "Malipo ya usajili" : "Subscription payment") : (sw ? "Marekebisho" : "Adjustment")}</p><span className={`border px-2 py-0.5 text-[11px] font-bold ${statusTone(transaction.status)}`}>{transaction.status}</span></div><p className="mt-1 text-xs text-gray-500">{dateOf(transaction.createdAt, lang)}{transaction.recipientPhone ? ` · ${transaction.recipientPhone}` : ""}{transaction.payoutRail ? ` · ${transaction.payoutRail}` : ""}</p>{transaction.providerInstruction && <p className="mt-2 max-w-xl text-xs leading-5 text-gray-600">{transaction.providerInstruction}</p>}{transaction.failureReason && <p className="mt-2 max-w-xl text-xs leading-5 text-red-700">{transaction.failureReason}</p>}</div><div className="flex items-center gap-3 sm:text-right"><BalanceMovement transaction={transaction} sw={sw} />{["PENDING", "REVIEW"].includes(transaction.status) && <button type="button" onClick={() => void checkTransaction(transaction)} disabled={saving === transaction.id} className="inline-flex h-10 items-center gap-1 border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700 hover:border-brand-400 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${saving === transaction.id ? "animate-spin" : ""}`} />{sw ? "Kagua" : "Check"}</button>}</div></article>)}</div>}
         {(data?.pagination.totalPages || 1) > 1 && <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-sm"><button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="min-h-10 border border-gray-300 bg-white px-3 font-semibold text-gray-700 disabled:opacity-40">{sw ? "Nyuma" : "Previous"}</button><span className="text-xs text-gray-500">{sw ? "Ukurasa" : "Page"} {page} / {data?.pagination.totalPages}</span><button type="button" onClick={() => setPage((current) => Math.min(data?.pagination.totalPages || current, current + 1))} disabled={page >= (data?.pagination.totalPages || 1)} className="min-h-10 border border-gray-300 bg-white px-3 font-semibold text-gray-700 disabled:opacity-40">{sw ? "Mbele" : "Next"}</button></div>}
       </section>
 

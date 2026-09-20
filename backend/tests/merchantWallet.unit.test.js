@@ -272,6 +272,7 @@ test("merchant output masks mobile numbers and never returns provider identifier
   });
 
   assert.equal(result.recipientPhone, "+255•••••0001");
+  assert.equal(result.balanceEffectTzs, -10300);
   assert.equal(result.canResume, false);
   assert.equal("providerId" in result, false);
   assert.equal("requestKey" in result, false);
@@ -328,21 +329,97 @@ test("withdrawal quotes use nTZS's quoted nested provider fee", async () => {
 
 test("withdrawals require the owner to confirm the exact server-side quote", () => {
   const wallet = loadWallet();
-  const quote = { providerFeeTzs: 382, totalDebitTzs: 10582, recipientName: "Amina", payoutRail: "selcom" };
+  const quote = { amountTzs: 10000, phone: "+255713712057", providerFeeTzs: 382, totalDebitTzs: 10582, recipientName: "Amina", payoutRail: "selcom" };
   assert.doesNotThrow(() => wallet.assertConfirmedWithdrawalQuote({ ...quote }, quote));
-  assert.throws(
-    () => wallet.assertConfirmedWithdrawalQuote({ ...quote, providerFeeTzs: 100 }, quote),
-    { code: "WITHDRAWAL_QUOTE_CHANGED" }
-  );
+  for (const changed of [
+    { amountTzs: 9999 },
+    { phone: "+255700000001" },
+    { providerFeeTzs: 100 },
+    { totalDebitTzs: 10400 },
+    { recipientName: "Another recipient" },
+    { payoutRail: "another_rail" },
+  ]) {
+    assert.throws(
+      () => wallet.assertConfirmedWithdrawalQuote({ ...quote, ...changed }, quote),
+      { code: "WITHDRAWAL_QUOTE_CHANGED" }
+    );
+  }
 });
 
-test("a deterministic provider conflict releases a reserved withdrawal", () => {
+test("documented provider rejections release a reserved withdrawal while ambiguous failures remain held", () => {
   const wallet = loadWallet();
-  const result = wallet.providerFailure(
+  const conflict = wallet.providerFailure(
     { providerCode: "quote_stale", providerStatus: 409 },
     "The withdrawal could not start."
   );
-  assert.equal(result.uncertain, false);
+  const unavailable = wallet.providerFailure(
+    { providerStatus: 503 },
+    "The withdrawal could not start."
+  );
+  const ambiguous = wallet.providerFailure(
+    { providerStatus: 502, providerCode: "initiation_uncertain" },
+    "The withdrawal could not start."
+  );
+  const undocumentedConflict = wallet.providerFailure(
+    { providerStatus: 409 },
+    "The payment could not start."
+  );
+  assert.equal(conflict.uncertain, false);
+  assert.equal(unavailable.uncertain, false);
+  assert.equal(ambiguous.uncertain, true);
+  assert.equal(undocumentedConflict.uncertain, true);
+});
+
+test("wallet history reports the actual balance effect for every terminal state", () => {
+  const wallet = loadWallet();
+  const base = { id: "transaction", amountTzs: 10000, platformFeeTzs: 200, providerFeeTzs: 100, totalDebitTzs: 10300, createdAt: new Date() };
+  const effect = (kind, status, metadata) => wallet.publicTransaction({ ...base, kind, status, metadata }).balanceEffectTzs;
+
+  assert.equal(effect("DEPOSIT", "COMPLETED"), 10000);
+  assert.equal(effect("DEPOSIT", "FAILED"), 0);
+  assert.equal(effect("WITHDRAWAL", "PENDING"), -10300);
+  assert.equal(effect("WITHDRAWAL", "REVIEW"), -10300);
+  assert.equal(effect("WITHDRAWAL", "COMPLETED"), -10300);
+  assert.equal(effect("WITHDRAWAL", "FAILED"), 0);
+  assert.equal(effect("WITHDRAWAL", "REVERSED"), 0);
+  assert.equal(effect("SUBSCRIPTION", "COMPLETED"), -10000);
+  assert.equal(effect("ADJUSTMENT", "COMPLETED", { direction: "CREDIT" }), 10000);
+  assert.equal(effect("ADJUSTMENT", "COMPLETED", { direction: "DEBIT" }), -10000);
+});
+
+test("an admin adjustment retry key can only reuse the exact correction", async () => {
+  const existing = {
+    id: "adjustment-1",
+    shopId: "shop-1",
+    kind: "ADJUSTMENT",
+    status: "COMPLETED",
+    amountTzs: 5000,
+    metadata: { direction: "CREDIT", reason: "Approved reconciliation correction" },
+  };
+  const duplicate = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+  const db = {
+    merchantWalletTransaction: { findUnique: async () => ({ ...existing }) },
+    $transaction: async () => { throw duplicate; },
+  };
+  const wallet = loadWallet(db);
+  const input = {
+    shopId: "shop-1",
+    userId: "admin-1",
+    amountTzs: 5000,
+    direction: "CREDIT",
+    reason: "Approved reconciliation correction",
+    requestKey: "33333333-3333-4333-8333-333333333333",
+  };
+
+  assert.equal((await wallet.createAdminAdjustment(input)).id, existing.id);
+  await assert.rejects(
+    wallet.createAdminAdjustment({ ...input, direction: "DEBIT" }),
+    { code: "RETRY_KEY_CONFLICT" }
+  );
+  await assert.rejects(
+    wallet.createAdminAdjustment({ ...input, reason: "A different correction" }),
+    { code: "RETRY_KEY_CONFLICT" }
+  );
 });
 
 test("an nTZS minted deposit credits the merchant balance exactly once", async () => {

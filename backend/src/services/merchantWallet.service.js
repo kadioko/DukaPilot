@@ -20,6 +20,16 @@ const CERTAIN_NO_MOVEMENT_PROVIDER_CODES = new Set([
   "insufficient_balance",
   "wallet_frozen",
   "bank_rail_unavailable",
+  "bank_amount_unsupported",
+  "capability_required",
+  "kyb_required",
+  "ip_not_allowed",
+  "not_provisioned",
+  "user_not_found",
+  "wallet_not_provisioned",
+  "token_paused",
+  "configuration_error",
+  "rate_limited",
 ]);
 
 function failure(message, status = 400, code) {
@@ -119,6 +129,19 @@ function cleanShortText(value, maximum = 240) {
 }
 
 function publicTransaction(transaction) {
+  let balanceEffectTzs = 0;
+  if (transaction.kind === "DEPOSIT" && transaction.status === "COMPLETED") {
+    balanceEffectTzs = transaction.amountTzs;
+  } else if (transaction.kind === "WITHDRAWAL" && PENDING_STATUSES.has(transaction.status)) {
+    balanceEffectTzs = -transaction.totalDebitTzs;
+  } else if (transaction.kind === "WITHDRAWAL" && transaction.status === "COMPLETED") {
+    balanceEffectTzs = -transaction.totalDebitTzs;
+  } else if (transaction.kind === "SUBSCRIPTION" && transaction.status === "COMPLETED") {
+    balanceEffectTzs = -transaction.amountTzs;
+  } else if (transaction.kind === "ADJUSTMENT" && transaction.status === "COMPLETED") {
+    if (transaction.metadata?.direction === "CREDIT") balanceEffectTzs = transaction.amountTzs;
+    if (transaction.metadata?.direction === "DEBIT") balanceEffectTzs = -transaction.amountTzs;
+  }
   return {
     id: transaction.id,
     kind: transaction.kind,
@@ -127,6 +150,7 @@ function publicTransaction(transaction) {
     platformFeeTzs: transaction.platformFeeTzs,
     providerFeeTzs: transaction.providerFeeTzs,
     totalDebitTzs: transaction.totalDebitTzs,
+    balanceEffectTzs,
     recipientPhone: maskedPhone(transaction.recipientPhone),
     payoutRail: transaction.payoutRail || null,
     recipientName: transaction.recipientName || null,
@@ -162,6 +186,12 @@ function assertSameRetry(existing, expected) {
   const savedPhone = normalizePhone(existing.kind === "DEPOSIT" ? existing.payerPhone : existing.recipientPhone);
   if (expected.phone && savedPhone !== expected.phone) {
     throw failure("This payment retry key was already used with different details.", 409, "RETRY_KEY_CONFLICT");
+  }
+  if (existing.kind === "ADJUSTMENT") {
+    const metadata = existing.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
+    if (metadata.direction !== expected.direction || metadata.reason !== expected.reason) {
+      throw failure("This payment retry key was already used with different details.", 409, "RETRY_KEY_CONFLICT");
+    }
   }
 }
 
@@ -343,13 +373,13 @@ async function paySubscriptionFromBalance({ shopId, userId, requestKey, plan, ki
 
 function providerFailure(error, defaultMessage) {
   const providerCode = cleanShortText(error?.providerCode || error?.code || "PROVIDER_UNAVAILABLE", 80);
-  // A response that is missing, transient, rate-limited, or reports an
-  // unknown conflict may have reached the provider after our connection was
-  // interrupted. Hold the ledger movement until it can be checked instead of
-  // ever returning money that may already be on its way to the recipient. A
-  // documented deterministic rejection is safe to reverse even when nTZS
-  // reports it as HTTP 409 (for example, an expired quote).
-  const uncertain = !CERTAIN_NO_MOVEMENT_PROVIDER_CODES.has(String(providerCode || "").toLowerCase());
+  // nTZS documents these withdrawal response statuses as pre-movement
+  // rejections (including 503, which explicitly says nothing moved). A 502,
+  // missing response, or any undocumented outcome remains uncertain and must
+  // keep the reserved balance locked until reconciliation can prove the state.
+  const definitelyRejectedStatus = [400, 401, 403, 429, 503].includes(Number(error?.providerStatus));
+  const uncertain = !definitelyRejectedStatus
+    && !CERTAIN_NO_MOVEMENT_PROVIDER_CODES.has(String(providerCode || "").toLowerCase());
   return {
     failureCode: providerCode,
     failureReason: defaultMessage,
@@ -454,7 +484,7 @@ async function createDeposit({ shopId, userId, amountTzs, phone, requestKey }) {
     const existing = await prisma.merchantWalletTransaction.findUnique({ where: { requestKey: key } });
     if (!existing) throw error;
     assertSameRetry(existing, { shopId, kind: "DEPOSIT", amountTzs: amount, phone: normalizedPhone });
-    return { transaction: await hydrateTransaction(existing.id), reused: true };
+    return { transaction: await resumeMerchantTransaction(existing.id), reused: true };
   }
   if (created.reused) return { transaction: await resumeMerchantTransaction(created.transaction.id), reused: true };
 
@@ -606,6 +636,8 @@ function sameOptionalText(left, right) {
 
 function assertConfirmedWithdrawalQuote(confirmedQuote, quote) {
   if (!confirmedQuote
+    || Number(confirmedQuote.amountTzs) !== quote.amountTzs
+    || normalizePhone(confirmedQuote.phone) !== quote.phone
     || Number(confirmedQuote.providerFeeTzs) !== quote.providerFeeTzs
     || Number(confirmedQuote.totalDebitTzs) !== quote.totalDebitTzs
     || !sameOptionalText(confirmedQuote.recipientName, quote.recipientName)
@@ -790,7 +822,7 @@ async function createWithdrawal({ shopId, userId, amountTzs, phone, requestKey, 
     const existing = await prisma.merchantWalletTransaction.findUnique({ where: { requestKey: key } });
     if (!existing) throw error;
     assertSameRetry(existing, { shopId, kind: "WITHDRAWAL", amountTzs: amount, phone: normalizedPhone });
-    return { transaction: await hydrateTransaction(existing.id), reused: true };
+    return { transaction: await resumeMerchantTransaction(existing.id), reused: true };
   }
   if (created.reused) return { transaction: await resumeMerchantTransaction(created.transaction.id), reused: true };
 
@@ -1057,35 +1089,44 @@ async function createAdminAdjustment({ shopId, userId, direction, amountTzs, rea
   const note = cleanShortText(reason, 500);
   if (!note) throw failure("Explain the adjustment before saving it.", 400, "ADJUSTMENT_REASON_REQUIRED");
   const key = validRequestKey(requestKey || crypto.randomUUID());
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.merchantWalletTransaction.findUnique({ where: { requestKey: key } });
-    if (existing) {
-      assertSameRetry(existing, { shopId, kind: "ADJUSTMENT", amountTzs: amount });
-      return existing;
-    }
-    const wallet = await lockWallet(tx, shopId);
-    const transaction = await tx.merchantWalletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        shopId,
-        kind: "ADJUSTMENT",
-        status: "COMPLETED",
-        requestKey: key,
+  const expected = { shopId, kind: "ADJUSTMENT", amountTzs: amount, direction: normalizedDirection, reason: note };
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.merchantWalletTransaction.findUnique({ where: { requestKey: key } });
+      if (existing) {
+        assertSameRetry(existing, expected);
+        return existing;
+      }
+      const wallet = await lockWallet(tx, shopId);
+      const transaction = await tx.merchantWalletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          shopId,
+          kind: "ADJUSTMENT",
+          status: "COMPLETED",
+          requestKey: key,
+          amountTzs: amount,
+          totalDebitTzs: normalizedDirection === "DEBIT" ? amount : 0,
+          requestedByUserId: userId,
+          completedAt: new Date(),
+          metadata: { reason: note, direction: normalizedDirection },
+        },
+      });
+      await appendEntry(tx, wallet, transaction, {
+        type: normalizedDirection === "CREDIT" ? "ADMIN_ADJUSTMENT_CREDIT" : "ADMIN_ADJUSTMENT_DEBIT",
+        direction: normalizedDirection,
         amountTzs: amount,
-        totalDebitTzs: normalizedDirection === "DEBIT" ? amount : 0,
-        requestedByUserId: userId,
-        completedAt: new Date(),
-        metadata: { reason: note, direction: normalizedDirection },
-      },
+        description: note,
+      });
+      return transaction;
     });
-    await appendEntry(tx, wallet, transaction, {
-      type: normalizedDirection === "CREDIT" ? "ADMIN_ADJUSTMENT_CREDIT" : "ADMIN_ADJUSTMENT_DEBIT",
-      direction: normalizedDirection,
-      amountTzs: amount,
-      description: note,
-    });
-    return transaction;
-  });
+  } catch (error) {
+    if (error?.code !== "P2002") throw error;
+    const existing = await prisma.merchantWalletTransaction.findUnique({ where: { requestKey: key } });
+    if (!existing) throw error;
+    assertSameRetry(existing, expected);
+    return existing;
+  }
 }
 
 async function reconcilePending(limit = 30) {

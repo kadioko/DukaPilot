@@ -12,6 +12,7 @@ test("merchant balance shows the full withdrawal deduction before one safe confi
       return route.fulfill({ json: {
         quote: {
           amountTzs: 10_000,
+          phone: "+255713712057",
           availableBalanceTzs: 20_000,
           canWithdraw: true,
           platformFeeTzs: 200,
@@ -26,6 +27,8 @@ test("merchant balance shows the full withdrawal deduction before one safe confi
       const payload = route.request().postDataJSON() as Record<string, unknown>;
       withdrawalPayload = payload;
       expect(payload.confirmedQuote).toEqual({
+        amountTzs: 10_000,
+        phone: "+255713712057",
         providerFeeTzs: 100,
         totalDebitTzs: 10_300,
         recipientName: "Amina",
