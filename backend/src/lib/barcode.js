@@ -13,23 +13,57 @@ function inferBarcodeType(value, requested) {
   return "CODE128";
 }
 
-function validateBarcode(value) {
+function checksumDigit(value) {
+  const digits = String(value).split("").map(Number);
+  const sum = digits.reduce((total, digit, index) => total + digit * ((digits.length - index) % 2 === 1 ? 3 : 1), 0);
+  return String((10 - (sum % 10)) % 10);
+}
+
+function normalizeSku(value) {
+  return String(value || "").trim().replace(/\s+/g, "").toUpperCase();
+}
+
+function validateSku(value) {
+  const sku = normalizeSku(value);
+  if (!sku) return { value: null, error: null };
+  if (sku.length > 100 || !/^[A-Z0-9._-]+$/.test(sku)) {
+    return { value: null, error: "SKU must be up to 100 letters, numbers, dots, hyphens, or underscores" };
+  }
+  return { value: sku, error: null };
+}
+
+function validateBarcode(value, requestedType) {
   const barcode = normalizeBarcode(value);
   if (!barcode) return { value: null, error: null };
   if (barcode.length < 4 || barcode.length > 64 || !/^[A-Z0-9._-]+$/.test(barcode)) {
     return { value: null, error: "Barcode must be 4-64 letters, numbers, dots, hyphens, or underscores" };
   }
-  return { value: barcode, error: null };
+  const type = inferBarcodeType(barcode, requestedType);
+  if (type === "EAN13" && (!/^\d{13}$/.test(barcode) || checksumDigit(barcode.slice(0, 12)) !== barcode.at(-1))) {
+    return { value: null, error: "EAN-13 barcode must contain 13 digits with a valid check digit" };
+  }
+  if (type === "UPC" && (!/^\d{12}$/.test(barcode) || checksumDigit(barcode.slice(0, 11)) !== barcode.at(-1))) {
+    return { value: null, error: "UPC barcode must contain 12 digits with a valid check digit" };
+  }
+  return { value: barcode, error: null, type };
 }
 
-async function nextInternalBarcode(tx) {
-  const latest = await tx.product.findFirst({
-    where: { barcode: { startsWith: "DP" } },
-    select: { barcode: true },
-    orderBy: { barcode: "desc" },
+async function nextInternalBarcode(tx, shopId) {
+  const shop = await tx.shop.update({
+    where: { id: shopId },
+    data: { nextBarcodeNumber: { increment: 1 } },
+    select: { nextBarcodeNumber: true },
   });
-  const previous = Number(latest?.barcode?.slice(2) || 0);
-  return `DP${String(previous + 1).padStart(8, "0")}`;
+  return `DP${String(shop.nextBarcodeNumber).padStart(8, "0")}`;
 }
 
-module.exports = { normalizeBarcode, inferBarcodeType, validateBarcode, nextInternalBarcode };
+async function nextInternalSku(tx, shopId) {
+  const shop = await tx.shop.update({
+    where: { id: shopId },
+    data: { nextSkuNumber: { increment: 1 } },
+    select: { nextSkuNumber: true },
+  });
+  return `DPSKU${String(shop.nextSkuNumber).padStart(6, "0")}`;
+}
+
+module.exports = { normalizeBarcode, inferBarcodeType, validateBarcode, normalizeSku, validateSku, nextInternalBarcode, nextInternalSku };

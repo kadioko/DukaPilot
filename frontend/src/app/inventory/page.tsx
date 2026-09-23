@@ -24,11 +24,13 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
-import { BarcodeLabel } from "@/components/barcode/BarcodeLabel";
+import { LabelComposer } from "@/components/labels/LabelComposer";
+import type { BarcodeType } from "@/components/labels/types";
 
 interface Product {
   id: string;
   name: string;
+  labelName?: string | null;
   sku?: string;
   unit: string;
   buyingPrice: number;
@@ -42,7 +44,7 @@ interface Product {
   doesNotExpire: boolean;
   supplier?: { id: string; name: string; phone: string };
   barcode?: string | null;
-  barcodeType?: string | null;
+  barcodeType?: BarcodeType | null;
   barcodeGenerated?: boolean;
 }
 
@@ -138,7 +140,7 @@ export default function InventoryPage() {
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [actionMenuProductId, setActionMenuProductId] = useState<string | null>(null);
   const [form, setForm] = useState({
-    name: "", sku: "", unit: "pcs", buyingPrice: "", sellingPrice: "",
+    name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "",
     wholesalePrice: "", wholesaleMinQty: "",
     currentStock: "0", minimumStock: "5", supplierId: "",
     expiryDate: "", doesNotExpire: false, barcode: "", barcodeType: "", generateBarcode: false,
@@ -231,7 +233,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditProduct(null);
-    setForm({ name: "", sku: "", unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, barcode: "", barcodeType: "", generateBarcode: false });
+    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, barcode: "", barcodeType: "", generateBarcode: false });
     setError("");
     setShowForm(true);
   }
@@ -239,7 +241,7 @@ export default function InventoryPage() {
   function openEdit(p: Product) {
     setEditProduct(p);
     setForm({
-      name: p.name, sku: p.sku || "", unit: p.unit,
+      name: p.name, labelName: p.labelName || "", sku: p.sku || "", generateSku: false, unit: p.unit,
       buyingPrice: p.buyingPrice == null ? "" : String(p.buyingPrice), sellingPrice: String(p.sellingPrice),
       wholesalePrice: p.wholesalePrice != null ? String(p.wholesalePrice) : "",
       wholesaleMinQty: p.wholesaleMinQty != null ? String(p.wholesaleMinQty) : "",
@@ -273,7 +275,7 @@ export default function InventoryPage() {
     setSaving(true);
     try {
       const sharedBody = {
-        name: form.name, sku: form.sku || undefined, unit: form.unit,
+        name: form.name, labelName: form.labelName || null, sku: form.sku || undefined, generateSku: form.generateSku, unit: form.unit,
         ...(canViewFinancials ? { buyingPrice: Number(form.buyingPrice) } : {}), sellingPrice: Number(form.sellingPrice),
         wholesalePrice: form.wholesalePrice === "" ? null : Number(form.wholesalePrice),
         wholesaleMinQty: form.wholesaleMinQty === "" ? null : Number(form.wholesaleMinQty),
@@ -353,9 +355,9 @@ export default function InventoryPage() {
 
   function downloadCsvTemplate() {
     const csv = [
-      "name,sku,unit,buyingPrice,sellingPrice,currentStock,minimumStock,barcode,expiryDate,doesNotExpire,wholesaleEnabled,wholesalePrice,wholesaleMinQty",
-      "Sukari 1kg,SKR001,pcs,2500,3000,10,5,,,true,false,,",
-      "Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true,true,2500,5",
+      "name,labelName,sku,unit,buyingPrice,sellingPrice,currentStock,minimumStock,barcode,expiryDate,doesNotExpire,wholesaleEnabled,wholesalePrice,wholesaleMinQty",
+      "Sukari 1kg,Sukari 1kg,SKR001,pcs,2500,3000,10,5,,,true,false,,",
+      "Mchele 1kg,Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true,true,2500,5",
     ].join("\n");
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
@@ -639,7 +641,7 @@ export default function InventoryPage() {
                         <MoreVertical className="h-4 w-4" />
                       </button>
                       {actionMenuProductId === p.id && <div className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
-                        {p.barcode && <button onClick={() => { setLabelProduct(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Printer className="h-4 w-4" />{lang === "sw" ? "Chapisha lebo" : "Print label"}</button>}
+                        <button onClick={() => { setLabelProduct(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Printer className="h-4 w-4" />{lang === "sw" ? "Chapisha lebo" : "Print label"}</button>
                         <button onClick={() => { openEdit(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Edit2 className="h-4 w-4" />{t("common.edit", lang)}</button>
                         <button onClick={() => { setDeleteProduct(p); setActionMenuProductId(null); }} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-4 w-4" />{t("inventory.deleteProduct", lang)}</button>
                       </div>}
@@ -693,10 +695,13 @@ export default function InventoryPage() {
               <input aria-label={t("inventory.nameLabel", lang)} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={INPUT} placeholder={t("inventory.namePlaceholder", lang)} />
             </Field>
+            <Field label={lang === "sw" ? "Jina fupi kwenye label (hiari)" : "Short label name (optional)"}>
+              <input aria-label={lang === "sw" ? "Jina fupi kwenye label" : "Short label name"} value={form.labelName} onChange={(e) => setForm({ ...form, labelName: e.target.value })} className={INPUT} placeholder={lang === "sw" ? "Mfano: Soda 300ml" : "For example: Soda 300ml"} maxLength={100} />
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t("inventory.skuLabel", lang)}>
-                <input aria-label={t("inventory.skuLabel", lang)} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                  className={INPUT} placeholder="UNG001" />
+                <div className="space-y-1.5"><input aria-label={t("inventory.skuLabel", lang)} value={form.sku} disabled={form.generateSku} onChange={(e) => setForm({ ...form, sku: e.target.value.toUpperCase() })}
+                  className={INPUT} placeholder="UNG001" /><label className="flex items-center gap-1.5 text-xs text-gray-600"><input aria-label={lang === "sw" ? "Tengeneza code ya bidhaa moja kwa moja" : "Generate product code automatically"} type="checkbox" checked={form.generateSku} onChange={(e) => setForm({ ...form, generateSku: e.target.checked, sku: e.target.checked ? "" : form.sku })} />{lang === "sw" ? "Tengeneza SKU ya DukaPilot" : "Generate DukaPilot SKU"}</label></div>
               </Field>
               <Field label={t("inventory.unitLabel", lang)}>
                 <><input aria-label={t("inventory.unitLabel", lang)} list="dukapilot-product-units" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className={INPUT} placeholder={lang === "sw" ? "Mfano: nusu ya kuku" : "For example: half chicken"} /><datalist id="dukapilot-product-units">{["pcs", "kg", "litre", "box", "crate", "bag", "pkt", "bar", "bottle", "can", "glass", "plate", "serving", "portion", "nusu ya kuku", "robo ya kuku", "kuku mzima", "skewer"].map((unit) => <option key={unit} value={unit} />)}</datalist></>
@@ -707,7 +712,6 @@ export default function InventoryPage() {
               <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Barcode</p><button onClick={() => setBarcodeScannerOpen(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700"><ScanLine className="h-4 w-4" />Scan</button></div>
               <input aria-label="Barcode" value={form.barcode} disabled={form.generateBarcode} onChange={(e) => setForm({ ...form, barcode: e.target.value.toUpperCase() })} placeholder="EAN, UPC, or DP00000001" className={INPUT} />
               <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.generateBarcode} onChange={(e) => setForm({ ...form, generateBarcode: e.target.checked, barcode: e.target.checked ? "" : form.barcode })} />Generate DukaPilot barcode</label>
-              {form.barcode && <BarcodeLabel value={form.barcode} name={form.name || "Product"} price={form.sellingPrice ? formatTZS(Number(form.sellingPrice)) : undefined} className="max-w-[240px] border" />}
             </div>
             <div className="grid grid-cols-2 gap-3">
               {canViewFinancials && <Field label={t("inventory.buyingPriceLabel", lang)}>
@@ -896,7 +900,7 @@ export default function InventoryPage() {
       {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase(), generateBarcode: false }); setBarcodeScannerOpen(false); }} />}
       {showCsvImport && <Modal title={lang === "sw" ? "Ingiza bidhaa kwa CSV" : "Import products from CSV"} onClose={() => setShowCsvImport(false)}><div className="space-y-4"><ol className="space-y-2 text-sm leading-6 text-gray-700"><li>{lang === "sw" ? "1. Pakua template, kisha ifungue kwa Excel au Google Sheets." : "1. Download the template and open it in Excel or Google Sheets."}</li><li>{lang === "sw" ? "2. Jaza bidhaa zako. Jina, bei ya kununua na bei ya kuuza zinahitajika." : "2. Fill in products. Name, buying price, and selling price are required."}</li><li>{lang === "sw" ? "3. Bei ya jumla huwa imezimwa. Weka wholesaleEnabled kuwa true kwa bidhaa inayouzwa jumla, kisha jaza wholesalePrice." : "3. Wholesale is off by default. Set wholesaleEnabled to true only for a wholesale product, then add wholesalePrice."}</li><li>{lang === "sw" ? "4. Hifadhi kama CSV, kisha chagua file hapa chini." : "4. Save as CSV, then choose the file below."}</li></ol><button type="button" onClick={downloadCsvTemplate} className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-900"><Download className="h-4 w-4" />{lang === "sw" ? "Pakua CSV template" : "Download CSV template"}</button><label className="grid gap-2 rounded-lg border border-dashed border-gray-300 p-4 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Chagua CSV file" : "Choose CSV file"}</span><input type="file" accept=".csv,text/csv" onChange={(event) => { setCsvFile(event.target.files?.[0] || null); setCsvErrors([]); }} className="block w-full text-sm" />{csvFile && <span className="text-xs font-normal text-gray-500">{csvFile.name}</span>}</label><p className="text-xs leading-5 text-gray-500">{lang === "sw" ? "SKU, stock ya kuanzia, minimum stock, barcode na expiry date ni hiari. wholesaleMinQty pia ni hiari; ukiweka jumla bila idadi, mfumo utatumia 5. Stock ya kuanzia ni 0 na minimum stock ni 5 ukiiacha wazi. Bei za TZS zinaweza kuandikwa 12500, 12,500, 12 500, au TZS 12,500." : "SKU, opening stock, minimum stock, barcode, and expiry date are optional. wholesaleMinQty is also optional; enabled wholesale products default to 5 units. Blank opening stock is 0 and minimum stock is 5. TZS prices can be written as 12500, 12,500, 12 500, or TZS 12,500."}</p>{csvErrors.length > 0 && <section aria-live="polite" className="max-h-48 overflow-y-auto rounded-lg border border-red-200 bg-red-50 p-3"><p className="text-sm font-bold text-red-900">{lang === "sw" ? "Rekebisha makosa haya, kisha chagua file tena:" : "Fix these errors, then choose the file again:"}</p><ul className="mt-2 space-y-1.5 text-xs leading-5 text-red-800">{csvErrors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}><strong>{lang === "sw" ? "Mstari" : "Row"} {item.row || 1}{item.field ? ` - ${item.field}` : ""}:</strong> {item.message}</li>)}</ul></section>}<div className="flex gap-2"><button type="button" onClick={() => setShowCsvImport(false)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700">{t("common.cancel", lang)}</button><button type="button" onClick={importCsv} disabled={!csvFile || csvImporting} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{csvImporting ? (lang === "sw" ? "Inaingiza..." : "Importing...") : (lang === "sw" ? "Ingiza bidhaa" : "Import products")}</button></div></div></Modal>}
       {stockCountScannerOpen && <BarcodeScanner onClose={() => setStockCountScannerOpen(false)} onDetected={scanStockCount} />}
-      {labelProduct?.barcode && <Modal title="Barcode label" onClose={() => setLabelProduct(null)}><div className="space-y-4"><BarcodeLabel value={labelProduct.barcode} name={labelProduct.name} price={formatTZS(labelProduct.sellingPrice)} className="border" /><button onClick={() => window.print()} className="w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white">Print label</button></div></Modal>}
+      {labelProduct && <Modal title={lang === "sw" ? "Chapisha label" : "Print label"} onClose={() => setLabelProduct(null)}><LabelComposer products={[labelProduct]} initialProductIds={[labelProduct.id]} compact /></Modal>}
     </AppShell>
   );
 }

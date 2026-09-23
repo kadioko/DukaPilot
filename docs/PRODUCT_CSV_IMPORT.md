@@ -8,7 +8,7 @@ Use **Inventory > Import CSV** when you already have a product list in Excel or 
 4. Save or download the sheet as **CSV**.
 5. Select the CSV file in DukaPilot and choose **Import products**.
 
-The required columns are `name`, `buyingPrice`, and `sellingPrice`. Prices must be whole TZS amounts. You can write a price as `12500`, `12,500`, `12 500`, or `TZS 12,500`; DukaPilot reads all four as TZS 12,500. The template also includes optional `sku`, `unit`, `currentStock`, `minimumStock`, `barcode`, `expiryDate`, and `doesNotExpire` columns.
+The required columns are `name`, `buyingPrice`, and `sellingPrice`. Prices must be whole TZS amounts. You can write a price as `12500`, `12,500`, `12 500`, or `TZS 12,500`; DukaPilot reads all four as TZS 12,500. The template also includes optional `labelName`, `sku`, `unit`, `currentStock`, `minimumStock`, `barcode`, `expiryDate`, and `doesNotExpire` columns. `labelName` is a short name used only on product labels.
 
 Wholesale is explicitly **off by default** for every imported product. To enable it for one product, use these optional columns:
 
@@ -18,7 +18,7 @@ Wholesale is explicitly **off by default** for every imported product. To enable
 | `wholesalePrice` | Required when `wholesaleEnabled` is `true`. It must be a whole TZS amount and cannot be higher than `sellingPrice`. |
 | `wholesaleMinQty` | Optional when wholesale is enabled. This is the smallest quantity sold at the wholesale price. If blank, DukaPilot uses `5`. |
 
-For example: `Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true,true,2500,5`. Do not enter a wholesale price while `wholesaleEnabled` is blank or `false`; DukaPilot will show a row error so a retail-only product cannot accidentally get a wholesale price.
+For example: `Mchele 1kg,Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true,true,2500,5`. Do not enter a wholesale price while `wholesaleEnabled` is blank or `false`; DukaPilot will show a row error so a retail-only product cannot accidentally get a wholesale price.
 
 Leave optional cells blank when they do not apply. DukaPilot uses opening stock `0` and minimum stock `5` when those values are blank. For a product with an expiry date, write it as `YYYY-MM-DD`, for example `2026-12-31`. Use `true` in `doesNotExpire` for items that never expire.
 

@@ -198,6 +198,8 @@ export default function SalesPage() {
   const [canViewFinancials, setCanViewFinancials] = useState(true);
   const [canManageStock, setCanManageStock] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [barcodeSettings, setBarcodeSettings] = useState({ barcodeScanningEnabled: true, bluetoothScannerEnabled: true, barcodeAutoFocus: true, barcodeSuccessSound: true, barcodeVibrate: true, barcodeAutoAddToCart: true });
+  const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [completedSale, setCompletedSale] = useState<SaleRecord | null>(null);
   const [completedChange, setCompletedChange] = useState<number | null>(null);
   const [restockProduct, setRestockProduct] = useState<Product | null>(null);
@@ -225,6 +227,9 @@ export default function SalesPage() {
       .catch(() => setCustomers([]));
     api.get<{ settings: { shop?: { name?: string } } }>("/settings")
       .then((data) => setShopName(data.settings.shop?.name || "DukaPilot"))
+      .catch(() => {});
+    api.get<{ settings: Partial<typeof barcodeSettings> }>("/barcodes/settings")
+      .then((data) => setBarcodeSettings((current) => ({ ...current, ...data.settings })))
       .catch(() => {});
   }, []);
 
@@ -432,18 +437,22 @@ export default function SalesPage() {
     });
   }
 
-  function signalScanSuccess() {
-    if (navigator.vibrate) navigator.vibrate(60);
-    try { const ctx = new AudioContext(); const tone = ctx.createOscillator(); const gain = ctx.createGain(); tone.frequency.value = 880; gain.gain.value = 0.05; tone.connect(gain); gain.connect(ctx.destination); tone.start(); tone.stop(ctx.currentTime + 0.08); } catch { /* Audio is optional. */ }
+  function signalScanSuccess(behavior?: { successSound?: boolean; vibrate?: boolean }) {
+    if (behavior?.vibrate !== false && barcodeSettings.barcodeVibrate && navigator.vibrate) navigator.vibrate(60);
+    if (behavior?.successSound !== false && barcodeSettings.barcodeSuccessSound) {
+      try { const ctx = new AudioContext(); const tone = ctx.createOscillator(); const gain = ctx.createGain(); tone.frequency.value = 880; gain.gain.value = 0.05; tone.connect(gain); tone.start(); tone.stop(ctx.currentTime + 0.08); } catch { /* Audio is optional. */ }
+    }
   }
 
-  const handleBarcode = useCallback(async (value: string) => {
+  const handleBarcode = useCallback(async (value: string, source: "CAMERA" | "HID" = "CAMERA") => {
     const normalized = value.trim().toUpperCase();
     try {
-      const data = await api.get<{ product: Product }>(`/barcodes/lookup/${encodeURIComponent(normalized)}?context=POS`, lang);
-      addToCart(data.product);
-      signalScanSuccess();
-      toast(lang === "sw" ? `${data.product.name} imeongezwa.` : `${data.product.name} added.`, "success");
+      const data = await api.get<{ product: Product; behavior?: { autoAddToCart?: boolean; successSound?: boolean; vibrate?: boolean } }>(`/barcodes/lookup/${encodeURIComponent(normalized)}?context=POS&source=${source}`, lang);
+      if (data.behavior?.autoAddToCart !== false && barcodeSettings.barcodeAutoAddToCart) {
+        addToCart(data.product);
+        toast(lang === "sw" ? `${data.product.name} imeongezwa.` : `${data.product.name} added.`, "success");
+      } else setScannedProduct(data.product);
+      signalScanSuccess(data.behavior);
       setScannerOpen(false);
     } catch (error: unknown) {
       if (error instanceof Error && error.message === "This barcode was not found.") {
@@ -452,12 +461,12 @@ export default function SalesPage() {
       }
       else toast(error instanceof Error ? error.message : "Unable to scan barcode", "error");
     }
-  }, [lang, toast]);
+  }, [barcodeSettings, lang, toast]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || scannerOpen) return;
-      if (event.key === "Enter" && scannerBuffer.current.length >= 4) { const value = scannerBuffer.current; scannerBuffer.current = ""; if (scannerTimer.current) clearTimeout(scannerTimer.current); handleBarcode(value); return; }
+      if (event.ctrlKey || event.metaKey || event.altKey || scannerOpen || !barcodeSettings.bluetoothScannerEnabled || !barcodeSettings.barcodeScanningEnabled) return;
+      if (event.key === "Enter" && scannerBuffer.current.length >= 4) { const value = scannerBuffer.current; scannerBuffer.current = ""; if (scannerTimer.current) clearTimeout(scannerTimer.current); handleBarcode(value, "HID"); return; }
       if (event.key.length !== 1) return;
       scannerBuffer.current += event.key;
       if (scannerTimer.current) clearTimeout(scannerTimer.current);
@@ -465,7 +474,7 @@ export default function SalesPage() {
     };
     window.addEventListener("keydown", keydown);
     return () => { window.removeEventListener("keydown", keydown); if (scannerTimer.current) clearTimeout(scannerTimer.current); };
-  }, [handleBarcode, scannerOpen]);
+  }, [barcodeSettings.bluetoothScannerEnabled, barcodeSettings.barcodeScanningEnabled, handleBarcode, scannerOpen]);
 
   function updateQty(productId: string, delta: number) {
     setCart((prev) =>
@@ -851,7 +860,7 @@ export default function SalesPage() {
                   placeholder={t("inventory.search", lang)}
                   className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
                 </div>
-                <button onClick={() => setScannerOpen(true)} aria-label="Scan barcode" className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white" title="Scan barcode"><ScanLine className="h-5 w-5" /></button>
+                <button onClick={() => setScannerOpen(true)} disabled={!barcodeSettings.barcodeScanningEnabled} aria-label="Scan barcode" className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white disabled:opacity-40" title={barcodeSettings.barcodeScanningEnabled ? "Scan barcode" : (lang === "sw" ? "Barcode scanning imezimwa" : "Barcode scanning is disabled")}><ScanLine className="h-5 w-5" /></button>
               </div>
               <div className="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pb-2 sm:grid-cols-3 lg:max-h-[60vh] lg:grid-cols-2">
                 {filtered.map((p) => {
@@ -1057,7 +1066,7 @@ export default function SalesPage() {
           </button>
         )}
       </div>
-      {scannerOpen && <BarcodeScanner onDetected={handleBarcode} onClose={() => setScannerOpen(false)} />}
+      {scannerOpen && <BarcodeScanner onDetected={(value) => handleBarcode(value, "CAMERA")} onClose={() => setScannerOpen(false)} />}
       {completedSale && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-2xl">
@@ -1090,6 +1099,7 @@ export default function SalesPage() {
         </div>
       )}
       {unknownBarcode && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"><h2 className="font-bold text-gray-900">{lang === "sw" ? "Barcode haijapatikana" : "This barcode was not found."}</h2><p className="mt-2 text-sm text-gray-600">{unknownBarcode}</p><div className="mt-4 flex gap-2"><button onClick={() => { setSearch(unknownBarcode); setProductPage(1); setUnknownBarcode(null); }} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-semibold">{lang === "sw" ? "Tafuta" : "Search manually"}</button><button onClick={() => { window.location.href = `/inventory?barcode=${encodeURIComponent(unknownBarcode)}&action=add`; }} className="flex-1 rounded-lg bg-brand-600 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Ongeza bidhaa" : "Add new product"}</button></div><button onClick={() => setUnknownBarcode(null)} className="mt-3 w-full text-sm text-gray-500">{t("common.cancel", lang)}</button></div></div>}
+      {scannedProduct && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"><h2 className="font-bold text-gray-900">{lang === "sw" ? "Bidhaa imescanwa" : "Product scanned"}</h2><p className="mt-2 text-sm text-gray-600">{scannedProduct.name}</p><div className="mt-4 flex gap-2"><button onClick={() => setScannedProduct(null)} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-semibold">{t("common.cancel", lang)}</button><button onClick={() => { addToCart(scannedProduct); setScannedProduct(null); toast(lang === "sw" ? "Bidhaa imeongezwa." : "Product added.", "success"); }} className="flex-1 rounded-lg bg-brand-600 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Ongeza cart" : "Add to cart"}</button></div></div></div>}
     </AppShell>
   );
 }

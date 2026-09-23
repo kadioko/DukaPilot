@@ -9,5 +9,6 @@ router.patch("/settings", requirePermission("canManageStock"), ctrl.settings);
 router.get("/history", ctrl.history);
 router.get("/report", requirePermission("canManageStock"), ctrl.report);
 router.post("/generate", requirePermission("canManageStock"), ctrl.generate);
+router.post("/generate-sku", requirePermission("canManageStock"), ctrl.generateSku);
 router.get("/lookup/:barcode", ctrl.lookup);
 module.exports = router;

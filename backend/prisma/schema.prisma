@@ -95,6 +95,28 @@ enum BarcodeType {
   INTERNAL
 }
 
+enum LabelLayout {
+  BARCODE_ONLY
+  NAME_PRICE
+  NAME_BARCODE
+  NAME_PRICE_BARCODE
+  CUSTOM
+}
+
+enum PrinterDriver {
+  BROWSER
+  PDF
+  ZPL
+  TSPL
+  ESCPOS
+}
+
+enum LabelPrintStatus {
+  PREPARED
+  COMPLETED
+  FAILED
+}
+
 enum QuotationStatus {
   DRAFT
   SENT
@@ -241,6 +263,9 @@ model Shop {
   cropFieldTasks           CropFieldTask[]
   cropBuyerContracts       CropBuyerContract[]
   cropWeatherAlerts        CropWeatherAlert[]
+  labelTemplates           LabelTemplate[]
+  printerProfiles          PrinterProfile[]
+  labelPrintJobs           LabelPrintJob[]
   customers                Customer[]
   services                 Service[]
   quotations               Quotation[]
@@ -265,6 +290,8 @@ model Shop {
   barcodeSuccessSound      Boolean                 @default(true)
   barcodeVibrate           Boolean                 @default(true)
   barcodeAutoAddToCart     Boolean                 @default(true)
+  nextBarcodeNumber        Int                     @default(0)
+  nextSkuNumber            Int                     @default(0)
   nextSaleNumber           Int                     @default(1)
   nextQuotationNumber      Int                     @default(1)
   acquisitionSource        String?
@@ -882,6 +909,7 @@ model Product {
   incomingTransfers        BranchTransfer[]        @relation("TransferTargetProduct")
   id                       String                  @id @default(cuid())
   name                     String
+  labelName                String?
   sku                      String?
   barcode                  String?
   barcodeType              BarcodeType?
@@ -945,6 +973,76 @@ model BarcodeScan {
   @@index([shopId, barcode])
   @@index([shopId, createdAt])
   @@map("barcode_scans")
+}
+
+model LabelTemplate {
+  id          String       @id @default(cuid())
+  shopId      String
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  layout      LabelLayout  @default(NAME_PRICE_BARCODE)
+  widthMm     Float        @default(40)
+  heightMm    Float        @default(30)
+  columns     Int          @default(1)
+  gapMm       Float        @default(2)
+  fields      Json?
+  barcodeType BarcodeType?
+  isDefault   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  profiles    PrinterProfile[]
+  printJobs   LabelPrintJob[]
+
+  @@unique([shopId, name])
+  @@index([shopId, isDefault])
+  @@map("label_templates")
+}
+
+model PrinterProfile {
+  id             String        @id @default(cuid())
+  shopId         String
+  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name           String
+  driver         PrinterDriver @default(BROWSER)
+  widthMm        Float         @default(40)
+  heightMm       Float         @default(30)
+  dpi            Int           @default(203)
+  transport      String        @default("BROWSER_DOWNLOAD")
+  options        Json?
+  templateId     String?
+  template       LabelTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  isDefault      Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  lastTestedAt   DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  printJobs      LabelPrintJob[]
+
+  @@unique([shopId, name])
+  @@index([shopId, isDefault])
+  @@map("printer_profiles")
+}
+
+model LabelPrintJob {
+  id               String           @id @default(cuid())
+  shopId           String
+  shop             Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  createdById      String
+  templateId       String?
+  template         LabelTemplate?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  printerProfileId String?
+  printerProfile   PrinterProfile?  @relation(fields: [printerProfileId], references: [id], onDelete: SetNull)
+  outputDriver     PrinterDriver
+  status           LabelPrintStatus @default(PREPARED)
+  items            Json
+  templateSnapshot Json
+  profileSnapshot  Json?
+  error            String?
+  completedAt      DateTime?
+  createdAt        DateTime         @default(now())
+
+  @@index([shopId, createdAt])
+  @@map("label_print_jobs")
 }
 
 model StockCount {

@@ -1,9 +1,9 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { inferBarcodeType, normalizeBarcode, validateBarcode, nextInternalBarcode } = require("../lib/barcode");
+const { normalizeBarcode, nextInternalBarcode, nextInternalSku } = require("../lib/barcode");
 
 function asyncHandler(fn) { return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }
-function canManageBarcode(req) { return req.user.role === "ADMIN" || !req.user.staffId || req.user.staffRole === "MANAGER"; }
+function canManageBarcode(req) { return req.user.role === "ADMIN" || !req.user.staffId || Boolean(req.user.permissions?.canManageStock); }
 
 const generate = asyncHandler(async (req, res) => {
   if (!canManageBarcode(req)) return res.status(403).json({ error: "Only an admin or manager can generate barcodes" });
@@ -11,21 +11,36 @@ const generate = asyncHandler(async (req, res) => {
   const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeGenerationEnabled: true } });
   if (!shop?.barcodeGenerationEnabled) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const barcode = await prisma.$transaction((tx) => nextInternalBarcode(tx));
+    const barcode = await prisma.$transaction((tx) => nextInternalBarcode(tx, shopId));
     const exists = await prisma.product.findUnique({ where: { shopId_barcode: { shopId, barcode } }, select: { id: true } });
     if (!exists) return res.json({ barcode, barcodeType: "INTERNAL" });
   }
   return res.status(409).json({ error: "Could not reserve a barcode. Please try again." });
 });
 
+const generateSku = asyncHandler(async (req, res) => {
+  if (!canManageBarcode(req)) return res.status(403).json({ error: "Only an admin, manager, or stock clerk can generate SKUs" });
+  const shopId = await getShopIdForUser(req.user);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const sku = await prisma.$transaction((tx) => nextInternalSku(tx, shopId));
+    const exists = await prisma.product.findFirst({ where: { shopId, sku }, select: { id: true } });
+    if (!exists) return res.json({ sku });
+  }
+  return res.status(409).json({ error: "Could not reserve an SKU. Please try again." });
+});
+
 const lookup = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const barcode = normalizeBarcode(req.params.barcode);
   if (!barcode) return res.status(400).json({ error: "Barcode is required" });
+  const source = String(req.query.source || "MANUAL").toUpperCase();
+  const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeScanningEnabled: true, bluetoothScannerEnabled: true, barcodeAutoAddToCart: true, barcodeSuccessSound: true, barcodeVibrate: true } });
+  if (source !== "MANUAL" && shop?.barcodeScanningEnabled === false) return res.status(403).json({ error: "Barcode scanning is disabled in settings" });
+  if (source === "HID" && shop?.bluetoothScannerEnabled === false) return res.status(403).json({ error: "Bluetooth and USB scanners are disabled in settings" });
   const product = await prisma.product.findFirst({ where: { shopId, barcode, isActive: true } });
   await prisma.barcodeScan.create({ data: { shopId, barcode, productId: product?.id || null, found: Boolean(product), context: String(req.query.context || "POS").slice(0, 30) } });
   if (!product) return res.status(404).json({ error: "This barcode was not found." });
-  res.json({ product });
+  res.json({ product, behavior: { autoAddToCart: shop?.barcodeAutoAddToCart !== false, successSound: shop?.barcodeSuccessSound !== false, vibrate: shop?.barcodeVibrate !== false } });
 });
 
 const history = asyncHandler(async (req, res) => {
@@ -56,4 +71,4 @@ const settings = asyncHandler(async (req, res) => {
   res.json({ settings: await prisma.shop.update({ where: { id: shopId }, data, select: Object.fromEntries(fields.map((key) => [key, true])) }) });
 });
 
-module.exports = { generate, lookup, history, report, settings, canManageBarcode };
+module.exports = { generate, generateSku, lookup, history, report, settings, canManageBarcode };

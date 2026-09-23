@@ -20,7 +20,8 @@ function handleValidationErrors(req, res, next) {
 
 const productCreateValidation = [
   body("name").trim().notEmpty().withMessage("Product name is required"),
-  body("sku").optional({ values: "falsy" }).trim().isLength({ max: 100 }).withMessage("SKU must be 100 characters or less"),
+  body("labelName").optional({ nullable: true, values: "falsy" }).trim().isLength({ max: 100 }).withMessage("Label name must be 100 characters or less"),
+  body("sku").optional({ values: "falsy" }).trim().isLength({ max: 100 }).matches(/^[A-Za-z0-9._-]+$/).withMessage("SKU format is invalid"),
   body("unit").optional({ values: "falsy" }).trim().isLength({ max: 30 }).withMessage("Unit must be 30 characters or less"),
   body("buyingPrice").notEmpty().withMessage("Buying price is required").bail().isInt({ min: 0 }).withMessage("Buying price must be a whole TZS amount"),
   body("sellingPrice").notEmpty().withMessage("Selling price is required").bail().isInt({ min: 0 }).withMessage("Selling price must be a whole TZS amount"),
@@ -34,12 +35,14 @@ const productCreateValidation = [
   body("barcode").optional({ nullable: true, values: "falsy" }).trim().isLength({ min: 4, max: 64 }).matches(/^[A-Za-z0-9._-]+$/).withMessage("Barcode format is invalid"),
   body("barcodeType").optional({ values: "falsy" }).isIn(["EAN13", "UPC", "CODE128", "INTERNAL"]).withMessage("Invalid barcode type"),
   body("generateBarcode").optional().isBoolean().withMessage("generateBarcode must be true or false"),
+  body("generateSku").optional().isBoolean().withMessage("generateSku must be true or false"),
   handleValidationErrors,
 ];
 
 const productUpdateValidation = [
   body("name").optional().trim().notEmpty().withMessage("Product name cannot be empty"),
-  body("sku").optional({ values: "falsy" }).trim().isLength({ max: 100 }).withMessage("SKU must be 100 characters or less"),
+  body("labelName").optional({ nullable: true, values: "falsy" }).trim().isLength({ max: 100 }).withMessage("Label name must be 100 characters or less"),
+  body("sku").optional({ values: "falsy" }).trim().isLength({ max: 100 }).matches(/^[A-Za-z0-9._-]+$/).withMessage("SKU format is invalid"),
   body("unit").optional({ values: "falsy" }).trim().isLength({ max: 30 }).withMessage("Unit must be 30 characters or less"),
   body("buyingPrice").optional().isInt({ min: 0 }).withMessage("Buying price must be a whole TZS amount"),
   body("sellingPrice").optional().isInt({ min: 0 }).withMessage("Selling price must be a whole TZS amount"),
@@ -53,6 +56,7 @@ const productUpdateValidation = [
   body("barcode").optional({ nullable: true, values: "falsy" }).trim().isLength({ min: 4, max: 64 }).matches(/^[A-Za-z0-9._-]+$/).withMessage("Barcode format is invalid"),
   body("barcodeType").optional({ values: "falsy" }).isIn(["EAN13", "UPC", "CODE128", "INTERNAL"]).withMessage("Invalid barcode type"),
   body("generateBarcode").optional().isBoolean().withMessage("generateBarcode must be true or false"),
+  body("generateSku").optional().isBoolean().withMessage("generateSku must be true or false"),
   handleValidationErrors,
 ];
 

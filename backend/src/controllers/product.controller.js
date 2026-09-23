@@ -2,7 +2,7 @@ const prisma = require("../lib/prisma");
 const { Prisma } = require("@prisma/client");
 const { parse } = require("csv-parse/sync");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { inferBarcodeType, validateBarcode, nextInternalBarcode } = require("../lib/barcode");
+const { inferBarcodeType, validateBarcode, validateSku, nextInternalBarcode, nextInternalSku } = require("../lib/barcode");
 const { getRequestLanguage } = require("../lib/requestLanguage");
 const { findVisibleSupplier } = require("../lib/supplierAccess");
 
@@ -10,6 +10,7 @@ const PRODUCT_IMPORT_MAX_ROWS = 200;
 const PRODUCT_IMPORT_MAX_BYTES = 500_000;
 const PRODUCT_IMPORT_COLUMNS = {
   name: "name",
+  labelname: "labelName",
   sku: "sku",
   unit: "unit",
   buyingprice: "buyingPrice",
@@ -26,9 +27,13 @@ const PRODUCT_IMPORT_COLUMNS = {
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch((error) => {
-    if (error?.code === "P2002" && Array.isArray(error?.meta?.target) && error.meta.target.includes("barcode")) {
-      req.audit = { action: "barcode.duplicate_attempt", resourceType: "product", metadata: { shopId: req.user?.shopId || null } };
-      return res.status(409).json({ error: "This barcode is already used by another product." });
+    if (error?.code === "P2002") {
+      const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(" ") : String(error?.meta?.target || "");
+      if (target.includes("barcode")) {
+        req.audit = { action: "barcode.duplicate_attempt", resourceType: "product", metadata: { shopId: req.user?.shopId || null } };
+        return res.status(409).json({ error: "This barcode is already used by another product." });
+      }
+      if (target.includes("sku")) return res.status(409).json({ error: "This SKU is already used by another product." });
     }
     return next(error);
   });
@@ -39,7 +44,7 @@ function canViewFinancials(req) {
 }
 
 function canGenerateBarcode(req) {
-  return req.user.role === "ADMIN" || !req.user.staffId || req.user.staffRole === "MANAGER";
+  return req.user.role === "ADMIN" || !req.user.staffId || Boolean(req.user.permissions?.canManageStock);
 }
 
 function redactProduct(product, req) {
@@ -48,6 +53,11 @@ function redactProduct(product, req) {
 
 function normalizedUnit(value) {
   return String(value == null ? "pcs" : value).trim() || "pcs";
+}
+
+function normalizedLabelName(value) {
+  const labelName = String(value || "").trim();
+  return labelName || null;
 }
 
 function normalizeImportHeader(value) {
@@ -135,6 +145,7 @@ function parseProductImport(csv) {
   const errors = [];
   const products = [];
   const localBarcodes = new Set();
+  const localSkus = new Set();
   for (let index = 1; index < rows.length; index += 1) {
     const row = index + 1;
     const values = rows[index];
@@ -143,11 +154,16 @@ function parseProductImport(csv) {
       return column === undefined ? undefined : values[column];
     };
     const name = String(get("name") || "").trim();
-    const sku = String(get("sku") || "").trim() || null;
+    const labelName = normalizedLabelName(get("labelName"));
+    const skuCheck = validateSku(get("sku"));
+    const sku = skuCheck.value;
     const unit = String(get("unit") || "pcs").trim() || "pcs";
     if (!name) errors.push({ row, field: "name", message: "name is required" });
     if (name.length > 150) errors.push({ row, field: "name", message: "name must be 150 characters or less" });
-    if (sku && sku.length > 100) errors.push({ row, field: "sku", message: "sku must be 100 characters or less" });
+    if (labelName && labelName.length > 100) errors.push({ row, field: "labelName", message: "labelName must be 100 characters or less" });
+    if (skuCheck.error) errors.push({ row, field: "sku", message: skuCheck.error });
+    if (sku && localSkus.has(sku)) errors.push({ row, field: "sku", message: "sku is repeated in this CSV" });
+    if (sku) localSkus.add(sku);
     if (unit.length > 30) errors.push({ row, field: "unit", message: "unit must be 30 characters or less" });
 
     const buyingPrice = parseImportInteger(get("buyingPrice"), { row, field: "buyingPrice", fallback: 0, required: true, errors });
@@ -177,7 +193,7 @@ function parseProductImport(csv) {
     }
     if (barcodeCheck.value) localBarcodes.add(barcodeCheck.value);
 
-    products.push({ name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, doesNotExpire, expiryDate, barcode: barcodeCheck.value });
+    products.push({ name, labelName, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, doesNotExpire, expiryDate, barcode: barcodeCheck.value });
   }
   return { errors, products };
 }
@@ -207,7 +223,7 @@ async function lowStockPage(shopId, {
       ? Prisma.sql`AND "doesNotExpire" = false AND "expiryDate" < ${today}`
       : Prisma.empty;
   const searchFilter = term
-    ? Prisma.sql`AND (name ILIKE ${`%${term}%`} OR sku ILIKE ${`%${term}%`} OR barcode = ${barcode})`
+    ? Prisma.sql`AND (name ILIKE ${`%${term}%`} OR "labelName" ILIKE ${`%${term}%`} OR sku ILIKE ${`%${term}%`} OR barcode = ${barcode})`
     : Prisma.empty;
   let idRows;
   let countRows;
@@ -276,6 +292,7 @@ const list = asyncHandler(async (req, res) => {
   }
   if (search) where.OR = [
     { name: { contains: search, mode: "insensitive" } },
+    { labelName: { contains: search, mode: "insensitive" } },
     { sku: { contains: search, mode: "insensitive" } },
     { barcode: { contains: String(search).trim().toUpperCase() } },
   ];
@@ -332,7 +349,7 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode } = req.body;
+  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode, generateSku } = req.body;
 
   if (!name || buyingPrice == null || sellingPrice == null) {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
@@ -349,9 +366,12 @@ const create = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
   }
 
-  const checked = validateBarcode(rawBarcode);
+  const checked = validateBarcode(rawBarcode, barcodeType);
   if (checked.error) return res.status(400).json({ error: checked.error });
-  if (generateBarcode && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin or manager can generate barcodes" });
+  const checkedSku = validateSku(rawSku);
+  if (checkedSku.error) return res.status(400).json({ error: checkedSku.error });
+  if (generateBarcode && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin, manager, or stock clerk can generate barcodes" });
+  if (generateSku && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin, manager, or stock clerk can generate SKUs" });
   if (generateBarcode) {
     const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeGenerationEnabled: true } });
     if (shop?.barcodeGenerationEnabled === false) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
@@ -361,14 +381,20 @@ const create = asyncHandler(async (req, res) => {
     if (!supplier) return res.status(400).json({ error: "Supplier not found in this shop" });
   }
   const product = await prisma.$transaction(async (tx) => {
-    const barcode = generateBarcode ? await nextInternalBarcode(tx) : checked.value;
+    const barcode = generateBarcode ? await nextInternalBarcode(tx, shopId) : checked.value;
+    const sku = generateSku ? await nextInternalSku(tx, shopId) : checkedSku.value;
     if (barcode) {
       const duplicate = await tx.product.findUnique({ where: { shopId_barcode: { shopId, barcode } }, select: { id: true } });
       if (duplicate) throw Object.assign(new Error("This barcode is already used by another product."), { status: 409, code: "BARCODE_DUPLICATE" });
     }
+    if (sku) {
+      const duplicateSku = await tx.product.findFirst({ where: { shopId, sku }, select: { id: true } });
+      if (duplicateSku) throw Object.assign(new Error("This SKU is already used by another product."), { status: 409, code: "SKU_DUPLICATE" });
+    }
     const created = await tx.product.create({
       data: {
       name,
+      labelName: normalizedLabelName(labelName),
       sku,
       unit: productUnit,
       buyingPrice: Number(buyingPrice),
@@ -453,7 +479,7 @@ const update = asyncHandler(async (req, res) => {
     });
   }
 
-  const { name, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode } = req.body;
+  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire, barcode: rawBarcode, barcodeType, generateBarcode, generateSku } = req.body;
   const nextUnit = unit === undefined ? normalizedUnit(existing.unit) : normalizedUnit(unit);
   if (nextUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
   const nextSellingPrice = sellingPrice === undefined ? existing.sellingPrice : Number(sellingPrice);
@@ -464,21 +490,30 @@ const update = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
   }
 
-  const checked = rawBarcode === undefined ? { value: undefined } : validateBarcode(rawBarcode);
+  const checked = rawBarcode === undefined ? { value: undefined } : validateBarcode(rawBarcode, barcodeType);
   if (checked.error) return res.status(400).json({ error: checked.error });
-  if (generateBarcode && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin or manager can generate barcodes" });
+  const checkedSku = rawSku === undefined ? { value: undefined } : validateSku(rawSku);
+  if (checkedSku.error) return res.status(400).json({ error: checkedSku.error });
+  if (generateBarcode && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin, manager, or stock clerk can generate barcodes" });
+  if (generateSku && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin, manager, or stock clerk can generate SKUs" });
   if (generateBarcode) {
     const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeGenerationEnabled: true } });
     if (shop?.barcodeGenerationEnabled === false) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
   }
   let barcode = checked.value;
-  if (generateBarcode) barcode = await prisma.$transaction((tx) => nextInternalBarcode(tx));
+  let sku = checkedSku.value;
+  if (generateBarcode) barcode = await prisma.$transaction((tx) => nextInternalBarcode(tx, shopId));
+  if (generateSku) sku = await prisma.$transaction((tx) => nextInternalSku(tx, shopId));
   if (barcode && barcode !== existing.barcode) {
     const duplicate = await prisma.product.findUnique({ where: { shopId_barcode: { shopId, barcode } }, select: { id: true } });
     if (duplicate) {
       req.audit = { action: "barcode.duplicate_attempt", resourceType: "product", resourceId: existing.id, metadata: { shopId, barcode } };
       return res.status(409).json({ error: "This barcode is already used by another product." });
     }
+  }
+  if (sku && sku !== existing.sku) {
+    const duplicateSku = await prisma.product.findFirst({ where: { shopId, sku, id: { not: existing.id } }, select: { id: true } });
+    if (duplicateSku) return res.status(409).json({ error: "This SKU is already used by another product." });
   }
   if (supplierId) {
     const supplier = await findVisibleSupplier(prisma, String(supplierId), shopId, { select: { id: true } });
@@ -488,6 +523,7 @@ const update = asyncHandler(async (req, res) => {
     where: { id: req.params.id },
     data: {
       ...(name !== undefined && { name }),
+      ...(labelName !== undefined && { labelName: normalizedLabelName(labelName) }),
       ...(sku !== undefined && { sku }),
       ...(unit !== undefined && { unit: nextUnit }),
       ...(buyingPrice !== undefined && { buyingPrice: Number(buyingPrice) }),
