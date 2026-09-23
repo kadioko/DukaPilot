@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS, getCurrentSession, selectedBranchId } from "@/lib/api";
+import { api, formatTZS, getCurrentSession, isNetworkError, selectedBranchId } from "@/lib/api";
 import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle, PackagePlus } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
@@ -172,6 +172,7 @@ export default function SalesPage() {
   const [productPage, setProductPage] = useState(1);
   const [productTotal, setProductTotal] = useState(0);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productError, setProductError] = useState("");
   const [productRevision, setProductRevision] = useState(0);
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -187,6 +188,7 @@ export default function SalesPage() {
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [view, setView] = useState<"pos" | "history">("pos");
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [pendingSales, setPendingSales] = useState<PendingSale[]>([]);
   const [syncHistory, setSyncHistory] = useState<SyncEvent[]>([]);
   const [syncing, setSyncing] = useState(false);
@@ -237,10 +239,11 @@ export default function SalesPage() {
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       setLoadingProducts(true);
+      setProductError("");
       try {
         const query = new URLSearchParams({ page: String(productPage), limit: "100" });
         if (search.trim()) query.set("search", search.trim());
-        const data = await api.get<{ products: Product[]; pagination: { total: number } }>(`/products?${query.toString()}`);
+        const data = await api.get<{ products: Product[]; pagination: { total: number } }>(`/products?${query.toString()}`, lang);
         if (cancelled) return;
         setProducts((current) => {
           if (productPage === 1) return data.products;
@@ -248,10 +251,11 @@ export default function SalesPage() {
           return [...current, ...data.products.filter((product) => !known.has(product.id))];
         });
         setProductTotal(data.pagination.total);
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setProducts([]);
           setProductTotal(0);
+          setProductError(error instanceof Error ? error.message : (lang === "sw" ? "Bidhaa hazikupatikana kwa sasa." : "Products could not be loaded right now."));
         }
       } finally {
         if (!cancelled) setLoadingProducts(false);
@@ -261,7 +265,7 @@ export default function SalesPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [productPage, productRevision, search]);
+  }, [lang, productPage, productRevision, search]);
 
   const refreshProducts = useCallback(() => {
     setProductPage(1);
@@ -395,13 +399,19 @@ export default function SalesPage() {
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
-    const data = await api.get<{ sales: SaleRecord[] }>("/sales?limit=30");
-    setRecentSales(data.sales);
-    setHistoryLoading(false);
-  }, []);
+    setHistoryError("");
+    try {
+      const data = await api.get<{ sales: SaleRecord[] }>("/sales?limit=30", lang);
+      setRecentSales(data.sales);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : (lang === "sw" ? "Historia ya mauzo haikupatikana kwa sasa." : "Sales history could not be loaded right now."));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [lang]);
 
   useEffect(() => {
-    if (view === "history") fetchHistory();
+    if (view === "history") void fetchHistory();
   }, [view, fetchHistory]);
 
   const hiddenOutOfStock = products.filter((p) => p.currentStock <= 0).length;
@@ -600,7 +610,7 @@ export default function SalesPage() {
       }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : t("common.error", lang);
-      const canQueue = typeof navigator !== "undefined" && (!navigator.onLine || message.includes("Unable to reach"));
+      const canQueue = typeof navigator !== "undefined" && (!navigator.onLine || isNetworkError(e));
       if (canQueue && offlineScope) {
         const queued = [
           ...readPendingSales(offlineScope),
@@ -862,6 +872,12 @@ export default function SalesPage() {
                 </div>
                 <button onClick={() => setScannerOpen(true)} disabled={!barcodeSettings.barcodeScanningEnabled} aria-label="Scan barcode" className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white disabled:opacity-40" title={barcodeSettings.barcodeScanningEnabled ? "Scan barcode" : (lang === "sw" ? "Barcode scanning imezimwa" : "Barcode scanning is disabled")}><ScanLine className="h-5 w-5" /></button>
               </div>
+              {productError && (
+                <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <div className="flex min-w-0 items-center gap-2"><AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" /><p>{productError}</p></div>
+                  <button onClick={refreshProducts} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">{lang === "sw" ? "Jaribu tena" : "Try again"}</button>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pb-2 sm:grid-cols-3 lg:max-h-[60vh] lg:grid-cols-2">
                 {filtered.map((p) => {
                   const inCart = cart.find((i) => i.product.id === p.id);
@@ -1006,6 +1022,12 @@ export default function SalesPage() {
           <div>
             {historyLoading ? (
               <div className="text-center py-16 text-gray-400">{t("common.loading", lang)}</div>
+            ) : historyError ? (
+              <div role="alert" className="mx-auto max-w-md rounded-lg border border-amber-200 bg-amber-50 p-5 text-center text-sm text-amber-950">
+                <AlertTriangle className="mx-auto h-6 w-6 text-amber-700" />
+                <p className="mt-2">{historyError}</p>
+                <button onClick={() => void fetchHistory()} className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100">{lang === "sw" ? "Jaribu tena" : "Try again"}</button>
+              </div>
             ) : recentSales.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
                 <Clock className="w-10 h-10 mx-auto mb-3 opacity-50" />

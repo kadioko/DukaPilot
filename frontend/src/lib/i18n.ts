@@ -232,6 +232,11 @@ const translations: Record<string, Record<Lang, string>> = {
   "auth.error.rateLimited": { sw: "Umejaribu mara nyingi sana. Tafadhali subiri dakika chache kabla ya kujaribu tena.", en: "Too many attempts. Please wait a few minutes before trying again." },
   "auth.error.serverOffline": { sw: "Imeshindikana kufikia seva ya DukaPilot. Hakikisha API URL ni sahihi na backend ipo hewani.", en: "Unable to reach the DukaPilot server. Confirm the API URL is correct and the backend is online." },
   "auth.error.unexpectedResponse": { sw: "Seva ya DukaPilot imerudisha majibu yasiyotegemewa.", en: "The DukaPilot server returned an unexpected response format." },
+  "api.error.unavailable": { sw: "Seva ya DukaPilot haipatikani kwa sasa. Angalia intaneti yako kisha jaribu tena.", en: "DukaPilot is temporarily unavailable. Check your connection and try again." },
+  "api.error.timeout": { sw: "Ombi limechukua muda mrefu sana. Angalia intaneti yako kisha jaribu tena.", en: "The request timed out. Check your connection and try again." },
+  "api.error.permissionDenied": { sw: "Huna ruhusa ya kufanya kitendo hiki.", en: "You do not have permission to do this." },
+  "api.error.notFound": { sw: "Taarifa hii haipatikani tena.", en: "This item was not found or is no longer available." },
+  "api.error.temporary": { sw: "Seva ina tatizo la muda. Tafadhali jaribu tena baada ya muda mfupi.", en: "DukaPilot has a temporary server problem. Please try again shortly." },
   "billing.subscriptionRequired": { sw: "Jaribio au usajili umeisha. Wasiliana WhatsApp +255743910580 ili kuendelea kutumia DukaPilot.", en: "Your trial or subscription has expired. Contact WhatsApp +255743910580 to continue using DukaPilot." },
 
   "common.save": { sw: "Hifadhi", en: "Save" },

@@ -49,6 +49,18 @@ Frontend monitoring is live through the existing `javascript-nextjs` Sentry proj
 
 Both variables are configured only in Vercel and must never be committed to Git. Review Sentry events before sharing them outside the incident-response team, and never add PINs, OTPs, authentication tokens, payment references, or customer phone numbers as custom Sentry context.
 
+## API Request Diagnostics
+
+The frontend records a privacy-safe diagnostic breadcrumb for failed API requests. Network failures, timeouts, invalid API responses, and `5xx` responses are also captured as Sentry exceptions. Expected `4xx` responses remain breadcrumbs so rejected logins and normal permission checks do not create noisy incidents.
+
+Each API diagnostic includes only:
+
+- Request method and endpoint path without its query string.
+- The browser-facing API hostname, expected upstream hostname when using the `/_api` proxy, HTTP status when available, transport type, timeout flag, and failure category.
+- Browser connectivity state, browser language, and application environment.
+
+It must never include request or response bodies, authorization headers, cookies, customer details, sales data, payment references, or secrets. For an API incident, compare the Sentry event timestamp with Railway HTTP logs and Vercel deployment logs before treating it as a backend outage.
+
 ## Test The Backend Alert
 
 Run the test using Railway's production environment variable without printing the DSN:

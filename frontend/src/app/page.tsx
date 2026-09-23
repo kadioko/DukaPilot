@@ -152,6 +152,13 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   }, [initialView, searchParams]);
 
   useEffect(() => {
+    if (initialView !== "login" || searchParams.get("notice") !== "session-expired") return;
+    setView("login");
+    setError(t("auth.error.sessionExpired", lang));
+    router.replace("/");
+  }, [initialView, lang, router, searchParams]);
+
+  useEffect(() => {
     setReferralCode(captureReferralCode());
   }, [searchParams]);
 

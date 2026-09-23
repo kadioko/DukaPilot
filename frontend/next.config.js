@@ -7,10 +7,17 @@ const nextConfig = {
     NEXT_PUBLIC_META_WHATSAPP_COEXISTENCE_CONFIG_ID: process.env.NEXT_PUBLIC_META_WHATSAPP_COEXISTENCE_CONFIG_ID || "",
   },
   async rewrites() {
-    return [{
-      source: "/_api/:path*",
-      destination: "https://dukapilotproduction.up.railway.app/api/:path*",
-    }];
+    return [
+      {
+        // Keeps the public API health check on the same origin as the app.
+        source: "/_api/health",
+        destination: "https://dukapilotproduction.up.railway.app/health",
+      },
+      {
+        source: "/_api/:path*",
+        destination: "https://dukapilotproduction.up.railway.app/api/:path*",
+      },
+    ];
   },
   async headers() {
     const contentSecurityPolicy = [
