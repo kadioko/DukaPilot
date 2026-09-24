@@ -21,7 +21,7 @@ test("billing offers AzamPesa, preserves failed reference and separates online p
   await page.getByLabel("Reference ya malipo", { exact: true }).fill("TEST12345");
   await page.getByRole("button", { name: "Tuma kwa admin", exact: true }).click();
   await expect(page.getByLabel("Reference ya malipo", { exact: true })).toHaveValue("TEST12345");
-  await expect(page.getByText("Please try again", { exact: true })).toBeVisible();
+  await expect(page.getByText("Seva ina tatizo la muda. Tafadhali jaribu tena baada ya muda mfupi.", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "test-results/billing-mobile.png", fullPage: true });
   await page.getByLabel("2. nTZS online", { exact: true }).check();

@@ -233,7 +233,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();
   await page.getByLabel(/product name|jina la bidhaa/i).fill("Failure Product");
   await page.getByLabel(/^save$|^hifadhi$/i).click();
-  await expect(page.getByText("Could not save product")).toBeVisible();
+  await expect(page.getByText("DukaPilot has a temporary server problem. Please try again shortly.", { exact: true })).toBeVisible();
   await expect(page.getByText(/edit product|hariri bidhaa/i)).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });

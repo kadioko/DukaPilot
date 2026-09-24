@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 test("cash receipt prompts for a missing phone and builds a normalized WhatsApp URL", async ({ page }) => {
+  // PNG rendering uses canvas and is slower on GitHub's shared Linux runners.
+  test.setTimeout(60_000);
   const product = {
     id: "prod-1",
     name: "Sukari 1kg",
@@ -37,6 +39,8 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
   await page.route("**/*api/notifications", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unreadCount: 0 }) }));
   await page.route("**/*api/debts/customers", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ customers: [] }) }));
   await page.route("**/*api/settings", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { shop: { name: "Duka la Jaribio" } } }) }));
+  await page.route("**/*api/barcodes/settings", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { barcodeScanningEnabled: false } }) }));
+  await page.route("**/*api/sync/events", async (route) => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ event: { id: "sync-event-1" } }) }));
   await page.route("**/*api/products?*", async (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -72,17 +76,21 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
 
   await expect(page.getByText("DP-000007", { exact: true })).toBeVisible();
 
+  const imageButton = page.getByRole("button", { name: /tuma au pakua risiti kama picha|share or download receipt image/i });
+  const pdfButton = page.getByRole("button", { name: /tuma au pakua risiti kama PDF|share or download receipt PDF/i });
   const imageDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: /tuma au pakua risiti kama picha|share or download receipt image/i }).click();
+  await imageButton.click();
   const imageFile = await imageDownload;
   expect(imageFile.suggestedFilename()).toBe("risiti-dp-000007.png");
   expect(await imageFile.failure()).toBeNull();
+  await expect(imageButton).toBeEnabled();
 
   const pdfDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: /tuma au pakua risiti kama PDF|share or download receipt PDF/i }).click();
+  await pdfButton.click();
   const pdfFile = await pdfDownload;
   expect(pdfFile.suggestedFilename()).toBe("risiti-dp-000007.pdf");
   expect(await pdfFile.failure()).toBeNull();
+  await expect(pdfButton).toBeEnabled();
 
   const printedReceipt = page.waitForEvent("popup");
   await page.getByRole("button", { name: /chapisha; chagua printer ya Bluetooth|print; choose the paired Bluetooth printer/i }).click();
