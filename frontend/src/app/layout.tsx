@@ -98,9 +98,12 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const structuredData = [
+  // Use one JSON-LD document with a root context. Some browser/SEO parsers
+  // assume each JSON-LD script is an object and do not support a root array.
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
     {
-      "@context": "https://schema.org",
       "@type": "Organization",
       name: "DukaPilot",
       legalName: "Necuva Group Limited",
@@ -120,7 +123,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       ],
     },
     {
-      "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       name: "DukaPilot",
       alternateName: "Duka Pilot",
@@ -152,7 +154,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       },
     },
     {
-      "@context": "https://schema.org",
       "@type": "WebSite",
       name: "DukaPilot",
       alternateName: "Duka Pilot",
@@ -164,7 +165,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         "query-input": "required name=search_term_string",
       },
     },
-  ];
+    ],
+  };
 
   return (
     <html lang="sw">
