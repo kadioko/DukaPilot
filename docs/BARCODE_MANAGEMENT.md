@@ -21,7 +21,7 @@ The generated barcode and SKU sequences are stored per shop. Existing generated 
 
 ## Labels
 
-Open **Barcode management > Labels** or choose **Print label** from a product in Inventory. The default is a 40 x 30 mm label. Merchants can choose:
+Open **Barcode management > Labels** or choose **Print label** from a product in Inventory. Users need an active plan and **Stock** permission. The default is a 40 x 30 mm label. Merchants can choose:
 
 - product name and price
 - barcode only
@@ -33,7 +33,7 @@ The label composer supports multiple products, up to 100 copies per product, bro
 
 ## Printer Profiles
 
-Saved profiles keep a name, size, DPI, template reference, and output driver. They do not store printer passwords or network credentials.
+Saved profiles keep a name, size, DPI, template reference, intended local transport, and output driver. They do not store printer passwords or network credentials. Choosing `QZ Tray` or `DukaPilot print bridge` labels the intended workflow only; it does not connect to hardware in the current web release.
 
 | Driver | Use |
 | --- | --- |
@@ -43,7 +43,7 @@ Saved profiles keep a name, size, DPI, template reference, and output driver. Th
 | TSPL | Downloads commands for TSC and compatible Xprinter label printers. |
 | ESC/POS | Downloads raw receipt-printer-compatible commands. |
 
-ZPL, TSPL, and ESC/POS are generated locally for a trusted local print bridge or operator workflow. DukaPilot does not send raw printer commands from Railway to a merchant's hardware. Pairing or connecting a physical printer still happens on the merchant device.
+ZPL, TSPL, and ESC/POS files are generated for a trusted local print bridge or operator workflow. DukaPilot does not send raw printer commands from Railway to a merchant's hardware. Pairing or connecting a physical printer still happens on the merchant device. See [Label Printing Operations](./LABEL_PRINTING.md) before offering direct printing to a merchant.
 
 ## Rollout Checklist
 

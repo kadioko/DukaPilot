@@ -262,9 +262,9 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - SMS delivery. Check **Admin Dashboard > SMS** after any PIN-recovery issue; confirm credits are available and distinguish provider delivery status from an unregistered or inactive DukaPilot phone number.
 - Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows without receiving buying costs, margins, shop-wide profit, or AI report data.
 
-## Release Gate - 1.5.0
+## Current Launch Gate
 
-- Railway migrations: production must be through `20260915001000_staff_cash_session_permission`, including the crop/field-operation migrations immediately before it.
+- Railway migrations: production must be through `20260923001000_label_printing_and_product_codes`, including the crop/field-operation and merchant-wallet migrations immediately before it.
 - Production monitor passes once after Railway and Vercel deploy.
 - Railway logs include `[sentry] Initialized`, and the backend alert drill reaches both Sentry and founder email.
 - Basic account can use one active staff account and cannot use AI routes; Pro and active trial include unlimited staff and AI.
@@ -273,9 +273,10 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Supplier orders are received through Receive Stock, which records supplier, costs, stock movements, and marks the order delivered in one transaction.
 - A cashier can close only their own Daily Close session; owners see every team drawer, and a manager with **Manage team shifts** can review/close a staff drawer after counting cash without receiving Reports or profit.
 - Receipt file sharing and browser printing work after a completed sale; test a paired Android Bluetooth printer where a merchant uses one.
+- Product labels can be generated from Inventory/Barcode management: test one 40 x 30 mm browser/PDF label and scan it before approving any printer model. Raw ZPL/TSPL/ESC-POS files require a separately tested local bridge and must not be sold as cloud-direct printing.
 - Mobile Orders has no horizontal page overflow; Sales shows the sticky cart summary.
 - Public catalog contains only published, non-demo shops and supports pagination.
-- Android `1.0.3` / version code `4` targets API 36 and is signed with the existing upload key before Play Console upload.
+- Android `1.0.4` / version code `5` targets API 36 and is signed with the existing upload key before Play Console upload.
 - For local release builds, copy `android/keystores/signing.properties.example` to the ignored `signing.properties` file and keep its credentials in the password manager, never Git.
 - The local Railway Hobby backup task has produced a current verified archive and is scheduled daily. See [Local Railway Hobby Backups](./LOCAL_RAILWAY_HOBBY_BACKUPS.md); perform an isolated restore drill at least quarterly.
 

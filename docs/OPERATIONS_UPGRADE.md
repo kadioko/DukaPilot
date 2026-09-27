@@ -43,6 +43,19 @@ Completed and historic sales support:
 
 For a portable Bluetooth thermal printer, pair it with the Android device first, select **Print** in DukaPilot, then choose that printer in Android's print dialog. This is more reliable across printers than attempting a browser-only direct Bluetooth connection, which is unsupported by many portable printer models and iPhones.
 
+## Product Labels And Printer Profiles
+
+Receipt printing and product-label printing are separate workflows. Use
+**Barcode management > Labels** or Inventory's **Print label** action for stock
+labels. Browser/PDF output works immediately through the system print dialog;
+labels default to 40 x 30 mm and can be saved as reusable templates.
+
+ZPL, TSPL, and ESC/POS outputs are download files for a verified local bridge
+or operator workflow. They are not direct cloud-to-printer commands. Confirm
+the printer model, 203/300 DPI setting, media size, and scanned test label
+before listing a printer as supported. The full support process is in
+[Label Printing Operations](./LABEL_PRINTING.md).
+
 ## QR Ordering Position
 
 Every published shop has a shareable catalog link and downloadable QR code in **Settings > Shop Details**. The new share action prepares a customer-ordering message. Customers can browse the catalog, place an order, and the order appears in DukaPilot for the shop to handle.

@@ -8,7 +8,12 @@ Use **Inventory > Import CSV** when you already have a product list in Excel or 
 4. Save or download the sheet as **CSV**.
 5. Select the CSV file in DukaPilot and choose **Import products**.
 
-The required columns are `name`, `buyingPrice`, and `sellingPrice`. Prices must be whole TZS amounts. You can write a price as `12500`, `12,500`, `12 500`, or `TZS 12,500`; DukaPilot reads all four as TZS 12,500. The template also includes optional `labelName`, `sku`, `unit`, `currentStock`, `minimumStock`, `barcode`, `expiryDate`, and `doesNotExpire` columns. `labelName` is a short name used only on product labels.
+The required columns are `name`, `buyingPrice`, and `sellingPrice`. Prices must be whole TZS amounts. You can write a price as `12500`, `12,500`, `12 500`, or `TZS 12,500`; DukaPilot reads all four as TZS 12,500. The template order is `name,labelName,sku,unit,buyingPrice,sellingPrice,currentStock,minimumStock,barcode,expiryDate,doesNotExpire,wholesaleEnabled,wholesalePrice,wholesaleMinQty`. `labelName` is a short name used only on product labels.
+
+`sku` and `barcode` are optional, but a supplied value must be unique within the
+shop location. EAN-13 and UPC barcodes must pass their checksum. Leave either
+cell blank when DukaPilot should generate an internal code later from Inventory
+or Barcode management.
 
 Wholesale is explicitly **off by default** for every imported product. To enable it for one product, use these optional columns:
 
