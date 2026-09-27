@@ -29,23 +29,19 @@ function ownerOnly(req, res, next) {
 }
 
 async function initiateProviderCheckout(record) {
-  const shop = await prisma.shop.findUnique({ where: { id: record.shopId }, include: { user: { select: { name: true } } } });
-  if (!shop) fail("Shop not found.", 404);
-  let providerUserId = record.providerUserId;
-  if (!providerUserId) {
-    const payer = await ntzs.request("/users", {
-      method: "POST",
-      headers: { "Idempotency-Key": `payer:${record.shopId}` },
-      body: JSON.stringify({ externalId: `dukapilot-shop:${record.shopId}`, email: `shop-${record.shopId}@payments.dukapilot.com`, name: shop.user?.name || "DukaPilot merchant", phone: record.phone.slice(1) }),
-    });
-    if (typeof payer.id !== "string" || !/^[a-f0-9-]{36}$/i.test(payer.id)) throw new Error("Missing payer identifier");
-    providerUserId = payer.id;
-    record = await prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { providerUserId } });
+  // Online subscriptions are DukaPilot revenue, so the current nTZS contract
+  // collects them directly to the partner treasury by omitting userId. A payer
+  // wallet is only appropriate for money the merchant should continue to own.
+  // Clear a legacy payer reference when an older checkout never reached the
+  // deposit-creation step; existing deposits retain their stored reference and
+  // remain reconcilable through reconcile().
+  if (record.providerUserId && !record.providerId) {
+    record = await prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { providerUserId: null } });
   }
   const deposit = await ntzs.request("/deposits", {
     method: "POST",
     headers: { "Idempotency-Key": record.id },
-    body: JSON.stringify({ userId: providerUserId, amountTzs: record.amount, phoneNumber: record.phone.slice(1), paymentMethod: "mobile_money", collectToTreasury: true }),
+    body: JSON.stringify({ amountTzs: record.amount, phoneNumber: record.phone.slice(1), paymentMethod: "mobile_money" }),
   });
   if (typeof deposit.id !== "string" || !/^[a-f0-9-]{36}$/i.test(deposit.id)) throw new Error("Missing deposit identifier");
   return prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { providerId: deposit.id, status: "PENDING" } });

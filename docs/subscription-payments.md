@@ -10,9 +10,9 @@ Choose Basic (TZS 15,000/month) or Pro (TZS 35,000/month) in Billing.
    to 0743910580. Check the recipient on the phone before paying. Submit the
    reference for admin verification; submitting a reference is not activation.
 2. nTZS online: when enabled, an owner enters a Tanzanian mobile number and
-   approves the collection prompt on the phone. nTZS creates or reuses a
-   provider-side payer reference for that business and collects directly to
-   DukaPilot's treasury; it does not expose a wallet or API key to the browser.
+   approves the collection prompt on the phone. The backend omits `userId` from
+   this collection so nTZS mints it directly to DukaPilot's treasury; it does
+   not create a merchant wallet or expose a wallet or API key to the browser.
    Never enter the mobile-money PIN in DukaPilot. A verified `completed` or
    `minted` deposit creates one confirmed subscription payment and activates or
    extends the selected plan automatically. No manual reference is required.
@@ -47,6 +47,12 @@ the root business balance and subscription. Staff cannot view or spend it.
 - The scheduled nTZS reconciliation workflow uses the existing private
   `MERCHANT_WALLET_RECONCILE_CRON_SECRET` and checks known wallet and
   subscription provider IDs every 15 minutes.
+- Keep the nTZS dashboard **Platform Fee** at `0%`. That setting applies to
+  `POST /transfers`; it is not DukaPilot's disclosed Merchant Balance withdrawal
+  fee. DukaPilot's fee remains controlled by
+  `NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS` (default `200` = 2%). Leaving the
+  provider transfer fee at zero prevents a second fee layer and keeps treasury
+  settlement amounts straightforward.
 
 ## Payment integrity
 
@@ -58,8 +64,9 @@ Initiation timeouts remain REVIEW with the lock intact. Owners and administrator
 can retry/reconcile that same checkout; the backend reuses the original checkout ID
 and provider idempotency keys and records the action in the audit log. Never create
 a new checkout merely because the first provider response was lost.
-Provider readback verifies deposit ID, payer ID when returned, amount, payment
-method, treasury mode when returned, and live status. Webhooks require a valid
+Provider readback verifies deposit ID, rejects an unexpected user-wallet
+destination, and checks amount, payment method, treasury mode when returned,
+and live status. Webhooks require a valid
 signature and live event, then perform the same authenticated readback.
 No redirect, browser assertion, manual reference or unverified webhook activates access.
 Shop row locking serializes online renewals and Merchant Balance payments;
@@ -83,8 +90,8 @@ phone in addition to recipient, rail, fees, and total deduction.
   administrator payment-exceptions queue, and must be reconciled before another
   payment is attempted.
 - No automatic refund, recurring debit mandate, or hosted card checkout is
-  implemented. The backend reuses one provider payer reference per business
-  for nTZS online checkout. Merchant Balance payment is an internal ledger
+  implemented. nTZS online checkout collects directly to treasury without
+  creating a merchant wallet. Merchant Balance payment is an internal ledger
   debit followed by one idempotent nTZS transfer to DukaPilot treasury. It
   converts the amount from customer liability into subscription revenue without
   creating another mobile-money collection.
@@ -127,7 +134,7 @@ charges. Live provider settlement still requires the controlled acceptance check
   that debit and activation either both commit or both roll back.
 
 Official contract reviewed: https://www.ntzs.co.tz/developers and
-https://www.ntzs.co.tz/openapi.json (20 September 2026).
+https://www.ntzs.co.tz/openapi.json (27 September 2026).
 
 The current release evidence is recorded in
 [Production Verification](./PRODUCTION_VERIFICATION_2026-09-20.md).

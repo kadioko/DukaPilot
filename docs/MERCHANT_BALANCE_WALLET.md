@@ -71,6 +71,12 @@ The recipient amount stays the amount the owner requested; provider fees are
 shown separately and are not silently absorbed by DukaPilot. The default
 minimum withdrawal is TZS 5,000.
 
+The separate **Platform Fee** percentage in the nTZS dashboard must remain at
+`0%` for this release. It applies to nTZS transfers and is not the DukaPilot
+withdrawal fee above. Enabling both would create two independently configured
+fee layers and make reconciliation harder. DukaPilot's disclosed withdrawal fee
+is controlled only by `NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS`.
+
 ## Subscription Payment Flow
 
 1. Billing shows the owner the server-calculated subscription amount, available

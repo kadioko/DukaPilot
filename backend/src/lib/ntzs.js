@@ -66,10 +66,12 @@ async function request(path, options = {}) {
 }
 
 function verifyDeposit(checkout, deposit) {
+  const unexpectedUserWallet = !checkout.providerUserId && Boolean(deposit.userId);
   if (deposit.id !== checkout.providerId
     || deposit.amountTzs !== checkout.amount
     || deposit.paymentMethod !== "mobile_money"
     || deposit.livemode === false
+    || unexpectedUserWallet
     || (deposit.userId && checkout.providerUserId && deposit.userId !== checkout.providerUserId)
     || deposit.collectToTreasury === false) {
     throw Object.assign(new Error("Payment verification mismatch. Contact support."), { status: 409 });

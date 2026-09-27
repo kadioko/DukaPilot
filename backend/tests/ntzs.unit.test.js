@@ -18,6 +18,16 @@ test("verified completion requires exact ID, integer amount and payment method",
   assert.equal(ntzs.isDepositReviewStatus("review"), true);
 });
 
+test("a direct-treasury checkout rejects a deposit assigned to a user wallet", () => {
+  const treasuryCheckout = { ...checkout, providerUserId: null };
+  const treasuryDeposit = { ...deposit };
+  delete treasuryDeposit.userId;
+  delete treasuryDeposit.collectToTreasury;
+  assert.equal(ntzs.verifyDeposit(treasuryCheckout, treasuryDeposit), true);
+  assert.throws(() => ntzs.verifyDeposit(treasuryCheckout, { ...treasuryDeposit, userId: "unexpected-wallet-user" }), /mismatch/);
+  assert.throws(() => ntzs.verifyDeposit(treasuryCheckout, { ...treasuryDeposit, collectToTreasury: false }), /mismatch/);
+});
+
 test("webhooks reject bad signatures, stale payloads and changed bodies", () => {
   const raw = Buffer.from('{"type":"deposit.completed"}');
   const timestamp = String(Math.floor(Date.now() / 1000));
@@ -126,24 +136,59 @@ test("review recovery reuses the original checkout for provider idempotency", as
   const calls = [];
   const record = { id: "11111111-1111-4111-8111-111111111111", shopId: "shop-1", phone: "+255700000001", amount: 15000, providerUserId: null };
   require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
-    shop: { findUnique: async () => ({ id: "shop-1", user: { name: "Amina" } }) },
     subscriptionCheckout: { update: async ({ data }) => Object.assign(record, data) },
   } };
   const original = ntzs.request;
   ntzs.request = async (url, options) => {
     calls.push({ url, options });
-    return { id: calls.length === 1 ? "22222222-2222-4222-8222-222222222222" : "33333333-3333-4333-8333-333333333333" };
+    return { id: "33333333-3333-4333-8333-333333333333" };
   };
   delete require.cache[controllerPath];
   try {
     const { initiateProviderCheckout } = require(controllerPath);
     const result = await initiateProviderCheckout(record);
-    assert.equal(calls[0].options.headers["Idempotency-Key"], `payer:${record.shopId}`);
-    assert.equal(JSON.parse(calls[0].options.body).externalId, `dukapilot-shop:${record.shopId}`);
-    assert.equal(calls[1].options.headers["Idempotency-Key"], record.id);
-    assert.equal(JSON.parse(calls[1].options.body).collectToTreasury, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "/deposits");
+    assert.equal(calls[0].options.headers["Idempotency-Key"], record.id);
+    assert.deepEqual(JSON.parse(calls[0].options.body), {
+      amountTzs: 15000,
+      phoneNumber: "255700000001",
+      paymentMethod: "mobile_money",
+    });
     assert.equal(result.providerId, "33333333-3333-4333-8333-333333333333");
     assert.equal(result.status, "PENDING");
+  } finally {
+    ntzs.request = original;
+    delete require.cache[controllerPath];
+  }
+});
+
+test("a legacy checkout without a provider deposit is switched to direct treasury collection", async () => {
+  const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
+  const controllerPath = path.resolve(__dirname, "../src/controllers/subscriptionCheckout.controller.js");
+  const record = {
+    id: "44444444-4444-4444-8444-444444444444",
+    shopId: "shop-1",
+    phone: "+255700000001",
+    amount: 15000,
+    providerUserId: "55555555-5555-4555-8555-555555555555",
+    providerId: null,
+  };
+  const calls = [];
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    subscriptionCheckout: { update: async ({ data }) => Object.assign(record, data) },
+  } };
+  const original = ntzs.request;
+  ntzs.request = async (url, options) => {
+    calls.push({ url, options });
+    return { id: "66666666-6666-4666-8666-666666666666" };
+  };
+  delete require.cache[controllerPath];
+  try {
+    const { initiateProviderCheckout } = require(controllerPath);
+    await initiateProviderCheckout(record);
+    assert.equal(record.providerUserId, null);
+    assert.equal("userId" in JSON.parse(calls[0].options.body), false);
   } finally {
     ntzs.request = original;
     delete require.cache[controllerPath];
