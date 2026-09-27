@@ -43,7 +43,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Label printing operations:** [docs/LABEL_PRINTING.md](./docs/LABEL_PRINTING.md) - Printer-independent workflow, profile setup, hardware approval, and the direct-print boundary
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
 - **Merchant Balance:** [docs/MERCHANT_BALANCE_WALLET.md](./docs/MERCHANT_BALANCE_WALLET.md) - Pooled nTZS settlement, isolated business ledgers, safe deposits/withdrawals, fees, and reconciliation
-- **Latest production verification:** [docs/PRODUCTION_VERIFICATION_2026-09-20.md](./docs/PRODUCTION_VERIFICATION_2026-09-20.md) - Wallet/billing hardening, complete CI evidence, live monitor results, and reconciliation status
+- **Latest production verification:** [docs/PRODUCTION_VERIFICATION_2026-09-27.md](./docs/PRODUCTION_VERIFICATION_2026-09-27.md) - Treasury settlement backfill, wallet/billing safeguards, complete CI evidence, and live nTZS reconciliation proof
 - **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
 - **Railway Pro operations:** [docs/PRO_OPERATIONS_RUNBOOK.md](./docs/PRO_OPERATIONS_RUNBOOK.md) - Upgrade checklist, backup/restore drills, production monitoring, Sentry review, and incident evidence
 - **Railway Hobby local backups:** [docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md](./docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md) - Verified local PostgreSQL archives, daily Windows scheduling, retention, and restore drills without saving Railway credentials locally
