@@ -103,13 +103,13 @@ test("merchant balance payment shows the remaining balance and activates exactly
       submittedRequestKey = body.requestKey;
       expect(body).toMatchObject({ plan: "BASIC", kind: "RENEWAL", extraBranches: 0 });
       activated = true;
-      return route.fulfill({ status: 201, json: { transaction: { id: "wallet-sub-1", status: "COMPLETED", amountTzs: 15000 }, balanceTzs: 5000, reused: false } });
+      return route.fulfill({ status: 201, json: { transaction: { id: "wallet-sub-1", status: "COMPLETED", providerStatus: "completed", amountTzs: 15000 }, balanceTzs: 5000, reused: false } });
     }
     const data = url.includes("auth/me") ? { user: { name: "Demo", role: "MERCHANT", language: "sw", shop: { name: "Demo" }, features: {} } }
       : url.includes("subscription/status") ? { plan: "BASIC", status: activated ? "active" : "expired", isActive: true, subActive: activated, daysLeft: activated ? 30 : 0 }
       : url.includes("subscription/quote") ? { amount: 15000, monthlyAmount: 15000 }
       : url.includes("subscription/checkout") ? { enabled: true, prices: { BASIC: 15000, PRO: 35000 }, pending: null }
-      : url.includes("/wallet?") ? { config: { enabled: true }, wallet: { balanceTzs: 20000 }, transactions: [], pagination: { page: 1, limit: 1, total: 0, totalPages: 1 } }
+      : url.includes("/wallet?") ? { config: { enabled: true, subscriptionSettlementEnabled: true }, wallet: { balanceTzs: 20000 }, transactions: [], pagination: { page: 1, limit: 1, total: 0, totalPages: 1 } }
       : url.includes("reports/my") ? { reports: [] } : { items: [], products: [], unreadCount: 0 };
     await route.fulfill({ json: data });
   });
@@ -133,7 +133,7 @@ test("merchant balance payment is disabled when the available balance is short",
       : url.includes("subscription/status") ? { plan: "BASIC", status: "expired", isActive: true, subActive: false, daysLeft: 0 }
       : url.includes("subscription/quote") ? { amount: 15000, monthlyAmount: 15000 }
       : url.includes("subscription/checkout") ? { enabled: true, prices: { BASIC: 15000, PRO: 35000 }, pending: null }
-      : url.includes("/wallet?") ? { config: { enabled: true }, wallet: { balanceTzs: 1500 }, transactions: [], pagination: { page: 1, limit: 1, total: 0, totalPages: 1 } }
+      : url.includes("/wallet?") ? { config: { enabled: true, subscriptionSettlementEnabled: true }, wallet: { balanceTzs: 1500 }, transactions: [], pagination: { page: 1, limit: 1, total: 0, totalPages: 1 } }
       : url.includes("reports/my") ? { reports: [] } : { items: [], products: [], unreadCount: 0 };
     await route.fulfill({ json: data });
   });
@@ -143,4 +143,22 @@ test("merchant balance payment is disabled when the available balance is short",
   await expect(page.getByText("Salio halitoshi. Ongeza TZS 13,500.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Lipa TZS 15,000 kutoka salio", exact: true })).toBeDisabled();
   await expect(page.getByRole("link", { name: "Ongeza salio", exact: true })).toHaveAttribute("href", "/wallet");
+});
+
+test("merchant balance subscription payment pauses when treasury settlement is not configured", async ({ page }) => {
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    const data = url.includes("auth/me") ? { user: { name: "Demo", role: "MERCHANT", language: "en", shop: { name: "Demo" }, features: {} } }
+      : url.includes("subscription/status") ? { plan: "BASIC", status: "expired", isActive: true, subActive: false, daysLeft: 0 }
+      : url.includes("subscription/quote") ? { amount: 15000, monthlyAmount: 15000 }
+      : url.includes("subscription/checkout") ? { enabled: true, prices: { BASIC: 15000, PRO: 35000 }, pending: null }
+      : url.includes("/wallet?") ? { config: { enabled: true, subscriptionSettlementEnabled: false }, wallet: { balanceTzs: 20000 }, transactions: [], pagination: { page: 1, limit: 1, total: 0, totalPages: 1 } }
+      : url.includes("reports/my") ? { reports: [] } : { items: [], products: [], unreadCount: 0 };
+    await route.fulfill({ json: data });
+  });
+
+  await page.goto("/billing");
+  await page.getByLabel("3. Merchant Balance", { exact: true }).check();
+  await expect(page.getByText(/temporarily paused until treasury settlement is configured/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pay TZS 15,000 from balance", exact: true })).toBeDisabled();
 });

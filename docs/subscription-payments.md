@@ -22,10 +22,18 @@ Choose Basic (TZS 15,000/month) or Pro (TZS 35,000/month) in Billing.
    confirmed subscription payment, and plan activation in one database
    transaction. No withdrawal fee, new mobile-money prompt, or manual reference
    applies. An insufficient balance cannot activate a plan or create a debit.
+   After the atomic internal payment, DukaPilot transfers the exact amount from
+   the pooled Merchant Balance provider user to the separate partner treasury.
+
+Merchant Balance is available to every root business owner when the global
+feature flag is on and the optional pilot allowlist is empty. Branches share
+the root business balance and subscription. Staff cannot view or spend it.
 
 ## Production configuration
 
 - Keep `NTZS_API_KEY` and `NTZS_WEBHOOK_SECRET` in Railway private variables.
+- Set `NTZS_TREASURY_WALLET_ADDRESS` to the partner treasury Base address from
+  nTZS. It must not equal `NTZS_MERCHANT_BALANCE_WALLET_ADDRESS`.
 - Set `NTZS_ENABLED=true` only when Collections and business verification are
   active on the provider account. This flag is independent from Merchant Balance.
 - Deploy backend first with `npm run db:deploy` in backend. The additive
@@ -60,6 +68,12 @@ locks the wallet and writes one immutable ledger debit. The same request key
 returns the original success instead of charging twice. Pending records do not
 enter confirmed-payment statistics.
 
+Database uniqueness races are handled as idempotent retries: the backend loads
+and resumes the original exact checkout or wallet operation. It never treats a
+duplicate-key race as permission to create a replacement payment. Wallet
+withdrawal confirmation also binds the server quote's amount and normalized
+phone in addition to recipient, rail, fees, and total deduction.
+
 ## Support and limitations
 
 - One-month purchases only. Changes between prepaid plans require support; no
@@ -71,8 +85,9 @@ enter confirmed-payment statistics.
 - No automatic refund, recurring debit mandate, or hosted card checkout is
   implemented. The backend reuses one provider payer reference per business
   for nTZS online checkout. Merchant Balance payment is an internal ledger
-  debit and does not call nTZS again; it converts that amount from customer
-  liability into recorded subscription revenue in the pooled reconciliation.
+  debit followed by one idempotent nTZS transfer to DukaPilot treasury. It
+  converts the amount from customer liability into subscription revenue without
+  creating another mobile-money collection.
 - Webhook delivery is the first background completion path; owners can also
   check or retry the original checkout manually. The admin review queue supports
   the same safe retry. The scheduled nTZS reconciliation workflow also reads
@@ -82,6 +97,14 @@ enter confirmed-payment statistics.
 - Manual payment recording and online renewals share shop row-lock discipline.
   Repeat production restore, concurrency, and provider acceptance drills after
   material payment or database changes.
+- A documented provider response that proves no movement may release a held
+  withdrawal. An ambiguous 502, unknown 409, missing response, or undocumented
+  outcome must remain in review until provider readback proves the final state.
+- A treasury-transfer interruption does not revoke an already activated
+  subscription. Reconciliation retries `POST /transfers` with the same key;
+  provider completion removes that revenue from expected merchant-pool funds.
+  Until then, Admin > Merchant Wallet marks it `TREASURY REVIEW` and exposes the
+  same safe **Check** action used by the scheduled reconciliation job.
 
 ## Acceptance checklist
 
@@ -105,3 +128,6 @@ charges. Live provider settlement still requires the controlled acceptance check
 
 Official contract reviewed: https://www.ntzs.co.tz/developers and
 https://www.ntzs.co.tz/openapi.json (20 September 2026).
+
+The current release evidence is recorded in
+[Production Verification](./PRODUCTION_VERIFICATION_2026-09-20.md).

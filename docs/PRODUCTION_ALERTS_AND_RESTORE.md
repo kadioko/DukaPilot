@@ -11,6 +11,30 @@ Before relying on it, add these repository secrets in GitHub Actions:
 
 On failure, the workflow opens one `Production monitor failure` issue. Watching the repository or enabling GitHub issue notifications is the Railway uptime alert destination.
 
+The monitor passed its full live check on 21 September 2026. The matching
+release evidence is in
+[Production Verification](./PRODUCTION_VERIFICATION_2026-09-20.md).
+
+## nTZS Payment Reconciliation
+
+The `nTZS Payment Reconciliation` GitHub workflow runs every 15 minutes and can
+also be started manually. It calls the protected Railway endpoint with the
+`MERCHANT_WALLET_RECONCILE_CRON_SECRET` stored separately in Railway and GitHub
+Actions. Never put this secret in Vercel, documentation, workflow output, or a
+customer-facing response.
+
+The endpoint checks at most 100 known pending/review Merchant Balance records
+and 100 known pending/review subscription checkouts per run. It reads provider
+status for existing IDs and does not scan or recreate all historical payments.
+A zero-checked result is healthy when no known operation is pending; it is not
+proof that a provider-side operation with no saved provider ID does not exist.
+
+On 20 September 2026, manual run
+[35536715003](https://github.com/kadioko/DukaPilot/actions/runs/35536715003)
+completed successfully with zero waiting wallet and subscription operations.
+If a later run reports unresolved items, review provider evidence and the saved
+idempotency key before attempting an adjustment or a new collection.
+
 ## Sentry Alert Destination
 
 Backend monitoring is live. The `dukapilot-backend` Sentry project receives Railway production errors through `SENTRY_DSN`, and new high-priority issues notify the founder by email.

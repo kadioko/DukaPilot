@@ -30,6 +30,12 @@ when someone reviews and acts on it.
 5. Upgrade the plan in Railway, then check the service is healthy and the latest
    committed release is serving. Do not make a migration, pricing, or domain
    change in the same window unless an incident requires it.
+6. Confirm GitHub CI passes PostgreSQL migration/integrity, backend tests,
+   frontend typecheck/build, production-mode browser tests, npm audits, and the
+   Android wrapper job.
+7. Run the `nTZS Payment Reconciliation` workflow after any payment/provider
+   release. Investigate every item that remains in pending/review before
+   declaring the release healthy.
 
 ## Backups And Restore Drills
 
@@ -78,6 +84,8 @@ when someone reviews and acts on it.
    review, support statuses, and suspicious operational errors.
 3. Review Railway logs and metrics for restarts, failed deploys, database
    connection errors, CPU or memory pressure, and unusual response failures.
+4. Review Merchant Balance and subscription payment exceptions. A transaction
+   in review is not a reason to create a replacement payment or manual credit.
 
 ### Weekly
 
@@ -110,6 +118,10 @@ when someone reviews and acts on it.
 4. Record timeline, affected workflows, mitigations, owner, follow-up test, and
    customer communication. Resolve the Sentry issue only after production is
    verified.
+5. For a wallet/provider incident, disable new Merchant Balance operations with
+   the global flag or temporarily restrict the allowlist. Preserve existing
+   transactions for reconciliation; do not delete, rewrite, or guess their
+   provider result.
 
 ## Operational Evidence Template
 
@@ -125,3 +137,6 @@ Keep this in a private company-controlled location:
 - `docs/SCALING.md`
 - `docs/DATA_DELETION_REQUEST_TEST.md`
 - `docs/FARM_OPERATIONS.md`
+- `docs/MERCHANT_BALANCE_WALLET.md`
+- `docs/subscription-payments.md`
+- `docs/PRODUCTION_VERIFICATION_2026-09-20.md`

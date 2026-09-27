@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 
 const PRICES = Object.freeze({ BASIC: 15000, PRO: 35000 });
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const EVM_ADDRESS_PATTERN = /^0x[a-f0-9]{40}$/i;
 const COMPLETED_DEPOSIT_STATUSES = new Set(["minted", "completed", "succeeded", "paid"]);
 const FAILED_DEPOSIT_STATUSES = new Set(["failed", "rejected", "cancelled", "canceled", "expired", "reversed", "refunded"]);
 
@@ -23,6 +24,27 @@ function merchantWalletUserId() {
   const value = String(process.env.NTZS_MERCHANT_BALANCE_USER_ID || "").trim();
   if (!UUID_PATTERN.test(value)) throw Object.assign(new Error("Merchant balance wallet is not configured"), { status: 503 });
   return value;
+}
+
+function treasuryWalletAddress() {
+  const treasury = String(process.env.NTZS_TREASURY_WALLET_ADDRESS || "").trim();
+  const merchant = String(process.env.NTZS_MERCHANT_BALANCE_WALLET_ADDRESS || "").trim();
+  if (!EVM_ADDRESS_PATTERN.test(treasury)) {
+    throw Object.assign(new Error("Treasury settlement is not configured"), { status: 503, code: "TREASURY_SETTLEMENT_NOT_CONFIGURED" });
+  }
+  if (merchant && treasury.toLowerCase() === merchant.toLowerCase()) {
+    throw Object.assign(new Error("Treasury and merchant-balance wallets must be different"), { status: 503, code: "TREASURY_SETTLEMENT_CONFIGURATION_ERROR" });
+  }
+  return treasury;
+}
+
+function treasurySettlementConfigured() {
+  try {
+    treasuryWalletAddress();
+    return merchantWalletConfigured();
+  } catch {
+    return false;
+  }
 }
 
 async function request(path, options = {}) {
@@ -104,6 +126,8 @@ module.exports = {
   configured,
   merchantWalletConfigured,
   merchantWalletUserId,
+  treasuryWalletAddress,
+  treasurySettlementConfigured,
   request,
   verifyDeposit,
   verifyMerchantDeposit,

@@ -60,6 +60,10 @@ This guide produces the signed Android App Bundle (AAB) for DukaPilot.
 3. Keep the values synchronized. The current release baseline is `1.0.4` / `versionCode 5`.
 
 4. Verify the Android wrapper uses the production domain, API 36 target, current logo assets, and correct shortcuts. Do not enable delegated Android notifications until that delivery path is implemented and tested.
+5. Treat browser/device printing as the supported Android label path. DukaPilot's
+   current Trusted Web App does not yet include a native Bluetooth/USB printer
+   bridge. Raw ZPL, TSPL, and ESC/POS downloads require a separate approved
+   local transport; see [Label Printing Operations](./LABEL_PRINTING.md).
 
 ## Build The Signed AAB
 
@@ -104,6 +108,13 @@ npm run typecheck
 npm run build
 ```
 
+GitHub CI performs the unsigned Android lint/debug-build gate with Java 17,
+explicit `platform-tools`, API 36, and Build Tools 36.0.0. It also checks the
+Trusted Web App metadata and production shortcuts. This job passed in CI run
+[35537192343](https://github.com/kadioko/DukaPilot/actions/runs/35537192343)
+on 20 September 2026. It does not replace signing and inspecting the release
+AAB locally with the protected upload key.
+
 ## Google Play Console Release
 
 1. Go to **Testing** or **Production** for DukaPilot.
@@ -112,7 +123,7 @@ npm run build
 4. Confirm Play recognizes the intended version code and no signing warning appears.
 5. Add concise English and Swahili release notes when appropriate.
 6. Save, review the pre-launch report, then send the release for review or roll it out.
-7. After publication, install from Play on a real Android phone and verify launch, sign-in, sales, stock, debts, language switching, offline recovery, and Android long-press shortcuts.
+7. After publication, install from Play on a real Android phone and verify launch, sign-in, sales, stock, debts, language switching, offline recovery, Android long-press shortcuts, and browser-print label output to a paired printer where the merchant uses one.
 
 ## After Release
 

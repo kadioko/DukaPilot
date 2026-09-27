@@ -11,6 +11,8 @@ Subscription payment paths and nTZS launch requirements are documented in
 [Subscription payments](docs/subscription-payments.md). The owner-only nTZS
 checkout sends a mobile-money prompt and activates a verified subscription
 without exposing provider credentials or requiring a manual payment reference.
+An owner with enough Merchant Balance can also activate or renew directly from
+Billing without starting another mobile-money collection.
 
 Tanzania has over **1 million informal operators** in Dar es Salaam alone, with wholesale/retail as the single largest segment. These merchants lose money every day from:
 
@@ -37,8 +39,11 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and branch operations
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
 - **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Crop, livestock, and mixed-farm setup; plots, crop cycles, inputs, harvest-to-stock, livestock production, staff privacy, cash rules, and farm AI boundaries
+- **Barcode and labels:** [docs/BARCODE_MANAGEMENT.md](./docs/BARCODE_MANAGEMENT.md) - Product codes, camera/HID scanning, label templates, browser/PDF labels, and safe raw-printer output
+- **Label printing operations:** [docs/LABEL_PRINTING.md](./docs/LABEL_PRINTING.md) - Printer-independent workflow, profile setup, hardware approval, and the direct-print boundary
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
 - **Merchant Balance:** [docs/MERCHANT_BALANCE_WALLET.md](./docs/MERCHANT_BALANCE_WALLET.md) - Pooled nTZS settlement, isolated business ledgers, safe deposits/withdrawals, fees, and reconciliation
+- **Latest production verification:** [docs/PRODUCTION_VERIFICATION_2026-09-20.md](./docs/PRODUCTION_VERIFICATION_2026-09-20.md) - Wallet/billing hardening, complete CI evidence, live monitor results, and reconciliation status
 - **Scaling and Redis:** [docs/SCALING.md](./docs/SCALING.md) - Catalog paging, dashboard history cache, and the optional shared rate-limit setup for multiple Railway instances
 - **Railway Pro operations:** [docs/PRO_OPERATIONS_RUNBOOK.md](./docs/PRO_OPERATIONS_RUNBOOK.md) - Upgrade checklist, backup/restore drills, production monitoring, Sentry review, and incident evidence
 - **Railway Hobby local backups:** [docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md](./docs/LOCAL_RAILWAY_HOBBY_BACKUPS.md) - Verified local PostgreSQL archives, daily Windows scheduling, retention, and restore drills without saving Railway credentials locally
@@ -75,11 +80,12 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
 | **Daily Close / Z-report** | Cashiers open and close their own cash session; owners see every active drawer, and trusted managers can be granted team-shift review/close without access to reports or profit |
 | **Receipt files and printing** | Share a receipt as WhatsApp text, PNG, or PDF, or print via the device print dialog to a paired Bluetooth thermal printer |
+| **Barcodes, SKUs, and product labels** | Save or generate product codes, scan through camera or keyboard-wedge scanners, and print 40 x 30 mm labels through browser/PDF or download ZPL, TSPL, and ESC/POS command files for an approved local printer bridge |
 | **One-tap reorder** | Repeat any previous order with a single button |
 | **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
 | **Quotations and estimates** | Build customer-safe Kiswahili or English quotations for services, projects, labour, materials, and stock; track idempotent deposits/refunds, acceptance, revisions, Daily Close cash handling, reminders, and conversion to one sale without counting a quote as revenue |
-| **Merchant Balance** | Owner-only prepaid merchant balance with nTZS deposits and withdrawals, fee preview, retry-safe settlement, and atomic subscription payment without treating the debit as a shop expense |
+| **Merchant Balance** | Owner-only prepaid balance with nTZS deposits and withdrawals, an amount/phone/fee-bound confirmation, honest balance-effect history, retry-safe settlement, and atomic subscription payment without treating the debit as a shop expense |
 | **Payment reconciliation** | Bank, M-Pesa, Tigo Pesa, Airtel Money, HaloPesa, Cash, Credit |
 | **Settings** | Update shop name, location, category, display name, language, and PIN in one place |
 | **DukaPilot AI Assistant (Pro)** | Daily command list with ranked recommendations for stock, debts, expenses, orders, accepted quotations, deposits, and expiring estimates, with why-it-matters notes, expected impact, WhatsApp-style summary, and direct action links |
@@ -306,7 +312,8 @@ User ──────── Shop ──────────── Product 
 - `User` — merchant, supplier, or admin; identified by phone + PIN
 - `Shop` — an operational location; the original shop owns the subscription and Pro can add child locations. See [branch setup and release checks](docs/BRANCHES.md). Pro includes four total locations; additional locations cost TZS 10,000/month.
 - `Supplier` — can optionally have a User account (supplier portal)
-- `Product` — SKU, buying/selling/wholesale price, stock level, minimum threshold, expiry date
+- `Product` — name, optional short label name, SKU, barcode/type, buying/selling/wholesale price, stock level, minimum threshold, unit, and expiry date
+- `LabelTemplate` + `PrinterProfile` + `LabelPrintJob` — shop-scoped label layouts, intended output profiles, and immutable print-job snapshots; profiles never contain printer passwords or network credentials
 - `Sale` + `SaleItem` — each sale records profit per line item; supports POS and ONLINE channels
 - `Debt` — customer credit balances with open, partial, paid, and cancelled statuses
 - `Expense` — merchant cost tracking by category and date
@@ -423,10 +430,11 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 | `NTZS_API_KEY` | Required for nTZS payments | Live provider key stored in Railway only; never expose it to Vercel or the browser. |
 | `NTZS_WEBHOOK_SECRET` | Required for nTZS payments | Verifies signed provider callbacks using the raw request body. Railway only. |
 | `NTZS_ENABLED` | Required for online subscriptions | Enables owner-only nTZS subscription checkout. Independent from Merchant Balance. |
-| `NTZS_MERCHANT_BALANCE_ENABLED` | Required to launch wallet | Keep `false` until controlled deposit/withdrawal reconciliation has passed. Separate from subscription checkout. |
+| `NTZS_MERCHANT_BALANCE_ENABLED` | Required to launch wallet | Global emergency switch. Keep `false` until controlled deposit/withdrawal acceptance has passed; normal production availability uses `true`. Separate from subscription checkout. |
 | `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` | Optional emergency rollout control | Leave empty for all merchant owners. Set comma-separated root shop IDs only to temporarily restrict new wallet operations. |
 | `NTZS_MERCHANT_BALANCE_USER_ID` | Required to launch wallet | Private nTZS pooled merchant-balance user ID; Railway only. |
 | `NTZS_MERCHANT_BALANCE_WALLET_ADDRESS` | Required operational record | Private nTZS pooled settlement wallet address; Railway only, never send to a browser. |
+| `NTZS_TREASURY_WALLET_ADDRESS` | Required for balance-funded subscriptions | DukaPilot's partner treasury address from nTZS. It must differ from the Merchant Balance wallet; Railway only. |
 | `NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS` | Optional | DukaPilot withdrawal fee in basis points; default `200` = 2%. |
 | `NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS` | Optional | Minimum recipient amount; default `5000`. |
 | `MERCHANT_WALLET_RECONCILE_CRON_SECRET` | Required to automate nTZS checks | Strong random value shared only with the GitHub Actions secret of the same name; the bounded job reconciles known wallet and subscription provider IDs. |
@@ -447,7 +455,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Current production migration sequence:** through `20260920120000_merchant_wallet_subscription_kind`. The latest migration permits subscription debits in the merchant-balance ledger; see [Merchant Balance](./docs/MERCHANT_BALANCE_WALLET.md) before changing live provider operations.
+- **Current production migration sequence:** through `20260923001000_label_printing_and_product_codes`. This adds product label names, shop-scoped code sequences, saved label templates/profiles, and auditable print jobs. See [Barcode and Label Management](./docs/BARCODE_MANAGEMENT.md) before enabling the label UI for merchants.
 
 ### Deployment Checklist
 
@@ -461,7 +469,10 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 8. Run `cd backend && npm run email:dns-check` to verify Mailtrap outbound and ImprovMX inbound DNS.
 9. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
 10. Confirm Railway startup logs include `[sentry] Initialized`; run `cd backend && railway run npm run sentry:test` after Sentry configuration changes.
-11. Review `TESTING.md` for the full manual and automated test checklist.
+11. Confirm the `CI` workflow passes backend tests, PostgreSQL migration/integrity, npm audits, frontend typecheck/build, production-mode Playwright, and the Android wrapper build.
+12. Run the `nTZS Payment Reconciliation` workflow and investigate any non-zero pending/review result before declaring a payment release healthy.
+13. For the label release, verify one generated barcode/SKU, one 40 x 30 mm browser print, one PDF, and one raw ZPL or TSPL file against the intended printer or approved bridge.
+14. Review `TESTING.md` for the full manual and automated test checklist.
 
 ### Production Monitoring
 
@@ -478,6 +489,9 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired shops can still view data and open **Billing**, where they can use nTZS or a sufficient Merchant Balance for automatic activation, or submit a manual payment reference for admin review. Deliberately suspended shops must contact support before paying. Operational changes resume after activation.
 - Merchant Balance remains separate from sales, expenses, and Daily Close. All merchant owners may deposit, withdraw, and apply sufficient balance to DukaPilot subscriptions through the atomic Billing flow; staff cannot access it. The feature flag remains the global emergency stop, and the optional shop allowlist can temporarily narrow access during an incident.
+- A Merchant Balance subscription debit is followed by an idempotent nTZS transfer of the same amount from the pooled merchant wallet to DukaPilot treasury. An interrupted transfer is retried by reconciliation without debiting the merchant or extending the subscription twice.
+- Merchant Balance history reports the actual ledger effect. Failed or reversed operations show no balance change; pending/review withdrawals continue to show the reserved total until provider reconciliation resolves them.
+- Withdrawal confirmation is valid only for the exact server-quoted amount, normalized phone, provider fee, total deduction, recipient, and payout rail. If any value changes, the owner must request and approve a fresh quote.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.
 - Debt collections guard the debt amount, prior collection total, and status together. Stock-count completion refuses to overwrite sales or receipts recorded after the count began, and one count can only be finalized once.
 - Browser-extension console warnings from injected `contentscript.js` files are not DukaPilot app errors; investigate DukaPilot only when the failing URL is a DukaPilot API/frontend URL.

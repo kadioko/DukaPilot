@@ -64,7 +64,12 @@ function merchantWalletSettings() {
   const rawMinimum = Number(process.env.NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS ?? 5000);
   const feeBps = Number.isInteger(rawBps) && rawBps >= 0 && rawBps <= 1000 ? rawBps : 200;
   const minimumWithdrawalTzs = Number.isSafeInteger(rawMinimum) && rawMinimum >= 5000 && rawMinimum <= MAX_TZS ? rawMinimum : 5000;
-  return { enabled: ntzs.merchantWalletConfigured(), feeBps, minimumWithdrawalTzs };
+  return {
+    enabled: ntzs.merchantWalletConfigured(),
+    subscriptionSettlementEnabled: ntzs.treasurySettlementConfigured(),
+    feeBps,
+    minimumWithdrawalTzs,
+  };
 }
 
 function merchantWalletPilotShopIds() {
@@ -165,6 +170,9 @@ function publicTransaction(transaction) {
 }
 
 function adminTransaction(transaction) {
+  const needsTreasurySettlement = transaction.kind === "SUBSCRIPTION"
+    && transaction.status === "COMPLETED"
+    && !(providerState(transaction.providerStatus) === "completed" && transaction.providerId);
   return {
     ...publicTransaction(transaction),
     shop: transaction.shop ? {
@@ -176,6 +184,8 @@ function adminTransaction(transaction) {
     providerId: transaction.providerId || null,
     requestKey: transaction.requestKey,
     failureCode: transaction.failureCode || null,
+    failureReason: transaction.failureReason || null,
+    needsTreasurySettlement,
   };
 }
 
@@ -264,12 +274,15 @@ function assertSameSubscriptionRetry(existing, { shopId, plan, kind, extraBranch
 
 async function paySubscriptionFromBalance({ shopId, userId, requestKey, plan, kind = "RENEWAL", extraBranches = 0 }) {
   requireEnabled(shopId);
+  if (!ntzs.treasurySettlementConfigured()) {
+    throw failure("Merchant Balance subscription payments are temporarily unavailable. Use another payment method.", 503, "TREASURY_SETTLEMENT_NOT_CONFIGURED");
+  }
   const key = validRequestKey(requestKey);
   const normalizedPlan = String(plan || "").toUpperCase();
   const normalizedKind = String(kind || "RENEWAL").toUpperCase();
   const normalizedExtraBranches = Number(extraBranches || 0);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     if (typeof tx.$queryRaw === "function") {
       await tx.$queryRaw`SELECT "id" FROM "shops" WHERE "id" = ${shopId} FOR UPDATE`;
     }
@@ -369,6 +382,8 @@ async function paySubscriptionFromBalance({ shopId, userId, requestKey, plan, ki
       reused: false,
     };
   });
+  const settled = await settleSubscriptionRevenue(result.transaction.id);
+  return { ...result, transaction: settled || result.transaction };
 }
 
 function providerFailure(error, defaultMessage) {
@@ -397,6 +412,95 @@ function providerIdempotencyKey(transaction) {
   // The browser sends a UUID for this DukaPilot operation. Reuse it verbatim
   // with nTZS so a dropped response can only resume the same provider action.
   return transaction.requestKey;
+}
+
+function subscriptionSettlementKey(transaction) {
+  return `dukapilot-subscription:${transaction.id}`;
+}
+
+function subscriptionTransferPayload(transaction) {
+  return {
+    fromUserId: ntzs.merchantWalletUserId(),
+    toAddress: ntzs.treasuryWalletAddress(),
+    amountTzs: transaction.amountTzs,
+    token: "nTZS",
+    metadata: {
+      dukapilotTransactionId: transaction.id,
+      shopId: transaction.shopId,
+      purpose: "subscription",
+    },
+  };
+}
+
+function verifySubscriptionTransfer(transaction, provider) {
+  if (!provider || typeof provider.id !== "string" || !provider.id.trim()) {
+    throw failure("The provider did not return a treasury transfer identifier.", 502, "TREASURY_TRANSFER_ID_MISSING");
+  }
+  if (provider.livemode === false
+    || Number(provider.amountTzs) !== transaction.amountTzs
+    || (provider.fromUserId && provider.fromUserId !== ntzs.merchantWalletUserId())
+    || (provider.toAddress && provider.toAddress.toLowerCase() !== ntzs.treasuryWalletAddress().toLowerCase())) {
+    throw failure("The provider treasury transfer did not match the subscription payment.", 409, "TREASURY_TRANSFER_MISMATCH");
+  }
+  if (provider.recipientAmountTzs !== undefined || provider.feeAmountTzs !== undefined) {
+    const recipient = optionalWholeTzs(provider.recipientAmountTzs, "Treasury recipient amount");
+    const fee = optionalWholeTzs(provider.feeAmountTzs, "Treasury transfer fee");
+    if (recipient + fee !== transaction.amountTzs) {
+      throw failure("The provider treasury transfer total did not match the subscription payment.", 409, "TREASURY_TRANSFER_MISMATCH");
+    }
+  }
+}
+
+async function settleSubscriptionRevenue(transactionId) {
+  const transaction = await prisma.merchantWalletTransaction.findUnique({ where: { id: transactionId } });
+  if (!transaction || transaction.kind !== "SUBSCRIPTION" || transaction.status !== "COMPLETED") return transaction;
+  if (providerState(transaction.providerStatus) === "completed" && transaction.providerId) return hydrateTransaction(transaction.id);
+
+  requireProviderConfigured();
+  const payload = subscriptionTransferPayload(transaction);
+  try {
+    const provider = await ntzs.request("/transfers", {
+      method: "POST",
+      headers: { "Idempotency-Key": subscriptionSettlementKey(transaction) },
+      body: JSON.stringify(payload),
+    });
+    verifySubscriptionTransfer(transaction, provider);
+    const state = providerState(provider.status);
+    const completed = state === "completed";
+    const metadata = transaction.metadata && typeof transaction.metadata === "object" ? transaction.metadata : {};
+    await prisma.merchantWalletTransaction.update({
+      where: { id: transaction.id },
+      data: {
+        providerId: provider.id,
+        providerStatus: cleanShortText(provider.status, 80) || "review",
+        failureCode: completed ? null : "TREASURY_SETTLEMENT_PENDING",
+        failureReason: completed ? null : "The subscription is active while treasury settlement is still being confirmed.",
+        metadata: {
+          ...metadata,
+          treasurySettlement: {
+            status: completed ? "COMPLETED" : "REVIEW",
+            completedAt: completed ? new Date().toISOString() : null,
+          },
+        },
+      },
+    });
+    return hydrateTransaction(transaction.id);
+  } catch (error) {
+    const metadata = transaction.metadata && typeof transaction.metadata === "object" ? transaction.metadata : {};
+    await prisma.merchantWalletTransaction.update({
+      where: { id: transaction.id },
+      data: {
+        providerStatus: "review",
+        failureCode: cleanShortText(error?.providerCode || error?.code || "TREASURY_SETTLEMENT_REVIEW", 80),
+        failureReason: "The subscription is active, but its treasury transfer still needs reconciliation.",
+        metadata: {
+          ...metadata,
+          treasurySettlement: { status: "REVIEW", completedAt: null },
+        },
+      },
+    });
+    return hydrateTransaction(transaction.id);
+  }
 }
 
 function withdrawalProviderFeeTzs(provider) {
@@ -874,6 +978,7 @@ async function reconcileTransaction(transactionId) {
   if (!transaction) throw failure("Wallet transaction not found.", 404, "WALLET_TRANSACTION_NOT_FOUND");
   if (transaction.kind === "DEPOSIT") return reconcileDeposit(transaction.id);
   if (transaction.kind === "WITHDRAWAL") return reconcileWithdrawal(transaction.id);
+  if (transaction.kind === "SUBSCRIPTION") return settleSubscriptionRevenue(transaction.id);
   return transaction;
 }
 
@@ -883,6 +988,9 @@ async function reconcileTransaction(transactionId) {
 async function resumeMerchantTransaction(transactionId) {
   const transaction = await prisma.merchantWalletTransaction.findUnique({ where: { id: transactionId } });
   if (!transaction) throw failure("Wallet transaction not found.", 404, "WALLET_TRANSACTION_NOT_FOUND");
+  if (transaction.kind === "SUBSCRIPTION" && transaction.status === "COMPLETED") {
+    return settleSubscriptionRevenue(transaction.id);
+  }
   if (transaction.providerId) return reconcileTransaction(transaction.id);
   if (!PENDING_STATUSES.has(transaction.status)) return hydrateTransaction(transaction.id);
   requireProviderConfigured();
@@ -1039,7 +1147,15 @@ async function adminOverview() {
     prisma.merchantWallet.aggregate({ _sum: { balanceTzs: true }, _count: { id: true } }),
     prisma.merchantWalletTransaction.groupBy({ by: ["kind", "status"], where: { status: { in: ["PENDING", "REVIEW"] } }, _sum: { amountTzs: true, totalDebitTzs: true }, _count: { id: true } }),
     prisma.merchantWalletTransaction.aggregate({ where: { kind: "WITHDRAWAL", status: "COMPLETED" }, _sum: { platformFeeTzs: true } }),
-    prisma.merchantWalletTransaction.aggregate({ where: { kind: "SUBSCRIPTION", status: "COMPLETED" }, _sum: { amountTzs: true } }),
+    prisma.merchantWalletTransaction.aggregate({
+      where: {
+        kind: "SUBSCRIPTION",
+        status: "COMPLETED",
+        OR: [{ providerId: null }, { providerStatus: { not: "completed" } }],
+      },
+      _sum: { amountTzs: true },
+      _count: { id: true },
+    }),
   ]);
   let providerBalanceTzs = null;
   let providerError = null;
@@ -1054,6 +1170,7 @@ async function adminOverview() {
   const customerLiabilityTzs = wallets._sum.balanceTzs || 0;
   const retainedPlatformFeeTzs = completedFees._sum.platformFeeTzs || 0;
   const retainedSubscriptionRevenueTzs = completedSubscriptions._sum.amountTzs || 0;
+  const treasurySettlementCount = completedSubscriptions._count.id || 0;
   const settledExpectedBalanceTzs = customerLiabilityTzs + retainedPlatformFeeTzs + retainedSubscriptionRevenueTzs;
   const pendingDeposits = pending.filter((row) => row.kind === "DEPOSIT").reduce((sum, row) => sum + (row._sum.amountTzs || 0), 0);
   const pendingWithdrawals = pending.filter((row) => row.kind === "WITHDRAWAL").reduce((sum, row) => sum + (row._sum.totalDebitTzs || 0), 0);
@@ -1066,7 +1183,12 @@ async function adminOverview() {
   return {
     config: merchantWalletSettings(),
     wallets: { count: wallets._count.id, customerLiabilityTzs },
-    pending: { depositTzs: pendingDeposits, withdrawalTzs: pendingWithdrawals, count: pending.reduce((sum, row) => sum + row._count.id, 0) },
+    pending: {
+      depositTzs: pendingDeposits,
+      withdrawalTzs: pendingWithdrawals,
+      treasurySettlementCount,
+      count: pending.reduce((sum, row) => sum + row._count.id, treasurySettlementCount),
+    },
     retainedPlatformFeeTzs,
     retainedSubscriptionRevenueTzs,
     provider: {
@@ -1132,7 +1254,16 @@ async function createAdminAdjustment({ shopId, userId, direction, amountTzs, rea
 async function reconcilePending(limit = 30) {
   const take = Math.min(Math.max(Number(limit) || 30, 1), 100);
   const transactions = await prisma.merchantWalletTransaction.findMany({
-    where: { status: { in: Array.from(PENDING_STATUSES) }, providerId: { not: null }, kind: { in: ["DEPOSIT", "WITHDRAWAL"] } },
+    where: {
+      OR: [
+        { status: { in: Array.from(PENDING_STATUSES) }, providerId: { not: null }, kind: { in: ["DEPOSIT", "WITHDRAWAL"] } },
+        {
+          kind: "SUBSCRIPTION",
+          status: "COMPLETED",
+          OR: [{ providerId: null }, { providerStatus: { not: "completed" } }],
+        },
+      ],
+    },
     orderBy: { updatedAt: "asc" },
     take,
     select: { id: true },
@@ -1141,7 +1272,12 @@ async function reconcilePending(limit = 30) {
   for (const transaction of transactions) {
     try {
       const current = await reconcileTransaction(transaction.id);
-      results.push({ id: transaction.id, status: current?.status || "UNKNOWN" });
+      results.push({
+        id: transaction.id,
+        status: current?.kind === "SUBSCRIPTION"
+          ? `TREASURY_${String(current.providerStatus || "REVIEW").toUpperCase()}`
+          : current?.status || "UNKNOWN",
+      });
     } catch {
       results.push({ id: transaction.id, status: "REVIEW" });
     }
@@ -1169,4 +1305,6 @@ module.exports = {
   adminOverview,
   createAdminAdjustment,
   paySubscriptionFromBalance,
+  settleSubscriptionRevenue,
+  verifySubscriptionTransfer,
 };

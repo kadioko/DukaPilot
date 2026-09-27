@@ -57,9 +57,12 @@ it does not generate a second collection request.
 2. DukaPilot gets a fresh nTZS payout quote from the server.
 3. Before confirming, the owner sees the net received amount, DukaPilot's
    withdrawal fee, the provider payout fee, and the exact total deduction.
-4. DukaPilot locks and reserves that exact total in its ledger before starting
+4. Confirmation is bound to the exact quoted amount, normalized phone,
+   recipient, rail, provider fee, and total deduction. Any change requires a
+   fresh quote.
+5. DukaPilot locks and reserves that exact total in its ledger before starting
    the payout.
-5. nTZS confirms the provider result. A terminal failure creates compensating
+6. nTZS confirms the provider result. A terminal failure creates compensating
    credits that return the held principal and both fees. A delayed or uncertain
    result remains in review until the provider record is reconciled.
 
@@ -79,13 +82,19 @@ minimum withdrawal is TZS 5,000.
 4. One database transaction writes an immutable `SUBSCRIPTION_PAYMENT` debit,
    creates the confirmed `subscription_payments` record, and activates or
    extends the subscription. A failure rolls all three changes back.
-5. A client retry reuses the same request key and returns the original result;
+5. DukaPilot immediately sends the exact subscription amount from the pooled
+   Merchant Balance provider user to the separate DukaPilot treasury address
+   through `POST /transfers` with a stable provider idempotency key.
+6. If the provider response is lost or remains pending, the subscription stays
+   active and reconciliation retries that same treasury transfer. It never
+   debits the merchant or extends the subscription again.
+7. A client retry reuses the same request key and returns the original result;
    it cannot debit the balance or extend the plan a second time.
 
-The debit reduces customer liability. Admin reconciliation separately includes
-completed Merchant Balance subscription payments as retained platform revenue,
-so provider funds continue to agree with customer liabilities plus retained
-platform value.
+The debit reduces customer liability. Until the provider transfer completes,
+admin reconciliation includes that amount as subscription revenue awaiting
+treasury settlement. Once completed, it is excluded from the expected pooled
+wallet balance because the money now belongs in DukaPilot treasury.
 
 ## Ledger and Reconciliation
 
@@ -95,25 +104,37 @@ platform value.
 subscription debits, and manual corrections are separate movements rather than
 overwritten balances.
 
+The merchant history response includes `balanceEffectTzs`, calculated by the
+server from ledger semantics. Completed deposits are positive; pending/review
+and completed withdrawals show the reserved/deducted total; completed
+subscription payments show their debit; failed or reversed operations show no
+balance change. The UI must not infer movement from transaction type alone.
+
 The admin wallet screen shows:
 
 - customer liability: total internal merchant balances;
 - pooled nTZS provider balance;
-- settled expected pool balance: merchant liability plus completed retained
-  DukaPilot withdrawal fees and Merchant Balance subscription revenue;
+- expected pool balance: merchant liability plus retained DukaPilot withdrawal
+  fees and only subscription revenue still awaiting treasury transfer;
 - pending deposits and withdrawals;
+- completed subscription debits still awaiting treasury, marked `TREASURY
+  REVIEW` with their provider error and an idempotent **Check** action;
 - a timing range for pending deposits and payouts: nTZS may mint a completed
   deposit before DukaPilot receives its signed event, or debit a payout
   slightly before or after DukaPilot receives its final status.
 
-Do not sweep DukaPilot fee revenue into treasury while the provider balance is
+Do not sweep DukaPilot withdrawal-fee revenue into treasury while the provider balance is
 outside the displayed expected range. There is no automatic fee sweep in this
-release; keep fee transfers documented and reconcile them before moving money.
+release. Subscription revenue is different: it transfers automatically with an
+idempotency key and is removed from expected pool funds after confirmation.
 
 ## Safety Rules
 
 - All money values are whole integer TZS on the server.
 - Every provider operation has a DukaPilot transaction ID and idempotency key.
+- A database uniqueness race on a deposit or withdrawal request key resumes the
+  original operation. An admin adjustment retry must match the original amount,
+  direction, and written reason.
 - No browser-provided provider quote, fee, status, or balance is trusted.
 - Provider events are signed and then verified again by fetching the provider
   record before the internal ledger changes.
@@ -128,6 +149,9 @@ release; keep fee transfers documented and reconcile them before moving money.
 - Do not add wallet deposits or withdrawals to sales, expenses, cash sessions,
   profit, or quotations. Subscription use must go only through the atomic
   owner-only Billing flow; never model it as a withdrawal or business expense.
+- Release a withdrawal hold only for a documented pre-movement provider
+  rejection. A gateway 502, unknown conflict, missing response, or undocumented
+  outcome remains in `REVIEW` until authenticated provider readback resolves it.
 
 ## Railway Configuration
 
@@ -141,6 +165,7 @@ NTZS_MERCHANT_BALANCE_ENABLED=false
 NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS=
 NTZS_MERCHANT_BALANCE_USER_ID=<private pooled merchant-balance nTZS user ID>
 NTZS_MERCHANT_BALANCE_WALLET_ADDRESS=<private provider wallet address>
+NTZS_TREASURY_WALLET_ADDRESS=<private DukaPilot partner treasury address>
 NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS=200
 NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS=5000
 MERCHANT_WALLET_RECONCILE_CRON_SECRET=<strong random secret>
@@ -150,12 +175,25 @@ MERCHANT_WALLET_RECONCILE_CRON_SECRET=<strong random secret>
 from `NTZS_MERCHANT_BALANCE_ENABLED`. Turning on one must never turn on the
 other.
 
+`NTZS_TREASURY_WALLET_ADDRESS` must be the partner treasury address shown by
+nTZS, not the DukaPilot Merchant Balance address. The backend validates the
+Base address format and refuses new balance-funded subscription payments when
+the two addresses are equal or treasury is missing. Deposits and withdrawals
+remain independently available so a configuration problem cannot trap merchant
+funds.
+
 `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` is an optional comma-separated
 allowlist of root business IDs. Normal production rollout leaves it empty so
 every merchant owner can initiate deposits, withdrawals, and subscription
 payments; branches share the parent business balance. Set an allowlist only
 as a temporary incident or controlled-rollout measure. Existing pending
 operations can still be checked and reconciled.
+
+The example keeps the global flag `false` because environment templates must be
+safe when copied. After controlled acceptance, normal production availability
+uses `NTZS_MERCHANT_BALANCE_ENABLED=true` with an empty allowlist. The flag can
+be turned off immediately to stop new wallet operations while existing records
+remain available to reconciliation.
 
 Set the same strong random value as `MERCHANT_WALLET_RECONCILE_CRON_SECRET` in
 Railway and as the GitHub Actions secret with that exact name. The
@@ -170,6 +208,9 @@ the original idempotency key.
 1. Deploy the backend first so Railway applies migrations
    `20260919090000_merchant_wallets` and
    `20260920120000_merchant_wallet_subscription_kind`.
+   Those are the Merchant Balance schema migrations. A complete current
+   production deployment must still apply every later committed migration,
+   presently through `20260923001000_label_printing_and_product_codes`.
 2. Confirm the nTZS webhook still reaches `/api/webhooks/ntzs` and uses the
    existing signed timestamp/signature headers. Add the wallet reconciliation
    secret in Railway and GitHub before enabling the feature.
@@ -196,6 +237,13 @@ the original idempotency key.
    new operations or turn off the feature while existing pending records are
    investigated.
 
+The current release baseline completed these code, CI, and read-only live
+checks on 20-21 September 2026. See
+[Production Verification](./PRODUCTION_VERIFICATION_2026-09-20.md). A future
+release that changes money movement, provider status mapping, subscription
+activation, or ledger entries must repeat the controlled acceptance steps; a
+green mocked test suite does not replace a low-value provider settlement test.
+
 ## Current Scope
 
 - Tanzanian mobile-money deposits and withdrawals only.
@@ -203,7 +251,9 @@ the original idempotency key.
   root business; branches share their parent business balance. Owners can pay
   DukaPilot subscriptions from sufficient available balance.
 - No automatic treasury fee sweep, bank payout, card funding, merchant-to-
-  merchant transfer, interest, lending, or investment functionality.
+  merchant transfer, interest, lending, or investment functionality. The fee
+  sweep limitation does not apply to subscription revenue, which is transferred
+  to treasury automatically.
 - A manual adjustment is an exceptional admin reconciliation tool, not normal
   merchant support or a substitute for provider confirmation.
 

@@ -50,7 +50,7 @@ test("merchant balance shows the full withdrawal deduction before one safe confi
     }
     if (url.includes("/auth/me")) return route.fulfill({ json: { user: { name: "Mama Amina", phone: "0713712057", role: "MERCHANT", language: "en", shop: { name: "Duka la Amina" }, features: {} } } });
     if (url.includes("/wallet?")) return route.fulfill({ json: {
-      config: { enabled: true, feeBps: 200, minimumWithdrawalTzs: 5000 },
+      config: { enabled: true, subscriptionSettlementEnabled: true, feeBps: 200, minimumWithdrawalTzs: 5000 },
       wallet: { balanceTzs: 20_000, pendingDepositTzs: 0, pendingWithdrawalTzs: 0 },
       transactions: [],
       pagination: { page: 1, limit: 12, total: 0, totalPages: 1 },
@@ -84,4 +84,54 @@ test("merchant balance shows the full withdrawal deduction before one safe confi
   expect(submittedWithdrawal?.phone).toBe("0713712057");
   expect(String(submittedWithdrawal?.requestKey)).toMatch(/^[a-f0-9-]{16,100}$/i);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("admin can identify and reconcile subscription revenue awaiting treasury", async ({ page }) => {
+  let reconcileCalls = 0;
+  let settled = false;
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/wallet/admin/transactions/wallet-sub-1/reconcile") && route.request().method() === "POST") {
+      reconcileCalls += 1;
+      settled = true;
+      return route.fulfill({ json: { transaction: { id: "wallet-sub-1", providerStatus: "completed" } } });
+    }
+    if (url.includes("/wallet/admin/overview")) return route.fulfill({ json: {
+      config: { enabled: true, subscriptionSettlementEnabled: true, feeBps: 200, minimumWithdrawalTzs: 5000 },
+      wallets: { count: 1, customerLiabilityTzs: 0 },
+      pending: { depositTzs: 0, withdrawalTzs: 0, treasurySettlementCount: settled ? 0 : 1, count: settled ? 0 : 1 },
+      retainedPlatformFeeTzs: 0,
+      retainedSubscriptionRevenueTzs: settled ? 0 : 15000,
+      provider: { balanceTzs: settled ? 0 : 15000, settledExpectedBalanceTzs: settled ? 0 : 15000, expectedRangeMaxTzs: settled ? 0 : 15000, differenceTzs: 0, withinPendingSettlementRange: true },
+    } });
+    if (url.includes("/wallet/admin/transactions")) return route.fulfill({ json: {
+      transactions: [{
+        id: "wallet-sub-1",
+        kind: "SUBSCRIPTION",
+        status: "COMPLETED",
+        amountTzs: 15000,
+        platformFeeTzs: 0,
+        providerFeeTzs: 0,
+        totalDebitTzs: 15000,
+        providerStatus: settled ? "completed" : null,
+        providerId: settled ? "transfer-1" : null,
+        needsTreasurySettlement: !settled,
+        failureReason: settled ? null : "The subscription is active, but its treasury transfer still needs reconciliation.",
+        createdAt: "2026-09-27T14:07:32.771Z",
+        shop: { id: "shop-1", name: "Kadioko Store", ownerName: "Kadioko", ownerPhone: "+255•••••9090" },
+      }],
+      pagination: { page: 1, totalPages: 1, total: 1 },
+    } });
+    if (url.includes("/auth/me")) return route.fulfill({ json: { user: { name: "Admin", role: "ADMIN", language: "en", shop: null, features: {} } } });
+    if (url.includes("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/admin/wallet");
+  await expect(page.getByText("TREASURY REVIEW", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 awaiting treasury", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Check", exact: true }).click();
+  await expect(page.getByText("Reconciled Kadioko Store.", { exact: true })).toBeVisible();
+  await expect(page.getByText("TREASURY REVIEW", { exact: true })).toHaveCount(0);
+  expect(reconcileCalls).toBe(1);
 });

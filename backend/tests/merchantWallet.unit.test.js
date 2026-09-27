@@ -92,10 +92,17 @@ function subscriptionPaymentDb(startingBalance = 20000) {
         if (where.requestKey) return transactions.get(where.requestKey) || null;
         return [...transactions.values()].find((item) => item.id === where.id) || null;
       },
+      findMany: async () => [...transactions.values()].map(({ id }) => ({ id })),
       create: async ({ data }) => {
         const record = { id: `subscription-transaction-${transactions.size + 1}`, createdAt: new Date(), ...data };
         transactions.set(data.requestKey, record);
         return record;
+      },
+      update: async ({ where, data }) => {
+        const record = [...transactions.values()].find((item) => item.id === where.id);
+        if (!record) return null;
+        Object.assign(record, data);
+        return { ...record };
       },
     },
     merchantWalletEntry: {
@@ -136,6 +143,8 @@ function merchantEnvironment() {
     "NTZS_MERCHANT_BALANCE_ENABLED",
     "NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS",
     "NTZS_MERCHANT_BALANCE_USER_ID",
+    "NTZS_MERCHANT_BALANCE_WALLET_ADDRESS",
+    "NTZS_TREASURY_WALLET_ADDRESS",
     "NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS",
     "NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS",
     "NTZS_API_KEY",
@@ -146,6 +155,8 @@ function merchantEnvironment() {
     NTZS_MERCHANT_BALANCE_ENABLED: "true",
     NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS: "",
     NTZS_MERCHANT_BALANCE_USER_ID: "11111111-1111-4111-8111-111111111111",
+    NTZS_MERCHANT_BALANCE_WALLET_ADDRESS: "0x1111111111111111111111111111111111111111",
+    NTZS_TREASURY_WALLET_ADDRESS: "0x2222222222222222222222222222222222222222",
     NTZS_MERCHANT_BALANCE_WITHDRAWAL_FEE_BPS: "200",
     NTZS_MERCHANT_BALANCE_MIN_WITHDRAWAL_TZS: "5000",
     NTZS_API_KEY: "ntzs_live_test_key",
@@ -170,7 +181,7 @@ test("wallet configuration requires a separately enabled pooled provider user", 
   const restore = merchantEnvironment();
   try {
     const wallet = loadWallet();
-    assert.deepEqual(wallet.merchantWalletSettings(), { enabled: true, feeBps: 200, minimumWithdrawalTzs: 5000 });
+    assert.deepEqual(wallet.merchantWalletSettings(), { enabled: true, subscriptionSettlementEnabled: true, feeBps: 200, minimumWithdrawalTzs: 5000 });
     process.env.NTZS_MERCHANT_BALANCE_ENABLED = "false";
     assert.equal(wallet.merchantWalletSettings().enabled, false);
   } finally {
@@ -205,7 +216,20 @@ test("an empty pilot allowlist makes merchant balance available to every root bu
 test("merchant balance subscription payment debits and activates atomically only once", async () => {
   const restore = merchantEnvironment();
   const state = subscriptionPaymentDb(20000);
+  const originalRequest = ntzs.request;
+  const providerCalls = [];
   try {
+    ntzs.request = async (path, options) => {
+      providerCalls.push({ path, options });
+      return {
+        id: "treasury-transfer-1",
+        status: "completed",
+        amountTzs: 15000,
+        recipientAmountTzs: 15000,
+        feeAmountTzs: 0,
+        toAddress: process.env.NTZS_TREASURY_WALLET_ADDRESS,
+      };
+    };
     const wallet = loadWallet(state.prisma);
     const input = {
       shopId: "shop-1",
@@ -228,7 +252,24 @@ test("merchant balance subscription payment debits and activates atomically only
     assert.equal(state.payments[0].amount, 15000);
     assert.equal(state.shop.plan, "BASIC");
     assert.ok(state.shop.subscriptionEndsAt instanceof Date);
+    assert.equal(providerCalls.length, 1);
+    assert.equal(providerCalls[0].path, "/transfers");
+    assert.match(providerCalls[0].options.headers["Idempotency-Key"], /^dukapilot-subscription:/);
+    assert.deepEqual(JSON.parse(providerCalls[0].options.body), {
+      fromUserId: process.env.NTZS_MERCHANT_BALANCE_USER_ID,
+      toAddress: process.env.NTZS_TREASURY_WALLET_ADDRESS,
+      amountTzs: 15000,
+      token: "nTZS",
+      metadata: {
+        dukapilotTransactionId: first.transaction.id,
+        shopId: "shop-1",
+        purpose: "subscription",
+      },
+    });
+    assert.equal(first.transaction.providerStatus, "completed");
+    assert.equal(retry.transaction.providerStatus, "completed");
   } finally {
+    ntzs.request = originalRequest;
     restore();
   }
 });
@@ -255,6 +296,160 @@ test("merchant balance subscription payment leaves all records unchanged when fu
   }
 });
 
+test("merchant balance subscription payment refuses to debit when treasury settlement is not configured", async () => {
+  const restore = merchantEnvironment();
+  const state = subscriptionPaymentDb(20000);
+  try {
+    delete process.env.NTZS_TREASURY_WALLET_ADDRESS;
+    const wallet = loadWallet(state.prisma);
+    await assert.rejects(wallet.paySubscriptionFromBalance({
+      shopId: "shop-1",
+      userId: "owner-1",
+      requestKey: "44444444-4444-4444-8444-444444444444",
+      plan: "BASIC",
+      kind: "RENEWAL",
+      extraBranches: 0,
+    }), { code: "TREASURY_SETTLEMENT_NOT_CONFIGURED" });
+    assert.equal(state.wallet.balanceTzs, 20000);
+    assert.equal(state.entries.size, 0);
+    assert.equal(state.payments.length, 0);
+    assert.equal(state.shop.subscriptionEndsAt, null);
+  } finally {
+    restore();
+  }
+});
+
+test("an interrupted treasury transfer is retried without a second merchant debit or subscription extension", async () => {
+  const restore = merchantEnvironment();
+  const state = subscriptionPaymentDb(20000);
+  const originalRequest = ntzs.request;
+  const idempotencyKeys = [];
+  let attempts = 0;
+  try {
+    ntzs.request = async (_path, options) => {
+      attempts += 1;
+      idempotencyKeys.push(options.headers["Idempotency-Key"]);
+      if (attempts === 1) throw Object.assign(new Error("Gateway response lost"), { providerStatus: 502, providerCode: "initiation_uncertain" });
+      return {
+        id: "treasury-transfer-recovered",
+        status: "completed",
+        amountTzs: 15000,
+        recipientAmountTzs: 14925,
+        feeAmountTzs: 75,
+        toAddress: process.env.NTZS_TREASURY_WALLET_ADDRESS,
+      };
+    };
+    const wallet = loadWallet(state.prisma);
+    const input = {
+      shopId: "shop-1",
+      userId: "owner-1",
+      requestKey: "55555555-5555-4555-8555-555555555555",
+      plan: "BASIC",
+      kind: "RENEWAL",
+      extraBranches: 0,
+    };
+
+    const first = await wallet.paySubscriptionFromBalance(input);
+    assert.equal(first.transaction.providerStatus, "review");
+    assert.equal(state.wallet.balanceTzs, 5000);
+    assert.equal(state.entries.size, 1);
+    assert.equal(state.payments.length, 1);
+    const originalEnd = +state.shop.subscriptionEndsAt;
+
+    const settled = await wallet.settleSubscriptionRevenue(first.transaction.id);
+    assert.equal(settled.providerStatus, "completed");
+    assert.equal(settled.providerId, "treasury-transfer-recovered");
+    assert.equal(state.wallet.balanceTzs, 5000);
+    assert.equal(state.entries.size, 1);
+    assert.equal(state.payments.length, 1);
+    assert.equal(+state.shop.subscriptionEndsAt, originalEnd);
+    assert.equal(idempotencyKeys.length, 2);
+    assert.equal(idempotencyKeys[0], idempotencyKeys[1]);
+  } finally {
+    ntzs.request = originalRequest;
+    restore();
+  }
+});
+
+test("scheduled reconciliation backfills a completed subscription that never reached treasury", async () => {
+  const restore = merchantEnvironment();
+  const state = subscriptionPaymentDb(5000);
+  const originalRequest = ntzs.request;
+  const legacy = {
+    id: "legacy-subscription-transaction",
+    walletId: state.wallet.id,
+    shopId: "shop-1",
+    kind: "SUBSCRIPTION",
+    status: "COMPLETED",
+    requestKey: "66666666-6666-4666-8666-666666666666",
+    amountTzs: 15000,
+    totalDebitTzs: 15000,
+    providerId: null,
+    providerStatus: null,
+    failureCode: null,
+    failureReason: null,
+    metadata: { plan: "BASIC", kind: "RENEWAL", extraBranches: 0 },
+    completedAt: new Date("2026-09-27T08:00:00.000Z"),
+    createdAt: new Date("2026-09-27T08:00:00.000Z"),
+    updatedAt: new Date("2026-09-27T08:00:00.000Z"),
+  };
+  state.transactions.set(legacy.requestKey, legacy);
+  const providerCalls = [];
+  try {
+    ntzs.request = async (path, options) => {
+      providerCalls.push({ path, options });
+      return {
+        id: "treasury-transfer-backfill",
+        status: "completed",
+        amountTzs: 15000,
+        recipientAmountTzs: 15000,
+        feeAmountTzs: 0,
+        toAddress: process.env.NTZS_TREASURY_WALLET_ADDRESS,
+      };
+    };
+    const wallet = loadWallet(state.prisma);
+    const result = await wallet.reconcilePending(30);
+
+    assert.deepEqual(result, {
+      checked: 1,
+      results: [{ id: legacy.id, status: "TREASURY_COMPLETED" }],
+    });
+    assert.equal(providerCalls.length, 1);
+    assert.equal(providerCalls[0].path, "/transfers");
+    assert.equal(providerCalls[0].options.headers["Idempotency-Key"], `dukapilot-subscription:${legacy.id}`);
+    assert.equal(legacy.providerId, "treasury-transfer-backfill");
+    assert.equal(legacy.providerStatus, "completed");
+    assert.equal(state.wallet.balanceTzs, 5000);
+    assert.equal(state.entries.size, 0);
+    assert.equal(state.payments.length, 0);
+  } finally {
+    ntzs.request = originalRequest;
+    restore();
+  }
+});
+
+test("treasury transfer verification rejects the wrong amount or destination", () => {
+  const restore = merchantEnvironment();
+  try {
+    const wallet = loadWallet();
+    const transaction = { id: "sub-1", shopId: "shop-1", amountTzs: 15000 };
+    const provider = {
+      id: "transfer-1",
+      status: "completed",
+      amountTzs: 15000,
+      recipientAmountTzs: 15000,
+      feeAmountTzs: 0,
+      toAddress: process.env.NTZS_TREASURY_WALLET_ADDRESS,
+    };
+    assert.doesNotThrow(() => wallet.verifySubscriptionTransfer(transaction, provider));
+    assert.throws(() => wallet.verifySubscriptionTransfer(transaction, { ...provider, amountTzs: 14999 }), { code: "TREASURY_TRANSFER_MISMATCH" });
+    assert.throws(() => wallet.verifySubscriptionTransfer(transaction, { ...provider, toAddress: process.env.NTZS_MERCHANT_BALANCE_WALLET_ADDRESS }), { code: "TREASURY_TRANSFER_MISMATCH" });
+    assert.throws(() => wallet.verifySubscriptionTransfer(transaction, { ...provider, recipientAmountTzs: 14900, feeAmountTzs: 50 }), { code: "TREASURY_TRANSFER_MISMATCH" });
+  } finally {
+    restore();
+  }
+});
+
 test("merchant output masks mobile numbers and never returns provider identifiers", () => {
   const wallet = loadWallet();
   const result = wallet.publicTransaction({
@@ -276,6 +471,32 @@ test("merchant output masks mobile numbers and never returns provider identifier
   assert.equal(result.canResume, false);
   assert.equal("providerId" in result, false);
   assert.equal("requestKey" in result, false);
+});
+
+test("admin output identifies completed subscriptions still awaiting treasury settlement", () => {
+  const wallet = loadWallet();
+  const transaction = {
+    id: "wallet-subscription-review",
+    kind: "SUBSCRIPTION",
+    status: "COMPLETED",
+    amountTzs: 15000,
+    platformFeeTzs: 0,
+    providerFeeTzs: 0,
+    totalDebitTzs: 15000,
+    providerId: null,
+    providerStatus: "review",
+    requestKey: "77777777-7777-4777-8777-777777777777",
+    failureCode: "TREASURY_SETTLEMENT_REVIEW",
+    failureReason: "The subscription is active, but its treasury transfer still needs reconciliation.",
+    createdAt: new Date("2026-09-27T14:07:32.771Z"),
+  };
+
+  const pending = wallet.adminTransaction(transaction);
+  const settled = wallet.adminTransaction({ ...transaction, providerId: "transfer-1", providerStatus: "completed", failureCode: null, failureReason: null });
+
+  assert.equal(pending.needsTreasurySettlement, true);
+  assert.equal(pending.failureReason, transaction.failureReason);
+  assert.equal(settled.needsTreasurySettlement, false);
 });
 
 test("merchant deposits and withdrawals accept only Tanzanian mobile numbers", async () => {

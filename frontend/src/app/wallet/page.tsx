@@ -28,7 +28,7 @@ type WalletTransaction = {
 };
 
 type WalletResponse = {
-  config: { enabled: boolean; feeBps: number; minimumWithdrawalTzs: number };
+  config: { enabled: boolean; subscriptionSettlementEnabled: boolean; feeBps: number; minimumWithdrawalTzs: number };
   wallet: { balanceTzs: number; pendingDepositTzs: number; pendingWithdrawalTzs: number };
   transactions: WalletTransaction[];
   pagination: { page: number; limit: number; total: number; totalPages: number };

@@ -26,13 +26,16 @@ Frontend verification:
 cd frontend
 npm run typecheck
 npm run test:mocked
+npm run test:mocked:prod
 npm run test:a11y
 npm run build
 ```
 
 ## Migration Gate
 
-Railway must apply `20260811090000_cash_close_and_stock_receipts` (and every earlier migration) before the matching frontend is considered fully deployed. Verify:
+Railway must apply every committed migration through
+`20260923001000_label_printing_and_product_codes` before the matching frontend
+is considered fully deployed. Verify:
 
 - staff phone identities are unique;
 - staff language is stored per staff member;
@@ -48,6 +51,9 @@ Railway must apply `20260811090000_cash_close_and_stock_receipts` (and every ear
 - A staff session without report permission does not receive buying prices, sale profit, or profit analytics data.
 - A cash sale, cash debt collection, and cash expense made during an open cash session are attached to that session.
 - A supplier delivery is received through `Receive Stock`; product cost, transport, other cost, and stock-movement history are saved together before the order becomes `DELIVERED`.
+- Generated DukaPilot barcodes and SKUs remain unique within their shop location; manual duplicate barcodes or SKUs are rejected without changing stock.
+- Label templates, printer profiles, and print-job history are readable only by the same active shop with Stock permission.
+- Browser/PDF label jobs retain product snapshots; downloaded ZPL, TSPL, and ESC/POS files are not sent from Railway to merchant hardware.
 
 ## High-Risk Regression Checks
 
@@ -70,6 +76,12 @@ Railway must apply `20260811090000_cash_close_and_stock_receipts` (and every ear
 17. Open a cashier session, record a cash sale, cash debt payment, and cash expense, then close it with a counted cash value. Confirm expected cash and variance are correct.
 18. From an `OUT_FOR_DELIVERY` supplier order, choose Receive Stock, change a delivered quantity if needed, add transport cost, save, and confirm the order is delivered with linked `IN` movements.
 19. Complete a sale and verify the receipt can be shared as WhatsApp text, PNG, PDF, and printed through the device print dialog. On Android, test a paired Bluetooth thermal printer where available.
+20. Request a Merchant Balance withdrawal quote, then change the amount or phone before confirmation. Confirm the stale quote is rejected and a fresh quote is required.
+21. Retry a deposit, withdrawal, subscription payment, or admin wallet correction with the same request key. Confirm the exact original operation is returned and different details produce a conflict.
+22. Confirm failed/reversed wallet history says no balance change, pending/review withdrawals show the reserved total, and completed deposits/subscription payments show their actual ledger effect.
+23. Run the protected nTZS reconciliation workflow and confirm known pending wallet and subscription provider IDs are checked without creating a replacement payment.
+24. Create one 40 x 30 mm label with a valid EAN-13 or UPC product; confirm the barcode scans, text is not clipped, and the print-job record shows the intended output driver.
+25. Download a ZPL or TSPL label command for an approved profile. Confirm it is delivered only to the operator's device or trusted local bridge; the web app must not claim direct Bluetooth/USB transport.
 
 ## Live URLs
 
@@ -343,6 +355,30 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 4. Suspend a test shop and confirm write actions return a subscription-required message while read-only views still load.
 5. Search for a staff phone in PIN Reset and confirm staff PIN reset works.
 
+### Subscription checkout and Merchant Balance
+
+1. Log in as an owner. Confirm staff accounts cannot open `/wallet` or initiate
+   nTZS/subscription payments.
+2. From Billing, choose Basic or Pro and confirm the amount comes from the
+   server, including any Pro branch charge.
+3. With insufficient Merchant Balance, confirm payment is disabled and no
+   ledger entry or subscription extension is created.
+4. With sufficient balance, confirm Billing shows the exact debit and remaining
+   balance. Submit once, then repeat the same request key; exactly one ledger
+   debit, one confirmed subscription payment, and one extension must exist.
+5. For nTZS online checkout, deny one mobile prompt and allow one controlled
+   prompt. A denied/rejected collection must not activate; a verified
+   `completed` or `minted` provider record must activate exactly once.
+6. Confirm an expired owner can open Billing and Wallet, while a deliberately
+   suspended business is directed to support.
+7. In Wallet, verify the quote displays recipient, rail, DukaPilot fee, provider
+   fee, net received, and total deduction. A changed amount, phone, fee,
+   recipient, or rail must require a fresh quote.
+8. In Admin, compare pooled provider funds with merchant liability, withdrawal
+   fees, and only subscription revenue still awaiting treasury settlement. A
+   completed treasury transfer must disappear from the expected pool balance.
+   Do not make an adjustment without provider evidence and a written reason.
+
 ### Offline sales queue
 
 1. Log in as a merchant and open `/sales`.
@@ -463,7 +499,7 @@ Covers:
 ### Integration tests
 
 ```bash
-cd backend && npm run test:api
+cd backend && npm run test:prod-api
 ```
 
 Covers:
@@ -485,6 +521,7 @@ cd frontend && npm run test:auth         # Auth negative-path flows
 cd frontend && npm run test:inventory    # Inventory flows (mocked)
 cd frontend && npm run test:supplier     # Supplier portal flows (mocked)
 cd frontend && npm run test:mocked       # All mocked flows together
+cd frontend && npm run test:mocked:prod  # Mocked flows against production /_api routing
 cd frontend && npm run test:a11y         # Accessibility checks
 cd frontend && npm run test:e2e          # Full suite
 ```
@@ -502,13 +539,16 @@ cd frontend && npm run typecheck
 Run these in order before each production release:
 
 1. `cd backend && npm run smoke:prod` — production API smoke
-2. `cd backend && npm run test:api` — integration tests
+2. `cd backend && npm run test:prod-api` — integration tests
 3. `cd frontend && npm run typecheck` — TypeScript type check
 4. `cd frontend && npm run smoke` — frontend page load
 5. `cd frontend && npm run smoke:login` — Playwright browser login flow
 6. `cd backend && npm run email:dns-check` — Mailtrap/ImprovMX DNS
 7. `cd frontend && npm run test:auth` — auth negative paths
-8. `cd frontend && npm run test:e2e` — full Playwright suite
+8. `cd frontend && npm run test:mocked:prod` — production-mode mocked regression suite
+9. `cd frontend && npm run test:e2e` — full Playwright suite
+10. Confirm the GitHub `CI` workflow passes, including PostgreSQL integrity and Android lint/build.
+11. Run the GitHub `nTZS Payment Reconciliation` workflow and investigate any checked item that remains pending or in review.
 
 Manual post-deploy checks:
 
@@ -528,11 +568,13 @@ Manual post-deploy checks:
 - `/daily-close` lets a cashier reconcile an open cash session, while an owner can review today's sessions
 - `/receiving` records landed cost and linked supplier-order delivery without a direct stock increment bypass
 - Completed sales offer WhatsApp text, PNG, PDF, and browser-print receipt actions
+- Barcode management can generate a SKU and product barcode, camera/HID scanning finds the correct item in POS, and Inventory can prepare a 40 x 30 mm browser/PDF label job.
+- Saved raw-printer profiles document the intended model, DPI, and driver. QZ Tray and DukaPilot print-bridge selections remain configuration records until a tested local transport is installed.
 
 Current sprint checks:
 
 - New merchant registration creates a shop with a 14-day free trial visible from `/subscription/status`.
-- `/billing` shows subscription status, M-Pesa instructions, WhatsApp support, and lets the merchant submit a payment reference as a `BILLING` report.
+- `/billing` shows subscription status, official Lipa/send-money instructions, nTZS online checkout, Merchant Balance payment when sufficient, WhatsApp support, and manual payment-reference review.
 - Admin `/admin` overview shows Business Operations metrics: active shops, trials, expiring trials, unpaid, suspended, support issues, billing requests, and suspicious errors.
 - Admin can review `BILLING` reports, then use Subscriptions to mark Paid Basic/Pro and confirm Last Payment updates.
 - `/assistant` shows a daily command list, why-it-matters notes, expected impact, direct action buttons, and a WhatsApp-style owner summary.
@@ -571,6 +613,15 @@ Current sprint checks:
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
 | `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
 | `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
+| `NTZS_ENABLED` | Required for nTZS subscriptions | Owner-only online checkout switch; independent from Merchant Balance |
+| `NTZS_API_KEY` | Required for nTZS | Railway secret only; never put it in Vercel or browser code |
+| `NTZS_WEBHOOK_SECRET` | Required for nTZS | Verifies raw-body provider callbacks in Railway |
+| `NTZS_MERCHANT_BALANCE_ENABLED` | Required for Merchant Balance | Global emergency switch; use the optional allowlist only for controlled rollout or an incident |
+| `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` | Optional | Comma-separated root shop IDs; empty means all merchant owners when the global switch is enabled |
+| `NTZS_MERCHANT_BALANCE_USER_ID` | Required for Merchant Balance | Private pooled provider user ID; Railway only |
+| `NTZS_MERCHANT_BALANCE_WALLET_ADDRESS` | Required for reconciliation | Private pooled wallet address; Railway only and never returned to browsers |
+| `NTZS_TREASURY_WALLET_ADDRESS` | Required for balance-funded subscriptions | Partner treasury Base address from nTZS; must differ from the Merchant Balance address |
+| `MERCHANT_WALLET_RECONCILE_CRON_SECRET` | Required for automation | Same strong value in Railway and the GitHub Actions secret |
 | `BACKUP_DIR` | Optional | Directory for pg_dump backups (default: `./backups`) |
 | `BACKUP_RETAIN_DAYS` | Optional | Days to keep backups (default: `7`) |
 
@@ -584,6 +635,15 @@ npm run monitor:prod
 ```
 
 This checks backend health, frontend shell, public catalog/API loading, CORS preflight for the Vercel origin, login, authenticated dashboard access, controlled 401 handling, and stale old Railway API URL leakage.
+
+### Verified payment release baseline
+
+The 20-21 September 2026 baseline passed 183 backend tests, 42 full
+production-mode browser tests, frontend typecheck/build, Prisma validation,
+PostgreSQL migration/integrity, both npm audits, and Android lint/build. The
+live production monitor also passed. See
+[Production Verification](./docs/PRODUCTION_VERIFICATION_2026-09-20.md) for
+the exact commits, GitHub runs, and non-destructive live checks.
 
 ### Sentry backend alert drill
 

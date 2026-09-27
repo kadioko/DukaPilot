@@ -5,12 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] - Android 16 Play Readiness
+## [Unreleased] - Payments, Wallet, Android And Label Printing
 
 ### Added
 
 - Added owner-only subscription payment from Merchant Balance in Billing, with exact-price confirmation, insufficient-balance guidance, an atomic ledger debit plus activation, retry-key idempotency, and subscription revenue-aware provider reconciliation.
 - Added scheduled reconciliation for nTZS subscription checkouts alongside merchant-wallet operations, so a delayed webhook does not leave a known provider payment stuck.
+- Added an explicit balance-effect value to Merchant Balance history so failed and reversed operations show no balance movement while pending withdrawals show the amount still reserved.
+- Added a dated production verification record covering wallet/billing hardening, live monitoring, nTZS reconciliation, Android, PostgreSQL, backend, frontend, and production-mode browser checks.
 - Added stable public DukaPilot logo URLs in PNG, SVG, and JPG formats, with a canonical brand-assets guide for partners, campaigns, and platform uploads.
 - Added Food Preparation for restaurants and bars: reusable recipes, ingredient deductions, prepared portions, expected versus actual yield, waste, direct cooking costs, immutable batch history, and cost per portion.
 - Added a clearly-labelled total-grocery-bill receiving option. It allocates a receipt using recent buying prices (or quantities when there is no price history) and marks the allocation as estimated.
@@ -21,6 +23,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Activated browser and Next.js server error monitoring through the existing `javascript-nextjs` Sentry project and Vercel production variables.
 - Replaced the obsolete client config filename with Next.js 16 `instrumentation-client.ts` and enabled request-error and router-transition hooks so frontend monitoring is actually bundled.
 - Added a production Sentry operator guide covering scope, limitations, testing, secrets, and incident response.
+- Added shop-scoped product SKU and barcode generation, EAN-13/UPC validation, label-only product names, camera scanning, and keyboard-wedge scanner controls for POS and stock counts.
+- Added a printer-independent product-label workflow: saved templates, 40 x 30 mm browser/PDF labels, multiple products/copies, print-job snapshots, and raw ZPL, TSPL, and ESC/POS output files for approved local transport.
+- Added label printing regression coverage for generated codes, raw-output sanitization, shop isolation, browser/PDF composition, and label selection on Inventory and Barcode management.
 
 ### Changed
 
@@ -29,6 +34,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Expanded Billing's nTZS option with supported-network guidance, exact amount and plan confirmation, PIN safety, automatic-activation instructions, clearer pending/review states, and a fresh-attempt action after a terminal failure.
 - Centralized nTZS deposit status handling across subscription and merchant-wallet flows, including live `minted` success and `rejected` failure states, stable per-business payer references, and treasury-destination verification when returned.
 - Fixed merchant-balance deposit reconciliation so nTZS `minted` collections credit the merchant ledger exactly once and `rejected` collections exit review/pending as failed without adding balance.
+- Bound withdrawal confirmation to the exact server quote, including amount and normalized destination phone as well as fees, recipient, rail, and total deduction.
+- Hardened deposit, withdrawal, and admin-adjustment idempotency races so a duplicate request safely resumes or returns the original exact operation; a request key cannot be reused for a different adjustment direction or reason.
+- Refined withdrawal failure handling so documented pre-movement rejections release the hold while ambiguous gateway/conflict outcomes remain in review until provider reconciliation proves the result.
+- Fixed Merchant Balance subscription settlement so every completed internal subscription debit initiates one idempotent nTZS transfer from the pooled merchant wallet to DukaPilot treasury. Interrupted transfers remain visible to reconciliation and cannot debit or extend the subscription twice.
+- Changed admin wallet reconciliation to count only subscription revenue still awaiting treasury transfer inside the expected merchant-pool balance.
 - Updated the Android release to target Android 16 (API 36), meeting the Google Play update requirement effective 31 August 2026.
 - Raised the Android wrapper's Java compatibility to Java 17 and disabled device backup for the business app wrapper.
 - Corrected Trusted Web Activity navigation-bar divider metadata so Android system-bar styling is applied reliably.
@@ -36,6 +46,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added Android long-press shortcuts for recording sales, inventory, and customer debts.
 - Added an ignored local signing-properties option for release builds so upload-key credentials stay out of Git.
 - Added CI coverage for the Android wrapper, API 36 target, live PWA manifest, Digital Asset Links, and Android shortcuts.
+- Fixed production-mode browser mocks for the `/_api` route prefix and shared inventory shell requests, and fixed Android CI setup so the complete workflow passes without requesting the obsolete SDK `tools` package.
+- Documented the hardware boundary: browser/device printing works now; raw command files are ready for a trusted QZ Tray, DukaPilot print bridge, or future native Android transport, but Railway never reaches a merchant's Bluetooth, USB, or network printer.
 
 ---
 
