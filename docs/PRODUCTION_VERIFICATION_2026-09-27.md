@@ -103,3 +103,19 @@ The local PostgreSQL integrity command correctly refused to run without an
 explicit disposable local test database. The GitHub Actions PostgreSQL job
 creates `dukapilot_test`, applies every migration, and is the required
 database-integrity evidence for the pushed release.
+
+Pushed-release evidence:
+
+- Commit `3af8402` contains the payment recovery, destination verification,
+  authenticated error-state, regression-test, and documentation hardening.
+- GitHub Actions CI run
+  [36330522288](https://github.com/kadioko/DukaPilot/actions/runs/36330522288)
+  passed all seven jobs: backend, PostgreSQL migrations/integrity, frontend
+  typecheck, production-mode Playwright, backend/frontend audits, and Android.
+- Railway deployment `1ebcc0e3-bc69-4e0f-8c2d-8fbd2b7acf4f` reached
+  `SUCCESS` on commit `3af8402` with a running instance.
+- The live production monitor passed backend health, frontend shell, catalog,
+  CORS, login, authenticated dashboard, and controlled-error checks.
+- Post-deploy nTZS reconciliation run
+  [36330587642](https://github.com/kadioko/DukaPilot/actions/runs/36330587642)
+  completed successfully.
