@@ -36,7 +36,7 @@ const emptyDashboard = {
   topProducts: [],
 };
 
-test("zero-data dashboard explains the selected period without clipped Swahili", async ({ page }) => {
+test("zero-data dashboard recovers from an interrupted read without clipped Swahili", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
@@ -70,15 +70,24 @@ test("zero-data dashboard explains the selected period without clipped Swahili",
     contentType: "application/json",
     body: JSON.stringify({ items: [], unreadCount: 0 }),
   }));
-  await page.route("**/*api/dashboard?period=*", async (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify(emptyDashboard),
-  }));
+  let dashboardRequests = 0;
+  await page.route("**/*api/dashboard?period=*", async (route) => {
+    dashboardRequests += 1;
+    if (dashboardRequests === 1) {
+      await route.abort("connectionreset");
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(emptyDashboard),
+    });
+  });
 
   await page.goto("/dashboard");
 
   await expect(page.getByText("Hakuna mauzo ya leo bado.").first()).toBeVisible();
+  await expect.poll(() => dashboardRequests).toBe(2);
   await expect(page.locator(".recharts-wrapper")).toHaveCount(0);
   await expect(page.locator("section").first().getByText("Kipindi hiki: Leo")).toBeVisible();
 

@@ -25,7 +25,7 @@ export interface ApiErrorDetail {
 }
 
 export type ApiFailureType = "NETWORK" | "TIMEOUT" | "HTTP" | "INVALID_RESPONSE";
-type ApiFailureReporting = "default" | "background";
+type ApiFailureReporting = "default" | "background" | "deferred";
 
 export interface ApiRequestContext {
   endpoint: string;
@@ -133,7 +133,7 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting
   // Header counts and similar shell refreshes must never turn a short-lived
   // connection interruption into a product error. Keep the breadcrumb so a
   // later, relevant issue still has the network context.
-  if (reporting === "background" && (failureType === "NETWORK" || failureType === "TIMEOUT")) return;
+  if ((reporting === "background" || reporting === "deferred") && (failureType === "NETWORK" || failureType === "TIMEOUT")) return;
 
   const key = `${failureType}:${status || "none"}:${context.method}:${context.endpoint}:${context.apiHostname}`;
   const now = Date.now();
@@ -347,21 +347,36 @@ async function request<T>(
   return payload as T;
 }
 
-async function backgroundRequest<T>(path: string, options: RequestInit = {}, lang?: Lang): Promise<T> {
+async function retryNetworkRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  lang: Lang | undefined,
+  firstAttemptReporting: ApiFailureReporting,
+  retryReporting: ApiFailureReporting,
+): Promise<T> {
   try {
-    return await request<T>(path, options, lang, false, "background");
+    return await request<T>(path, options, lang, false, firstAttemptReporting);
   } catch (error) {
-    // A browser can briefly lose the connection during navigation or wake-up.
-    // One quick retry is safe for shell reads and the idempotent logout route,
-    // without affecting primary work such as sales, payments, or quotations.
-    if (!(error instanceof ApiError) || error.failureType !== "NETWORK") throw error;
+    if (!(error instanceof ApiError) || !["NETWORK", "TIMEOUT"].includes(error.failureType || "")) throw error;
     await new Promise((resolve) => setTimeout(resolve, 350));
-    return request<T>(path, options, lang, false, "background");
+    return request<T>(path, options, lang, false, retryReporting);
   }
 }
 
+async function backgroundRequest<T>(path: string, options: RequestInit = {}, lang?: Lang): Promise<T> {
+  // A browser can briefly lose the connection during navigation or wake-up.
+  // These calls are either shell reads or the idempotent logout route.
+  return retryNetworkRequest<T>(path, options, lang, "background", "background");
+}
+
+async function readRequest<T>(path: string, lang?: Lang): Promise<T> {
+  // A completed GET can safely be retried if its response is lost between the
+  // browser, Vercel's proxy, and Railway. Only report it if that retry fails.
+  return retryNetworkRequest<T>(path, {}, lang, "deferred", "default");
+}
+
 export const api = {
-  get: <T>(path: string, lang?: Lang) => request<T>(path, {}, lang),
+  get: <T>(path: string, lang?: Lang) => readRequest<T>(path, lang),
   getBackground: <T>(path: string, lang?: Lang) => backgroundRequest<T>(path, {}, lang),
   postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
     backgroundRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
