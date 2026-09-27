@@ -23,7 +23,9 @@ The expensive all-time sales and monthly-history aggregation is cached per shop 
 
 The scheduled nTZS job processes at most 100 known Merchant Balance and 100
 known subscription records per run. Queries are limited to pending/review
-records and ordered, so the job does not scan completed history. Revisit the
+provider operations and completed Merchant Balance subscription debits whose
+treasury transfer is unresolved. Results are ordered and bounded, so the job
+does not scan settled history. Revisit the
 batch size or add a durable work queue only if monitored backlog shows that one
 15-minute run cannot catch up; do not add queue infrastructure pre-emptively.
 

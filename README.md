@@ -10,7 +10,8 @@
 Subscription payment paths and nTZS launch requirements are documented in
 [Subscription payments](docs/subscription-payments.md). The owner-only nTZS
 checkout sends a mobile-money prompt and activates a verified subscription
-without exposing provider credentials or requiring a manual payment reference.
+directly into DukaPilot treasury, without exposing provider credentials or
+requiring a manual payment reference.
 An owner with enough Merchant Balance can also activate or renew directly from
 Billing without starting another mobile-money collection.
 
@@ -429,7 +430,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 | `META_WHATSAPP_APP_SECRET` | Required for Meta webhooks | App Secret from Meta App Settings; validates signed delivery callbacks. Never commit it. |
 | `NTZS_API_KEY` | Required for nTZS payments | Live provider key stored in Railway only; never expose it to Vercel or the browser. |
 | `NTZS_WEBHOOK_SECRET` | Required for nTZS payments | Verifies signed provider callbacks using the raw request body. Railway only. |
-| `NTZS_ENABLED` | Required for online subscriptions | Enables owner-only nTZS subscription checkout. Independent from Merchant Balance. |
+| `NTZS_ENABLED` | Required for online subscriptions | Enables owner-only nTZS subscription checkout collected directly to DukaPilot treasury. Independent from Merchant Balance. |
 | `NTZS_MERCHANT_BALANCE_ENABLED` | Required to launch wallet | Global emergency switch. Keep `false` until controlled deposit/withdrawal acceptance has passed; normal production availability uses `true`. Separate from subscription checkout. |
 | `NTZS_MERCHANT_BALANCE_PILOT_SHOP_IDS` | Optional emergency rollout control | Leave empty for all merchant owners. Set comma-separated root shop IDs only to temporarily restrict new wallet operations. |
 | `NTZS_MERCHANT_BALANCE_USER_ID` | Required to launch wallet | Private nTZS pooled merchant-balance user ID; Railway only. |
@@ -470,7 +471,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 9. Run `cd frontend && npm run smoke:login` for the browser login/dashboard/sales/logout smoke flow.
 10. Confirm Railway startup logs include `[sentry] Initialized`; run `cd backend && railway run npm run sentry:test` after Sentry configuration changes.
 11. Confirm the `CI` workflow passes backend tests, PostgreSQL migration/integrity, npm audits, frontend typecheck/build, production-mode Playwright, and the Android wrapper build.
-12. Run the `nTZS Payment Reconciliation` workflow and investigate any non-zero pending/review result before declaring a payment release healthy.
+12. Run the `nTZS Payment Reconciliation` workflow and investigate any non-zero pending/review or treasury-settlement result before declaring a payment release healthy.
 13. For the label release, verify one generated barcode/SKU, one 40 x 30 mm browser print, one PDF, and one raw ZPL or TSPL file against the intended printer or approved bridge.
 14. Review `TESTING.md` for the full manual and automated test checklist.
 
@@ -489,7 +490,9 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - The frontend rewrites the old Railway API URL to the current DukaPilot API URL at runtime as a safety net for stale Vercel env values.
 - Expired shops can still view data and open **Billing**, where they can use nTZS or a sufficient Merchant Balance for automatic activation, or submit a manual payment reference for admin review. Deliberately suspended shops must contact support before paying. Operational changes resume after activation.
 - Merchant Balance remains separate from sales, expenses, and Daily Close. All merchant owners may deposit, withdraw, and apply sufficient balance to DukaPilot subscriptions through the atomic Billing flow; staff cannot access it. The feature flag remains the global emergency stop, and the optional shop allowlist can temporarily narrow access during an incident.
+- nTZS online subscription checkout omits a merchant `userId`, so new subscription collections settle directly to DukaPilot treasury. Merchant Balance deposits include the pooled provider user and can only credit a merchant after readback confirms they were not routed to treasury.
 - A Merchant Balance subscription debit is followed by an idempotent nTZS transfer of the same amount from the pooled merchant wallet to DukaPilot treasury. An interrupted transfer is retried by reconciliation without debiting the merchant or extending the subscription twice.
+- Keep the nTZS dashboard Platform Fee at `0%`. DukaPilot's disclosed withdrawal fee is calculated by DukaPilot; enabling the provider transfer fee would add a second fee layer.
 - Merchant Balance history reports the actual ledger effect. Failed or reversed operations show no balance change; pending/review withdrawals continue to show the reserved total until provider reconciliation resolves them.
 - Withdrawal confirmation is valid only for the exact server-quoted amount, normalized phone, provider fee, total deduction, recipient, and payout rail. If any value changes, the owner must request and approve a fresh quote.
 - Sale stock deduction is guarded inside the database transaction, so concurrent checkouts cannot push inventory below zero.

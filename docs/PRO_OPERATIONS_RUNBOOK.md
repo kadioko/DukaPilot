@@ -86,6 +86,10 @@ when someone reviews and acts on it.
    connection errors, CPU or memory pressure, and unusual response failures.
 4. Review Merchant Balance and subscription payment exceptions. A transaction
    in review is not a reason to create a replacement payment or manual credit.
+5. Keep the ownership split intact: online subscriptions belong in treasury;
+   merchant deposits belong in the pooled Merchant Balance wallet; a
+   balance-funded subscription must show its idempotent treasury transfer.
+   Keep the nTZS dashboard Platform Fee at `0%`.
 
 ### Weekly
 
@@ -122,6 +126,10 @@ when someone reviews and acts on it.
    the global flag or temporarily restrict the allowlist. Preserve existing
    transactions for reconciliation; do not delete, rewrite, or guess their
    provider result.
+6. Retry only the saved operation with its existing idempotency key and exact
+   original provider payload. A legacy online checkout with a saved provider
+   user must retain that user plus treasury-collection flag; do not silently
+   change its destination during recovery.
 
 ## Operational Evidence Template
 
@@ -140,3 +148,4 @@ Keep this in a private company-controlled location:
 - `docs/MERCHANT_BALANCE_WALLET.md`
 - `docs/subscription-payments.md`
 - `docs/PRODUCTION_VERIFICATION_2026-09-20.md`
+- `docs/PRODUCTION_VERIFICATION_2026-09-27.md`

@@ -17,6 +17,13 @@ Each merchant sees only their own DukaPilot ledger balance. They never see,
 control, or receive the pooled nTZS wallet identifier, address, API key, or
 another merchant's records.
 
+| Money path | Provider destination | Accounting owner |
+| --- | --- | --- |
+| nTZS online subscription | Direct DukaPilot treasury collection | DukaPilot revenue after verified activation |
+| Merchant Balance deposit | Pooled Merchant Balance provider user | Merchant liability in DukaPilot's isolated ledger |
+| Subscription paid from balance | Pooled wallet, then one idempotent treasury transfer | Changes from merchant liability to DukaPilot revenue |
+| DukaPilot withdrawal fee | Retained in the pooled wallet in this release | DukaPilot fee revenue awaiting a future controlled sweep |
+
 ## Who Can Use It
 
 - Only the business owner can view, deposit, withdraw, check, or use the balance
@@ -37,7 +44,8 @@ another merchant's records.
 3. nTZS sends the mobile-money prompt.
 4. DukaPilot credits the internal ledger only after a signed webhook or a
    provider record check confirms the exact provider ID, pooled provider user,
-   amount, `mobile_money` method, and live status.
+   amount, `mobile_money` method, live status, and that the deposit was not
+   routed to treasury.
 5. A failed, cancelled, or reversed provider collection never becomes usable
    balance. A later reversal is recorded as a new compensating ledger entry.
 

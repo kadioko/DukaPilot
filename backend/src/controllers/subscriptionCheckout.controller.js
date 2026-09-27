@@ -32,16 +32,16 @@ async function initiateProviderCheckout(record) {
   // Online subscriptions are DukaPilot revenue, so the current nTZS contract
   // collects them directly to the partner treasury by omitting userId. A payer
   // wallet is only appropriate for money the merchant should continue to own.
-  // Clear a legacy payer reference when an older checkout never reached the
-  // deposit-creation step; existing deposits retain their stored reference and
-  // remain reconcilable through reconcile().
-  if (record.providerUserId && !record.providerId) {
-    record = await prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { providerUserId: null } });
-  }
+  // Older checkouts may already have created a payer reference before a deposit
+  // response was lost. Their retry must reproduce the original request exactly
+  // because the checkout ID is also the provider idempotency key.
+  const destination = record.providerUserId
+    ? { userId: record.providerUserId, collectToTreasury: true }
+    : {};
   const deposit = await ntzs.request("/deposits", {
     method: "POST",
     headers: { "Idempotency-Key": record.id },
-    body: JSON.stringify({ amountTzs: record.amount, phoneNumber: record.phone.slice(1), paymentMethod: "mobile_money" }),
+    body: JSON.stringify({ ...destination, amountTzs: record.amount, phoneNumber: record.phone.slice(1), paymentMethod: "mobile_money" }),
   });
   if (typeof deposit.id !== "string" || !/^[a-f0-9-]{36}$/i.test(deposit.id)) throw new Error("Missing deposit identifier");
   return prisma.subscriptionCheckout.update({ where: { id: record.id }, data: { providerId: deposit.id, status: "PENDING" } });

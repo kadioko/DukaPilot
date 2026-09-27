@@ -2,9 +2,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS } from "@/lib/api";
+import { ApiError, api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
-import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp, PackagePlus, Search, Pencil, Trash2 } from "lucide-react";
+import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp, PackagePlus, Search, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
 interface Supplier {
@@ -88,21 +88,28 @@ export default function OrdersPage() {
   const [whatsappMsg, setWhatsappMsg] = useState<{ message: string; whatsappUrl: string | null } | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [productSearch, setProductSearch] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
     try {
       const data = await api.get<{ orders: Order[] }>(`/orders${params}`);
       setOrders(data.orders);
-    } catch {
+    } catch (error) {
       // AppShell redirects expired or missing sessions. Keep this page's initial
       // load from surfacing the same request as an unhandled browser rejection.
       setOrders([]);
+      if (!(error instanceof ApiError && error.status === 401)) {
+        const message = error instanceof Error ? error.message : t("common.error", lang);
+        setLoadError(message);
+        toast(message, "error");
+      }
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, toast, lang]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -110,9 +117,15 @@ export default function OrdersPage() {
     let active = true;
     api.get<{ suppliers: Supplier[] }>("/suppliers")
       .then((data) => { if (active) setSuppliers(data.suppliers); })
-      .catch(() => { if (active) setSuppliers([]); });
+      .catch((error) => {
+        if (!active) return;
+        setSuppliers([]);
+        if (!(error instanceof ApiError && error.status === 401)) {
+          toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+        }
+      });
     return () => { active = false; };
-  }, []);
+  }, [toast, lang]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,9 +133,15 @@ export default function OrdersPage() {
     if (productSearch.trim()) query.set("search", productSearch.trim());
     api.get<{ products: Product[] }>(`/products?${query.toString()}`)
       .then((data) => { if (!cancelled) setProducts(data.products); })
-      .catch(() => { if (!cancelled) setProducts([]); });
+      .catch((error) => {
+        if (cancelled) return;
+        setProducts([]);
+        if (!(error instanceof ApiError && error.status === 401)) {
+          toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+        }
+      });
     return () => { cancelled = true; };
-  }, [productSearch]);
+  }, [productSearch, toast, lang]);
 
   function addItem(productId: string) {
     setOrderItems((prev) => {
@@ -309,7 +328,15 @@ export default function OrdersPage() {
           ))}
         </div>
 
-        {loading ? (
+        {loadError ? (
+          <div role="alert" className="flex flex-col items-center gap-3 border border-red-200 bg-red-50 px-4 py-10 text-center">
+            <AlertTriangle className="h-8 w-8 text-red-600" />
+            <p className="max-w-md text-sm font-medium text-red-800">{loadError}</p>
+            <button type="button" onClick={fetchOrders} className="min-h-0 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800">
+              {lang === "sw" ? "Jaribu tena" : "Try again"}
+            </button>
+          </div>
+        ) : loading ? (
           <div className="text-center py-16 text-gray-400">{t("common.loading", lang)}</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">

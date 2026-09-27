@@ -232,8 +232,13 @@ export default function InventoryPage() {
     // locally so a signed-out visit never becomes an unhandled browser error.
     api.get<{ suppliers: Supplier[] }>("/suppliers")
       .then((d) => setSuppliers(d.suppliers))
-      .catch(() => setSuppliers([]));
-  }, []);
+      .catch((error) => {
+        setSuppliers([]);
+        if (!(error instanceof ApiError && error.status === 401)) {
+          toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+        }
+      });
+  }, [toast, lang]);
 
   function openAdd() {
     setEditProduct(null);

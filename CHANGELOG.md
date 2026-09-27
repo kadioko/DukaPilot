@@ -32,13 +32,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed the production PostgreSQL wallet constraint so atomic Merchant Balance subscription payments can be recorded as `SUBSCRIPTION` transactions, and added database-level regression coverage.
 - Prepared Merchant Balance for all merchant owners by making an empty pilot allowlist the documented normal production setting while retaining the global emergency stop and optional incident allowlist.
 - Expanded Billing's nTZS option with supported-network guidance, exact amount and plan confirmation, PIN safety, automatic-activation instructions, clearer pending/review states, and a fresh-attempt action after a terminal failure.
-- Centralized nTZS deposit status handling across subscription and merchant-wallet flows, including live `minted` success and `rejected` failure states, stable per-business payer references, and treasury-destination verification when returned.
+- Centralized nTZS deposit status handling across subscription and merchant-wallet flows, including live `minted` success and `rejected` failure states, stable Merchant Balance payer references, and destination verification before any ledger credit or subscription activation.
+- Changed new nTZS online subscription collections to omit the merchant `userId` so subscription revenue settles directly to DukaPilot treasury. Legacy uncertain checkouts preserve their original `userId` plus `collectToTreasury` payload under the same provider idempotency key.
+- Hardened merchant deposits so a provider record marked as collected to treasury cannot credit a merchant balance.
 - Fixed merchant-balance deposit reconciliation so nTZS `minted` collections credit the merchant ledger exactly once and `rejected` collections exit review/pending as failed without adding balance.
 - Bound withdrawal confirmation to the exact server quote, including amount and normalized destination phone as well as fees, recipient, rail, and total deduction.
 - Hardened deposit, withdrawal, and admin-adjustment idempotency races so a duplicate request safely resumes or returns the original exact operation; a request key cannot be reused for a different adjustment direction or reason.
 - Refined withdrawal failure handling so documented pre-movement rejections release the hold while ambiguous gateway/conflict outcomes remain in review until provider reconciliation proves the result.
 - Fixed Merchant Balance subscription settlement so every completed internal subscription debit initiates one idempotent nTZS transfer from the pooled merchant wallet to DukaPilot treasury. Interrupted transfers remain visible to reconciliation and cannot debit or extend the subscription twice.
 - Changed admin wallet reconciliation to count only subscription revenue still awaiting treasury transfer inside the expected merchant-pool balance.
+- Kept signed-out Inventory and Supplier Orders loads quiet during the expected authentication redirect while restoring visible errors for genuine network and server failures.
 - Updated the Android release to target Android 16 (API 36), meeting the Google Play update requirement effective 31 August 2026.
 - Raised the Android wrapper's Java compatibility to Java 17 and disabled device backup for the business app wrapper.
 - Corrected Trusted Web Activity navigation-bar divider metadata so Android system-bar styling is applied reliably.

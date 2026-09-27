@@ -84,6 +84,7 @@ function verifyMerchantDeposit(transaction, deposit, providerUserId) {
     || deposit.amountTzs !== transaction.amountTzs
     || deposit.paymentMethod !== "mobile_money"
     || deposit.livemode === false
+    || deposit.collectToTreasury === true
     || (deposit.userId && deposit.userId !== providerUserId)) {
     throw Object.assign(new Error("Merchant deposit verification mismatch. Contact support."), { status: 409 });
   }

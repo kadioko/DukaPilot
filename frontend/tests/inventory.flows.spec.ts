@@ -29,6 +29,29 @@ test(`signed-out ${routePath} visits redirect to sign-in without an unhandled AP
 });
 }
 
+test("supplier orders still reports a real server failure after authentication", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/auth/me")) {
+      return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" } } } });
+    }
+    if (url.includes("/orders")) {
+      return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Database unavailable" }) });
+    }
+    if (url.includes("/suppliers")) return route.fulfill({ json: { suppliers: [] } });
+    if (url.includes("/products")) return route.fulfill({ json: { products: [] } });
+    if (url.includes("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    if (url.includes("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/orders");
+
+  await expect(page.getByRole("heading", { name: "Supplier Orders" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("DukaPilot has a temporary server problem. Please try again shortly.");
+});
+
 test("inventory supports add, edit, and stock adjustment flows", async ({ page }) => {
   const suppliers = [{ id: "sup-1", name: "Jumla Traders", phone: "+255700000001" }];
   const products = [

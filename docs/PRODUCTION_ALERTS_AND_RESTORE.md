@@ -23,9 +23,12 @@ also be started manually. It calls the protected Railway endpoint with the
 Actions. Never put this secret in Vercel, documentation, workflow output, or a
 customer-facing response.
 
-The endpoint checks at most 100 known pending/review Merchant Balance records
-and 100 known pending/review subscription checkouts per run. It reads provider
-status for existing IDs and does not scan or recreate all historical payments.
+The endpoint checks at most 100 Merchant Balance records needing provider work
+and 100 known pending/review subscription checkouts per run. Wallet work
+includes pending/review deposits and withdrawals plus completed balance-funded
+subscription debits whose treasury transfer is not yet complete. It reads
+existing collection/payout IDs and resumes only the same idempotent treasury
+transfer; it does not scan or recreate all historical payments.
 A zero-checked result is healthy when no known operation is pending; it is not
 proof that a provider-side operation with no saved provider ID does not exist.
 
@@ -34,6 +37,11 @@ On 20 September 2026, manual run
 completed successfully with zero waiting wallet and subscription operations.
 If a later run reports unresolved items, review provider evidence and the saved
 idempotency key before attempting an adjustment or a new collection.
+
+On 27 September 2026, run
+[36329133985](https://github.com/kadioko/DukaPilot/actions/runs/36329133985)
+completed after the treasury-settlement release with zero waiting wallet and
+subscription operations.
 
 ## Sentry Alert Destination
 

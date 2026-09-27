@@ -46,7 +46,9 @@ the root business balance and subscription. Staff cannot view or spend it.
   browser responses, or customer messages.
 - The scheduled nTZS reconciliation workflow uses the existing private
   `MERCHANT_WALLET_RECONCILE_CRON_SECRET` and checks known wallet and
-  subscription provider IDs every 15 minutes.
+  subscription provider IDs every 15 minutes. It also resumes an unresolved
+  Merchant Balance-to-treasury subscription transfer with its original
+  idempotency key.
 - Keep the nTZS dashboard **Platform Fee** at `0%`. That setting applies to
   `POST /transfers`; it is not DukaPilot's disclosed Merchant Balance withdrawal
   fee. DukaPilot's fee remains controlled by
@@ -64,6 +66,11 @@ Initiation timeouts remain REVIEW with the lock intact. Owners and administrator
 can retry/reconcile that same checkout; the backend reuses the original checkout ID
 and provider idempotency keys and records the action in the audit log. Never create
 a new checkout merely because the first provider response was lost.
+New online checkouts use direct treasury collection without a `userId`. A
+legacy unresolved checkout that already stored a provider user is retried with
+the exact original `userId` plus `collectToTreasury: true` payload; changing an
+idempotent request's destination while retrying could create an ambiguous
+provider result.
 Provider readback verifies deposit ID, rejects an unexpected user-wallet
 destination, and checks amount, payment method, treasury mode when returned,
 and live status. Webhooks require a valid
@@ -98,7 +105,8 @@ phone in addition to recipient, rail, fees, and total deduction.
 - Webhook delivery is the first background completion path; owners can also
   check or retry the original checkout manually. The admin review queue supports
   the same safe retry. The scheduled nTZS reconciliation workflow also reads
-  back known pending/review provider IDs every 15 minutes.
+  back known pending/review provider IDs and resumes unresolved idempotent
+  treasury transfers every 15 minutes.
 - Lost initiation responses without a deposit ID need provider-assisted matching
   using the saved checkout ID/idempotency key. Never guess a match by amount alone.
 - Manual payment recording and online renewals share shop row-lock discipline.
@@ -122,6 +130,9 @@ charges. Live provider settlement still requires the controlled acceptance check
 - Apply migration to a disposable database; verify rollback on payment insertion failure.
 - Concurrent duplicate check/webhook: exactly one payment and one month added.
 - Wrong shop, wrong amount, wrong ID, test event and invalid signature never activate.
+- Confirm an online subscription provider record containing a merchant `userId`
+  is rejected, and a Merchant Balance deposit marked `collectToTreasury: true`
+  cannot credit the merchant ledger.
 - Expired owner can pay; staff and suspended owners cannot initiate payments.
 - Verify one authorized Basic and Pro collection including real provider delivery.
 - Test denied phone prompt, insufficient funds, provider timeout and late completion.
@@ -137,4 +148,4 @@ Official contract reviewed: https://www.ntzs.co.tz/developers and
 https://www.ntzs.co.tz/openapi.json (27 September 2026).
 
 The current release evidence is recorded in
-[Production Verification](./PRODUCTION_VERIFICATION_2026-09-20.md).
+[Production Verification](./PRODUCTION_VERIFICATION_2026-09-27.md).

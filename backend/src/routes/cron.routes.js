@@ -19,7 +19,8 @@ router.post("/quotation-reminders", async (req, res, next) => {
 
 // nTZS sends signed deposit events, but a delayed webhook must not leave a
 // wallet deposit, payout, or subscription checkout stuck. This bounded sweep
-// only reads back known provider IDs; it never starts a new provider request.
+// reads back known collection/payout IDs and safely resumes idempotent treasury
+// settlement for already-completed Merchant Balance subscription debits.
 router.post("/merchant-wallet-reconcile", async (req, res, next) => {
   if (!authorized(req, "MERCHANT_WALLET_RECONCILE_CRON_SECRET")) return res.status(401).json({ error: "Unauthorized cron request" });
   try {

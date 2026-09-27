@@ -28,6 +28,18 @@ test("a direct-treasury checkout rejects a deposit assigned to a user wallet", (
   assert.throws(() => ntzs.verifyDeposit(treasuryCheckout, { ...treasuryDeposit, collectToTreasury: false }), /mismatch/);
 });
 
+test("a merchant-wallet deposit rejects a provider record routed to treasury", () => {
+  const transaction = { providerId: deposit.id, amountTzs: deposit.amountTzs };
+  const providerUserId = "11111111-1111-4111-8111-111111111111";
+  const merchantDeposit = { ...deposit, userId: providerUserId };
+  delete merchantDeposit.collectToTreasury;
+  assert.equal(ntzs.verifyMerchantDeposit(transaction, merchantDeposit, providerUserId), true);
+  assert.throws(
+    () => ntzs.verifyMerchantDeposit(transaction, { ...merchantDeposit, collectToTreasury: true }, providerUserId),
+    /mismatch/
+  );
+});
+
 test("webhooks reject bad signatures, stale payloads and changed bodies", () => {
   const raw = Buffer.from('{"type":"deposit.completed"}');
   const timestamp = String(Math.floor(Date.now() / 1000));
@@ -163,7 +175,7 @@ test("review recovery reuses the original checkout for provider idempotency", as
   }
 });
 
-test("a legacy checkout without a provider deposit is switched to direct treasury collection", async () => {
+test("a legacy checkout retry preserves its original treasury-collection payload", async () => {
   const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
   const controllerPath = path.resolve(__dirname, "../src/controllers/subscriptionCheckout.controller.js");
   const record = {
@@ -187,8 +199,14 @@ test("a legacy checkout without a provider deposit is switched to direct treasur
   try {
     const { initiateProviderCheckout } = require(controllerPath);
     await initiateProviderCheckout(record);
-    assert.equal(record.providerUserId, null);
-    assert.equal("userId" in JSON.parse(calls[0].options.body), false);
+    assert.equal(record.providerUserId, "55555555-5555-4555-8555-555555555555");
+    assert.deepEqual(JSON.parse(calls[0].options.body), {
+      userId: record.providerUserId,
+      collectToTreasury: true,
+      amountTzs: 15000,
+      phoneNumber: "255700000001",
+      paymentMethod: "mobile_money",
+    });
   } finally {
     ntzs.request = original;
     delete require.cache[controllerPath];

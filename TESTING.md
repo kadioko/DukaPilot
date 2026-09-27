@@ -79,7 +79,7 @@ is considered fully deployed. Verify:
 20. Request a Merchant Balance withdrawal quote, then change the amount or phone before confirmation. Confirm the stale quote is rejected and a fresh quote is required.
 21. Retry a deposit, withdrawal, subscription payment, or admin wallet correction with the same request key. Confirm the exact original operation is returned and different details produce a conflict.
 22. Confirm failed/reversed wallet history says no balance change, pending/review withdrawals show the reserved total, and completed deposits/subscription payments show their actual ledger effect.
-23. Run the protected nTZS reconciliation workflow and confirm known pending wallet and subscription provider IDs are checked without creating a replacement payment.
+23. Run the protected nTZS reconciliation workflow and confirm known pending wallet and subscription provider IDs are checked without creating a replacement payment. A completed balance-funded subscription with an unresolved treasury leg may resume only its original idempotent transfer.
 24. Create one 40 x 30 mm label with a valid EAN-13 or UPC product; confirm the barcode scans, text is not clipped, and the print-job record shows the intended output driver.
 25. Download a ZPL or TSPL label command for an approved profile. Confirm it is delivered only to the operator's device or trusted local bridge; the web app must not claim direct Bluetooth/USB transport.
 
@@ -368,7 +368,9 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
    debit, one confirmed subscription payment, and one extension must exist.
 5. For nTZS online checkout, deny one mobile prompt and allow one controlled
    prompt. A denied/rejected collection must not activate; a verified
-   `completed` or `minted` provider record must activate exactly once.
+   `completed` or `minted` provider record must activate exactly once. Confirm
+   the request omits `userId` and the provider dashboard places the funds in
+   DukaPilot treasury rather than Merchant Balance.
 6. Confirm an expired owner can open Billing and Wallet, while a deliberately
    suspended business is directed to support.
 7. In Wallet, verify the quote displays recipient, rail, DukaPilot fee, provider
@@ -378,6 +380,12 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
    fees, and only subscription revenue still awaiting treasury settlement. A
    completed treasury transfer must disappear from the expected pool balance.
    Do not make an adjustment without provider evidence and a written reason.
+9. Keep the nTZS dashboard Platform Fee at `0%`. Confirm a Merchant Balance
+   deposit stays in the pooled provider user and that a provider record marked
+   `collectToTreasury: true` cannot credit a merchant ledger.
+10. Retry one legacy REVIEW checkout with a stored provider user and no saved
+    deposit ID. Confirm the backend reuses the same checkout/idempotency key and
+    exact original `userId` plus `collectToTreasury: true` payload.
 
 ### Offline sales queue
 
@@ -613,7 +621,7 @@ Current sprint checks:
 | `WHATSAPP_API_URL` | Optional | WhatsApp Cloud API URL |
 | `WHATSAPP_API_TOKEN` | Optional | WhatsApp Cloud API token |
 | `WHATSAPP_PHONE_ID` | Optional | WhatsApp Business phone number ID |
-| `NTZS_ENABLED` | Required for nTZS subscriptions | Owner-only online checkout switch; independent from Merchant Balance |
+| `NTZS_ENABLED` | Required for nTZS subscriptions | Owner-only online checkout switch; new collections settle directly to treasury and remain independent from Merchant Balance |
 | `NTZS_API_KEY` | Required for nTZS | Railway secret only; never put it in Vercel or browser code |
 | `NTZS_WEBHOOK_SECRET` | Required for nTZS | Verifies raw-body provider callbacks in Railway |
 | `NTZS_MERCHANT_BALANCE_ENABLED` | Required for Merchant Balance | Global emergency switch; use the optional allowlist only for controlled rollout or an incident |

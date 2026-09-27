@@ -75,3 +75,31 @@ Future balance-funded subscriptions follow this path automatically. If nTZS
 cannot confirm a transfer immediately, Billing explains that the subscription
 is active while settlement continues, Admin exposes the unresolved treasury
 leg, and the 15-minute reconciliation job retries the same provider operation.
+
+## Second-Pass Hardening
+
+The same-day review also closed three recovery and user-feedback gaps:
+
+- new nTZS online subscription checkouts still collect directly to treasury,
+  while a legacy checkout with a saved provider user now retries the exact
+  original `userId` plus `collectToTreasury: true` payload under the same
+  idempotency key;
+- a Merchant Balance deposit cannot credit a merchant ledger if provider
+  readback says the collection was routed to treasury; and
+- signed-out Inventory and Supplier Orders requests suppress only the expected
+  HTTP 401 redirect. Authenticated Supplier Orders failures now show a durable
+  inline error and retry action instead of a false empty state.
+
+Local verification after these changes:
+
+- Backend test suite: 195 tests passed.
+- Focused payment suite: 13 tests passed.
+- Prisma schema validation: passed.
+- Frontend TypeScript: passed.
+- Production Next.js build: passed for all 46 routes.
+- Production-mode mocked browser suite: 52 tests passed.
+
+The local PostgreSQL integrity command correctly refused to run without an
+explicit disposable local test database. The GitHub Actions PostgreSQL job
+creates `dukapilot_test`, applies every migration, and is the required
+database-integrity evidence for the pushed release.
