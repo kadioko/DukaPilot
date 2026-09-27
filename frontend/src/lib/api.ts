@@ -221,9 +221,10 @@ let currentSessionRequest: Promise<unknown> | null = null;
 function handleAuthenticationFailure() {
   if (typeof window !== "undefined" && !authFailureHandled) {
     authFailureHandled = true;
+    const hadActiveSession = window.localStorage.getItem(SESSION_HINT_KEY) === "1";
     window.localStorage.removeItem(SESSION_HINT_KEY);
     if (window.location.pathname !== "/") {
-      window.location.href = "/?notice=session-expired";
+      window.location.href = hadActiveSession ? "/?notice=session-expired" : "/?notice=login-required";
     }
   }
 }

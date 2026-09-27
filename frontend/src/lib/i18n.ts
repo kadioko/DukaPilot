@@ -229,6 +229,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "auth.error.invalidCredentials": { sw: "Nambari ya simu au PIN si sahihi. Jaribu tena.", en: "Invalid phone number or PIN. Please try again." },
   "auth.error.accountNotFound": { sw: "Hakuna akaunti yenye nambari hii. Jisajili ili kuanza, au angalia nambari yako.", en: "There is no account with this phone number. Register to get started, or check the number." },
   "auth.error.sessionExpired": { sw: "Muda wa sesi yako umeisha. Tafadhali ingia tena.", en: "Your session expired. Please sign in again." },
+  "auth.error.loginRequired": { sw: "Tafadhali ingia ili uendelee kutumia DukaPilot.", en: "Please sign in to continue using DukaPilot." },
   "auth.error.rateLimited": { sw: "Umejaribu mara nyingi sana. Tafadhali subiri dakika chache kabla ya kujaribu tena.", en: "Too many attempts. Please wait a few minutes before trying again." },
   "auth.error.serverOffline": { sw: "Imeshindikana kufikia seva ya DukaPilot. Hakikisha API URL ni sahihi na backend ipo hewani.", en: "Unable to reach the DukaPilot server. Confirm the API URL is correct and the backend is online." },
   "auth.error.unexpectedResponse": { sw: "Seva ya DukaPilot imerudisha majibu yasiyotegemewa.", en: "The DukaPilot server returned an unexpected response format." },

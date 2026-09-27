@@ -152,9 +152,11 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   }, [initialView, searchParams]);
 
   useEffect(() => {
-    if (initialView !== "login" || searchParams.get("notice") !== "session-expired") return;
+    if (initialView !== "login") return;
+    const notice = searchParams.get("notice");
+    if (notice !== "session-expired" && notice !== "login-required") return;
     setView("login");
-    setError(t("auth.error.sessionExpired", lang));
+    setError(t(notice === "session-expired" ? "auth.error.sessionExpired" : "auth.error.loginRequired", lang));
     router.replace("/");
   }, [initialView, lang, router, searchParams]);
 

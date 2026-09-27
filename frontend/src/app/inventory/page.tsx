@@ -228,7 +228,11 @@ export default function InventoryPage() {
         setIsFoodBusiness(["bar", "restaurant"].includes(String(data.user.shop?.category || "").toLowerCase()));
       })
       .catch(() => { setCanViewFinancials(false); setIsFoodBusiness(false); });
-    api.get<{ suppliers: Supplier[] }>("/suppliers").then((d) => setSuppliers(d.suppliers));
+    // This can race with the shared shell's auth redirect. Handle its rejection
+    // locally so a signed-out visit never becomes an unhandled browser error.
+    api.get<{ suppliers: Supplier[] }>("/suppliers")
+      .then((d) => setSuppliers(d.suppliers))
+      .catch(() => setSuppliers([]));
   }, []);
 
   function openAdd() {
