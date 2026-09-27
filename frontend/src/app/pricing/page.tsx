@@ -165,7 +165,11 @@ export default function PricingPage() {
   const [selectedLang, setSelectedLang] = useState<Lang | null>(() => {
     return null;
   });
-  const lang = selectedLang || globalLang;
+  const [hydrated, setHydrated] = useState(false);
+  // Keep the server and the first browser render identical. Safari can retain
+  // a saved language while the server always starts in Kiswahili; applying the
+  // preference after hydration avoids a mismatched public page tree.
+  const lang: Lang = hydrated ? selectedLang || globalLang : "sw";
   const formatTZS = (amount: number) => `TZS ${amount.toLocaleString("en-TZ")}`;
 
   useEffect(() => {
@@ -174,6 +178,7 @@ export default function PricingPage() {
       setSelectedLang(requestedLang);
       setAppLanguage(requestedLang);
     }
+    setHydrated(true);
   }, []);
 
   function updateLanguage(nextLang: Lang) {
@@ -284,7 +289,7 @@ export default function PricingPage() {
         </div>
 
         <div className="mb-12">
-          <ProductProofSection />
+          <ProductProofSection lang={lang} />
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-10">
@@ -395,6 +400,7 @@ export default function PricingPage() {
             </Link>
             <WhatsAppCTA
               intent="pricing"
+              lang={lang}
               label="WhatsApp: +255 743 910 580"
               className="bg-green-500 hover:bg-green-600"
             />

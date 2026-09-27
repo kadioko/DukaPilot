@@ -16,3 +16,18 @@ test("mobile pricing shows the plans before the product walkthrough", async ({ p
   expect(trialBox?.y || 0).toBeLessThan(900);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("pricing hydrates safely when a phone has a saved English preference", async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  await page.addInitScript(() => window.localStorage.setItem("dukapilot_language", "en"));
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/pricing");
+
+  await expect(page.getByRole("heading", { name: /Simple Pricing/ })).toBeVisible();
+  expect(browserErrors.filter((message) => /hydration|server-rendered html/i.test(message))).toEqual([]);
+});

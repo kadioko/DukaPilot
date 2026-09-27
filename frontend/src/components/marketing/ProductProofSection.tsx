@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Bot, ClipboardList, CreditCard, FileText, MessageCircle, PackageCheck, ReceiptText, QrCode } from "lucide-react";
-import { useLang } from "@/lib/i18n";
+import { useLang, type Lang } from "@/lib/i18n";
 
 const proofCards = [
   {
@@ -49,8 +49,9 @@ const proofCards = [
   },
 ];
 
-export default function ProductProofSection({ compact = false }: { compact?: boolean }) {
-  const lang = useLang();
+export default function ProductProofSection({ compact = false, lang: langProp }: { compact?: boolean; lang?: Lang }) {
+  const inheritedLang = useLang();
+  const lang = langProp || inheritedLang;
 
   return (
     <section className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">

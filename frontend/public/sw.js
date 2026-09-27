@@ -1,6 +1,6 @@
 // DukaPilot service worker - offline sales support and fresh live navigation.
 
-const CACHE_NAME = "dukapilot-v5-20260806";
+const CACHE_NAME = "dukapilot-v6-20260927";
 const PRECACHE_URLS = ["/manifest.json", "/offline.html"];
 
 self.addEventListener("install", (event) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { MessageCircle } from "lucide-react";
-import { useLang } from "@/lib/i18n";
+import { useLang, type Lang } from "@/lib/i18n";
 import { getAttribution, trackMarketingEvent } from "@/lib/marketing";
 
 type Intent = "setup" | "pricing" | "demo" | "help" | "contact" | "about";
@@ -38,13 +38,16 @@ export default function WhatsAppCTA({
   label,
   variant = "primary",
   className = "",
+  lang: langProp,
 }: {
   intent?: Intent;
   label?: string;
   variant?: "primary" | "secondary" | "light";
   className?: string;
+  lang?: Lang;
 }) {
-  const lang = useLang();
+  const inheritedLang = useLang();
+  const lang = langProp || inheritedLang;
   const href = `https://wa.me/255743910580?text=${encodeURIComponent(messages[intent][lang])}`;
   const styles = {
     primary: "bg-brand-700 text-white hover:bg-brand-800",
