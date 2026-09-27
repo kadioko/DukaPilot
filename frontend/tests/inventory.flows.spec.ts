@@ -10,7 +10,8 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("signed-out inventory visits redirect to sign-in without an unhandled API error", async ({ page }) => {
+for (const routePath of ["/inventory", "/orders"]) {
+test(`signed-out ${routePath} visits redirect to sign-in without an unhandled API error`, async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
@@ -19,13 +20,14 @@ test("signed-out inventory visits redirect to sign-in without an unhandled API e
     await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "Unauthorized" }) });
   });
 
-  await page.goto("/inventory");
+  await page.goto(routePath);
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText("Please sign in to continue using DukaPilot.")).toBeVisible();
   await page.waitForTimeout(250);
   expect(pageErrors).toEqual([]);
 });
+}
 
 test("inventory supports add, edit, and stock adjustment flows", async ({ page }) => {
   const suppliers = [{ id: "sup-1", name: "Jumla Traders", phone: "+255700000001" }];

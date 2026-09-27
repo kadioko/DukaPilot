@@ -92,15 +92,26 @@ export default function OrdersPage() {
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
-    const data = await api.get<{ orders: Order[] }>(`/orders${params}`);
-    setOrders(data.orders);
-    setLoading(false);
+    try {
+      const data = await api.get<{ orders: Order[] }>(`/orders${params}`);
+      setOrders(data.orders);
+    } catch {
+      // AppShell redirects expired or missing sessions. Keep this page's initial
+      // load from surfacing the same request as an unhandled browser rejection.
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   }, [statusFilter]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
   useEffect(() => {
-    api.get<{ suppliers: Supplier[] }>("/suppliers").then((data) => setSuppliers(data.suppliers));
+    let active = true;
+    api.get<{ suppliers: Supplier[] }>("/suppliers")
+      .then((data) => { if (active) setSuppliers(data.suppliers); })
+      .catch(() => { if (active) setSuppliers([]); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
