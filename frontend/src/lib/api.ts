@@ -347,22 +347,24 @@ async function request<T>(
   return payload as T;
 }
 
-async function backgroundGet<T>(path: string, lang?: Lang): Promise<T> {
+async function backgroundRequest<T>(path: string, options: RequestInit = {}, lang?: Lang): Promise<T> {
   try {
-    return await request<T>(path, {}, lang, false, "background");
+    return await request<T>(path, options, lang, false, "background");
   } catch (error) {
     // A browser can briefly lose the connection during navigation or wake-up.
-    // One quick retry keeps nonessential shell data fresh without affecting
-    // primary work such as sales, payments, or saving quotations.
+    // One quick retry is safe for shell reads and the idempotent logout route,
+    // without affecting primary work such as sales, payments, or quotations.
     if (!(error instanceof ApiError) || error.failureType !== "NETWORK") throw error;
     await new Promise((resolve) => setTimeout(resolve, 350));
-    return request<T>(path, {}, lang, false, "background");
+    return request<T>(path, options, lang, false, "background");
   }
 }
 
 export const api = {
   get: <T>(path: string, lang?: Lang) => request<T>(path, {}, lang),
-  getBackground: <T>(path: string, lang?: Lang) => backgroundGet<T>(path, lang),
+  getBackground: <T>(path: string, lang?: Lang) => backgroundRequest<T>(path, {}, lang),
+  postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
+    backgroundRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
   post: <T>(path: string, body: unknown, lang?: Lang) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
   patch: <T>(path: string, body: unknown, lang?: Lang) =>

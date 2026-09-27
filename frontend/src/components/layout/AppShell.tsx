@@ -190,7 +190,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     try {
-      await api.post("/auth/logout", {});
+      await api.postBackground("/auth/logout", {});
     } catch {}
     clearToken();
     router.push("/");

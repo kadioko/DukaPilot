@@ -160,7 +160,7 @@ export default function SupplierPortal() {
   }
 
   async function logout() {
-    try { await api.post("/auth/logout", {}); } catch {}
+    try { await api.postBackground("/auth/logout", {}); } catch {}
     clearToken();
     router.push("/");
   }
