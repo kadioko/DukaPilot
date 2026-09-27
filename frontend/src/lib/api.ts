@@ -25,6 +25,7 @@ export interface ApiErrorDetail {
 }
 
 export type ApiFailureType = "NETWORK" | "TIMEOUT" | "HTTP" | "INVALID_RESPONSE";
+type ApiFailureReporting = "default" | "background";
 
 export interface ApiRequestContext {
   endpoint: string;
@@ -110,7 +111,7 @@ function requestContext(baseUrl: string, path: string, method: string): ApiReque
 
 const lastApiDiagnosticAt = new Map<string, number>();
 
-function reportApiFailure(error: ApiError, context: ApiRequestContext) {
+function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting: ApiFailureReporting = "default") {
   const status = error.status;
   const failureType = error.failureType || "HTTP";
   const data = {
@@ -128,6 +129,11 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext) {
   // but leave a safe breadcrumb for any later error on the same session.
   Sentry.addBreadcrumb({ category: "api", level: status && status < 500 ? "info" : "error", message: `API ${context.method} ${context.endpoint} failed`, data });
   if (failureType === "HTTP" && status && status < 500) return;
+
+  // Header counts and similar shell refreshes must never turn a short-lived
+  // connection interruption into a product error. Keep the breadcrumb so a
+  // later, relevant issue still has the network context.
+  if (reporting === "background" && (failureType === "NETWORK" || failureType === "TIMEOUT")) return;
 
   const key = `${failureType}:${status || "none"}:${context.method}:${context.endpoint}:${context.apiHostname}`;
   const now = Date.now();
@@ -256,7 +262,8 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
   lang: Lang = "en",
-  _isRetry = false
+  _isRetry = false,
+  reporting: ApiFailureReporting = "default",
 ): Promise<T> {
   const baseUrl = getBaseUrl();
   const context = requestContext(baseUrl, path, options.method || "GET");
@@ -288,7 +295,7 @@ async function request<T>(
       context,
       timedOut ? "TIMEOUT" : "NETWORK",
     );
-    reportApiFailure(error, context);
+    reportApiFailure(error, context, reporting);
     throw error;
   } finally {
     clearTimeout(timeoutId);
@@ -301,18 +308,18 @@ async function request<T>(
   if (res.status === 401 && canRefreshSession && !_isRetry) {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
-      return request<T>(path, options, lang, true);
+      return request<T>(path, options, lang, true, reporting);
     }
     handleAuthenticationFailure();
     const error = new ApiError(t("auth.error.sessionExpired", lang), undefined, 401, context, "HTTP");
-    reportApiFailure(error, context);
+    reportApiFailure(error, context, reporting);
     throw error;
   }
 
   if (res.status === 401 && canRefreshSession) {
     handleAuthenticationFailure();
     const error = new ApiError(t("auth.error.sessionExpired", lang), undefined, 401, context, "HTTP");
-    reportApiFailure(error, context);
+    reportApiFailure(error, context, reporting);
     throw error;
   }
 
@@ -327,21 +334,35 @@ async function request<T>(
         : payload?.error || `Request failed with status ${res.status}`;
 
     const error = new ApiError(getHttpErrorMessage(res.status, rawMessage, lang), typeof payload === "string" ? undefined : payload, res.status, context, "HTTP");
-    reportApiFailure(error, context);
+    reportApiFailure(error, context, reporting);
     throw error;
   }
 
   if (!isJson) {
     const error = new ApiError(t("auth.error.unexpectedResponse", lang), undefined, res.status, context, "INVALID_RESPONSE");
-    reportApiFailure(error, context);
+    reportApiFailure(error, context, reporting);
     throw error;
   }
 
   return payload as T;
 }
 
+async function backgroundGet<T>(path: string, lang?: Lang): Promise<T> {
+  try {
+    return await request<T>(path, {}, lang, false, "background");
+  } catch (error) {
+    // A browser can briefly lose the connection during navigation or wake-up.
+    // One quick retry keeps nonessential shell data fresh without affecting
+    // primary work such as sales, payments, or saving quotations.
+    if (!(error instanceof ApiError) || error.failureType !== "NETWORK") throw error;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    return request<T>(path, {}, lang, false, "background");
+  }
+}
+
 export const api = {
   get: <T>(path: string, lang?: Lang) => request<T>(path, {}, lang),
+  getBackground: <T>(path: string, lang?: Lang) => backgroundGet<T>(path, lang),
   post: <T>(path: string, body: unknown, lang?: Lang) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
   patch: <T>(path: string, body: unknown, lang?: Lang) =>

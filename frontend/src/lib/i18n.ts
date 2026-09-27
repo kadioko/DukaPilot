@@ -320,7 +320,8 @@ const translations: Record<string, Record<Lang, string>> = {
   "customerOrders.all": { sw: "Yote", en: "All" },
 };
 
-let currentLang: Lang = "sw";
+const DEFAULT_LANG: Lang = "sw";
+let currentLang: Lang = DEFAULT_LANG;
 
 export function setLanguage(lang: Lang) {
   currentLang = lang;
@@ -332,19 +333,24 @@ export function setLanguage(lang: Lang) {
 }
 
 export function getLanguage(): Lang {
-  if (typeof window !== "undefined") {
-    const stored = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (stored === "sw" || stored === "en") {
-      currentLang = stored;
-      window.localStorage.setItem(STORAGE_KEY, stored);
-      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-    }
-  }
   return currentLang;
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (stored === "sw" || stored === "en") {
+      window.localStorage.setItem(STORAGE_KEY, stored);
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      if (stored !== currentLang) {
+        currentLang = stored;
+        // Restore the browser preference after hydration. Reading storage in
+        // getSnapshot would make server and client HTML disagree.
+        queueMicrotask(listener);
+      }
+    }
+  }
   return () => listeners.delete(listener);
 }
 
@@ -354,7 +360,7 @@ export function t(key: string, lang?: Lang): string {
 }
 
 export function useLang(): Lang {
-  return useSyncExternalStore(subscribe, getLanguage, () => currentLang);
+  return useSyncExternalStore(subscribe, getLanguage, () => DEFAULT_LANG);
 }
 
 export { currentLang };

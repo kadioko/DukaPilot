@@ -30,6 +30,28 @@ test("quotation workspace is usable on a mobile viewport", async ({ page }) => {
   await expect(page.getByText("Gharama za ndani na faida ya makadirio")).toBeVisible();
 });
 
+test("a brief shop-alert connection failure does not break quotations", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockShell(page);
+  let notificationRequests = 0;
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error));
+  await page.route("**/*api/notifications", async (route) => {
+    notificationRequests += 1;
+    if (notificationRequests === 1) {
+      await route.abort("connectionreset");
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ unreadCount: 0, items: [] }) });
+  });
+
+  await page.goto("/quotations");
+
+  await expect(page.getByRole("heading", { name: "Nukuu za Bei" })).toBeVisible();
+  await expect.poll(() => notificationRequests).toBe(2);
+  expect(pageErrors).toEqual([]);
+});
+
 test("public quotation page receives only customer-facing information", async ({ page }) => {
   await page.route("**/*api/public/quotations/safe-token", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ quotation: { quotationNumber: "QT-0001", revisionNumber: 1, status: "SENT", issueDate: "2026-08-27T09:00:00.000Z", expiryDate: "2026-09-10T09:00:00.000Z", projectTitle: "Kupamba ofisi", currency: "TZS", business: { name: "Duka la Amina" }, customer: { name: "Mteja" }, subtotalAmount: 500000, discountAmount: 0, taxAmount: 0, totalAmount: 500000, sections: [], items: [{ name: "Kazi ya mapambo", quantity: "1", unit: "kazi", unitPrice: 500000, lineTotal: 500000, position: 0 }] } }) }));
   await page.goto("/quote/safe-token");

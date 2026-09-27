@@ -176,13 +176,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (user?.role === "MERCHANT") {
-      api.get<{ products: unknown[]; total?: number }>("/products/low-stock?limit=1")
+      api.getBackground<{ products: unknown[]; total?: number }>("/products/low-stock?limit=1")
         .then((d) => setLowStockCount(d.total ?? d.products.length))
         .catch(() => {});
-      api.get<{ daysLeft: number | null; status?: string; isActive?: boolean }>("/subscription/status")
+      api.getBackground<{ daysLeft: number | null; status?: string; isActive?: boolean }>("/subscription/status")
         .then((d) => setSubscription({ daysLeft: d.daysLeft ?? null, status: d.status, isActive: d.isActive }))
         .catch(() => {});
-      api.get<{ unreadCount: number }>("/notifications")
+      api.getBackground<{ unreadCount: number }>("/notifications")
         .then((d) => setNotificationCount(d.unreadCount || 0))
         .catch(() => {});
     }
