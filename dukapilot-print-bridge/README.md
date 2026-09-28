@@ -121,6 +121,11 @@ The bridge has `GET /health`, `GET /printers`, `POST /test`, and `POST /print`.
 
 For `ESCPOS`, `data` must be hexadecimal bytes.
 
+The bridge validates command language, printer ID, token, and payload size
+before opening its one fixed TCP destination. `BRIDGE_MAX_PAYLOAD_BYTES` is
+the decoded command limit; hexadecimal ESC/POS request bodies may be about
+twice that size before decoding.
+
 ## Load Labels Correctly
 
 1. Put the media roll in the printer with the printable side facing the print

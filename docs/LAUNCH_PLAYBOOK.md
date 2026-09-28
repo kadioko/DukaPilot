@@ -273,7 +273,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Supplier orders are received through Receive Stock, which records supplier, costs, stock movements, and marks the order delivered in one transaction.
 - A cashier can close only their own Daily Close session; owners see every team drawer, and a manager with **Manage team shifts** can review/close a staff drawer after counting cash without receiving Reports or profit.
 - Receipt file sharing and browser printing work after a completed sale; test a paired Android Bluetooth printer where a merchant uses one.
-- Product labels can be generated from Inventory/Barcode management: test one 40 x 30 mm browser/PDF label and scan it before approving any printer model. Raw ZPL/TSPL/ESC-POS files require a separately tested local bridge and must not be sold as cloud-direct printing.
+- Product labels can be generated from Inventory/Barcode management: test one 40 x 30 mm browser/PDF label and scan it before approving any printer model. Each physical label uses one barcode field. Raw ZPL/TSPL/EPL/ESC-POS files require a separately tested local bridge and must not be sold as cloud-direct printing.
 - Mobile Orders has no horizontal page overflow; Sales shows the sticky cart summary.
 - Public catalog contains only published, non-demo shops and supports pagination.
 - Android `1.0.4` / version code `5` targets API 36 and is signed with the existing upload key before Play Console upload.

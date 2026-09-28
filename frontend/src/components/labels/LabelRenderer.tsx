@@ -8,6 +8,11 @@ import type { BarcodeType, LabelProduct, LabelTemplate } from "./types";
 function barcodeFormat(type?: BarcodeType | null, value?: string | null) {
   if (type === "EAN13" && /^\d{13}$/.test(value || "")) return "EAN13";
   if (type === "UPC" && /^\d{12}$/.test(value || "")) return "UPC";
+  // A product can keep both an internal DukaPilot code and a manufacturer
+  // code. Infer retail symbology from the selected barcode itself so a
+  // 13-digit manufacturer value is not accidentally rendered as Code 128.
+  if (/^\d{13}$/.test(value || "")) return "EAN13";
+  if (/^\d{12}$/.test(value || "")) return "UPC";
   return "CODE128";
 }
 

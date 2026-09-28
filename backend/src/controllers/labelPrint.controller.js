@@ -8,16 +8,36 @@ function jsonObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-function publicTemplate(template) {
-  return template ? { ...template, fields: Array.isArray(template.fields) ? template.fields : [] } : null;
+function canViewFinancials(req) {
+  return req.user.role === "ADMIN" || !req.user.staffId || Boolean(req.user.permissions?.canViewReports);
 }
 
-function publicProfile(profile) {
+function publicTemplate(template, includeWholesale = true) {
+  if (!template) return null;
+  const fields = Array.isArray(template.fields) ? template.fields : [];
+  return { ...template, fields: includeWholesale ? fields : fields.filter((field) => field !== "wholesalePrice") };
+}
+
+function publicProfile(profile, includeWholesale = true) {
   if (!profile) return null;
   // Tokens are ephemeral browser input. This response is deliberately safe to
   // display to any permitted shop staff member.
-  const scrub = (value) => Object.fromEntries(Object.entries(jsonObject(value)).filter(([key]) => !/(token|secret|password|authorization|api[_-]?key)/i.test(key)));
-  return { ...profile, options: scrub(profile.options), config: scrub(profile.config) };
+  const config = jsonObject(profile.config);
+  const bridgeUrl = typeof config.bridgeUrl === "string" ? config.bridgeUrl : null;
+  return {
+    ...profile,
+    // Legacy option blobs are never needed by the browser and may have been
+    // created before profile secret rules existed.
+    options: {},
+    config: bridgeUrl ? { bridgeUrl } : {},
+    template: publicTemplate(profile.template, includeWholesale),
+  };
+}
+
+function assertFinancialTemplateAccess(req, template) {
+  if (visibleFields(template).includes("wholesalePrice") && !canViewFinancials(req)) {
+    throw Object.assign(new Error("You do not have permission to print wholesale prices"), { status: 403 });
+  }
 }
 
 async function findTemplate(shopId, id) {
@@ -38,17 +58,27 @@ async function assertProfileTemplate(shopId, templateId) {
 
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const includeWholesale = canViewFinancials(req);
   const [templates, profiles, jobs] = await Promise.all([
     prisma.labelTemplate.findMany({ where: { shopId }, orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }] }),
     prisma.printerProfile.findMany({ where: { shopId }, include: { template: true }, orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }] }),
-    prisma.labelPrintJob.findMany({ where: { shopId }, include: { template: { select: { id: true, name: true } }, printerProfile: { select: { id: true, name: true, driver: true } } }, orderBy: { createdAt: "desc" }, take: 30 }),
+    prisma.labelPrintJob.findMany({
+      where: { shopId },
+      select: {
+        id: true, outputDriver: true, status: true, error: true, completedAt: true, createdAt: true,
+        template: { select: { id: true, name: true } },
+        printerProfile: { select: { id: true, name: true, driver: true } },
+      },
+      orderBy: { createdAt: "desc" }, take: 30,
+    }),
   ]);
-  res.json({ templates: templates.map(publicTemplate), profiles: profiles.map(publicProfile), jobs });
+  res.json({ templates: templates.map((template) => publicTemplate(template, includeWholesale)), profiles: profiles.map((profile) => publicProfile(profile, includeWholesale)), jobs });
 });
 
 const createTemplate = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const template = normalizeLabelTemplate(req.body);
+  assertFinancialTemplateAccess(req, template);
   const existingCount = await prisma.labelTemplate.count({ where: { shopId } });
   const isDefault = Boolean(req.body.isDefault) || existingCount === 0;
   const created = await prisma.$transaction(async (tx) => {
@@ -56,7 +86,7 @@ const createTemplate = asyncHandler(async (req, res) => {
     return tx.labelTemplate.create({ data: { shopId, ...template, isDefault } });
   });
   req.audit = { action: "labels.template_created", resourceType: "label_template", resourceId: created.id, metadata: { shopId } };
-  res.status(201).json({ template: publicTemplate(created) });
+  res.status(201).json({ template: publicTemplate(created, canViewFinancials(req)) });
 });
 
 const updateTemplate = asyncHandler(async (req, res) => {
@@ -64,13 +94,14 @@ const updateTemplate = asyncHandler(async (req, res) => {
   const existing = await findTemplate(shopId, req.params.id);
   if (!existing) return res.status(404).json({ error: "Label template not found" });
   const template = normalizeLabelTemplate({ ...existing, ...req.body });
+  assertFinancialTemplateAccess(req, template);
   const isDefault = req.body.isDefault === undefined ? existing.isDefault : Boolean(req.body.isDefault);
   const updated = await prisma.$transaction(async (tx) => {
     if (isDefault) await tx.labelTemplate.updateMany({ where: { shopId, id: { not: existing.id } }, data: { isDefault: false } });
     return tx.labelTemplate.update({ where: { id: existing.id }, data: { ...template, isDefault } });
   });
   req.audit = { action: "labels.template_updated", resourceType: "label_template", resourceId: updated.id, metadata: { shopId } };
-  res.json({ template: publicTemplate(updated) });
+  res.json({ template: publicTemplate(updated, canViewFinancials(req)) });
 });
 
 const removeTemplate = asyncHandler(async (req, res) => {
@@ -94,7 +125,7 @@ const createProfile = asyncHandler(async (req, res) => {
     return tx.printerProfile.create({ data: { shopId, ...profile, createdById: req.user.userId, templateId: req.body.templateId || null, isDefault, isActive: req.body.isActive !== false } });
   });
   req.audit = { action: "labels.printer_profile_created", resourceType: "printer_profile", resourceId: created.id, metadata: { shopId, driver: created.driver } };
-  res.status(201).json({ profile: publicProfile(created) });
+  res.status(201).json({ profile: publicProfile(created, canViewFinancials(req)) });
 });
 
 const updateProfile = asyncHandler(async (req, res) => {
@@ -110,7 +141,7 @@ const updateProfile = asyncHandler(async (req, res) => {
     return tx.printerProfile.update({ where: { id: existing.id }, data: { ...profile, templateId, isDefault, isActive: req.body.isActive === undefined ? existing.isActive : Boolean(req.body.isActive) } });
   });
   req.audit = { action: "labels.printer_profile_updated", resourceType: "printer_profile", resourceId: updated.id, metadata: { shopId, driver: updated.driver } };
-  res.json({ profile: publicProfile(updated) });
+  res.json({ profile: publicProfile(updated, canViewFinancials(req)) });
 });
 
 const removeProfile = asyncHandler(async (req, res) => {
@@ -170,10 +201,21 @@ const prepareJob = asyncHandler(async (req, res) => {
     ? await findProfile(shopId, req.body.printerProfileId)
     : requestedOutputDriver ? null : await prisma.printerProfile.findFirst({ where: { shopId, isDefault: true, isActive: true } });
   if (req.body.printerProfileId && !savedProfile) return res.status(404).json({ error: "Printer profile not found" });
-  const profile = savedProfile ? normalizePrinterProfile(savedProfile) : normalizePrinterProfile({ driver: requestedOutputDriver || "BROWSER", widthMm: template.widthMm, heightMm: template.heightMm });
+  if (savedProfile && !savedProfile.isActive) return res.status(409).json({ error: "This printer profile is inactive" });
+  const profile = normalizePrinterProfile({
+    ...(savedProfile || { driver: requestedOutputDriver || "BROWSER", widthMm: template.widthMm, heightMm: template.heightMm }),
+    ...jsonObject(req.body.profile),
+    driver: requestedOutputDriver || jsonObject(req.body.profile).driver || savedProfile?.driver || "BROWSER",
+    widthMm: template.widthMm,
+    heightMm: template.heightMm,
+  });
   const outputDriver = profile.driver;
   if (!VALID_DRIVERS.has(outputDriver)) return res.status(400).json({ error: "Unsupported printer driver" });
   const requestedBarcodeFields = visibleFields(template).filter((field) => ["barcode", "manufacturerBarcode", "internalBarcode"].includes(field));
+  if (requestedBarcodeFields.length > 1) {
+    return res.status(400).json({ error: "Choose one barcode field per label. Use separate labels for manufacturer and DukaPilot codes." });
+  }
+  assertFinancialTemplateAccess(req, template);
   if (requestedBarcodeFields.some((field) => expanded.some((product) => {
     if (field === "manufacturerBarcode") return !product.manufacturerBarcode;
     if (field === "internalBarcode") return !product.internalBarcode;
@@ -205,6 +247,7 @@ const getOutput = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const job = await prisma.labelPrintJob.findFirst({ where: { id: req.params.id, shopId } });
   if (!job) return res.status(404).json({ error: "Label print job not found" });
+  assertFinancialTemplateAccess(req, jsonObject(job.templateSnapshot));
   const output = renderPrinterOutput(job.outputDriver, Array.isArray(job.items) ? job.items : [], jsonObject(job.templateSnapshot), jsonObject(job.profileSnapshot));
   if (!output) return res.status(409).json({ error: "This browser or PDF job has no raw printer command" });
   res.json({ output: { ...output, filename: `dukapilot-labels-${job.id}.${output.extension}` } });

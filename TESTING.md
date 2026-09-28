@@ -52,8 +52,9 @@ is considered fully deployed. Verify:
 - A cash sale, cash debt collection, and cash expense made during an open cash session are attached to that session.
 - A supplier delivery is received through `Receive Stock`; product cost, transport, other cost, and stock-movement history are saved together before the order becomes `DELIVERED`.
 - Generated DukaPilot barcodes and SKUs remain unique within their shop location; manual duplicate barcodes or SKUs are rejected without changing stock.
-- Label templates, printer profiles, and print-job history are readable only by the same active shop with Stock permission.
-- Browser/PDF label jobs retain product snapshots; downloaded ZPL, TSPL, EPL, and ESC/POS files are never sent from Railway to merchant hardware. The loopback bridge may send validated raw commands only from the merchant computer.
+- Label templates, active printer profiles, and print-job history are readable only by the same active shop with Stock permission. Inactive profiles cannot prepare a job.
+- Browser/PDF label jobs print from the immutable product/template snapshot; downloaded ZPL, TSPL, EPL, and ESC/POS files are never sent from Railway to merchant hardware. The loopback bridge may send validated raw commands only from the merchant computer.
+- A custom label has at most one barcode field. A stock-only staff session cannot view, create, print, or download a wholesale-price label.
 
 ## High-Risk Regression Checks
 
@@ -82,6 +83,9 @@ is considered fully deployed. Verify:
 23. Run the protected nTZS reconciliation workflow and confirm known pending wallet and subscription provider IDs are checked without creating a replacement payment. A completed balance-funded subscription with an unresolved treasury leg may resume only its original idempotent transfer.
 24. Create one 40 x 30 mm label with a valid EAN-13 or UPC product; confirm the manufacturer and optional DukaPilot code scan, text is not clipped, and the print-job record shows the intended output driver.
 25. Download or bridge-print a ZPL, TSPL, EPL, or ESC/POS label command for an approved profile. Confirm it reaches only the operator device or loopback bridge; the web app must not claim direct Bluetooth/USB transport.
+26. Select a manufacturer barcode on a product that also has a DukaPilot code. Confirm browser/PDF render the numeric EAN-13 or UPC symbology for the manufacturer value, not Code 128.
+27. Try a custom template with two barcode fields. Confirm the UI keeps one selected and the API rejects an older invalid template without creating a print job.
+28. Mark a saved raw-printer profile inactive. Confirm it disappears from the label profile picker and `POST /labels/print-jobs` rejects it by ID.
 
 ## Live URLs
 

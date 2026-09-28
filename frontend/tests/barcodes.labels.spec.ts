@@ -32,4 +32,7 @@ test("barcode management configures a 40 by 30 mm product label", async ({ page 
   await page.getByLabel("Connection").selectOption("NETWORK");
   await expect(page.getByLabel("Connection")).toHaveValue("NETWORK");
   await expect(page.getByLabel("Bridge URL")).toHaveValue("http://127.0.0.1:9123");
+  await expect(page.getByRole("button", { name: "Download file" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Test bridge" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Print directly" })).toBeEnabled();
 });

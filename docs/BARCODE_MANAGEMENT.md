@@ -31,9 +31,19 @@ Open **Barcode management > Labels** or choose **Print label** from a product in
 
 The label composer supports multiple products, up to 100 copies per product, browser printing, and PDF download. It opens a dedicated print document with its own page size; it does not rely on the main app's print CSS.
 
+Choose one barcode field for each physical label. This keeps a 40 x 30 mm
+label scannable; print separate batches when both a manufacturer code and a
+DukaPilot internal code are required. Saved legacy templates that select more
+than one barcode are rejected with a clear message instead of printing
+overlapping codes.
+
+Stock staff can prepare ordinary labels. Wholesale-price templates and their
+raw output are owner/report-permission only. Browser/PDF output uses the
+immutable product/template snapshot recorded when the job is prepared.
+
 ## Printer Profiles
 
-Saved profiles keep a name, model, size, DPI, template reference, connection type, and output driver. They do not store bridge tokens, printer passwords, or LAN addresses. A selected local bridge can send to one configured network printer only after the merchant installs it locally; see [DukaPilot Print Bridge](../dukapilot-print-bridge/README.md).
+Saved profiles keep a name, model, size, DPI, template reference, connection type, and output driver. They do not store bridge tokens, printer passwords, or LAN addresses. Inactive profiles cannot prepare a new job. A selected local bridge can send to one configured network printer only after the merchant installs it locally; see [DukaPilot Print Bridge](../dukapilot-print-bridge/README.md).
 
 | Driver | Use |
 | --- | --- |

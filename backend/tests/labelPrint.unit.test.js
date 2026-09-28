@@ -31,10 +31,29 @@ test("printer renderers generate independent ZPL, TSPL, EPL, and ESC/POS output"
   assert.doesNotMatch(safeTspl.content, /\^TEST/);
 });
 
+test("retail raw renderers pass verified data digits and preserve Code 128 for internal values", () => {
+  const template = normalizeLabelTemplate({ layout: "CUSTOM", fields: ["name", "manufacturerBarcode"] });
+  const profile = normalizePrinterProfile({ name: "Retail", driver: "ZPL", dpi: 203 });
+  const zpl = renderPrinterOutput("ZPL", [product], template, profile);
+  assert.match(zpl.content, /\^BEN,/);
+  assert.match(zpl.content, /\^FD400638133393\^FS/);
+  assert.doesNotMatch(zpl.content, /\^FD4006381333931\^FS/);
+
+  const epl = renderPrinterOutput("EPL", [product], template, profile);
+  assert.match(epl.content, /,E30,2,2,/);
+  assert.match(epl.content, /"400638133393"/);
+
+  const internal = renderPrinterOutput("TSPL", [product], normalizeLabelTemplate({ layout: "BARCODE_ONLY" }), profile);
+  assert.match(internal.content, /"128"/);
+  assert.match(internal.content, /"DP00000001"/);
+});
+
 test("printer profiles preserve only safe loopback bridge configuration", () => {
   const profile = normalizePrinterProfile({ name: "Counter", driver: "TSPL", connection: "NETWORK", model: "XP-D281B", config: { bridgeUrl: "http://127.0.0.1:9123", token: "never-store-me" } });
   assert.equal(profile.connection, "NETWORK");
   assert.equal(profile.config.bridgeUrl, "http://127.0.0.1:9123");
   assert.equal("token" in profile.config, false);
   assert.equal(normalizePrinterProfile({ name: "Bad", driver: "TSPL", config: { bridgeUrl: "https://printer.example" } }).config, null);
+  assert.equal(normalizePrinterProfile({ name: "Raw file", driver: "TSPL", connection: "BROWSER" }).connection, "DOWNLOAD");
+  assert.equal(normalizePrinterProfile({ name: "PDF", driver: "PDF", connection: "NETWORK" }).connection, "BROWSER");
 });

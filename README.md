@@ -82,7 +82,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
 | **Daily Close / Z-report** | Cashiers open and close their own cash session; owners see every active drawer, and trusted managers can be granted team-shift review/close without access to reports or profit |
 | **Receipt files and printing** | Share a receipt as WhatsApp text, PNG, or PDF, or print via the device print dialog to a paired Bluetooth thermal printer |
-| **Barcodes, SKUs, and product labels** | Keep manufacturer and DukaPilot internal codes, scan either through camera or keyboard-wedge scanners, and print browser/PDF or ZPL, TSPL, EPL, and ESC/POS labels through downloads or an approved loopback LAN print bridge |
+| **Barcodes, SKUs, and product labels** | Keep manufacturer and DukaPilot internal codes, scan either through camera or keyboard-wedge scanners, and print one scannable code per browser/PDF or ZPL, TSPL, EPL, and ESC/POS label through downloads or an approved loopback LAN print bridge |
 | **One-tap reorder** | Repeat any previous order with a single button |
 | **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
@@ -457,7 +457,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Current production migration sequence:** through `20260928001000_print_bridge_and_label_profiles`. This adds manufacturer/internal product codes, richer templates, saved printer connection metadata, and audited local-bridge label output. See [Barcode and Label Management](./docs/BARCODE_MANAGEMENT.md) before enabling the label UI for merchants.
+- **Current production migration sequence:** through `20260928001000_print_bridge_and_label_profiles`. This adds manufacturer/internal product codes, richer templates, saved printer connection metadata, owner-protected wholesale label data, and audited local-bridge label output. See [Barcode and Label Management](./docs/BARCODE_MANAGEMENT.md) before enabling the label UI for merchants.
 
 ### Deployment Checklist
 

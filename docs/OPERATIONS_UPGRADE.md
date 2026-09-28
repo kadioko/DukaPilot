@@ -50,6 +50,12 @@ Receipt printing and product-label printing are separate workflows. Use
 labels. Browser/PDF output works immediately through the system print dialog;
 labels default to 40 x 30 mm and can be saved as reusable templates.
 
+Use one barcode field per physical product label: preferred, manufacturer, or
+DukaPilot internal. A stock-only staff member can prepare normal price labels,
+but cannot view or output wholesale-price labels. Browser/PDF jobs print from
+their prepared product snapshot, so an inventory edit immediately after the
+button is pressed does not change the recorded print job.
+
 ZPL, TSPL, EPL, and ESC/POS outputs can be downloaded or sent to a verified
 loopback local bridge; they are not direct cloud-to-printer commands. Confirm
 the printer model, 203/300 DPI setting, media size, and scanned test label

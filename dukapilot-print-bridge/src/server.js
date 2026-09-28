@@ -89,7 +89,9 @@ function createBridgeServer(config, { send = sendTcp } = {}) {
       if (!authorized(req, config)) return response(res, 401, { error: "Bridge authentication is required", code: "UNAUTHORIZED" });
       if (req.method === "GET" && path === "/printers") return response(res, 200, { printers: [publicPrinter(config.printer)] });
       if (req.method !== "POST" || !["/test", "/print"].includes(path)) return response(res, 404, { error: "Not found", code: "NOT_FOUND" });
-      const body = await readJson(req, config.maxPayloadBytes + 4096);
+      // ESC/POS travels as hexadecimal, so its JSON body can be twice the
+      // configured raw-byte limit. The small allowance covers JSON fields.
+      const body = await readJson(req, (config.maxPayloadBytes * 2) + 4096);
       const printerId = String(body.printerId || "default");
       if (printerId !== config.printer.id) return response(res, 404, { error: "Configured printer was not found", code: "PRINTER_NOT_FOUND" });
       const protocol = asProtocol(body.protocol || config.printer.protocol);

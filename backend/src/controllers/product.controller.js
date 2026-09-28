@@ -48,7 +48,9 @@ function canGenerateBarcode(req) {
 }
 
 function redactProduct(product, req) {
-  return canViewFinancials(req) ? product : { ...product, buyingPrice: null };
+  return canViewFinancials(req)
+    ? product
+    : { ...product, buyingPrice: null, wholesalePrice: null, wholesaleMinQty: null };
 }
 
 function normalizedUnit(value) {

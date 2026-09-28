@@ -22,7 +22,7 @@ test(`signed-out ${routePath} visits redirect to sign-in without an unhandled AP
 
   await page.goto(routePath);
 
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/?notice=login-required$/);
   await expect(page.getByText("Please sign in to continue using DukaPilot.")).toBeVisible();
   await page.waitForTimeout(250);
   expect(pageErrors).toEqual([]);

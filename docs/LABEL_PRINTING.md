@@ -23,6 +23,17 @@ screen also provides 48 x 30 mm, 62 x 30 mm, and 80 x 40 mm presets.
 Every prepared job saves a product/template/profile snapshot for audit history.
 Bridge tokens are never stored in DukaPilot or sent to Railway.
 
+Each physical product label carries **one** 1D barcode field: preferred,
+manufacturer, or DukaPilot internal. This keeps the code large enough to scan
+on 40 x 30 mm media and prevents two linear codes from overlapping. Use
+separate label jobs when both codes must be printed.
+
+Browser and PDF output is rendered from the immutable job snapshot created by
+the API, so the printed product fields match the recorded job even if someone
+edits a product immediately afterwards. A staff member with Stock permission
+can print ordinary labels, but wholesale-price fields and raw output from a
+wholesale job remain owner/report-permission only.
+
 ## Output Options
 
 | Output | Use it for | Status |
@@ -37,6 +48,8 @@ Bridge tokens are never stored in DukaPilot or sent to Railway.
 The web app does not control a USB, Bluetooth, or LAN printer directly from
 Vercel. It sends commands only to a merchant-run local bridge on
 `127.0.0.1`. This keeps the printer network and access token out of the cloud.
+Raw drivers can also be downloaded without saving a profile, which is useful
+for testing a new printer before making it the shop default.
 
 ## Product Codes
 
@@ -84,6 +97,11 @@ for LAN configuration, IP discovery, test printing, and recovery steps.
 6. Use Browser/PDF, download raw commands, or select a local-bridge profile.
 7. Test one label first. Confirm its size, content, and scanability before
    printing a larger batch.
+
+The `columns` value retained in older templates is not used by the current
+single-label renderer. DukaPilot prints one label per media page/command; do
+not use old multi-column templates until sheet-label support is explicitly
+released.
 
 ## Support Boundaries
 

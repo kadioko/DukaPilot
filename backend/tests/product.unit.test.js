@@ -78,6 +78,25 @@ test("product list caps a requested page to a safe catalogue size", async () => 
   assert.equal(res.payload.pagination.limit, 200);
 });
 
+test("stock-only staff do not receive buying or wholesale product prices", async () => {
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findMany: async () => [{ id: "prod-1", name: "Rice", buyingPrice: 1800, sellingPrice: 3000, wholesalePrice: 2500, wholesaleMinQty: 5 }],
+      count: async () => 1,
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.list({ user: { userId: "staff-1", staffId: "staff-1", shopId: "shop-1", permissions: { canViewReports: false } }, query: {} }, res);
+
+  assert.equal(res.payload.products[0].sellingPrice, 3000);
+  assert.equal(res.payload.products[0].buyingPrice, null);
+  assert.equal(res.payload.products[0].wholesalePrice, null);
+  assert.equal(res.payload.products[0].wholesaleMinQty, null);
+});
+
 test("low-stock pagination asks PostgreSQL for one page before loading product details", async () => {
   let findManyArgs;
   const prismaMock = {

@@ -3,6 +3,7 @@ const VALID_DRIVERS = new Set(["BROWSER", "PDF", "ZPL", "TSPL", "EPL", "ESCPOS"]
 const VALID_CONNECTIONS = new Set(["BROWSER", "DOWNLOAD", "BRIDGE", "NETWORK", "USB", "BLUETOOTH"]);
 const VALID_FIELDS = new Set(["name", "price", "wholesalePrice", "barcode", "manufacturerBarcode", "internalBarcode", "sku", "unit", "stock", "customText"]);
 const BARCODE_FIELDS = new Set(["barcode", "manufacturerBarcode", "internalBarcode"]);
+const RAW_DRIVERS = new Set(["ZPL", "TSPL", "EPL", "ESCPOS"]);
 const PROFILE_SECRET_KEY = /(token|secret|password|authorization|api[_-]?key)/i;
 
 function numberInRange(value, fallback, minimum, maximum) {
@@ -73,7 +74,11 @@ function sanitizeProfileConfig(value) {
 function normalizePrinterProfile(input = {}) {
   const driver = String(input.driver || "BROWSER").toUpperCase();
   if (!VALID_DRIVERS.has(driver)) throw Object.assign(new Error("Unsupported printer driver"), { status: 400 });
-  const connection = legacyConnection(input, driver);
+  let connection = legacyConnection(input, driver);
+  // Browser and PDF jobs are rendered by the browser itself. Raw languages can
+  // be downloaded or routed through a supported local connection.
+  if (driver === "BROWSER" || driver === "PDF") connection = "BROWSER";
+  else if (!RAW_DRIVERS.has(driver) || !["DOWNLOAD", "BRIDGE", "NETWORK", "USB", "BLUETOOTH"].includes(connection)) connection = "DOWNLOAD";
   const transport = connection === "BRIDGE" || connection === "NETWORK" ? "PRINT_BRIDGE" : "BROWSER_DOWNLOAD";
   return {
     name: String(input.name || "").trim().slice(0, 80),
@@ -85,8 +90,8 @@ function normalizePrinterProfile(input = {}) {
     connection,
     model: String(input.model || "").trim().slice(0, 100) || null,
     // A bridge token is intentionally never persisted in DukaPilot's database.
-    options: sanitizeProfileConfig(input.options),
-    config: sanitizeProfileConfig(input.config || input.options),
+    options: ["BRIDGE", "NETWORK"].includes(connection) ? sanitizeProfileConfig(input.options) : null,
+    config: ["BRIDGE", "NETWORK"].includes(connection) ? sanitizeProfileConfig(input.config || input.options) : null,
   };
 }
 
@@ -132,8 +137,10 @@ function zplBarcode(product, template, field, x, y, height) {
   const value = barcodeValue(product, field);
   if (!value) return "";
   const type = barcodeCommandType(product, template, field);
-  if (type === "EAN13") return `^FO${x},${y}^BEN,${height},Y,N^FD${value}^FS`;
-  if (type === "UPC") return `^FO${x},${y}^BUN,${height},Y,N^FD${value}^FS`;
+  // ZPL retail barcode commands calculate the final check digit themselves.
+  // Product validation already confirmed that the stored full code is valid.
+  if (type === "EAN13") return `^FO${x},${y}^BEN,${height},Y,N^FD${value.slice(0, -1)}^FS`;
+  if (type === "UPC") return `^FO${x},${y}^BUN,${height},Y,N^FD${value.slice(0, -1)}^FS`;
   return `^FO${x},${y}^BCN,${height},Y,N,N^FD${value}^FS`;
 }
 
@@ -209,7 +216,11 @@ function renderEpl(items, template, profile) {
     const barcodeHeight = Math.max(28, Math.min(80, height - cursorY - 18));
     barcodeFields.forEach((field, index) => {
       const value = barcodeValue(product, field);
-      if (value) lines.push(`B16,${cursorY + index * (barcodeHeight + 8)},0,1,2,2,${barcodeHeight},N,"${value}"`);
+      if (!value) return;
+      const type = barcodeCommandType(product, template, field);
+      const eplType = type === "EAN13" ? "E30" : type === "UPC" ? "UA0" : "1";
+      const data = type === "EAN13" || type === "UPC" ? value.slice(0, -1) : value;
+      lines.push(`B16,${cursorY + index * (barcodeHeight + 8)},0,${eplType},2,2,${barcodeHeight},N,"${data}"`);
     });
     lines.push("P1");
     return lines.join("\n");
