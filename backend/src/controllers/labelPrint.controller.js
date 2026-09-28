@@ -13,7 +13,11 @@ function publicTemplate(template) {
 }
 
 function publicProfile(profile) {
-  return profile ? { ...profile, options: jsonObject(profile.options) } : null;
+  if (!profile) return null;
+  // Tokens are ephemeral browser input. This response is deliberately safe to
+  // display to any permitted shop staff member.
+  const scrub = (value) => Object.fromEntries(Object.entries(jsonObject(value)).filter(([key]) => !/(token|secret|password|authorization|api[_-]?key)/i.test(key)));
+  return { ...profile, options: scrub(profile.options), config: scrub(profile.config) };
 }
 
 async function findTemplate(shopId, id) {
@@ -87,7 +91,7 @@ const createProfile = asyncHandler(async (req, res) => {
   const isDefault = Boolean(req.body.isDefault) || existingCount === 0;
   const created = await prisma.$transaction(async (tx) => {
     if (isDefault) await tx.printerProfile.updateMany({ where: { shopId }, data: { isDefault: false } });
-    return tx.printerProfile.create({ data: { shopId, ...profile, templateId: req.body.templateId || null, isDefault, isActive: req.body.isActive !== false } });
+    return tx.printerProfile.create({ data: { shopId, ...profile, createdById: req.user.userId, templateId: req.body.templateId || null, isDefault, isActive: req.body.isActive !== false } });
   });
   req.audit = { action: "labels.printer_profile_created", resourceType: "printer_profile", resourceId: created.id, metadata: { shopId, driver: created.driver } };
   res.status(201).json({ profile: publicProfile(created) });
@@ -138,9 +142,12 @@ function snapshotProduct(product) {
     sku: product.sku,
     barcode: product.barcode,
     barcodeType: product.barcodeType,
+    manufacturerBarcode: product.manufacturerBarcode,
+    internalBarcode: product.internalBarcode,
     unit: product.unit,
     currentStock: product.currentStock,
     sellingPrice: product.sellingPrice,
+    wholesalePrice: product.wholesalePrice,
   };
 }
 
@@ -149,7 +156,7 @@ const prepareJob = asyncHandler(async (req, res) => {
   const requested = Array.isArray(req.body.items) ? req.body.items.slice(0, 200) : [];
   if (!requested.length) return res.status(400).json({ error: "Choose at least one product to print" });
   const ids = [...new Set(requested.map((item) => String(item?.productId || "")).filter(Boolean))];
-  const products = await prisma.product.findMany({ where: { shopId, id: { in: ids }, isActive: true }, select: { id: true, name: true, labelName: true, sku: true, barcode: true, barcodeType: true, unit: true, currentStock: true, sellingPrice: true } });
+  const products = await prisma.product.findMany({ where: { shopId, id: { in: ids }, isActive: true }, select: { id: true, name: true, labelName: true, sku: true, barcode: true, barcodeType: true, manufacturerBarcode: true, internalBarcode: true, unit: true, currentStock: true, sellingPrice: true, wholesalePrice: true } });
   if (products.length !== ids.length) return res.status(404).json({ error: "One or more selected products are unavailable" });
   const expanded = expandItems(products, requested);
   if (!expanded.length || expanded.length > 500) return res.status(400).json({ error: "Choose between 1 and 500 labels" });
@@ -166,7 +173,12 @@ const prepareJob = asyncHandler(async (req, res) => {
   const profile = savedProfile ? normalizePrinterProfile(savedProfile) : normalizePrinterProfile({ driver: requestedOutputDriver || "BROWSER", widthMm: template.widthMm, heightMm: template.heightMm });
   const outputDriver = profile.driver;
   if (!VALID_DRIVERS.has(outputDriver)) return res.status(400).json({ error: "Unsupported printer driver" });
-  if (visibleFields(template).includes("barcode") && expanded.some((product) => !product.barcode)) {
+  const requestedBarcodeFields = visibleFields(template).filter((field) => ["barcode", "manufacturerBarcode", "internalBarcode"].includes(field));
+  if (requestedBarcodeFields.some((field) => expanded.some((product) => {
+    if (field === "manufacturerBarcode") return !product.manufacturerBarcode;
+    if (field === "internalBarcode") return !product.internalBarcode;
+    return !(product.internalBarcode || product.barcode || product.manufacturerBarcode);
+  }))) {
     return res.status(400).json({ error: "Every selected product needs a barcode for this label format" });
   }
 

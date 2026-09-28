@@ -8,7 +8,7 @@ import { LabelComposer } from "@/components/labels/LabelComposer";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
-type Product = { id: string; name: string; labelName?: string | null; sku?: string | null; barcode?: string | null; barcodeType?: "EAN13" | "UPC" | "CODE128" | "INTERNAL" | null; unit?: string | null; sellingPrice: number; currentStock?: number };
+type Product = { id: string; name: string; labelName?: string | null; sku?: string | null; barcode?: string | null; manufacturerBarcode?: string | null; internalBarcode?: string | null; barcodeType?: "EAN13" | "UPC" | "CODE128" | "INTERNAL" | null; unit?: string | null; sellingPrice: number; wholesalePrice?: number | null; currentStock?: number };
 type Report = { withoutBarcodes: Array<{ id: string; name: string; currentStock: number }>; mostScanned: Array<{ barcode: string; scans: number; product: Product | null }>; duplicateAttempts: number };
 type Scan = { id: string; barcode: string; context: string; found: boolean; createdAt: string; product?: { id: string; name: string } | null };
 

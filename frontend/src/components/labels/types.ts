@@ -1,7 +1,8 @@
 export type BarcodeType = "EAN13" | "UPC" | "CODE128" | "INTERNAL";
 export type LabelLayout = "BARCODE_ONLY" | "NAME_PRICE" | "NAME_BARCODE" | "NAME_PRICE_BARCODE" | "CUSTOM";
-export type LabelField = "name" | "price" | "barcode" | "sku" | "unit" | "stock";
-export type PrinterDriver = "BROWSER" | "PDF" | "ZPL" | "TSPL" | "ESCPOS";
+export type LabelField = "name" | "price" | "wholesalePrice" | "barcode" | "manufacturerBarcode" | "internalBarcode" | "sku" | "unit" | "stock" | "customText";
+export type PrinterDriver = "BROWSER" | "PDF" | "ZPL" | "TSPL" | "EPL" | "ESCPOS";
+export type PrinterConnection = "BROWSER" | "DOWNLOAD" | "BRIDGE" | "NETWORK" | "USB" | "BLUETOOTH";
 
 export interface LabelProduct {
   id: string;
@@ -9,10 +10,13 @@ export interface LabelProduct {
   labelName?: string | null;
   sku?: string | null;
   barcode?: string | null;
+  manufacturerBarcode?: string | null;
+  internalBarcode?: string | null;
   barcodeType?: BarcodeType | null;
   unit?: string | null;
   currentStock?: number | null;
   sellingPrice: number;
+  wholesalePrice?: number | null;
 }
 
 export interface LabelTemplate {
@@ -25,6 +29,7 @@ export interface LabelTemplate {
   gapMm: number;
   fields: LabelField[];
   barcodeType?: BarcodeType | null;
+  customText?: string | null;
   isDefault?: boolean;
 }
 
@@ -35,14 +40,18 @@ export interface PrinterProfile {
   widthMm: number;
   heightMm: number;
   dpi: number;
-  transport: "BROWSER_DOWNLOAD" | "QZ_TRAY" | "PRINT_BRIDGE";
+  // Retained only to make existing saved profiles readable during migration.
+  transport?: "BROWSER_DOWNLOAD" | "QZ_TRAY" | "PRINT_BRIDGE";
+  connection: PrinterConnection;
+  model?: string | null;
+  config?: { bridgeUrl?: string } | null;
   templateId?: string | null;
   isDefault?: boolean;
   isActive?: boolean;
   template?: LabelTemplate | null;
 }
 
-export const labelFields: LabelField[] = ["name", "price", "barcode", "sku", "unit", "stock"];
+export const labelFields: LabelField[] = ["name", "price", "wholesalePrice", "barcode", "manufacturerBarcode", "internalBarcode", "sku", "unit", "stock", "customText"];
 
 export const defaultLabelTemplate: LabelTemplate = {
   name: "40 x 30 mm",
@@ -53,6 +62,7 @@ export const defaultLabelTemplate: LabelTemplate = {
   gapMm: 2,
   fields: ["name", "price", "barcode"],
   barcodeType: null,
+  customText: null,
 };
 
 export function fieldsForLayout(layout: LabelLayout): LabelField[] {

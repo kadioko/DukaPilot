@@ -41,7 +41,8 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
 - **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Crop, livestock, and mixed-farm setup; plots, crop cycles, inputs, harvest-to-stock, livestock production, staff privacy, cash rules, and farm AI boundaries
 - **Barcode and labels:** [docs/BARCODE_MANAGEMENT.md](./docs/BARCODE_MANAGEMENT.md) - Product codes, camera/HID scanning, label templates, browser/PDF labels, and safe raw-printer output
-- **Label printing operations:** [docs/LABEL_PRINTING.md](./docs/LABEL_PRINTING.md) - Printer-independent workflow, profile setup, hardware approval, and the direct-print boundary
+- **Label printing operations:** [docs/LABEL_PRINTING.md](./docs/LABEL_PRINTING.md) - Printer-independent templates, ZPL/TSPL/EPL/ESC-POS output, product code handling, and hardware approval
+- **Local print bridge:** [dukapilot-print-bridge/README.md](./dukapilot-print-bridge/README.md) - Loopback-only LAN/raw-TCP setup for approved local printer profiles
 - **Quotations:** [docs/QUOTATIONS.md](./docs/QUOTATIONS.md) - Service/project estimates, privacy, accounting rules, deployment checks, and the live demo quotation pipeline
 - **Merchant Balance:** [docs/MERCHANT_BALANCE_WALLET.md](./docs/MERCHANT_BALANCE_WALLET.md) - Pooled nTZS settlement, isolated business ledgers, safe deposits/withdrawals, fees, and reconciliation
 - **Latest production verification:** [docs/PRODUCTION_VERIFICATION_2026-09-27.md](./docs/PRODUCTION_VERIFICATION_2026-09-27.md) - Treasury settlement backfill, wallet/billing safeguards, complete CI evidence, and live nTZS reconciliation proof
@@ -81,7 +82,7 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
 | **Daily Close / Z-report** | Cashiers open and close their own cash session; owners see every active drawer, and trusted managers can be granted team-shift review/close without access to reports or profit |
 | **Receipt files and printing** | Share a receipt as WhatsApp text, PNG, or PDF, or print via the device print dialog to a paired Bluetooth thermal printer |
-| **Barcodes, SKUs, and product labels** | Save or generate product codes, scan through camera or keyboard-wedge scanners, and print 40 x 30 mm labels through browser/PDF or download ZPL, TSPL, and ESC/POS command files for an approved local printer bridge |
+| **Barcodes, SKUs, and product labels** | Keep manufacturer and DukaPilot internal codes, scan either through camera or keyboard-wedge scanners, and print browser/PDF or ZPL, TSPL, EPL, and ESC/POS labels through downloads or an approved loopback LAN print bridge |
 | **One-tap reorder** | Repeat any previous order with a single button |
 | **Delivery confirmation** | Supplier orders open Receive Stock so quantities, buying costs, and stock history are captured together |
 | **Customer orders** | Public shop catalog; customers can place orders; merchant manages them |
@@ -456,7 +457,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Current production migration sequence:** through `20260923001000_label_printing_and_product_codes`. This adds product label names, shop-scoped code sequences, saved label templates/profiles, and auditable print jobs. See [Barcode and Label Management](./docs/BARCODE_MANAGEMENT.md) before enabling the label UI for merchants.
+- **Current production migration sequence:** through `20260928001000_print_bridge_and_label_profiles`. This adds manufacturer/internal product codes, richer templates, saved printer connection metadata, and audited local-bridge label output. See [Barcode and Label Management](./docs/BARCODE_MANAGEMENT.md) before enabling the label UI for merchants.
 
 ### Deployment Checklist
 

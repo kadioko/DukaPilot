@@ -15,16 +15,27 @@ function labelName(product: LabelProduct) {
   return product.labelName?.trim() || product.name;
 }
 
+function barcodeForField(product: LabelProduct, field: "barcode" | "manufacturerBarcode" | "internalBarcode") {
+  if (field === "manufacturerBarcode") return product.manufacturerBarcode || "";
+  if (field === "internalBarcode") return product.internalBarcode || "";
+  return product.internalBarcode || product.barcode || product.manufacturerBarcode || "";
+}
+
 export function labelMarkup(product: LabelProduct, template: LabelTemplate) {
   const fields = labelFieldsForTemplate(template);
+  const barcodeRows = fields.filter((field): field is "barcode" | "manufacturerBarcode" | "internalBarcode" => ["barcode", "manufacturerBarcode", "internalBarcode"].includes(field)).map((field) => {
+    const value = barcodeForField(product, field);
+    return value ? `<div class="barcode">${barcodeSvgMarkup(value, template.barcodeType || product.barcodeType, 300, 90)}</div>` : `<p class="missing">Barcode required</p>`;
+  });
   const rows = [
     fields.includes("name") ? `<p class="name">${escapeHtml(labelName(product))}</p>` : "",
     fields.includes("price") ? `<p class="price">${escapeHtml(price(product.sellingPrice))}</p>` : "",
+    fields.includes("wholesalePrice") && product.wholesalePrice != null ? `<p class="meta">Wholesale ${escapeHtml(price(product.wholesalePrice))}</p>` : "",
     fields.includes("sku") && product.sku ? `<p class="meta">SKU ${escapeHtml(product.sku)}</p>` : "",
     fields.includes("unit") ? `<p class="meta">${escapeHtml(product.unit || "pcs")}</p>` : "",
     fields.includes("stock") ? `<p class="meta">Stock ${escapeHtml(product.currentStock ?? 0)}</p>` : "",
-    fields.includes("barcode") && product.barcode ? `<div class="barcode">${barcodeSvgMarkup(product.barcode, template.barcodeType || product.barcodeType, 300, 90)}</div>` : "",
-    fields.includes("barcode") && !product.barcode ? `<p class="missing">Barcode required</p>` : "",
+    fields.includes("customText") && template.customText ? `<p class="meta">${escapeHtml(template.customText)}</p>` : "",
+    ...barcodeRows,
   ].filter(Boolean).join("");
   return `<article class="label">${rows}</article>`;
 }

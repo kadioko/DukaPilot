@@ -15,6 +15,12 @@ function labelName(product: LabelProduct) {
   return product.labelName?.trim() || product.name;
 }
 
+function barcodeForField(product: LabelProduct, field: "barcode" | "manufacturerBarcode" | "internalBarcode") {
+  if (field === "manufacturerBarcode") return product.manufacturerBarcode || "";
+  if (field === "internalBarcode") return product.internalBarcode || "";
+  return product.internalBarcode || product.barcode || product.manufacturerBarcode || "";
+}
+
 function visibleFields(template: LabelTemplate) {
   if (template.layout === "CUSTOM") return template.fields;
   if (template.layout === "BARCODE_ONLY") return ["barcode"];
@@ -70,7 +76,7 @@ export function ProductBarcode({ value, type, className = "" }: { value: string;
 
 export function LabelPreview({ product, template, className = "" }: { product: LabelProduct; template: LabelTemplate; className?: string }) {
   const fields = visibleFields(template);
-  const hasBarcode = fields.includes("barcode") && Boolean(product.barcode);
+  const barcodeFields = fields.filter((field): field is "barcode" | "manufacturerBarcode" | "internalBarcode" => ["barcode", "manufacturerBarcode", "internalBarcode"].includes(field));
   const nameOnly = fields.length === 1 && fields[0] === "name";
   return <article
     className={`overflow-hidden border border-gray-300 bg-white text-gray-950 shadow-sm ${className}`}
@@ -80,11 +86,15 @@ export function LabelPreview({ product, template, className = "" }: { product: L
     <div className="flex h-full min-h-0 flex-col justify-between gap-0.5" style={{ fontSize: "2.8mm", lineHeight: 1.1 }}>
       {fields.includes("name") && <p className="truncate font-bold">{labelName(product)}</p>}
       {fields.includes("price") && <p className="font-extrabold text-brand-800">{formatTZS(product.sellingPrice)}</p>}
+      {fields.includes("wholesalePrice") && product.wholesalePrice != null && <p className="truncate text-[2.2mm]">Wholesale {formatTZS(product.wholesalePrice)}</p>}
       {fields.includes("sku") && product.sku && <p className="truncate font-mono text-[2.2mm]">SKU {product.sku}</p>}
       {fields.includes("unit") && <p className="truncate text-[2.2mm]">{product.unit || "pcs"}</p>}
       {fields.includes("stock") && <p className="truncate text-[2.2mm]">Stock {product.currentStock ?? 0}</p>}
-      {hasBarcode && <ProductBarcode value={product.barcode || ""} type={template.barcodeType || product.barcodeType} className={nameOnly ? "h-full" : "max-h-[15mm]"} />}
-      {fields.includes("barcode") && !product.barcode && <p className="text-[2.2mm] text-red-700">Barcode required</p>}
+      {fields.includes("customText") && template.customText && <p className="truncate text-[2.2mm]">{template.customText}</p>}
+      {barcodeFields.map((field) => {
+        const value = barcodeForField(product, field);
+        return value ? <ProductBarcode key={field} value={value} type={template.barcodeType || product.barcodeType} className={nameOnly ? "h-full" : "max-h-[15mm]"} /> : <p key={field} className="text-[2.2mm] text-red-700">Barcode required</p>;
+      })}
     </div>
   </article>;
 }

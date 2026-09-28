@@ -1,74 +1,97 @@
-# Label Printing Operations
+# Product Labels and Printing
 
-## What Is Live
+## What DukaPilot Supports
 
-DukaPilot can produce product labels from **Barcode management > Labels** or the
-**Print label** action in Inventory. Browser print and PDF are the universal
-first choice. Labels default to 40 x 30 mm and can be configured with a
-different width, height, gap, columns, and content layout.
+Open **Barcode management > Labels** or the **Print label** action in Inventory.
+Merchants can search products, select one or many products, set the number of
+copies, choose a saved template, and print through a browser, PDF, downloaded
+raw printer file, or the local DukaPilot Print Bridge.
 
-Each print action creates an audit record with the selected product snapshots, template, profile, output driver, and completion status. Product prices are captured at preparation time so a later price change does not alter the record of an earlier label job.
+Templates can contain:
 
-## Printer-Independent Design
+- Product name and selling price
+- Wholesale price
+- SKU and unit
+- Manufacturer barcode and DukaPilot internal barcode
+- Preferred barcode (DukaPilot code first, then manufacturer code)
+- Stock quantity and custom text
 
-The label system has four layers:
+Built-in layouts are barcode-only, name and price, name and barcode, name,
+price and barcode, plus custom fields. The default is **40 x 30 mm**. The
+screen also provides 48 x 30 mm, 62 x 30 mm, and 80 x 40 mm presets.
 
-`Product data -> Label template -> Renderer -> Output driver -> Local printer transport`
+Every prepared job saves a product/template/profile snapshot for audit history.
+Bridge tokens are never stored in DukaPilot or sent to Railway.
 
-Output drivers do not assume a manufacturer:
+## Output Options
 
-- Browser and PDF use a dedicated document with `@page` sizing.
-- ZPL supports Zebra-compatible printers.
-- TSPL supports TSC and compatible Xprinter printers.
-- ESC/POS supports compatible receipt printers.
+| Output | Use it for | Status |
+| --- | --- | --- |
+| Browser print | Any device with an installed system printer | Ready |
+| PDF | Sharing or universal desktop/phone printing | Ready |
+| ZPL | Zebra and compatible command-language printers | Ready to download or bridge |
+| TSPL | TSC, Xprinter-compatible label printers | Ready to download or bridge |
+| EPL | Older EPL-compatible printers | Ready to download or bridge |
+| ESC/POS | Compatible receipt printers | Ready to download or bridge |
 
-The web application intentionally does not attempt to discover or control printers from Railway. A direct-printer workflow needs a trusted local transport, such as an approved DukaPilot print bridge, a managed desktop QZ Tray deployment, or a future native Android printing module.
+The web app does not control a USB, Bluetooth, or LAN printer directly from
+Vercel. It sends commands only to a merchant-run local bridge on
+`127.0.0.1`. This keeps the printer network and access token out of the cloud.
 
-## What Works Today
+## Product Codes
 
-- **Browser print:** opens the device or browser print dialog. On Android, the
-  merchant pairs the printer first, then chooses it in Android's print dialog.
-- **PDF:** downloads fixed-size label pages for printing, sharing, or a desktop
-  print workflow.
-- **Raw command download:** ZPL, TSPL, and ESC/POS profiles produce a file on
-  the merchant's device. The operator or a separately installed local bridge
-  sends that file to the printer.
+The product record keeps the older canonical `barcode` for compatibility and
+now also supports:
 
-A selected `QZ Tray` or `DukaPilot print bridge` profile records the intended
-transport. It does **not** establish a connection by itself in this release.
-Do not promise one-tap Bluetooth, USB, network, Zebra, Xprinter, or TSC printing
-until the local transport and a physical model have passed the approval process.
+- `manufacturerBarcode`: the scanned EAN/UPC/Code 128 supplied with a product
+- `internalBarcode`: an optional generated DukaPilot code
 
-## Direct Printing Roadmap
+Both are checked for duplicates within the same shop. The POS barcode lookup
+recognizes the canonical, manufacturer, and internal values, so either
+approved label can add the product to a sale.
 
-1. **Android first:** build a native companion/bridge in the DukaPilot Android
-   wrapper. It must request Android Bluetooth/USB permissions explicitly, use a
-   merchant-approved paired printer only, queue/retry locally, and record a
-   device-safe result without putting printer credentials in the cloud.
-2. **Desktop option:** integrate QZ Tray only with a signing certificate and
-   server-side signing endpoint. Never put a QZ private signing key in the web
-   bundle or a printer profile.
-3. **Hardware certification:** test one or two 203 DPI models with actual
-   40 x 30 mm media, document their driver/language/DPI/profile, and support
-   those named models before advertising compatibility more broadly.
+## Xprinter XP-D281B / XP-D281E
 
-## Support Process
+The first recommended setup is **TSPL**, **203 DPI** (or 300 DPI only for a
+verified 300-DPI model), 40 x 30 mm media, and LAN/raw TCP port **9100**.
+Create a profile with:
 
-1. Ask for printer model, DPI, label width and height, and connection type.
-2. Create a profile using the matching output driver.
-3. Print or download a one-label sample first.
-4. Confirm barcode scanability and that the price/name fit without clipping.
-5. Record the approved model and profile settings before recommending it to another merchant.
+- Output: `TSPL`
+- Connection: `LAN via local bridge`
+- Model: `XP-D281B` or `XP-D281E`
+- DPI: matching the printer's actual specification
 
-Do not promise direct Bluetooth, USB, or network printing in the browser unless the merchant has the approved local transport installed and tested.
+This creates valid TSPL output but is not a claim that every XP-D281B/D281E
+firmware or interface has been physically certified. Print one test label,
+scan it, and record the working DPI/media/profile before rolling it out.
 
-## Release Checklist
+## Local Print Bridge
 
-1. Railway applies `20260923001000_label_printing_and_product_codes` before
-   Vercel exposes the matching UI.
-2. Create a generated internal barcode and SKU, then confirm duplicate manual
-   values are rejected within the same shop location.
-3. Print one valid EAN-13/UPC label with browser print and download a PDF.
-4. Scan the finished label with the actual scanner or phone before approving it.
-5. Test one raw command file only with the exact approved printer/bridge;
-   preserve the profile name, driver, DPI, and label dimensions for support.
+The bridge is a separate Node.js 20+ service in
+[`dukapilot-print-bridge`](../dukapilot-print-bridge). It is intentionally
+loopback-only and sends validated raw output to a configured network printer.
+
+See the bridge [setup and troubleshooting guide](../dukapilot-print-bridge/README.md)
+for LAN configuration, IP discovery, test printing, and recovery steps.
+
+## Merchant Workflow
+
+1. Add a manufacturer barcode in Inventory when the product already has one.
+2. Optionally tick **Also generate a DukaPilot barcode**.
+3. Open **Barcode management > Labels**.
+4. Search/select products and set copies.
+5. Choose what the label shows and its size.
+6. Use Browser/PDF, download raw commands, or select a local-bridge profile.
+7. Test one label first. Confirm its size, content, and scanability before
+   printing a larger batch.
+
+## Support Boundaries
+
+- USB and Bluetooth are profile options reserved for a future native adapter;
+  they do not silently claim direct support.
+- A local bridge can print to a LAN printer, but must never bind to a public
+  network interface.
+- DukaPilot does not store printer passwords, bridge tokens, or LAN addresses
+  in its database.
+- Do not recommend a printer as certified until its exact protocol, DPI,
+  media, and physical sample have passed the support test.

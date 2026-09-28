@@ -34,7 +34,7 @@ npm run build
 ## Migration Gate
 
 Railway must apply every committed migration through
-`20260923001000_label_printing_and_product_codes` before the matching frontend
+`20260928001000_print_bridge_and_label_profiles` before the matching frontend
 is considered fully deployed. Verify:
 
 - staff phone identities are unique;
@@ -53,7 +53,7 @@ is considered fully deployed. Verify:
 - A supplier delivery is received through `Receive Stock`; product cost, transport, other cost, and stock-movement history are saved together before the order becomes `DELIVERED`.
 - Generated DukaPilot barcodes and SKUs remain unique within their shop location; manual duplicate barcodes or SKUs are rejected without changing stock.
 - Label templates, printer profiles, and print-job history are readable only by the same active shop with Stock permission.
-- Browser/PDF label jobs retain product snapshots; downloaded ZPL, TSPL, and ESC/POS files are not sent from Railway to merchant hardware.
+- Browser/PDF label jobs retain product snapshots; downloaded ZPL, TSPL, EPL, and ESC/POS files are never sent from Railway to merchant hardware. The loopback bridge may send validated raw commands only from the merchant computer.
 
 ## High-Risk Regression Checks
 
@@ -80,8 +80,8 @@ is considered fully deployed. Verify:
 21. Retry a deposit, withdrawal, subscription payment, or admin wallet correction with the same request key. Confirm the exact original operation is returned and different details produce a conflict.
 22. Confirm failed/reversed wallet history says no balance change, pending/review withdrawals show the reserved total, and completed deposits/subscription payments show their actual ledger effect.
 23. Run the protected nTZS reconciliation workflow and confirm known pending wallet and subscription provider IDs are checked without creating a replacement payment. A completed balance-funded subscription with an unresolved treasury leg may resume only its original idempotent transfer.
-24. Create one 40 x 30 mm label with a valid EAN-13 or UPC product; confirm the barcode scans, text is not clipped, and the print-job record shows the intended output driver.
-25. Download a ZPL or TSPL label command for an approved profile. Confirm it is delivered only to the operator's device or trusted local bridge; the web app must not claim direct Bluetooth/USB transport.
+24. Create one 40 x 30 mm label with a valid EAN-13 or UPC product; confirm the manufacturer and optional DukaPilot code scan, text is not clipped, and the print-job record shows the intended output driver.
+25. Download or bridge-print a ZPL, TSPL, EPL, or ESC/POS label command for an approved profile. Confirm it reaches only the operator device or loopback bridge; the web app must not claim direct Bluetooth/USB transport.
 
 ## Live URLs
 
@@ -577,7 +577,7 @@ Manual post-deploy checks:
 - `/receiving` records landed cost and linked supplier-order delivery without a direct stock increment bypass
 - Completed sales offer WhatsApp text, PNG, PDF, and browser-print receipt actions
 - Barcode management can generate a SKU and product barcode, camera/HID scanning finds the correct item in POS, and Inventory can prepare a 40 x 30 mm browser/PDF label job.
-- Saved raw-printer profiles document the intended model, DPI, and driver. QZ Tray and DukaPilot print-bridge selections remain configuration records until a tested local transport is installed.
+- Saved raw-printer profiles document the intended model, DPI, connection, and driver. Test the loopback DukaPilot print bridge on its merchant computer before a real label; QZ Tray and USB/Bluetooth remain separate future integrations.
 
 Current sprint checks:
 

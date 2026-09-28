@@ -1,0 +1,15 @@
+{
+  "name": "dukapilot-print-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Loopback-only raw printer bridge for DukaPilot labels",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js",
+    "smoke": "node scripts/smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

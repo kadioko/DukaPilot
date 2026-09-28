@@ -264,7 +264,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 
 ## Current Launch Gate
 
-- Railway migrations: production must be through `20260923001000_label_printing_and_product_codes`, including the crop/field-operation and merchant-wallet migrations immediately before it.
+- Railway migrations: production must be through `20260928001000_print_bridge_and_label_profiles`, including the crop/field-operation, merchant-wallet, and printer-profile migrations immediately before it.
 - Production monitor passes once after Railway and Vercel deploy.
 - Railway logs include `[sentry] Initialized`, and the backend alert drill reaches both Sentry and founder email.
 - Basic account can use one active staff account and cannot use AI routes; Pro and active trial include unlimited staff and AI.

@@ -224,7 +224,7 @@ the original idempotency key.
    `20260920120000_merchant_wallet_subscription_kind`.
    Those are the Merchant Balance schema migrations. A complete current
    production deployment must still apply every later committed migration,
-   presently through `20260923001000_label_printing_and_product_codes`.
+   presently through `20260928001000_print_bridge_and_label_profiles`.
 2. Confirm the nTZS webhook still reaches `/api/webhooks/ntzs` and uses the
    existing signed timestamp/signature headers. Add the wallet reconciliation
    secret in Railway and GitHub before enabling the feature.

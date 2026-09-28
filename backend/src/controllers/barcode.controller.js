@@ -12,7 +12,7 @@ const generate = asyncHandler(async (req, res) => {
   if (!shop?.barcodeGenerationEnabled) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const barcode = await prisma.$transaction((tx) => nextInternalBarcode(tx, shopId));
-    const exists = await prisma.product.findUnique({ where: { shopId_barcode: { shopId, barcode } }, select: { id: true } });
+    const exists = await prisma.product.findFirst({ where: { shopId, OR: [{ barcode }, { manufacturerBarcode: barcode }, { internalBarcode: barcode }] }, select: { id: true } });
     if (!exists) return res.json({ barcode, barcodeType: "INTERNAL" });
   }
   return res.status(409).json({ error: "Could not reserve a barcode. Please try again." });
@@ -37,7 +37,7 @@ const lookup = asyncHandler(async (req, res) => {
   const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeScanningEnabled: true, bluetoothScannerEnabled: true, barcodeAutoAddToCart: true, barcodeSuccessSound: true, barcodeVibrate: true } });
   if (source !== "MANUAL" && shop?.barcodeScanningEnabled === false) return res.status(403).json({ error: "Barcode scanning is disabled in settings" });
   if (source === "HID" && shop?.bluetoothScannerEnabled === false) return res.status(403).json({ error: "Bluetooth and USB scanners are disabled in settings" });
-  const product = await prisma.product.findFirst({ where: { shopId, barcode, isActive: true } });
+  const product = await prisma.product.findFirst({ where: { shopId, isActive: true, OR: [{ barcode }, { manufacturerBarcode: barcode }, { internalBarcode: barcode }] } });
   await prisma.barcodeScan.create({ data: { shopId, barcode, productId: product?.id || null, found: Boolean(product), context: String(req.query.context || "POS").slice(0, 30) } });
   if (!product) return res.status(404).json({ error: "This barcode was not found." });
   res.json({ product, behavior: { autoAddToCart: shop?.barcodeAutoAddToCart !== false, successSound: shop?.barcodeSuccessSound !== false, vibrate: shop?.barcodeVibrate !== false } });
@@ -52,12 +52,13 @@ const history = asyncHandler(async (req, res) => {
 const report = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const [withoutBarcodes, scannedGroups, duplicateAttempts] = await Promise.all([
-    prisma.product.findMany({ where: { shopId, isActive: true, barcode: null }, select: { id: true, name: true, currentStock: true }, orderBy: { name: "asc" } }),
+    prisma.product.findMany({ where: { shopId, isActive: true, barcode: null, manufacturerBarcode: null, internalBarcode: null }, select: { id: true, name: true, currentStock: true }, orderBy: { name: "asc" } }),
     prisma.barcodeScan.groupBy({ by: ["barcode"], where: { shopId, found: true }, _count: { barcode: true }, orderBy: { _count: { barcode: "desc" } }, take: 20 }),
     prisma.auditLog.count({ where: { action: "barcode.duplicate_attempt", metadata: { path: ["shopId"], equals: shopId } } }),
   ]);
-  const products = await prisma.product.findMany({ where: { shopId, barcode: { in: scannedGroups.map((row) => row.barcode) } }, select: { id: true, name: true, barcode: true, sellingPrice: true } });
-  const byBarcode = new Map(products.map((product) => [product.barcode, product]));
+  const scanned = scannedGroups.map((row) => row.barcode);
+  const products = await prisma.product.findMany({ where: { shopId, OR: [{ barcode: { in: scanned } }, { manufacturerBarcode: { in: scanned } }, { internalBarcode: { in: scanned } }] }, select: { id: true, name: true, barcode: true, manufacturerBarcode: true, internalBarcode: true, sellingPrice: true } });
+  const byBarcode = new Map(products.flatMap((product) => [product.barcode, product.manufacturerBarcode, product.internalBarcode].filter(Boolean).map((barcode) => [barcode, product])));
   const mostScanned = scannedGroups.map((row) => ({ barcode: row.barcode, scans: row._count.barcode, product: byBarcode.get(row.barcode) || null }));
   res.json({ withoutBarcodes, mostScanned, duplicateAttempts });
 });

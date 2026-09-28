@@ -108,7 +108,17 @@ enum PrinterDriver {
   PDF
   ZPL
   TSPL
+  EPL
   ESCPOS
+}
+
+enum PrinterConnection {
+  BROWSER
+  DOWNLOAD
+  BRIDGE
+  NETWORK
+  USB
+  BLUETOOTH
 }
 
 enum LabelPrintStatus {
@@ -913,6 +923,8 @@ model Product {
   sku                      String?
   barcode                  String?
   barcodeType              BarcodeType?
+  manufacturerBarcode      String?
+  internalBarcode          String?
   barcodeGenerated         Boolean                 @default(false)
   barcodeCreatedAt         DateTime?
   barcodeUpdatedAt         DateTime?
@@ -955,6 +967,8 @@ model Product {
 
   @@unique([shopId, supplierCatalogProductId])
   @@unique([shopId, barcode])
+  @@unique([shopId, manufacturerBarcode])
+  @@unique([shopId, internalBarcode])
   @@index([shopId, isActive])
   @@map("products")
 }
@@ -986,6 +1000,7 @@ model LabelTemplate {
   columns     Int          @default(1)
   gapMm       Float        @default(2)
   fields      Json?
+  customText  String?
   barcodeType BarcodeType?
   isDefault   Boolean      @default(false)
   createdAt   DateTime     @default(now())
@@ -1009,6 +1024,10 @@ model PrinterProfile {
   dpi            Int           @default(203)
   transport      String        @default("BROWSER_DOWNLOAD")
   options        Json?
+  connection     PrinterConnection @default(BROWSER)
+  model          String?
+  config         Json?
+  createdById    String?
   templateId     String?
   template       LabelTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   isDefault      Boolean       @default(false)

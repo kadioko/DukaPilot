@@ -62,7 +62,7 @@ This guide produces the signed Android App Bundle (AAB) for DukaPilot.
 4. Verify the Android wrapper uses the production domain, API 36 target, current logo assets, and correct shortcuts. Do not enable delegated Android notifications until that delivery path is implemented and tested.
 5. Treat browser/device printing as the supported Android label path. DukaPilot's
    current Trusted Web App does not yet include a native Bluetooth/USB printer
-   bridge. Raw ZPL, TSPL, and ESC/POS downloads require a separate approved
+   bridge. Raw ZPL, TSPL, EPL, and ESC/POS downloads/direct LAN bridge output require a separate approved
    local transport; see [Label Printing Operations](./LABEL_PRINTING.md).
 
 ## Build The Signed AAB

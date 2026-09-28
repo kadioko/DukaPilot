@@ -44,6 +44,8 @@ interface Product {
   doesNotExpire: boolean;
   supplier?: { id: string; name: string; phone: string };
   barcode?: string | null;
+  manufacturerBarcode?: string | null;
+  internalBarcode?: string | null;
   barcodeType?: BarcodeType | null;
   barcodeGenerated?: boolean;
 }
@@ -258,7 +260,7 @@ export default function InventoryPage() {
       supplierId: p.supplier?.id || "",
       expiryDate: p.expiryDate ? p.expiryDate.slice(0, 10) : "",
       doesNotExpire: p.doesNotExpire,
-      barcode: p.barcode || "", barcodeType: p.barcodeType || "", generateBarcode: false,
+      barcode: p.manufacturerBarcode || (p.barcodeType !== "INTERNAL" ? p.barcode || "" : ""), barcodeType: p.barcodeType || "", generateBarcode: false,
     });
     setError("");
     setShowForm(true);
@@ -718,9 +720,9 @@ export default function InventoryPage() {
             </div>
             {isFoodBusiness && <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950">{lang === "sw" ? "Kwa restaurant au bar, tumia unit inayouzwa: mfano nusu ya kuku, robo ya kuku, plate, glass au bottle. Kwa kuku 1 mzima inayouzwa nusu, tumia Andaa Chakula baada ya kupokea ingredients; kila mauzo yataondoa portion 1." : "For a restaurant or bar, use the sellable unit: for example half chicken, quarter chicken, plate, glass, or bottle. After receiving ingredients, use Prepare Food; each sale removes one portion."}</p>}
             <div className="space-y-2 rounded-lg border border-gray-200 p-3">
-              <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Barcode</p><button onClick={() => setBarcodeScannerOpen(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700"><ScanLine className="h-4 w-4" />Scan</button></div>
-              <input aria-label="Barcode" value={form.barcode} disabled={form.generateBarcode} onChange={(e) => setForm({ ...form, barcode: e.target.value.toUpperCase() })} placeholder="EAN, UPC, or DP00000001" className={INPUT} />
-              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.generateBarcode} onChange={(e) => setForm({ ...form, generateBarcode: e.target.checked, barcode: e.target.checked ? "" : form.barcode })} />Generate DukaPilot barcode</label>
+              <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{lang === "sw" ? "Barcode ya mtengenezaji" : "Manufacturer barcode"}</p><button onClick={() => setBarcodeScannerOpen(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700"><ScanLine className="h-4 w-4" />Scan</button></div>
+              <input aria-label="Manufacturer barcode" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value.toUpperCase() })} placeholder="EAN or UPC" className={INPUT} />
+              <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.generateBarcode} onChange={(e) => setForm({ ...form, generateBarcode: e.target.checked })} />{lang === "sw" ? "Tengeneza barcode ya DukaPilot pia" : "Also generate a DukaPilot barcode"}</label>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {canViewFinancials && <Field label={t("inventory.buyingPriceLabel", lang)}>
@@ -906,7 +908,7 @@ export default function InventoryPage() {
           </div>
         </Modal>
       )}
-      {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase(), generateBarcode: false }); setBarcodeScannerOpen(false); }} />}
+      {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase() }); setBarcodeScannerOpen(false); }} />}
       {showCsvImport && <Modal title={lang === "sw" ? "Ingiza bidhaa kwa CSV" : "Import products from CSV"} onClose={() => setShowCsvImport(false)}><div className="space-y-4"><ol className="space-y-2 text-sm leading-6 text-gray-700"><li>{lang === "sw" ? "1. Pakua template, kisha ifungue kwa Excel au Google Sheets." : "1. Download the template and open it in Excel or Google Sheets."}</li><li>{lang === "sw" ? "2. Jaza bidhaa zako. Jina, bei ya kununua na bei ya kuuza zinahitajika." : "2. Fill in products. Name, buying price, and selling price are required."}</li><li>{lang === "sw" ? "3. Bei ya jumla huwa imezimwa. Weka wholesaleEnabled kuwa true kwa bidhaa inayouzwa jumla, kisha jaza wholesalePrice." : "3. Wholesale is off by default. Set wholesaleEnabled to true only for a wholesale product, then add wholesalePrice."}</li><li>{lang === "sw" ? "4. Hifadhi kama CSV, kisha chagua file hapa chini." : "4. Save as CSV, then choose the file below."}</li></ol><button type="button" onClick={downloadCsvTemplate} className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-900"><Download className="h-4 w-4" />{lang === "sw" ? "Pakua CSV template" : "Download CSV template"}</button><label className="grid gap-2 rounded-lg border border-dashed border-gray-300 p-4 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Chagua CSV file" : "Choose CSV file"}</span><input type="file" accept=".csv,text/csv" onChange={(event) => { setCsvFile(event.target.files?.[0] || null); setCsvErrors([]); }} className="block w-full text-sm" />{csvFile && <span className="text-xs font-normal text-gray-500">{csvFile.name}</span>}</label><p className="text-xs leading-5 text-gray-500">{lang === "sw" ? "SKU, stock ya kuanzia, minimum stock, barcode na expiry date ni hiari. wholesaleMinQty pia ni hiari; ukiweka jumla bila idadi, mfumo utatumia 5. Stock ya kuanzia ni 0 na minimum stock ni 5 ukiiacha wazi. Bei za TZS zinaweza kuandikwa 12500, 12,500, 12 500, au TZS 12,500." : "SKU, opening stock, minimum stock, barcode, and expiry date are optional. wholesaleMinQty is also optional; enabled wholesale products default to 5 units. Blank opening stock is 0 and minimum stock is 5. TZS prices can be written as 12500, 12,500, 12 500, or TZS 12,500."}</p>{csvErrors.length > 0 && <section aria-live="polite" className="max-h-48 overflow-y-auto rounded-lg border border-red-200 bg-red-50 p-3"><p className="text-sm font-bold text-red-900">{lang === "sw" ? "Rekebisha makosa haya, kisha chagua file tena:" : "Fix these errors, then choose the file again:"}</p><ul className="mt-2 space-y-1.5 text-xs leading-5 text-red-800">{csvErrors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}><strong>{lang === "sw" ? "Mstari" : "Row"} {item.row || 1}{item.field ? ` - ${item.field}` : ""}:</strong> {item.message}</li>)}</ul></section>}<div className="flex gap-2"><button type="button" onClick={() => setShowCsvImport(false)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700">{t("common.cancel", lang)}</button><button type="button" onClick={importCsv} disabled={!csvFile || csvImporting} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{csvImporting ? (lang === "sw" ? "Inaingiza..." : "Importing...") : (lang === "sw" ? "Ingiza bidhaa" : "Import products")}</button></div></div></Modal>}
       {stockCountScannerOpen && <BarcodeScanner onClose={() => setStockCountScannerOpen(false)} onDetected={scanStockCount} />}
       {labelProduct && <Modal title={lang === "sw" ? "Chapisha label" : "Print label"} onClose={() => setLabelProduct(null)}><LabelComposer products={[labelProduct]} initialProductIds={[labelProduct.id]} compact /></Modal>}
