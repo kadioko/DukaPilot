@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { list, customers, create, update, recordPayment, remove } = require("../controllers/debt.controller");
+const { list, customerGroups, customerDebtHistory, customers, create, update, recordPayment, remove } = require("../controllers/debt.controller");
 const { authenticate, requireRole, requirePermission } = require("../middleware/auth");
 const { requireActiveSubscription } = require("../middleware/subscription");
 
@@ -9,6 +9,8 @@ router.use(requirePermission("canSell"));
 router.use(requireActiveSubscription);
 
 router.get("/", list);
+router.get("/groups", customerGroups);
+router.get("/groups/:phone", customerDebtHistory);
 router.get("/customers", customers);
 router.post("/", create);
 router.patch("/:id", update);

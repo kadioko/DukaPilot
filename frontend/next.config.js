@@ -29,7 +29,7 @@ const nextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://dukapilotproduction.up.railway.app https://*.sentry.io https://*.ingest.sentry.io https://connect.facebook.net https://www.facebook.com https://graph.facebook.com",
+      "connect-src 'self' http://127.0.0.1:* http://localhost:* https://dukapilotproduction.up.railway.app https://*.sentry.io https://*.ingest.sentry.io https://connect.facebook.net https://www.facebook.com https://graph.facebook.com",
       "frame-src 'self' https://www.facebook.com https://web.facebook.com",
       "worker-src 'self' blob:",
       "manifest-src 'self'",

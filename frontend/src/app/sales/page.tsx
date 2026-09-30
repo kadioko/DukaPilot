@@ -176,6 +176,7 @@ export default function SalesPage() {
   const [productRevision, setProductRevision] = useState(0);
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [paymentRef, setPaymentRef] = useState("");
@@ -496,6 +497,32 @@ export default function SalesPage() {
         )
         .filter((i) => i.quantity > 0)
     );
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
+  }
+
+  function setCartQuantity(productId: string, value: number) {
+    const cartItem = cart.find((item) => item.product.id === productId);
+    if (cartItem) {
+      const stock = Math.max(0, Math.floor(cartItem.product.currentStock));
+      if (stock === 0) {
+        removeFromCart(productId);
+        toast(lang === "sw" ? `${cartItem.product.name} haina stock tena.` : `${cartItem.product.name} is no longer in stock.`, "error");
+      } else {
+        const requested = Number.isFinite(value) ? Math.floor(value) : cartItem.quantity;
+        const quantity = Math.max(1, Math.min(requested || 1, stock));
+        if (Number.isFinite(value) && quantity !== value) toast(lang === "sw" ? `Idadi imepunguzwa hadi stock iliyopo (${stock}).` : `Quantity was limited to available stock (${stock}).`, "error");
+        setCart((current) => current.map((item) => item.product.id === productId ? { ...item, quantity } : item));
+      }
+    }
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
   }
 
   function updatePrice(productId: string, price: number) {
@@ -506,6 +533,11 @@ export default function SalesPage() {
 
   function removeFromCart(productId: string) {
     setCart((prev) => prev.filter((i) => i.product.id !== productId));
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
   }
 
   const total = cart.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
@@ -943,11 +975,26 @@ export default function SalesPage() {
                             />
                           </div>
                           <div className="flex items-center gap-1">
-                            <button aria-label={`${t("common.remove", lang)} ${item.product.name}`} onClick={() => updateQty(item.product.id, -1)} className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center min-h-0 sm:h-9 sm:w-9">
+                            <button aria-label={`${lang === "sw" ? "Punguza idadi ya" : "Decrease quantity of"} ${item.product.name}`} onClick={() => updateQty(item.product.id, -1)} className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center min-h-0 sm:h-9 sm:w-9">
                               <Minus className="w-3 h-3" />
                             </button>
-                            <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                            <button aria-label={`${t("common.add", lang)} ${item.product.name}`} onClick={() => updateQty(item.product.id, 1)} className="w-11 h-11 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0 sm:h-9 sm:w-9">
+                            <input
+                              aria-label={`${lang === "sw" ? "Idadi ya" : "Quantity for"} ${item.product.name}`}
+                              type="number"
+                              inputMode="numeric"
+                              min={1}
+                              max={item.product.currentStock}
+                              step={1}
+                              value={quantityDrafts[item.product.id] ?? item.quantity}
+                              onChange={(event) => setQuantityDrafts((current) => ({ ...current, [item.product.id]: event.target.value }))}
+                              onBlur={() => {
+                                const draft = quantityDrafts[item.product.id];
+                                if (draft !== undefined) setCartQuantity(item.product.id, draft.trim() ? Number(draft) : item.quantity);
+                              }}
+                              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                              className="h-11 w-16 rounded-lg border border-gray-300 bg-white px-1 text-center text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500 sm:h-9"
+                            />
+                            <button aria-label={`${t("common.add", lang)} ${item.product.name}`} disabled={item.quantity >= item.product.currentStock} onClick={() => updateQty(item.product.id, 1)} className="w-11 h-11 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0 disabled:opacity-40 sm:h-9 sm:w-9">
                               <Plus className="w-3 h-3" />
                             </button>
                           </div>

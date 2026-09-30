@@ -35,6 +35,36 @@ const product = {
   barcodeType: "INTERNAL", unit: "pcs", currentStock: 5, sellingPrice: 3000, wholesalePrice: 2600,
 };
 
+test("prepared label snapshots omit wholesale prices for restricted staff only", async () => {
+  for (const staffId of ["staff-1", undefined]) {
+    let saved;
+    const ctrl = loadController({
+      product: { findMany: async () => [product] },
+      labelPrintJob: { create: async ({ data }) => { saved = data; return { id: "job-1", ...data }; } },
+    });
+    const res = response();
+    await ctrl.prepareJob({
+      user: { userId: "owner-1", staffId, role: "MERCHANT", permissions: { canManageStock: true, canViewReports: false } },
+      body: { items: [{ productId: product.id, copies: 1 }], outputDriver: "BROWSER", template: { layout: "NAME_PRICE" } },
+    }, res, (error) => { throw error; });
+    assert.equal(res.statusCode, 201);
+    assert.equal("wholesalePrice" in saved.items[0], !staffId);
+    assert.equal("wholesalePrice" in res.payload.job.items[0], !staffId);
+  }
+});
+
+test("completing a historical job returns metadata only, never stored financial snapshots", async () => {
+  let selection;
+  const ctrl = loadController({
+    labelPrintJob: {
+      findFirst: async () => ({ id: "job-1" }),
+      update: async ({ select }) => { selection = select; return { id: "job-1", status: "COMPLETED" }; },
+    },
+  });
+  await ctrl.completeJob({ user: { userId: "owner-1", staffId: "staff-1", role: "MERCHANT" }, params: { id: "job-1" }, body: {} }, response());
+  assert.deepEqual(selection, { id: true, status: true, error: true, completedAt: true });
+});
+
 test("label list hides wholesale templates and full job snapshots from stock-only staff", async () => {
   let jobQuery;
   const ctrl = loadController({

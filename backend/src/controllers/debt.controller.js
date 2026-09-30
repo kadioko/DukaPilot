@@ -49,6 +49,103 @@ const list = asyncHandler(async (req, res) => {
   });
 });
 
+const customerGroups = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(Math.max(1, Number(req.query.limit) || 25), 100);
+  const search = String(req.query.search || "").trim();
+  const [grouped, balances, latestNamedDebts, summary] = await Promise.all([
+    prisma.debt.groupBy({
+      by: ["customerPhone"],
+      where: { shopId },
+      _count: { _all: true },
+      _max: { createdAt: true },
+      orderBy: { _max: { createdAt: "desc" } },
+    }),
+    prisma.debt.groupBy({
+      by: ["customerPhone"],
+      where: { shopId, status: { in: ["OPEN", "PARTIAL"] } },
+      _sum: { amount: true, amountPaid: true },
+      _count: { _all: true },
+    }),
+    prisma.debt.findMany({
+      where: { shopId, customerName: { not: null } },
+      select: { customerPhone: true, customerName: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      distinct: ["customerPhone"],
+    }),
+    prisma.debt.aggregate({
+      where: { shopId, status: { in: ["OPEN", "PARTIAL"] } },
+      _sum: { amount: true, amountPaid: true },
+      _count: { id: true },
+    }),
+  ]);
+  const balanceByPhone = new Map(balances.map((group) => [group.customerPhone, group]));
+  const nameByPhone = new Map(latestNamedDebts.map((debt) => [debt.customerPhone, debt.customerName]));
+  const customersByPhone = new Map();
+  for (const group of grouped) {
+    const phone = normalizePhone(group.customerPhone) || group.customerPhone;
+    const balance = balanceByPhone.get(group.customerPhone);
+    const customer = customersByPhone.get(phone) || {
+      phone,
+      name: "",
+      debtCount: 0,
+      openCount: 0,
+      outstanding: 0,
+      lastDebtAt: group._max.createdAt,
+    };
+    if (!customer.name) customer.name = nameByPhone.get(group.customerPhone) || "";
+    customer.debtCount += group._count._all;
+    customer.openCount += balance?._count._all || 0;
+    customer.outstanding += (balance?._sum.amount || 0) - (balance?._sum.amountPaid || 0);
+    customersByPhone.set(phone, customer);
+  }
+  for (const customer of customersByPhone.values()) customer.outstanding = Math.max(0, customer.outstanding);
+  const searchLower = search.toLocaleLowerCase();
+  const searchDigits = search.replace(/\D/g, "");
+  const matchingCustomers = Array.from(customersByPhone.values())
+    .filter((customer) => {
+      if (!search) return true;
+      if (customer.name.toLocaleLowerCase().includes(searchLower)) return true;
+      if (!searchDigits) return false;
+      const phoneDigits = customer.phone.replace(/\D/g, "");
+      const localDigits = phoneDigits.startsWith("255") ? `0${phoneDigits.slice(3)}` : phoneDigits;
+      return phoneDigits.includes(searchDigits) || localDigits.includes(searchDigits);
+    })
+    .sort((left, right) => new Date(right.lastDebtAt).getTime() - new Date(left.lastDebtAt).getTime() || left.phone.localeCompare(right.phone));
+  const start = (page - 1) * limit;
+  const pageGroups = matchingCustomers.slice(start, start + limit);
+  const hasMore = start + limit < matchingCustomers.length;
+
+  res.json({
+    customers: pageGroups,
+    pagination: { page, limit, hasMore },
+    summary: {
+      openCount: summary._count.id,
+      totalOwed: (summary._sum.amount || 0) - (summary._sum.amountPaid || 0),
+    },
+  });
+});
+
+const customerDebtHistory = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const phone = normalizePhone(req.params.phone);
+  if (!phone) return res.status(400).json({ error: "A valid customer phone is required" });
+
+  const storedPhones = await prisma.debt.findMany({
+    where: { shopId },
+    select: { customerPhone: true },
+    distinct: ["customerPhone"],
+  });
+  const phoneVariants = storedPhones.map((record) => record.customerPhone).filter((storedPhone) => normalizePhone(storedPhone) === phone);
+  const debts = await prisma.debt.findMany({
+    where: { shopId, customerPhone: { in: [...new Set(phoneVariants)] } },
+    include: { payments: { orderBy: { createdAt: "desc" }, take: 10 } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+  res.json({ debts });
+});
+
 const customers = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const limit = Math.min(Math.max(1, Number(req.query.limit) || 200), 500);
@@ -254,4 +351,4 @@ const remove = asyncHandler(async (req, res) => {
   res.json({ message: "Debt deleted" });
 });
 
-module.exports = { list, customers, create, recordPayment, update, remove };
+module.exports = { list, customerGroups, customerDebtHistory, customers, create, recordPayment, update, remove };

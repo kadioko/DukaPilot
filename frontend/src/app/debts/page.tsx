@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
@@ -31,11 +31,15 @@ interface Debt {
 }
 
 const INPUT = "rounded-xl border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm";
+type DebtCustomer = { phone: string; name: string; debtCount: number; openCount: number; outstanding: number; lastDebtAt: string };
 
 export default function DebtsPage() {
   const lang = useLang();
   const { toast } = useToast();
-  const [debts, setDebts] = useState<Debt[]>([]);
+  const [customers, setCustomers] = useState<DebtCustomer[]>([]);
+  const [customerDebts, setCustomerDebts] = useState<Record<string, Debt[]>>({});
+  const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({});
+  const [detailLoading, setDetailLoading] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState({ openCount: 0, totalOwed: 0 });
   const [form, setForm] = useState({ customerName: "", customerPhone: "", amount: "", dueDate: "", note: "" });
   const [paymentDrafts, setPaymentDrafts] = useState<Record<string, string>>({});
@@ -44,29 +48,66 @@ export default function DebtsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [shopName, setShopName] = useState("DukaPilot");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerPage, setCustomerPage] = useState(1);
+  const [hasMoreCustomers, setHasMoreCustomers] = useState(false);
+  const groupLoadSequence = useRef(0);
 
   function debtAge(createdAt: string) {
     const days = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000));
     return lang === "sw" ? `Imewekwa siku ${days} zilizopita` : `Opened ${days} day${days === 1 ? "" : "s"} ago`;
   }
 
-  async function load() {
+  async function load(page = customerPage, search = customerSearch) {
+    const requestId = ++groupLoadSequence.current;
     setLoading(true);
     try {
-      const data = await api.get<{ debts: Debt[]; summary: { openCount: number; totalOwed: number } }>("/debts", lang);
-      setDebts(data.debts);
+      const query = new URLSearchParams({ page: String(page), limit: "25", search });
+      const data = await api.get<{ customers: DebtCustomer[]; pagination: { hasMore: boolean }; summary: { openCount: number; totalOwed: number } }>(`/debts/groups?${query}`, lang);
+      if (requestId !== groupLoadSequence.current) return;
+      if (!data.customers.length && page > 1 && !search) {
+        setCustomerPage(page - 1);
+        return;
+      }
+      setCustomers(data.customers);
+      setHasMoreCustomers(data.pagination.hasMore);
       setSummary(data.summary);
     } finally {
-      setLoading(false);
+      if (requestId === groupLoadSequence.current) setLoading(false);
+    }
+  }
+
+  async function loadCustomerDebts(phone: string) {
+    const normalizedPhone = normalizeWhatsAppNumber(phone);
+    const customerKey = normalizedPhone ? `+${normalizedPhone}` : phone;
+    setDetailLoading((current) => ({ ...current, [customerKey]: true }));
+    try {
+      const data = await api.get<{ debts: Debt[] }>(`/debts/groups/${encodeURIComponent(phone)}`, lang);
+      setCustomerDebts((current) => ({ ...current, [customerKey]: data.debts }));
+    } finally {
+      setDetailLoading((current) => ({ ...current, [customerKey]: false }));
+    }
+  }
+
+  async function toggleCustomer(phone: string) {
+    const isOpen = Boolean(expandedCustomers[phone]);
+    setExpandedCustomers((current) => ({ ...current, [phone]: !isOpen }));
+    if (!isOpen && !customerDebts[phone] && !detailLoading[phone]) {
+      try { await loadCustomerDebts(phone); }
+      catch (error) { setExpandedCustomers((current) => ({ ...current, [phone]: false })); toast(error instanceof Error ? error.message : "Could not load customer debts.", "error"); }
     }
   }
 
   useEffect(() => {
-    load().catch(console.error);
     api.get<{ settings: { shop?: { name?: string } } }>("/settings", lang)
       .then((data) => setShopName(data.settings.shop?.name || "DukaPilot"))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => load().catch(console.error), 250);
+    return () => window.clearTimeout(timer);
+  }, [customerPage, customerSearch]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -91,7 +132,9 @@ export default function DebtsPage() {
     setForm({ customerName: "", customerPhone: "", amount: "", dueDate: "", note: "" });
     setShowForm(false);
     setAssistantPrefill(false);
-    await load();
+    setCustomerSearch("");
+    setCustomerPage(1);
+    await load(1, "");
   }
 
   async function recordPayment(debt: Debt, amount: number) {
@@ -108,7 +151,7 @@ export default function DebtsPage() {
         delete next[debt.id];
         return next;
       });
-      await load();
+      await Promise.allSettled([load(), loadCustomerDebts(debt.customerPhone)]);
     } catch (error) {
       // Preserve the key after a timeout so a retry returns the same receipt.
       throw error;
@@ -121,7 +164,7 @@ export default function DebtsPage() {
     try {
       await api.delete(`/debts/${debt.id}`, lang);
       toast(lang === "sw" ? "Deni limefutwa." : "Debt deleted.", "success");
-      await load();
+      await Promise.allSettled([load(), loadCustomerDebts(debt.customerPhone)]);
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : (lang === "sw" ? "Deni halikuweza kufutwa." : "The debt could not be deleted."), "error");
     }
@@ -170,38 +213,67 @@ export default function DebtsPage() {
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           {loading ? (
             <div className="p-6 text-sm text-gray-500">{lang === "sw" ? "Inapakia..." : "Loading..."}</div>
-          ) : debts.length === 0 ? (
+          ) : customers.length === 0 && !customerSearch ? (
             <div className="p-6 text-sm text-gray-500">{lang === "sw" ? "Hakuna madeni bado." : "No debts yet."}</div>
-          ) : debts.map((debt) => {
-            const balance = debt.amount - debt.amountPaid;
-            const whatsappPhone = normalizeWhatsAppNumber(debt.customerPhone);
-            return (
-              <div key={debt.id} className="grid gap-3 border-b border-gray-100 p-4 last:border-b-0 lg:grid-cols-[1fr_auto_auto] lg:items-center">
-                <div>
-                  <p className="font-semibold text-gray-950">{debt.customerName || debt.customerPhone}</p>
-                  <p className="text-sm text-gray-500">{debt.customerPhone} - {debt.status} - {debtAge(debt.createdAt)}</p>
-                  {debt.note && <p className="mt-1 text-xs text-gray-500">{debt.note}</p>}
-                  {debt.payments && debt.payments.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {debt.payments.slice(0, 3).map((payment) => (
-                        <span key={payment.id} className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-800">
-                          {formatTZS(payment.amount)} {payment.paymentMethod} - {new Date(payment.createdAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {debt.dueDate && (
-                    <p className="mt-1 text-xs text-amber-700">
-                      {lang === "sw" ? "Mwisho" : "Due"} {new Date(debt.dueDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}
+          ) : <>
+            <div className="border-b border-gray-200 bg-gray-50 p-3">
+              <label className="block">
+                <span className="sr-only">{lang === "sw" ? "Tafuta mteja kwa jina au simu" : "Search customers by name or phone"}</span>
+                <input
+                  type="search"
+                  value={customerSearch}
+                  onChange={(event) => { setCustomerSearch(event.target.value); setCustomerPage(1); }}
+                  placeholder={lang === "sw" ? "Tafuta mteja kwa jina au simu" : "Search customers by name or phone"}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </label>
+            </div>
+            {customers.length === 0 ? <p className="p-6 text-center text-sm text-gray-500">{lang === "sw" ? "Hakuna mteja aliyepatikana." : "No matching customers."}</p> : customers.map((customer) => {
+              const whatsappPhone = normalizeWhatsAppNumber(customer.phone);
+              const customerName = customer.name || customer.phone;
+              const isExpanded = Boolean(expandedCustomers[customer.phone]);
+              const history = customerDebts[customer.phone] || [];
+              return (
+              <section key={customer.phone} className="border-b border-gray-200 last:border-b-0" aria-label={`${customerName} ${customer.phone}`}>
+                <div className="flex flex-col gap-3 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <button type="button" onClick={() => toggleCustomer(customer.phone)} aria-expanded={isExpanded} className="min-w-0 text-left">
+                    <h2 className="truncate font-semibold text-gray-950">{customerName}</h2>
+                    <p className="text-sm text-gray-500">{customer.phone}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {customer.debtCount} {lang === "sw" ? "madeni kwa jumla" : `debt${customer.debtCount === 1 ? "" : "s"}`} · {customer.openCount} {lang === "sw" ? "bado wazi" : "open"}
                     </p>
-                  )}
+                    <span className="mt-1 inline-block text-xs font-semibold text-brand-700">{isExpanded ? (lang === "sw" ? "Ficha madeni" : "Hide debts") : (lang === "sw" ? "Ona madeni yote" : "View all debts")}</span>
+                  </button>
+                  <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                    <div className="sm:text-right">
+                      <p className="text-xs text-gray-500">{lang === "sw" ? "Jumla inayodaiwa" : "Total outstanding"}</p>
+                      <p className="font-bold text-gray-950">{formatTZS(customer.outstanding)}</p>
+                    </div>
+                    {whatsappPhone && customer.outstanding > 0 && <a
+                      href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(lang === "sw" ? `Habari ${customer.name}, huu ni ukumbusho kutoka ${shopName}. Jumla ya madeni yako yaliyobaki ni ${formatTZS(customer.outstanding)}.` : `Hello ${customer.name}, this is a reminder from ${shopName}. Your total outstanding balance is ${formatTZS(customer.outstanding)}.`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-1 rounded-lg bg-green-100 px-3 py-2.5 text-sm font-semibold text-green-700 hover:bg-green-200"
+                    >
+                      <MessageCircle className="h-4 w-4" /> WhatsApp
+                    </a>}
+                  </div>
                 </div>
-                <div className="text-sm lg:text-right">
-                  <p className="font-semibold text-gray-950">{formatTZS(balance)}</p>
-                  <p className="text-gray-500">{formatTZS(debt.amountPaid)} {lang === "sw" ? "imelipwa" : "paid"}</p>
-                </div>
-                {balance > 0 && debt.status !== "CANCELLED" && (
-                  <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                {isExpanded && <div className="divide-y divide-gray-100 bg-gray-50/70">
+                  {detailLoading[customer.phone] ? <p className="p-4 text-sm text-gray-500">{lang === "sw" ? "Inapakia madeni..." : "Loading debts..."}</p> : history.length === 0 ? <p className="p-4 text-sm text-gray-500">{lang === "sw" ? "Hakuna madeni kwa mteja huyu." : "No debt records for this customer."}</p> : history.map((debt) => {
+                    const balance = debt.status === "CANCELLED" ? 0 : Math.max(0, debt.amount - debt.amountPaid);
+                    return <div key={debt.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)] lg:items-center">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{lang === "sw" ? "Deni" : "Debt"} · {debtAge(debt.createdAt)}</p>
+                        <p className="text-xs text-gray-500">{debt.status}{debt.dueDate ? ` · ${lang === "sw" ? "Mwisho" : "Due"} ${new Date(debt.dueDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}` : ""}</p>
+                        {debt.note && <p className="mt-1 break-words text-xs text-gray-600">{debt.note}</p>}
+                        {debt.payments && debt.payments.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{debt.payments.slice(0, 3).map((payment) => <span key={payment.id} className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-800">{formatTZS(payment.amount)} {payment.paymentMethod} · {new Date(payment.createdAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}</span>)}</div>}
+                      </div>
+                      <div className="text-sm lg:text-right">
+                        <p className="font-semibold text-gray-950">{formatTZS(balance)}</p>
+                        <p className="text-gray-500">{formatTZS(debt.amountPaid)} {lang === "sw" ? "imelipwa" : "paid"} / {formatTZS(debt.amount)}</p>
+                      </div>
+                      {balance > 0 && debt.status !== "CANCELLED" && <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
                     <input
                       value={paymentDrafts[debt.id] || ""}
                       onChange={(e) => {
@@ -226,28 +298,25 @@ export default function DebtsPage() {
                     <button onClick={() => recordPayment(debt, balance)} className="rounded-xl border border-brand-600 px-3 py-3 text-sm font-semibold text-brand-700 hover:bg-brand-50">
                       {lang === "sw" ? "Lipa yote" : "All paid"}
                     </button>
-                    {whatsappPhone && (
-                      <a
-                        href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(lang === "sw" ? `Habari ${debt.customerName || ""}, hii ni kumbukumbu kutoka ${shopName}. Deni lako ni ${formatTZS(balance)}.` : `Hello ${debt.customerName || ""}, this is a reminder from ${shopName}. Your outstanding balance is ${formatTZS(balance)}.`)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-100 px-3 py-3 text-sm font-semibold text-green-700 hover:bg-green-200 sm:col-span-3"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                        WhatsApp
-                      </a>
-                    )}
                     {debt.amountPaid === 0 && (
                       <button onClick={() => deleteDebt(debt)} className="inline-flex items-center justify-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 sm:col-span-3">
                         <Trash2 className="h-4 w-4" />
                         {lang === "sw" ? "Futa deni lililoingizwa kimakosa" : "Delete mistaken debt"}
                       </button>
                     )}
-                  </div>
-                )}
-              </div>
+                      </div>}
+                    </div>;
+                  })}
+                </div>}
+              </section>
             );
-          })}
+            })}
+            <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-white p-3">
+              <button type="button" disabled={customerPage <= 1 || loading} onClick={() => setCustomerPage((page) => Math.max(1, page - 1))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Wateja wa nyuma" : "Previous customers"}</button>
+              <span className="text-xs text-gray-500">{lang === "sw" ? "Ukurasa" : "Page"} {customerPage}</span>
+              <button type="button" disabled={!hasMoreCustomers || loading} onClick={() => setCustomerPage((page) => page + 1)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Wateja zaidi" : "Next customers"}</button>
+            </div>
+          </>}
         </div>
       </div>
     </AppShell>

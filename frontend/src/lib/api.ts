@@ -323,6 +323,8 @@ async function request<T>(
     throw error;
   }
 
+  if (res.status === 204) return undefined as T;
+
   const contentType = res.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
   const payload = isJson ? await res.json() : await res.text();

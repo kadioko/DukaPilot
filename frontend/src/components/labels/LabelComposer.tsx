@@ -166,7 +166,7 @@ export function LabelComposer({ products, initialProductIds = [], compact = fals
     downloadRaw(prepared.output.content, prepared.output.encoding, prepared.output.filename, prepared.output.contentType); await complete(prepared.job); toast(copy("Printer command downloaded.", "Amri ya printer imepakuliwa."), "success");
   }
   function bridgeEndpoint(path: string) {
-    const base = validBridgeUrl(activeProfile?.config?.bridgeUrl || "http://127.0.0.1:9123");
+    const base = validBridgeUrl(profileDraft.config?.bridgeUrl || "http://127.0.0.1:9123");
     if (!base) throw new Error(copy("Use a loopback bridge URL, such as http://127.0.0.1:9123.", "Tumia bridge URL ya kifaa hiki, kama http://127.0.0.1:9123."));
     return `${base}${path}`;
   }

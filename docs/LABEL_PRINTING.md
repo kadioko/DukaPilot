@@ -33,6 +33,8 @@ the API, so the printed product fields match the recorded job even if someone
 edits a product immediately afterwards. A staff member with Stock permission
 can print ordinary labels, but wholesale-price fields and raw output from a
 wholesale job remain owner/report-permission only.
+Prepared snapshots for restricted staff omit wholesale prices, and completion
+responses contain status metadata only, never historical product snapshots.
 
 ## Output Options
 
@@ -86,6 +88,23 @@ loopback-only and sends validated raw output to a configured network printer.
 
 See the bridge [setup and troubleshooting guide](../dukapilot-print-bridge/README.md)
 for LAN configuration, IP discovery, test printing, and recovery steps.
+
+Use `http://127.0.0.1:9123` or `http://localhost:9123`, changing the port when
+needed. The frontend security policy permits these loopback hosts; it does not
+permit arbitrary HTTP/LAN hosts. Test bridge and direct printing use the URL
+currently entered in the form, including edits not yet saved as a profile.
+Browser local-network permission and bridge CORS rules still apply. These
+allowances do not make the bridge available from another phone/computer.
+
+## Regression Checks
+
+- Backend controller tests cover restricted wholesale access in prepared jobs,
+  historical downloads, and completion responses.
+- Browser tests cover editing the bridge port under the real site CSP, template
+  deletion with HTTP 204, and a two-page PDF with 40 x 30 mm media dimensions.
+- CI runs bridge unit tests and a loopback/TCP smoke test without real hardware.
+- None of these automated checks certify a physical printer, label calibration,
+  barcode scan quality, or every browser's local-network permission behavior.
 
 ## Merchant Workflow
 

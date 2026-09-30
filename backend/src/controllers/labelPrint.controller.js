@@ -165,7 +165,7 @@ function expandItems(products, requested) {
   return expanded;
 }
 
-function snapshotProduct(product) {
+function snapshotProduct(product, includeWholesale) {
   return {
     id: product.id,
     name: product.name,
@@ -178,7 +178,7 @@ function snapshotProduct(product) {
     unit: product.unit,
     currentStock: product.currentStock,
     sellingPrice: product.sellingPrice,
-    wholesalePrice: product.wholesalePrice,
+    ...(includeWholesale ? { wholesalePrice: product.wholesalePrice } : {}),
   };
 }
 
@@ -224,7 +224,7 @@ const prepareJob = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Every selected product needs a barcode for this label format" });
   }
 
-  const snapshots = expanded.map(snapshotProduct);
+  const snapshots = expanded.map((product) => snapshotProduct(product, canViewFinancials(req)));
   const output = renderPrinterOutput(outputDriver, snapshots, template, profile);
   const job = await prisma.labelPrintJob.create({
     data: {
@@ -258,7 +258,11 @@ const completeJob = asyncHandler(async (req, res) => {
   const job = await prisma.labelPrintJob.findFirst({ where: { id: req.params.id, shopId }, select: { id: true } });
   if (!job) return res.status(404).json({ error: "Label print job not found" });
   const status = req.body.status === "FAILED" ? "FAILED" : "COMPLETED";
-  const updated = await prisma.labelPrintJob.update({ where: { id: job.id }, data: { status, error: status === "FAILED" ? String(req.body.error || "Print failed").slice(0, 500) : null, completedAt: new Date() } });
+  const updated = await prisma.labelPrintJob.update({
+    where: { id: job.id },
+    data: { status, error: status === "FAILED" ? String(req.body.error || "Print failed").slice(0, 500) : null, completedAt: new Date() },
+    select: { id: true, status: true, error: true, completedAt: true },
+  });
   res.json({ job: updated });
 });
 
