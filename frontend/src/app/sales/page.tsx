@@ -964,17 +964,20 @@ export default function SalesPage() {
                   <>
                     <div className="space-y-3 mb-4 max-h-56 overflow-y-auto">
                       {cart.map((item) => (
-                        <div key={item.product.id} className="flex items-center gap-2">
-                          <div className="flex-1 min-w-0">
+                        <div key={item.product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-gray-100 p-2 sm:flex sm:border-0 sm:p-0">
+                          <div className="min-w-0 sm:flex-1">
                             <p className="text-xs font-medium text-gray-800 truncate">{item.product.name}</p>
                             <input
                               type="number"
+                              min={0}
+                              step={1}
+                              aria-label={`${lang === "sw" ? "Bei ya" : "Unit price for"} ${item.product.name}`}
                               value={item.unitPrice}
                               onChange={(e) => updatePrice(item.product.id, Number(e.target.value))}
-                              className="text-xs text-brand-600 font-bold w-24 border-b border-dashed border-gray-300 focus:outline-none bg-transparent"
+                              className="w-24 max-w-full border-b border-dashed border-gray-300 bg-transparent text-base font-bold text-brand-600 focus:outline-none sm:text-xs"
                             />
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="col-span-2 row-start-2 flex items-center justify-start gap-1 sm:order-none sm:col-auto sm:row-auto">
                             <button aria-label={`${lang === "sw" ? "Punguza idadi ya" : "Decrease quantity of"} ${item.product.name}`} onClick={() => updateQty(item.product.id, -1)} className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center min-h-0 sm:h-9 sm:w-9">
                               <Minus className="w-3 h-3" />
                             </button>
@@ -992,18 +995,18 @@ export default function SalesPage() {
                                 if (draft !== undefined) setCartQuantity(item.product.id, draft.trim() ? Number(draft) : item.quantity);
                               }}
                               onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-                              className="h-11 w-16 rounded-lg border border-gray-300 bg-white px-1 text-center text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500 sm:h-9"
+                              className="h-11 w-16 rounded-lg border border-gray-300 bg-white px-1 text-center text-base font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500 sm:h-9 sm:text-sm"
                             />
-                            <button aria-label={`${t("common.add", lang)} ${item.product.name}`} disabled={item.quantity >= item.product.currentStock} onClick={() => updateQty(item.product.id, 1)} className="w-11 h-11 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0 disabled:opacity-40 sm:h-9 sm:w-9">
+                            <button aria-label={`${lang === "sw" ? "Ongeza idadi ya" : "Increase quantity of"} ${item.product.name}`} disabled={item.quantity >= item.product.currentStock} onClick={() => updateQty(item.product.id, 1)} className="w-11 h-11 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0 disabled:opacity-40 sm:h-9 sm:w-9">
                               <Plus className="w-3 h-3" />
                             </button>
                           </div>
-                          <span className="text-xs font-bold text-gray-800 w-16 text-right">
-                            {formatTZS(item.quantity * item.unitPrice)}
-                          </span>
-                          <button aria-label={`${t("common.remove", lang)} ${item.product.name}`} onClick={() => removeFromCart(item.product.id)} className="flex h-11 w-11 items-center justify-center text-gray-400 hover:text-red-500 min-h-0 sm:h-9 sm:w-9">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="col-start-2 row-start-1 flex items-center gap-1 sm:order-none sm:col-auto sm:row-auto">
+                            <span className="min-w-16 text-right text-xs font-bold text-gray-800">{formatTZS(item.quantity * item.unitPrice)}</span>
+                            <button aria-label={`${t("common.remove", lang)} ${item.product.name}`} onClick={() => removeFromCart(item.product.id)} className="flex h-11 w-11 items-center justify-center text-gray-400 hover:text-red-500 min-h-0 sm:h-9 sm:w-9">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>

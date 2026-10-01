@@ -1,7 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTime");
-const { normalizePhone } = require("../lib/phone");
+const { normalizePhone, isValidPhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 const { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations } = require("../lib/cropHarvestSales");
@@ -95,8 +95,8 @@ const create = asyncHandler(async (req, res) => {
     if (existingSale) return res.json({ sale: redactSale(existingSale, req), reused: true });
   }
 
-  if (normalizedPaymentMethod === "CREDIT" && !normalizedCustomerPhone) {
-    return res.status(400).json({ error: "Customer phone is required for credit sales" });
+  if (normalizedPaymentMethod === "CREDIT" && !isValidPhone(normalizedCustomerPhone)) {
+    return res.status(400).json({ error: "A valid customer phone is required for credit sales" });
   }
 
   // Validate products belong to this shop and have sufficient stock

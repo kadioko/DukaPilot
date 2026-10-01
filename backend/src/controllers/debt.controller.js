@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
+const { Prisma } = require("@prisma/client");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { normalizePhone } = require("../lib/phone");
+const { normalizePhone, isValidPhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
 
 function asyncHandler(fn) {
@@ -14,6 +15,18 @@ function nextStatus(amount, amountPaid) {
 }
 
 const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
+const CUSTOMER_FILTERS = new Set(["OUTSTANDING", "ALL", "PAID"]);
+const phoneDigitsSql = Prisma.sql`regexp_replace("customerPhone", '[^0-9]', '', 'g')`;
+const customerPhoneSql = Prisma.sql`CASE
+  WHEN ${phoneDigitsSql} ~ '^0[67][0-9]{8}$' THEN '+255' || substring(${phoneDigitsSql} from 2)
+  WHEN ${phoneDigitsSql} ~ '^255[67][0-9]{8}$' THEN '+' || ${phoneDigitsSql}
+  ELSE regexp_replace("customerPhone", '[[:space:]()-]', '', 'g')
+END`;
+
+function boundedPage(value, fallback, maximum) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 1 ? Math.min(parsed, maximum) : fallback;
+}
 
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
@@ -51,75 +64,53 @@ const list = asyncHandler(async (req, res) => {
 
 const customerGroups = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(Math.max(1, Number(req.query.limit) || 25), 100);
-  const search = String(req.query.search || "").trim();
-  const [grouped, balances, latestNamedDebts, summary] = await Promise.all([
-    prisma.debt.groupBy({
-      by: ["customerPhone"],
-      where: { shopId },
-      _count: { _all: true },
-      _max: { createdAt: true },
-      orderBy: { _max: { createdAt: "desc" } },
-    }),
-    prisma.debt.groupBy({
-      by: ["customerPhone"],
-      where: { shopId, status: { in: ["OPEN", "PARTIAL"] } },
-      _sum: { amount: true, amountPaid: true },
-      _count: { _all: true },
-    }),
-    prisma.debt.findMany({
-      where: { shopId, customerName: { not: null } },
-      select: { customerPhone: true, customerName: true, createdAt: true },
-      orderBy: { createdAt: "desc" },
-      distinct: ["customerPhone"],
-    }),
+  const page = boundedPage(req.query.page, 1, 100000);
+  const limit = boundedPage(req.query.limit, 25, 100);
+  const search = String(req.query.search || "").trim().slice(0, 80);
+  const searchDigits = search.replace(/\D/g, "");
+  const filter = CUSTOMER_FILTERS.has(String(req.query.filter || "").toUpperCase()) ? String(req.query.filter).toUpperCase() : "OUTSTANDING";
+  const [rows, summary] = await Promise.all([
+    prisma.$queryRaw`
+      WITH normalized AS (
+        SELECT "id", "customerName", "amount", "amountPaid", "status", "createdAt",
+          ${customerPhoneSql} AS phone
+        FROM "debts" WHERE "shopId" = ${shopId}
+      ), grouped AS (
+        SELECT phone, COUNT(*)::int AS "debtCount",
+          COUNT(*) FILTER (WHERE "status" IN ('OPEN', 'PARTIAL'))::int AS "openCount",
+          COUNT(*) FILTER (WHERE "status" = 'PAID')::int AS "paidCount",
+          GREATEST(0, COALESCE(SUM("amount" - "amountPaid") FILTER (WHERE "status" IN ('OPEN', 'PARTIAL')), 0))::float8 AS outstanding,
+          MAX("createdAt") AS "lastDebtAt",
+          BOOL_OR(COALESCE("customerName" ILIKE ${`%${search}%`}, false)) AS "matchesName"
+        FROM normalized GROUP BY phone
+      ), named AS (
+        SELECT DISTINCT ON (phone) phone, "customerName" AS name
+        FROM normalized WHERE NULLIF(TRIM("customerName"), '') IS NOT NULL
+        ORDER BY phone, "createdAt" DESC, "id" DESC
+      )
+      SELECT grouped.phone, COALESCE(named.name, '') AS name,
+        grouped."debtCount", grouped."openCount", grouped.outstanding, grouped."lastDebtAt"
+      FROM grouped LEFT JOIN named USING (phone)
+      WHERE (${filter} = 'ALL'
+        OR (${filter} = 'OUTSTANDING' AND grouped.outstanding > 0)
+        OR (${filter} = 'PAID' AND grouped."openCount" = 0 AND grouped."paidCount" > 0))
+        AND (${search} = '' OR grouped."matchesName"
+          OR (${searchDigits} <> '' AND (
+            regexp_replace(grouped.phone, '[^0-9]', '', 'g') LIKE ${`%${searchDigits}%`}
+            OR (grouped.phone LIKE '+255%' AND ('0' || substring(grouped.phone from 5)) LIKE ${`%${searchDigits}%`})
+          )))
+      ORDER BY grouped."lastDebtAt" DESC, grouped.phone ASC
+      LIMIT ${limit + 1} OFFSET ${(page - 1) * limit}
+    `,
     prisma.debt.aggregate({
       where: { shopId, status: { in: ["OPEN", "PARTIAL"] } },
       _sum: { amount: true, amountPaid: true },
       _count: { id: true },
     }),
   ]);
-  const balanceByPhone = new Map(balances.map((group) => [group.customerPhone, group]));
-  const nameByPhone = new Map(latestNamedDebts.map((debt) => [debt.customerPhone, debt.customerName]));
-  const customersByPhone = new Map();
-  for (const group of grouped) {
-    const phone = normalizePhone(group.customerPhone) || group.customerPhone;
-    const balance = balanceByPhone.get(group.customerPhone);
-    const customer = customersByPhone.get(phone) || {
-      phone,
-      name: "",
-      debtCount: 0,
-      openCount: 0,
-      outstanding: 0,
-      lastDebtAt: group._max.createdAt,
-    };
-    if (!customer.name) customer.name = nameByPhone.get(group.customerPhone) || "";
-    customer.debtCount += group._count._all;
-    customer.openCount += balance?._count._all || 0;
-    customer.outstanding += (balance?._sum.amount || 0) - (balance?._sum.amountPaid || 0);
-    customersByPhone.set(phone, customer);
-  }
-  for (const customer of customersByPhone.values()) customer.outstanding = Math.max(0, customer.outstanding);
-  const searchLower = search.toLocaleLowerCase();
-  const searchDigits = search.replace(/\D/g, "");
-  const matchingCustomers = Array.from(customersByPhone.values())
-    .filter((customer) => {
-      if (!search) return true;
-      if (customer.name.toLocaleLowerCase().includes(searchLower)) return true;
-      if (!searchDigits) return false;
-      const phoneDigits = customer.phone.replace(/\D/g, "");
-      const localDigits = phoneDigits.startsWith("255") ? `0${phoneDigits.slice(3)}` : phoneDigits;
-      return phoneDigits.includes(searchDigits) || localDigits.includes(searchDigits);
-    })
-    .sort((left, right) => new Date(right.lastDebtAt).getTime() - new Date(left.lastDebtAt).getTime() || left.phone.localeCompare(right.phone));
-  const start = (page - 1) * limit;
-  const pageGroups = matchingCustomers.slice(start, start + limit);
-  const hasMore = start + limit < matchingCustomers.length;
-
   res.json({
-    customers: pageGroups,
-    pagination: { page, limit, hasMore },
+    customers: rows.slice(0, limit),
+    pagination: { page, limit, hasMore: rows.length > limit },
     summary: {
       openCount: summary._count.id,
       totalOwed: (summary._sum.amount || 0) - (summary._sum.amountPaid || 0),
@@ -130,20 +121,21 @@ const customerGroups = asyncHandler(async (req, res) => {
 const customerDebtHistory = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const phone = normalizePhone(req.params.phone);
-  if (!phone) return res.status(400).json({ error: "A valid customer phone is required" });
-
-  const storedPhones = await prisma.debt.findMany({
-    where: { shopId },
-    select: { customerPhone: true },
-    distinct: ["customerPhone"],
-  });
-  const phoneVariants = storedPhones.map((record) => record.customerPhone).filter((storedPhone) => normalizePhone(storedPhone) === phone);
+  if (!isValidPhone(phone)) return res.status(400).json({ error: "A valid customer phone is required" });
+  const page = boundedPage(req.query.page, 1, 100000);
+  const limit = boundedPage(req.query.limit, 20, 50);
+  const variants = await prisma.$queryRaw`
+    SELECT DISTINCT "customerPhone" AS phone FROM "debts"
+    WHERE "shopId" = ${shopId} AND ${customerPhoneSql} = ${phone}
+  `;
   const debts = await prisma.debt.findMany({
-    where: { shopId, customerPhone: { in: [...new Set(phoneVariants)] } },
+    where: { shopId, customerPhone: { in: variants.map((entry) => entry.phone) } },
     include: { payments: { orderBy: { createdAt: "desc" }, take: 10 } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * limit,
+    take: limit + 1,
   });
-  res.json({ debts });
+  res.json({ debts: debts.slice(0, limit), pagination: { page, limit, hasMore: debts.length > limit } });
 });
 
 const customers = asyncHandler(async (req, res) => {
@@ -186,8 +178,8 @@ const create = asyncHandler(async (req, res) => {
   const amountPaid = Number(req.body.amountPaid || 0);
   const customerPhone = normalizePhone(req.body.customerPhone);
 
-  if (!customerPhone || !Number.isInteger(amount) || amount <= 0 || !Number.isInteger(amountPaid) || amountPaid < 0) {
-    return res.status(400).json({ error: "Customer phone and a whole positive TZS amount are required" });
+  if (!isValidPhone(customerPhone) || !Number.isInteger(amount) || amount <= 0 || !Number.isInteger(amountPaid) || amountPaid < 0) {
+    return res.status(400).json({ error: "A valid customer phone and a whole positive TZS amount are required" });
   }
   const openingPayment = Math.min(amount, amountPaid);
 

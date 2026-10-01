@@ -107,6 +107,78 @@ test("debt payment rejects an overpayment and does not create a ledger entry", a
   assert.equal(createdPayments, 0);
 });
 
+test("manual debt creation rejects a non-phone customer identifier", async () => {
+  let wrote = false;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async () => { wrote = true; },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[debtControllerPath];
+  const controller = require(debtControllerPath);
+  const res = response();
+  await controller.create({ user: { userId: "owner-1" }, body: { customerPhone: "abc", amount: 1000 } }, res);
+  assert.equal(res.statusCode, 400);
+  assert.equal(wrote, false);
+});
+
+test("non-cash debt collections keep their method and stay out of the cash session", async () => {
+  let savedPayment;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (fn) => fn({
+      debt: {
+        findFirst: async () => ({ id: "debt-1", shopId: "shop-1", amount: 5000, amountPaid: 0, status: "OPEN" }),
+        updateMany: async () => ({ count: 1 }),
+        findUnique: async () => ({ id: "debt-1", amount: 5000, amountPaid: 2000, status: "PARTIAL", payments: [] }),
+      },
+      debtPayment: { create: async ({ data }) => { savedPayment = data; } },
+    }),
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[debtControllerPath];
+  const controller = require(debtControllerPath);
+  const res = response();
+  await controller.recordPayment({ user: { userId: "owner-1" }, params: { id: "debt-1" }, body: { amount: 2000, paymentMethod: "MPESA", paymentRef: "M123" } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(savedPayment.paymentMethod, "MPESA");
+  assert.equal(savedPayment.paymentRef, "M123");
+  assert.equal(savedPayment.cashSessionId, null);
+});
+
+test("customer list and history request only bounded database pages", async () => {
+  let rawCalls = 0;
+  let historyQuery;
+  mockPrisma({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $queryRaw: async () => {
+      rawCalls += 1;
+      return rawCalls === 1
+        ? Array.from({ length: 26 }, (_, index) => ({ phone: `+2557000000${String(index).padStart(2, "0")}`, name: "Test", debtCount: 1, openCount: 1, outstanding: 1000, lastDebtAt: new Date() }))
+        : [{ phone: "0712345678" }, { phone: "+255712345678" }];
+    },
+    debt: {
+      aggregate: async () => ({ _sum: { amount: 3000, amountPaid: 1000 }, _count: { id: 2 } }),
+      findMany: async (query) => { historyQuery = query; return Array.from({ length: 21 }, (_, index) => ({ id: `debt-${index}` })); },
+    },
+  });
+  delete require.cache[shopAccessPath];
+  delete require.cache[debtControllerPath];
+  const controller = require(debtControllerPath);
+  const groups = response();
+  await controller.customerGroups({ user: { userId: "owner-1" }, query: { filter: "OUTSTANDING", limit: "25" } }, groups);
+  assert.equal(groups.payload.customers.length, 25);
+  assert.equal(groups.payload.pagination.hasMore, true);
+  assert.equal(groups.payload.summary.totalOwed, 2000);
+  const history = response();
+  await controller.customerDebtHistory({ user: { userId: "owner-1" }, params: { phone: "+255712345678" }, query: { page: "2", limit: "20" } }, history);
+  assert.deepEqual(historyQuery.where.customerPhone.in, ["0712345678", "+255712345678"]);
+  assert.equal(historyQuery.skip, 20);
+  assert.equal(historyQuery.take, 21);
+  assert.equal(history.payload.debts.length, 20);
+  assert.equal(history.payload.pagination.hasMore, true);
+});
+
 test("debt payment retry returns the original collection without adding it twice", async () => {
   let createdPayments = 0;
   mockPrisma({
