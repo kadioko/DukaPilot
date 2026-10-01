@@ -79,23 +79,34 @@ export default function CatalogPage() {
 
   const sampleLinks = shops.slice(0, 3);
   const hasNoMarketplace = !loading && shops.length === 0;
+  const shopNameCounts = shops.reduce<Record<string, number>>((counts, shop) => {
+    counts[shop.name] = (counts[shop.name] || 0) + 1;
+    return counts;
+  }, {});
+  const shopDetails = new Map(shops.map((shop) => [shop.id, shop]));
+  const shopIdentity = (id: string, location: string) => {
+    const shop = shopDetails.get(id);
+    const locationLabel = [location, shop?.district].filter(Boolean).join(" · ");
+    const duplicateLabel = shopNameCounts[shop?.name || ""] > 1 ? ` · #${id.slice(-5).toUpperCase()}` : "";
+    return `${locationLabel || (lang === "sw" ? "Eneo halijawekwa" : "Location not listed")}${duplicateLabel}`;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-5xl mx-auto px-4 py-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 sm:flex sm:gap-3 sm:py-3">
           <Link
             href="/"
             aria-label={t("catalog.backToLogin", lang)}
-            className="text-gray-500 hover:text-gray-800 min-h-0"
+            className="flex h-10 w-8 items-center justify-center text-gray-500 hover:text-gray-800 sm:h-auto sm:w-auto"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <LogoMark className="h-8 w-8 rounded-lg flex-shrink-0" />
+          <div className="flex min-w-0 items-center gap-2 sm:flex-1">
+            <LogoMark className="h-8 w-8 shrink-0 rounded-lg" />
             <div className="min-w-0">
-              <p className="font-bold text-sm text-gray-900 truncate">{t("catalog.title", lang)}</p>
-              <p className="text-xs text-gray-500 truncate">{t("catalog.subtitle", lang)}</p>
+              <p className="text-sm font-bold leading-5 text-gray-900">{t("catalog.title", lang)}</p>
+              <p className="hidden truncate text-xs text-gray-500 sm:block">{t("catalog.subtitle", lang)}</p>
             </div>
           </div>
           <div className="hidden sm:flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -121,7 +132,7 @@ export default function CatalogPage() {
           </button>
           <Link
             href="/"
-            className="text-xs sm:text-sm font-semibold text-brand-700 hover:underline whitespace-nowrap"
+            className="col-span-3 inline-flex min-h-10 items-center justify-center rounded-lg bg-brand-50 px-3 text-sm font-semibold text-brand-800 hover:bg-brand-100 sm:col-auto sm:ml-auto sm:bg-transparent sm:px-0 sm:text-sm sm:text-brand-700 sm:hover:underline"
           >
             {t("catalog.loginCta", lang)}
           </Link>
@@ -153,7 +164,7 @@ export default function CatalogPage() {
             <option value="">{t("catalog.allShops", lang)}</option>
             {shops.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} ({s.productCount})
+                {s.name} · {[s.location, s.district].filter(Boolean).join(", ") || (lang === "sw" ? "Eneo halijawekwa" : "Location not listed")} ({s.productCount}){shopNameCounts[s.name] > 1 ? ` · #${s.id.slice(-5).toUpperCase()}` : ""}
               </option>
             ))}
           </select>
@@ -227,11 +238,15 @@ export default function CatalogPage() {
           <div className="space-y-6">
             {grouped.map(({ shop, items }) => (
               <section key={shop.id}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Store className="w-4 h-4 text-brand-600" />
-                  <h2 className="font-semibold text-gray-900 text-sm">{shop.name}</h2>
-                  <span className="text-xs text-gray-400">- {shop.location}</span>
-                  <Link href={`/catalog/${shop.id}`} className="ml-auto text-xs font-semibold text-brand-700 hover:underline whitespace-nowrap">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Store className="h-4 w-4 shrink-0 text-brand-600" />
+                    <div className="min-w-0 sm:flex sm:items-baseline sm:gap-2">
+                      <h2 className="truncate text-sm font-semibold text-gray-900">{shop.name}</h2>
+                      <span className="block truncate text-xs text-gray-500">{shopIdentity(shop.id, shop.location)}</span>
+                    </div>
+                  </div>
+                  <Link href={`/catalog/${shop.id}`} className="inline-flex min-h-10 items-center text-sm font-semibold text-brand-700 hover:underline sm:ml-auto sm:min-h-0 sm:text-xs">
                     {t("catalog.viewShop", lang)}
                   </Link>
                 </div>

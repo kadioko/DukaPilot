@@ -81,6 +81,8 @@ const plans: Plan[] = [
     highlight: false,
   },
 ];
+const paidPlans = [plans[1], plans[2]];
+const displayPlans = [...paidPlans, plans[0]];
 
 const competitors = [
   {
@@ -205,17 +207,33 @@ export default function PricingPage() {
           <p className="text-gray-500 text-sm">{copy.subtitle[lang]}</p>
         </div>
 
-        <nav aria-label={lang === "sw" ? "Muhtasari wa mipango" : "Plan summary"} className="mb-6 grid grid-cols-3 overflow-hidden rounded-lg border border-gray-200 bg-white md:hidden">
-          {plans.map((plan) => (
-            <a key={plan.id} href={`#plan-${plan.id.toLowerCase()}`} className={`min-w-0 px-2 py-3 text-center ${plan.id === "BASIC" ? "bg-brand-50" : ""}`}>
-              <span className="block truncate text-xs font-bold text-gray-900">{plan.name[lang]}</span>
-              <span className="mt-1 block text-[11px] font-semibold text-brand-700">{plan.price === 0 ? copy.free[lang] : formatTZS(plan.price)}</span>
-            </a>
-          ))}
-        </nav>
+        <section aria-labelledby="plan-compare-title" className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <h2 id="plan-compare-title" className="border-b border-gray-200 px-4 py-3 text-sm font-bold text-gray-950">
+            {lang === "sw" ? "Linganisha mipango" : "Compare plans"}
+          </h2>
+          <div className="grid grid-cols-2 divide-x divide-gray-200">
+            {paidPlans.map((plan) => (
+              <div key={plan.id} className={`min-w-0 p-3 sm:p-4 ${plan.id === "PRO" ? "bg-brand-50/50" : ""}`}>
+                <p className="text-sm font-bold text-gray-950">{plan.name[lang]}</p>
+                <p className="mt-1 text-sm font-bold text-brand-800">{formatTZS(plan.price)}<span className="font-normal text-gray-500">/{lang === "sw" ? "mwezi" : "mo"}</span></p>
+                <p className="mt-2 min-h-10 text-xs leading-5 text-gray-600">
+                  {plan.id === "BASIC"
+                    ? lang === "sw" ? "Duka moja, mfanyakazi 1 na ripoti." : "One shop, 1 staff account, and reports."
+                    : lang === "sw" ? "AI, staff bila kikomo na maeneo 4 pamoja na duka kuu." : "AI, unlimited staff, and 4 locations including the main shop."}
+                </p>
+                <a href={`#plan-${plan.id.toLowerCase()}`} className="mt-2 inline-flex min-h-9 items-center text-xs font-bold text-brand-800 underline decoration-brand-300 underline-offset-2 hover:text-brand-950">
+                  {lang === "sw" ? "Angalia maelezo" : "See details"}
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
+        <p className="-mt-3 mb-5 text-center text-xs text-gray-500">
+          {lang === "sw" ? "Unaanza na jaribio la siku 14 bila malipo wala kadi ya benki." : "Every new shop starts with a free 14-day trial. No bank card required."}
+        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-          {plans.map((plan) => (
+          {displayPlans.map((plan) => (
             <div
               key={plan.id}
               id={`plan-${plan.id.toLowerCase()}`}

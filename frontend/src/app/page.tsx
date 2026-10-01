@@ -76,12 +76,6 @@ const heroFeatures = [
   },
 ];
 
-const heroProofPoints = [
-  { sw: "AI inapanga kipaumbele cha leo", en: "AI ranks today's priorities" },
-  { sw: "Mauzo, stock, madeni, matumizi na nukuu", en: "Sales, stock, debts, expenses, and quotations" },
-  { sw: "Kwa maduka na biashara za huduma Tanzania", en: "For Tanzanian shops and service businesses" },
-];
-
 const aiThinkingCards = [
   {
     icon: Brain,
@@ -403,15 +397,25 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
             </p>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            {heroProofPoints.map((point) => (
-              <span
-                key={point.en}
-                className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-brand-50"
-              >
-                {lang === "sw" ? point.sw : point.en}
-              </span>
-            ))}
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)_104px] items-center gap-3 sm:hidden">
+            <div>
+              <p className="text-sm font-bold text-white">{lang === "sw" ? "DukaPilot kwenye simu" : "DukaPilot on your phone"}</p>
+              <p className="mt-1 text-xs leading-5 text-brand-100">{lang === "sw" ? "Stock, mauzo na vipaumbele vya AI kwa muhtasari." : "Stock, sales, and AI priorities at a glance."}</p>
+            </div>
+            <Image
+              src="/marketing/phone-dashboard.png"
+              alt={lang === "sw" ? "Dashibodi ya DukaPilot kwenye simu" : "DukaPilot dashboard on a phone"}
+              width={420}
+              height={744}
+              className="h-40 w-[104px] rounded-xl border-4 border-white bg-white object-contain object-top shadow-lg"
+              priority
+            />
+          </div>
+
+          <div className="mt-4 flex">
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-brand-50">
+              {lang === "sw" ? "Mauzo · Stock · AI" : "Sales · Stock · AI"}
+            </span>
           </div>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">

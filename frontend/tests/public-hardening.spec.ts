@@ -6,7 +6,13 @@ test("signed-out visitors remain on the public Help page", async ({ page }) => {
   await page.goto("/help?lang=en");
 
   await expect(page).toHaveURL(/\/help/);
-  await expect(page.getByRole("heading", { level: 1, name: "Get help running your business better" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Find quick answers" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Frequently asked questions" })).toBeVisible();
+  const firstFaq = page.locator("details").first();
+  await expect(firstFaq).toBeVisible();
+  await expect(firstFaq).not.toHaveAttribute("open", "");
+  await firstFaq.locator("summary").click();
+  await expect(firstFaq.locator("p")).toBeVisible();
 });
 
 test("mobile Demo exposes sign-in details before its walkthrough", async ({ page }) => {
@@ -26,10 +32,23 @@ test("mobile Contact leads with WhatsApp and has one page heading", async ({ pag
   await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/contact?lang=en");
-  await expect(page.getByRole("heading", { level: 1, name: "Talk to us on WhatsApp." })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Support for your business." })).toBeVisible();
   await expect(page.getByRole("link", { name: "Message us on WhatsApp" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Message us on WhatsApp" })).toHaveCount(1);
   expect(await page.locator("h1").count()).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("mobile homepage shows a real product preview in the first viewport", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?lang=en");
+  const preview = page.getByRole("img", { name: "DukaPilot dashboard on a phone" });
+  await expect(preview).toBeVisible();
+  const box = await preview.boundingBox();
+  expect(box?.y || 0).toBeLessThan(844);
+  expect(box ? box.y + box.height : 9999).toBeLessThan(844);
+  await expect(page.getByText("Sales · Stock · AI", { exact: true })).toBeVisible();
 });
 
 test("mobile public menu sends visitors to the sign-in panel", async ({ page }) => {

@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { BookOpen, CheckCircle2, Egg, FileText, MessageCircle, Search, Sparkles, Sprout, Tractor, UtensilsCrossed } from "lucide-react";
+import { BookOpen, CheckCircle2, ChevronDown, Egg, FileText, Sparkles, Sprout, Tractor, UtensilsCrossed } from "lucide-react";
 import PublicPageShell from "@/components/marketing/PublicPageShell";
 import ProductProofSection from "@/components/marketing/ProductProofSection";
 import WhatsAppCTA from "@/components/marketing/WhatsAppCTA";
 import { TextReveal } from "@/components/ui/cascade-text";
-import { TheInfiniteGrid } from "@/components/ui/the-infinite-grid";
 import { useLang } from "@/lib/i18n";
 import { getOptionalCurrentSession } from "@/lib/api";
 
@@ -93,50 +92,34 @@ export default function HelpPage() {
 
   return (
     <PublicPageShell>
-      <div className="space-y-8">
-        <TheInfiniteGrid
-          lang={lang}
-          headline={lang === "sw" ? "Pata msaada wa kuendesha biashara vizuri" : "Get help running your business better"}
-          body={lang === "sw"
-            ? "Majibu ya haraka kwa kuweka biashara, bidhaa, wafanyakazi, mauzo bila intaneti, malipo, mazao na msaidizi wa AI. Ukikwama, msaada wa WhatsApp upo karibu."
-            : "Quick answers for business setup, products, staff, offline sales, payments, crops, and the AI assistant. If you get stuck, WhatsApp support is close."}
-          primaryCta={{ href: "/contact", label: lang === "sw" ? "Ongea na support" : "Talk to support" }}
-          secondaryCta={{
-            href: "https://wa.me/255743910580?text=Nahitaji%20msaada%20wa%20DukaPilot",
-            label: "WhatsApp support",
-          }}
-          features={walkthrough.map(([title, body]) => ({ title, description: body }))}
-        />
-        <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 lg:p-10">
-          <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
-            <div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-700 ring-1 ring-brand-100">
-                <BookOpen className="h-6 w-6" />
-              </div>
-              <h2 className="mt-5 max-w-2xl text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
-                <TextReveal text={lang === "sw" ? "Msaada" : "Help"} hoverColor="#15803d" />
-              </h2>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
-                {lang === "sw" ? "Majibu ya haraka kwa kuweka biashara, bidhaa, wafanyakazi, mauzo bila intaneti, malipo, mazao na msaidizi wa AI." : "Quick answers for business setup, products, staff, offline sales, payments, crops, and the AI assistant."}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-brand-100 bg-brand-50 p-5">
-              <Sparkles className="h-5 w-5 text-brand-700" />
-              <p className="mt-3 font-semibold text-brand-950">{lang === "sw" ? "Unakwama?" : "Stuck?"}</p>
-              <p className="mt-2 text-sm leading-6 text-brand-900">
-                {lang === "sw" ? "Tuma screenshot au swali kwa WhatsApp, tutakuongoza hatua kwa hatua." : "Send a screenshot or question on WhatsApp and we will guide you step by step."}
-              </p>
-              <WhatsAppCTA intent="help" label="WhatsApp support" className="mt-4 w-full" />
-            </div>
+      <div className="space-y-7">
+        <section className="flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-brand-700"><BookOpen className="h-5 w-5" /><p className="text-sm font-semibold">{lang === "sw" ? "Kituo cha msaada" : "Help center"}</p></div>
+            <h1 className="mt-2 text-3xl font-bold tracking-normal text-gray-950 sm:text-4xl">
+              <TextReveal text={lang === "sw" ? "Pata majibu ya haraka" : "Find quick answers"} hoverColor="#15803d" />
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+              {lang === "sw" ? "Mwongozo wa biashara, bidhaa, mauzo, malipo, wafanyakazi na AI." : "Guides for your business, products, sales, payments, staff, and AI."}
+            </p>
           </div>
+          <WhatsAppCTA intent="help" label={lang === "sw" ? "Uliza WhatsApp" : "Ask on WhatsApp"} />
         </section>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-          <Search className="h-5 w-5 flex-shrink-0 text-gray-400" />
-          <p className="text-sm text-gray-600">
-            {lang === "sw" ? "Maswali muhimu zaidi ya DukaPilot yapo hapa chini." : "The most important DukaPilot questions are answered below."}
-          </p>
-        </div>
+        <section aria-labelledby="help-faq-title">
+          <h2 id="help-faq-title" className="mb-3 text-lg font-bold text-gray-950">{lang === "sw" ? "Maswali yanayoulizwa mara kwa mara" : "Frequently asked questions"}</h2>
+          <div className="grid gap-2 md:grid-cols-2">
+            {faqs.map(([q, a]) => (
+              <details key={q} className="group rounded-lg border border-gray-200 bg-white px-4 py-3 open:border-brand-200 open:bg-brand-50/30">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold leading-5 text-gray-950 [&::-webkit-details-marker]:hidden">
+                  <span className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" />{q}</span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-gray-500 transition-transform group-open:rotate-180" />
+                </summary>
+                <p className="pt-3 pl-6 text-sm leading-6 text-gray-600">{a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
 
         <ProductProofSection compact />
         <section className="border-b py-6">
@@ -230,27 +213,13 @@ export default function HelpPage() {
           </div>
         </section>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {faqs.map(([q, a]) => (
-            <section key={q} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-700" />
-                <h2 className="font-semibold leading-6 text-gray-950">{q}</h2>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-gray-600">{a}</p>
-            </section>
-          ))}
-        </div>
-        <div className="flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-xl text-sm leading-6 text-gray-600">
-            {lang === "sw" ? "Bado unahitaji msaada? Tupo tayari kukusaidia kuifanya DukaPilot iwe tayari kwa duka lako." : "Still need help? We are ready to help make DukaPilot work for your shop."}
+            {lang === "sw" ? "Bado unahitaji msaada wa binafsi?" : "Need one-to-one help?"}
           </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/contact" className="inline-flex items-center justify-center rounded-xl bg-brand-700 px-5 py-3 text-sm font-bold text-white hover:bg-brand-800">
+          <Link href="/contact" className="inline-flex min-h-10 items-center justify-center rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
             {lang === "sw" ? "Ongea na support" : "Talk to support"}
           </Link>
-          <WhatsAppCTA intent="help" label="WhatsApp +255 743 910 580" />
-          </div>
         </div>
       </div>
     </PublicPageShell>
