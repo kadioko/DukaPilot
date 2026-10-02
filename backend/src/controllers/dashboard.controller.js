@@ -400,9 +400,9 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       shopId,
     ),
     prisma.$queryRawUnsafe(
-      `SELECT COALESCE(p.id, 'unlinked:' || COALESCE(si.name, si.description, 'Item') || '|' || COALESCE(si.unit, '')) AS id,
-              COALESCE(p.name, si.name, si.description, 'Item') AS name,
-              COALESCE(p.unit, si.unit, '') AS unit,
+      `SELECT COALESCE(p.id, 'unlinked:' || MAX(COALESCE(si.name, si.description, 'Item')) || '|' || MAX(COALESCE(si.unit, ''))) AS id,
+              COALESCE(p.name, MAX(COALESCE(si.name, si.description, 'Item'))) AS name,
+              COALESCE(p.unit, MAX(COALESCE(si.unit, ''))) AS unit,
               COALESCE(p.\"currentStock\", 0)::double precision AS \"currentStock\",
               COALESCE(SUM(si.quantity), 0)::bigint AS quantity,
               COALESCE(SUM(si.\"totalPrice\"), 0)::bigint AS revenue,

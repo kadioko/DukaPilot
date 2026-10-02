@@ -71,6 +71,10 @@ test("profit analytics uses historical sale-item costs and shop-scoped totals", 
   assert.equal(res.payload.chart[0].netProfit, 73000);
   assert.equal(calls[0].params[0], "shop-1");
   assert.match(calls[0].query, /sale_items/);
+  const productRankingQuery = calls.find(({ query }) => query.includes('FROM sales s JOIN sale_items si ON si."saleId" = s.id') && query.includes('GROUP BY p.id'))?.query;
+  assert.ok(productRankingQuery);
+  assert.match(productRankingQuery, /MAX\(COALESCE\(si\.name, si\.description, 'Item'\)\)/);
+  assert.match(productRankingQuery, /MAX\(COALESCE\(si\.unit, ''\)\)/);
 });
 
 test("profit analytics flags revenue with missing cost and excludes it from margin denominator", async () => {
