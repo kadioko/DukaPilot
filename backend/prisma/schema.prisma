@@ -190,6 +190,7 @@ enum FarmAnimalEventType {
   ADDITION
   MORTALITY
   CULL
+  SALE
 }
 
 enum FarmProductionType {
@@ -962,6 +963,7 @@ model Product {
   farmPackOutputs          FarmPackConversion[]    @relation("FarmPackOutput")
   cropInputUsages          CropInputUsage[]        @relation("CropInputProduct")
   cropHarvestBatches       CropHarvestBatch[]      @relation("CropHarvestOutput")
+  livestockGroup           FarmGroup?              @relation("FarmGroupLiveProduct")
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
@@ -1179,6 +1181,7 @@ model Sale {
   voidedAt        DateTime?
   voidReason      String?
   voidedBy        String?
+  createdByStaffId String?
   cashSessionId   String?
   cashSession     CashSession?   @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   shopId          String
@@ -1191,6 +1194,7 @@ model Sale {
   @@unique([shopId, receiptNumber])
   @@index([shopId, createdAt])
   @@index([shopId, status, createdAt])
+  @@index([shopId, createdByStaffId, createdAt])
   @@index([shopId, customerId, createdAt])
   @@index([cashSessionId, paymentMethod, status])
   @@map("sales")
@@ -1332,6 +1336,7 @@ model SaleItem {
   unit                   String?
   quotedQuantityMilli    Int?
   cropHarvestAllocations CropHarvestAllocation[]
+  farmAnimalEvent        FarmAnimalEvent?
 
   @@index([saleId])
   @@index([productId])
@@ -1527,6 +1532,8 @@ model FarmGroup {
   profileType       FarmProfileType
   name              String
   currentAnimals    Int                   @default(0)
+  liveProductId     String?               @unique
+  liveProduct       Product?              @relation("FarmGroupLiveProduct", fields: [liveProductId], references: [id], onDelete: SetNull)
   isActive          Boolean               @default(true)
   note              String?
   events            FarmAnimalEvent[]
@@ -1548,8 +1555,13 @@ model FarmAnimalEvent {
   note       String?
   occurredAt DateTime            @default(now())
   recordedBy String?
+  clientRequestId String?
+  saleItemId String?            @unique
+  saleItem   SaleItem?          @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
+  voidedAt   DateTime?
   createdAt  DateTime            @default(now())
 
+  @@unique([groupId, clientRequestId])
   @@index([groupId, occurredAt])
   @@map("farm_animal_events")
 }
@@ -1580,8 +1592,10 @@ model FarmProductionBatch {
   producedAt         DateTime             @default(now())
   producedBy         String?
   items              FarmProductionItem[]
+  clientRequestId    String?
   createdAt          DateTime             @default(now())
 
+  @@unique([shopId, clientRequestId])
   @@index([shopId, producedAt])
   @@index([shopId, outputProductId, producedAt])
   @@index([groupId, producedAt])
@@ -1621,8 +1635,10 @@ model FarmPackConversion {
   note            String?
   convertedAt     DateTime @default(now())
   convertedBy     String?
+  clientRequestId String?
   createdAt       DateTime @default(now())
 
+  @@unique([shopId, clientRequestId])
   @@index([shopId, convertedAt])
   @@index([inputProductId])
   @@index([outputProductId])

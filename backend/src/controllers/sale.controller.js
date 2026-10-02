@@ -5,6 +5,7 @@ const { normalizePhone, isValidPhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 const { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations } = require("../lib/cropHarvestSales");
+const { recordLiveAnimalSale, reverseLiveAnimalSales } = require("../lib/farmLivestockSales");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -14,9 +15,14 @@ function canViewFinancials(req) {
   return req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canViewReports;
 }
 
+function staffSaleScope(req) {
+  return req.user.staffId && !canViewFinancials(req) ? { createdByStaffId: req.user.staffId } : {};
+}
+
 function redactSale(sale, req) {
-  if (canViewFinancials(req)) return sale;
   const safe = { ...sale };
+  delete safe.createdByStaffId;
+  if (canViewFinancials(req)) return safe;
   delete safe.profit;
   if (safe.items) safe.items = safe.items.map((item) => {
     const next = { ...item };
@@ -31,11 +37,11 @@ const VALID_CHANNELS = ['POS', 'ONLINE'];
 
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { from, to, limit = 50, offset = 0, paymentMethod, channel } = req.query;
+  const { from, to, limit = 50, offset = 0, paymentMethod, channel, status, search } = req.query;
   const pageSize = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const pageOffset = Math.max(Number(offset) || 0, 0);
 
-  const where = { shopId };
+  const where = { shopId, ...staffSaleScope(req) };
   if (from || to) {
     where.createdAt = {};
     if (from) where.createdAt.gte = new Date(from);
@@ -48,6 +54,26 @@ const list = asyncHandler(async (req, res) => {
   if (channel) {
     const ch = channel.toUpperCase();
     if (VALID_CHANNELS.includes(ch)) where.channel = ch;
+  }
+  if (["COMPLETED", "VOIDED"].includes(String(status || "").toUpperCase())) {
+    where.status = String(status).toUpperCase();
+  }
+  const searchTerm = String(search || "").trim().slice(0, 100);
+  if (searchTerm) {
+    const textMatch = { contains: searchTerm, mode: "insensitive" };
+    const or = [
+      { id: textMatch },
+      { customerName: textMatch },
+      { customerPhone: { contains: searchTerm } },
+      { paymentRef: textMatch },
+      { items: { some: { name: textMatch } } },
+      { items: { some: { product: { is: { name: textMatch } } } } },
+    ];
+    const receiptDigits = searchTerm.replace(/^DP-/i, "");
+    if (/^\d+$/.test(receiptDigits) && Number.isSafeInteger(Number(receiptDigits))) {
+      or.push({ receiptNumber: Number(receiptDigits) });
+    }
+    where.OR = or;
   }
 
   const [sales, total] = await Promise.all([
@@ -86,7 +112,7 @@ const create = asyncHandler(async (req, res) => {
   }
   if (normalizedClientReference) {
     const existingSale = await prisma.sale.findFirst({
-      where: { shopId, clientReference: normalizedClientReference },
+      where: { shopId, clientReference: normalizedClientReference, ...staffSaleScope(req) },
       include: {
         shop: { select: { name: true } },
         items: { include: { product: { select: { id: true, name: true, unit: true } } } },
@@ -167,6 +193,7 @@ const create = asyncHandler(async (req, res) => {
         channel: saleChannel,
         pricingTier,
         customerPhone: normalizedCustomerPhone,
+        createdByStaffId: req.user.staffId || null,
         note,
         clientReference: normalizedClientReference,
         receiptNumber,
@@ -203,6 +230,14 @@ const create = asyncHandler(async (req, res) => {
     }
 
     await allocateCropHarvestForSale(tx, shopId, newSale.items);
+    await recordLiveAnimalSale(tx, {
+      shopId,
+      saleItems: newSale.items,
+      quantityByProduct: Object.fromEntries(items.map((item) => [item.productId, item.quantity])),
+      receiptNumber,
+      recordedBy: req.user.staffId || req.user.userId,
+      occurredAt: newSale.createdAt,
+    });
 
     if (normalizedPaymentMethod === "CREDIT") {
       const previousCustomer = await tx.debt.findFirst({
@@ -230,7 +265,7 @@ const create = asyncHandler(async (req, res) => {
     // committed sale instead of taking stock a second time.
     if (error?.code !== "P2002" || !normalizedClientReference) throw error;
     const existingSale = await prisma.sale.findFirst({
-      where: { shopId, clientReference: normalizedClientReference },
+      where: { shopId, clientReference: normalizedClientReference, ...staffSaleScope(req) },
       include: {
         shop: { select: { name: true } },
         items: { include: { product: { select: { id: true, name: true, unit: true } } } },
@@ -276,6 +311,7 @@ const voidSale = asyncHandler(async (req, res) => {
 
     const receiptLabel = existing.receiptNumber ? `#${String(existing.receiptNumber).padStart(6, "0")}` : `#${existing.id.slice(-6)}`;
     await reverseCropHarvestSaleAllocations(tx, existing.items.map((item) => item.id));
+    await reverseLiveAnimalSales(tx, { shopId, saleItemIds: existing.items.map((item) => item.id), voidedAt: new Date() });
     for (const item of existing.items) {
       // Service quotation lines have no stock to return.
       if (!item.productId) continue;
@@ -310,7 +346,7 @@ const voidSale = asyncHandler(async (req, res) => {
 const get = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const sale = await prisma.sale.findFirst({
-    where: { id: req.params.id, shopId },
+    where: { id: req.params.id, shopId, ...staffSaleScope(req) },
     include: {
       items: {
         include: { product: { select: { id: true, name: true, unit: true, sellingPrice: true } } },
@@ -336,6 +372,7 @@ const summary = asyncHandler(async (req, res) => {
   }
 
   const where = { shopId, status: "COMPLETED", createdAt: { gte: from } };
+  Object.assign(where, staffSaleScope(req));
   const [sales, aggregate] = await Promise.all([
     prisma.sale.findMany({
       where,

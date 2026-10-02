@@ -31,6 +31,41 @@ test("crop reports hide financial values from field staff without report access"
   assert.deepEqual(report.outputs[0], { productId: "maize", name: "Maize", unit: "kg", harvestedQuantity: 20, remainingQuantity: 12, soldQuantity: 8, wasteQuantity: 1 });
 });
 
+test("crop overview staff redaction removes money fields nested on harvest products", () => {
+  const { safeCycle } = loadController({});
+  const safe = safeCycle({
+    inputUsages: [{ id: "input-1", totalCost: 8000, unitCost: 4000 }],
+    harvestBatches: [{
+      id: "harvest-1", totalCost: 9000, remainingCost: 4000,
+      outputProduct: { id: "maize", name: "Maize", unit: "kg", sellingPrice: 3500, buyingPrice: 1800, wholesalePrice: 3000 },
+    }],
+  }, false);
+
+  assert.equal("totalCost" in safe.inputUsages[0], false);
+  assert.equal("totalCost" in safe.harvestBatches[0], false);
+  assert.deepEqual(safe.harvestBatches[0].outputProduct, { id: "maize", name: "Maize", unit: "kg" });
+});
+
+test("closed crop cycles cannot be reopened through the API", async () => {
+  let updated = false;
+  const controller = loadController({ $transaction: async (work) => work({ cropCycle: { findFirst: async () => ({ id: "cycle-1", status: "CLOSED" }), updateMany: async () => { updated = true; return { count: 1 }; } } }) });
+  await assert.rejects(controller.updateCycle({ user: { userId: "owner-1", role: "MERCHANT" }, params: { id: "cycle-1" }, body: { status: "GROWING" } }, response(), (error) => { throw error; }), /cannot be reopened/);
+  assert.equal(updated, false);
+});
+
+test("crop harvest waste cannot exceed the planned total crop yield", async () => {
+  const tx = {
+    cropCycle: { findFirst: async () => ({ id: "cycle-1", expectedYield: 2 }) },
+    product: { findFirst: async () => ({ id: "maize", name: "Maize", currentStock: 0 }) },
+    cropHarvestBatch: { findMany: async () => [], count: async () => 0 },
+  };
+  const controller = loadController({ $transaction: async (work) => work(tx) });
+  await assert.rejects(controller.recordHarvest({
+    user: { userId: "owner-1", role: "MERCHANT" },
+    body: { cropCycleId: "cycle-1", outputProductId: "maize", actualYield: 2, expectedYield: 2, wasteQuantity: 3, harvestAt: "2026-10-02" },
+  }, response(), (error) => { throw error; }), /Waste quantity cannot exceed/);
+});
+
 test("recording a stocked crop input uses guarded stock deduction and keeps its cost with the crop cycle", async () => {
   const productUpdates = [];
   const stockMovements = [];
@@ -61,7 +96,7 @@ test("recording a first harvest creates sellable stock and allocates its input c
   const batchUpdates = [];
   const tx = {
     cropCycle: { findFirst: async () => ({ id: "cycle-1", expectedYield: 20 }), update: async () => ({}) },
-    product: { findFirst: async () => ({ id: "maize", name: "Maize", currentStock: 0 }), update: async (args) => { productUpdates.push(args); return args.data; } },
+    product: { findFirst: async () => ({ id: "maize", name: "Maize", currentStock: 0, buyingPrice: 0 }), updateMany: async (args) => { productUpdates.push(args); return { count: 1 }; } },
     cropInputUsage: { findMany: async () => [{ id: "input-1", totalCost: 90000, costAllocations: [] }] },
     cropInputCostAllocation: { create: async (args) => { costAllocations.push(args.data); return args.data; } },
     cropHarvestBatch: {
@@ -90,7 +125,7 @@ test("a crop cycle accepts a second harvest when its expected total yield was se
   const costAllocations = [];
   const tx = {
     cropCycle: { findFirst: async () => ({ id: "cycle-1", expectedYield: 100 }), update: async () => ({}) },
-    product: { findFirst: async () => ({ id: "maize", name: "Maize", currentStock: 0 }), update: async () => ({}) },
+    product: { findFirst: async () => ({ id: "maize", name: "Maize", currentStock: 0, buyingPrice: 0 }), updateMany: async () => ({ count: 1 }) },
     cropInputUsage: { findMany: async () => [{ id: "input-1", totalCost: 90000, costAllocations: [{ amount: 36000 }] }] },
     cropInputCostAllocation: { create: async (args) => { costAllocations.push(args.data); return args.data; } },
     cropHarvestBatch: {

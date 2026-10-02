@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { getFarmConfiguration } = require("../lib/farmAccess");
+const { weightedAverageCost } = require("../lib/weightedAverageCost");
 
 const PROFILE_TYPES = new Set(["LAYERS", "BROILERS", "DAIRY", "BEEF", "GOATS_SHEEP", "PIGS", "MIXED"]);
 const EVENT_TYPES = new Set(["ADDITION", "MORTALITY", "CULL"]);
@@ -26,6 +27,11 @@ function parseDate(value) {
 function shortText(value, maximum = 500) {
   const text = String(value || "").trim();
   return text ? text.slice(0, maximum) : null;
+}
+
+function clientRequestId(value) {
+  const id = String(value || "").trim();
+  return /^[a-zA-Z0-9_-]{8,100}$/.test(id) ? id : null;
 }
 
 function normalizeItems(rawItems) {
@@ -84,7 +90,7 @@ const overview = asyncHandler(async (req, res) => {
   const [configuration, profiles, groups, batches, totalBatches, recentConversions, production, losses] = await Promise.all([
     getFarmConfiguration(shopId),
     prisma.farmProfile.findMany({ where: { shopId }, orderBy: { type: "asc" } }),
-    prisma.farmGroup.findMany({ where: { shopId }, orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }], take: 100 }),
+    prisma.farmGroup.findMany({ where: { shopId }, include: { liveProduct: { select: { id: true, name: true, unit: true, currentStock: true } } }, orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }], take: 100 }),
     prisma.farmProductionBatch.findMany({ where: { shopId }, include: batchInclude(), orderBy: { producedAt: "desc" }, skip: (page - 1) * limit, take: limit }),
     prisma.farmProductionBatch.count({ where: { shopId } }),
     prisma.farmPackConversion.findMany({
@@ -115,6 +121,18 @@ const overview = asyncHandler(async (req, res) => {
       ...(canViewFinancials(req) ? { productionCost: production._sum.totalCost || 0 } : {}),
     },
   });
+});
+
+const listProducts = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  const products = await prisma.product.findMany({
+    where: { shopId, isActive: true, ...(search ? { name: { contains: search, mode: "insensitive" } } : {}) },
+    select: { id: true, name: true, unit: true, currentStock: true },
+    orderBy: [{ name: "asc" }],
+    take: Math.min(100, Math.max(1, Number(req.query.limit) || 20)),
+  });
+  res.json({ products });
 });
 
 const saveConfiguration = asyncHandler(async (req, res) => {
@@ -176,30 +194,92 @@ const createGroup = asyncHandler(async (req, res) => {
   res.status(201).json({ group });
 });
 
+const setLiveProduct = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const productId = String(req.body.productId || "").trim() || null;
+  const group = await prisma.$transaction(async (tx) => {
+    const current = await tx.farmGroup.findFirst({ where: { id: req.params.id, shopId }, select: { id: true, currentAnimals: true, liveProductId: true, isActive: true } });
+    if (!current) throw Object.assign(new Error("Farm group not found"), { status: 404 });
+    if (!current.isActive && productId) throw Object.assign(new Error("Activate this animal group before linking a sale product"), { status: 409 });
+    if (!productId) {
+      await tx.farmGroup.update({ where: { id: current.id }, data: { liveProductId: null } });
+    } else {
+      const product = await tx.product.findFirst({ where: { id: productId, shopId, isActive: true }, select: { id: true, name: true, currentStock: true } });
+      if (!product) throw Object.assign(new Error("Choose an active inventory product from this shop"), { status: 400 });
+      if (current.liveProductId && current.liveProductId !== productId) {
+        throw Object.assign(new Error("Unlink the current live-animal product before choosing another one"), { status: 409 });
+      }
+      if (product.currentStock !== 0 && product.currentStock !== current.currentAnimals) {
+        throw Object.assign(new Error(`The product currently has ${product.currentStock} in stock while this group has ${current.currentAnimals}. Use a dedicated live-animal product with matching stock.`), { status: 409 });
+      }
+      await tx.farmGroup.update({ where: { id: current.id }, data: { liveProductId: product.id } });
+      if (product.currentStock === 0 && current.currentAnimals > 0) {
+        await tx.product.update({ where: { id: product.id }, data: { currentStock: current.currentAnimals } });
+        await tx.stockMovement.create({ data: { type: "IN", quantity: current.currentAnimals, note: `Opening live-animal stock: ${current.id}`, productId: product.id } });
+      }
+    }
+    return tx.farmGroup.findUnique({ where: { id: current.id }, include: { liveProduct: { select: { id: true, name: true, unit: true, currentStock: true } } } });
+  }).catch((error) => {
+    if (error?.code === "P2002") throw Object.assign(new Error("This product is already linked to another animal group"), { status: 409 });
+    throw error;
+  });
+  req.audit = { action: "farm.live_product.set", resourceType: "farm_group", resourceId: group.id, metadata: { productId } };
+  res.json({ group });
+});
+
 const recordAnimalEvent = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const type = String(req.body.type || "").toUpperCase();
   const quantity = Number(req.body.quantity);
   const occurredAt = parseDate(req.body.occurredAt);
   const note = shortText(req.body.note, 1000);
+  const requestId = clientRequestId(req.body.clientRequestId);
+  if (req.body.clientRequestId && !requestId) return res.status(400).json({ error: "Invalid livestock retry key" });
   if (!EVENT_TYPES.has(type) || !Number.isInteger(quantity) || quantity <= 0 || !occurredAt) return res.status(400).json({ error: "Choose a valid event, whole quantity, and date" });
 
-  const result = await prisma.$transaction(async (tx) => {
-    const group = await tx.farmGroup.findFirst({ where: { id: req.params.id, shopId }, select: { id: true, currentAnimals: true } });
-    if (!group) throw Object.assign(new Error("Farm group not found"), { status: 404 });
-    const decrement = type === "MORTALITY" || type === "CULL";
-    if (decrement) {
-      const updated = await tx.farmGroup.updateMany({ where: { id: group.id, shopId, currentAnimals: { gte: quantity } }, data: { currentAnimals: { decrement: quantity } } });
-      if (updated.count !== 1) throw Object.assign(new Error("This event would reduce the group below zero animals"), { status: 409 });
-    } else {
-      await tx.farmGroup.update({ where: { id: group.id }, data: { currentAnimals: { increment: quantity } } });
-    }
-    const event = await tx.farmAnimalEvent.create({ data: { groupId: group.id, type, quantity, occurredAt, note, recordedBy: req.user.staffId || req.user.userId } });
-    const updatedGroup = await tx.farmGroup.findUnique({ where: { id: group.id } });
-    return { event, group: updatedGroup };
-  });
-  req.audit = { action: "farm.animal_event.create", resourceType: "farm_group", resourceId: req.params.id, metadata: { type, quantity } };
-  res.status(201).json(result);
+  let result;
+  let reused = false;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      if (requestId) {
+        const existing = await tx.farmAnimalEvent.findUnique({ where: { groupId_clientRequestId: { groupId: req.params.id, clientRequestId: requestId } } });
+        if (existing) {
+          reused = true;
+          return { event: existing, group: await tx.farmGroup.findUnique({ where: { id: existing.groupId } }) };
+        }
+      }
+      const group = await tx.farmGroup.findFirst({ where: { id: req.params.id, shopId }, select: { id: true, currentAnimals: true, liveProductId: true, liveProduct: { select: { currentStock: true } } } });
+      if (!group) throw Object.assign(new Error("Farm group not found"), { status: 404 });
+      const decrement = type === "MORTALITY" || type === "CULL";
+      if (group.liveProductId && group.liveProduct?.currentStock !== group.currentAnimals) {
+        throw Object.assign(new Error("The linked live-animal product stock does not match the herd count. Reconcile it before recording this event."), { status: 409 });
+      }
+      const updated = await tx.farmGroup.updateMany({
+        where: { id: group.id, shopId, ...(decrement ? { currentAnimals: { gte: quantity } } : {}) },
+        data: { currentAnimals: decrement ? { decrement: quantity } : { increment: quantity } },
+      });
+      if (updated.count !== 1) throw Object.assign(new Error(decrement ? "This event would reduce the group below zero animals" : "The group changed before this event was saved"), { status: 409 });
+      if (group.liveProductId) {
+        const productUpdate = await tx.product.updateMany({
+          where: { id: group.liveProductId, shopId, ...(decrement ? { currentStock: { gte: quantity } } : {}) },
+          data: { currentStock: decrement ? { decrement: quantity } : { increment: quantity } },
+        });
+        if (productUpdate.count !== 1) throw Object.assign(new Error("The linked live-animal product stock no longer matches this group. Refresh before recording the event."), { status: 409 });
+        await tx.stockMovement.create({ data: { type: decrement ? "OUT" : "IN", quantity, note: `Livestock ${type.toLowerCase()}: ${group.id}`, productId: group.liveProductId } });
+      }
+      const event = await tx.farmAnimalEvent.create({ data: { groupId: group.id, type, quantity, occurredAt, note, recordedBy: req.user.staffId || req.user.userId, clientRequestId: requestId } });
+      const updatedGroup = await tx.farmGroup.findUnique({ where: { id: group.id }, include: { liveProduct: { select: { id: true, name: true, unit: true, currentStock: true } } } });
+      return { event, group: updatedGroup };
+    });
+  } catch (error) {
+    if (!requestId || error?.code !== "P2002") throw error;
+    const event = await prisma.farmAnimalEvent.findUnique({ where: { groupId_clientRequestId: { groupId: req.params.id, clientRequestId: requestId } } });
+    if (!event) throw error;
+    reused = true;
+    result = { event, group: await prisma.farmGroup.findUnique({ where: { id: event.groupId }, include: { liveProduct: { select: { id: true, name: true, unit: true, currentStock: true } } } }) };
+  }
+  req.audit = { action: reused ? "farm.animal_event.reused" : "farm.animal_event.create", resourceType: "farm_group", resourceId: req.params.id, metadata: { type, quantity } };
+  res.status(reused ? 200 : 201).json({ ...result, reused });
 });
 
 const createProduction = asyncHandler(async (req, res) => {
@@ -214,20 +294,30 @@ const createProduction = asyncHandler(async (req, res) => {
   const producedAt = parseDate(req.body.producedAt);
   const additionalCostNote = shortText(req.body.additionalCostNote, 500);
   const note = shortText(req.body.note, 1000);
+  const requestId = clientRequestId(req.body.clientRequestId);
+  if (req.body.clientRequestId && !requestId) return res.status(400).json({ error: "Invalid livestock retry key" });
   const requestedItems = normalizeItems(req.body.items);
   if (!groupId || !outputProductId || !PRODUCTION_TYPES.has(type) || !Number.isInteger(expectedYield) || expectedYield <= 0 || !Number.isInteger(actualYield) || actualYield <= 0 || !Number.isInteger(additionalCost) || additionalCost < 0 || !PAYMENT_METHODS.has(paymentMethod) || !producedAt || requestedItems === null) {
     return res.status(400).json({ error: "Choose a group, output, valid yields, costs, payment method, date, and valid supplies" });
   }
   if (!requestedItems.length && additionalCost === 0) return res.status(400).json({ error: "Add supplies used or a direct production cost so the output cost is meaningful" });
 
-  const batch = await prisma.$transaction(async (tx) => {
+  let reused = false;
+  let batch;
+  try {
+    batch = await prisma.$transaction(async (tx) => {
+    if (requestId) {
+      const existing = await tx.farmProductionBatch.findUnique({ where: { shopId_clientRequestId: { shopId, clientRequestId: requestId } }, include: batchInclude() });
+      if (existing) { reused = true; return existing; }
+    }
     const group = await tx.farmGroup.findFirst({ where: { id: groupId, shopId, isActive: true }, select: { id: true, profileType: true } });
     if (!group) throw Object.assign(new Error("Active farm group not found"), { status: 404 });
     const productIds = [outputProductId, ...requestedItems.map((item) => item.productId)];
     if (new Set(productIds).size !== productIds.length) throw Object.assign(new Error("The output product cannot also be a supply"), { status: 400 });
-    const products = await tx.product.findMany({ where: { shopId, isActive: true, id: { in: productIds } } });
+    const products = await tx.product.findMany({ where: { shopId, isActive: true, id: { in: productIds } }, include: { livestockGroup: { select: { id: true } } } });
     if (products.length !== productIds.length) throw Object.assign(new Error("One or more products do not belong to this farm"), { status: 400 });
     const productMap = new Map(products.map((product) => [product.id, product]));
+    if (productMap.get(outputProductId).livestockGroup) throw Object.assign(new Error("A live-animal sale product cannot be used as a production output"), { status: 400 });
     for (const item of requestedItems) {
       const product = productMap.get(item.productId);
       if (product.currentStock < item.quantity) throw Object.assign(new Error(`Insufficient supply stock for ${product.name}`), { status: 409 });
@@ -241,6 +331,7 @@ const createProduction = asyncHandler(async (req, res) => {
         ingredientCost: costs.ingredientCost, additionalCost, totalCost: costs.totalCost, unitCost: costs.unitCost,
         additionalCostNote, paymentMethod, cashSessionId: cashSession?.id || null, note, producedAt, producedBy: req.user.staffId || req.user.userId,
         items: { create: costItems.map((item) => ({ productId: item.productId, quantity: item.quantity, unitCost: item.unitCost, totalCost: item.quantity * item.unitCost })) },
+        clientRequestId: requestId,
       },
     });
     for (const item of requestedItems) {
@@ -248,12 +339,24 @@ const createProduction = asyncHandler(async (req, res) => {
       if (updated.count !== 1) throw Object.assign(new Error("Supply stock changed before this production batch was saved"), { status: 409 });
       await tx.stockMovement.create({ data: { type: "OUT", quantity: item.quantity, note: `Farm production #${created.id.slice(-6)}`, productId: item.productId } });
     }
-    await tx.product.update({ where: { id: outputProductId }, data: { currentStock: { increment: actualYield }, buyingPrice: costs.unitCost } });
+    const outputProduct = productMap.get(outputProductId);
+    const weightedCost = weightedAverageCost({ currentQuantity: outputProduct.currentStock, currentUnitCost: outputProduct.buyingPrice, addedQuantity: actualYield, addedTotalCost: costs.totalCost });
+    const outputUpdated = await tx.product.updateMany({
+      where: { id: outputProductId, shopId, currentStock: outputProduct.currentStock, buyingPrice: outputProduct.buyingPrice },
+      data: { currentStock: { increment: actualYield }, buyingPrice: weightedCost },
+    });
+    if (outputUpdated.count !== 1) throw Object.assign(new Error("Output stock changed before production was saved. Refresh and retry."), { status: 409 });
     await tx.stockMovement.create({ data: { type: "IN", quantity: actualYield, note: `Farm production #${created.id.slice(-6)}${costs.wasteQuantity ? `; loss ${costs.wasteQuantity}` : ""}`, productId: outputProductId } });
     return tx.farmProductionBatch.findUnique({ where: { id: created.id }, include: batchInclude() });
-  });
-  req.audit = { action: "farm.production.create", resourceType: "farm_production_batch", resourceId: batch.id, metadata: { groupId, outputProductId, type, actualYield, wasteQuantity: batch.wasteQuantity, paymentMethod, cashSessionId: batch.cashSessionId || null } };
-  res.status(201).json({ batch: redactBatch(batch, req) });
+    });
+  } catch (error) {
+    if (!requestId || error?.code !== "P2002") throw error;
+    batch = await prisma.farmProductionBatch.findUnique({ where: { shopId_clientRequestId: { shopId, clientRequestId: requestId } }, include: batchInclude() });
+    if (!batch) throw error;
+    reused = true;
+  }
+  req.audit = { action: reused ? "farm.production.reused" : "farm.production.create", resourceType: "farm_production_batch", resourceId: batch.id, metadata: { groupId, outputProductId, type, actualYield, wasteQuantity: batch.wasteQuantity, paymentMethod, cashSessionId: batch.cashSessionId || null } };
+  res.status(reused ? 200 : 201).json({ batch: redactBatch(batch, req), reused });
 });
 
 const packOutput = asyncHandler(async (req, res) => {
@@ -264,27 +367,49 @@ const packOutput = asyncHandler(async (req, res) => {
   const outputQuantity = Number(req.body.outputQuantity);
   const convertedAt = parseDate(req.body.convertedAt);
   const note = shortText(req.body.note, 500);
+  const requestId = clientRequestId(req.body.clientRequestId);
+  if (req.body.clientRequestId && !requestId) return res.status(400).json({ error: "Invalid livestock retry key" });
   if (!inputProductId || !outputProductId || inputProductId === outputProductId || !Number.isInteger(inputQuantity) || inputQuantity <= 0 || !Number.isInteger(outputQuantity) || outputQuantity <= 0 || !convertedAt) {
     return res.status(400).json({ error: "Choose different input and packed products, whole quantities, and a valid date" });
   }
 
-  const conversion = await prisma.$transaction(async (tx) => {
-    const products = await tx.product.findMany({ where: { shopId, isActive: true, id: { in: [inputProductId, outputProductId] } } });
+  let reused = false;
+  let conversion;
+  try {
+    conversion = await prisma.$transaction(async (tx) => {
+    if (requestId) {
+      const existing = await tx.farmPackConversion.findUnique({ where: { shopId_clientRequestId: { shopId, clientRequestId: requestId } }, include: { inputProduct: { select: { id: true, name: true, unit: true } }, outputProduct: { select: { id: true, name: true, unit: true } } } });
+      if (existing) { reused = true; return existing; }
+    }
+    const products = await tx.product.findMany({ where: { shopId, isActive: true, id: { in: [inputProductId, outputProductId] } }, include: { livestockGroup: { select: { id: true } } } });
     if (products.length !== 2) throw Object.assign(new Error("Choose products that belong to this farm"), { status: 400 });
     const input = products.find((product) => product.id === inputProductId);
+    const output = products.find((product) => product.id === outputProductId);
+    if (input.livestockGroup || output.livestockGroup) throw Object.assign(new Error("Live-animal products cannot be used in stock packing"), { status: 400 });
     if (input.currentStock < inputQuantity) throw Object.assign(new Error(`Insufficient stock for ${input.name}`), { status: 409 });
     const totalCost = input.buyingPrice * inputQuantity;
     const unitCost = Math.round(totalCost / outputQuantity);
     const updated = await tx.product.updateMany({ where: { id: inputProductId, shopId, currentStock: { gte: inputQuantity } }, data: { currentStock: { decrement: inputQuantity } } });
     if (updated.count !== 1) throw Object.assign(new Error("Input stock changed before packaging"), { status: 409 });
-    const created = await tx.farmPackConversion.create({ data: { shopId, inputProductId, outputProductId, inputQuantity, outputQuantity, totalCost, unitCost, note, convertedAt, convertedBy: req.user.staffId || req.user.userId } });
-    await tx.product.update({ where: { id: outputProductId }, data: { currentStock: { increment: outputQuantity }, buyingPrice: unitCost } });
+    const created = await tx.farmPackConversion.create({ data: { shopId, inputProductId, outputProductId, inputQuantity, outputQuantity, totalCost, unitCost, note, convertedAt, convertedBy: req.user.staffId || req.user.userId, clientRequestId: requestId } });
+    const weightedCost = weightedAverageCost({ currentQuantity: output.currentStock, currentUnitCost: output.buyingPrice, addedQuantity: outputQuantity, addedTotalCost: totalCost });
+    const outputUpdated = await tx.product.updateMany({
+      where: { id: outputProductId, shopId, currentStock: output.currentStock, buyingPrice: output.buyingPrice },
+      data: { currentStock: { increment: outputQuantity }, buyingPrice: weightedCost },
+    });
+    if (outputUpdated.count !== 1) throw Object.assign(new Error("Packed product stock changed before conversion was saved. Refresh and retry."), { status: 409 });
     await tx.stockMovement.create({ data: { type: "OUT", quantity: inputQuantity, note: `Farm packing #${created.id.slice(-6)}`, productId: inputProductId } });
     await tx.stockMovement.create({ data: { type: "IN", quantity: outputQuantity, note: `Farm packing #${created.id.slice(-6)}`, productId: outputProductId } });
     return tx.farmPackConversion.findUnique({ where: { id: created.id }, include: { inputProduct: { select: { id: true, name: true, unit: true } }, outputProduct: { select: { id: true, name: true, unit: true } } } });
-  });
-  req.audit = { action: "farm.pack.create", resourceType: "farm_pack_conversion", resourceId: conversion.id, metadata: { inputProductId, outputProductId, inputQuantity, outputQuantity } };
-  res.status(201).json({ conversion: redactConversion(conversion, req) });
+    });
+  } catch (error) {
+    if (!requestId || error?.code !== "P2002") throw error;
+    conversion = await prisma.farmPackConversion.findUnique({ where: { shopId_clientRequestId: { shopId, clientRequestId: requestId } }, include: { inputProduct: { select: { id: true, name: true, unit: true } }, outputProduct: { select: { id: true, name: true, unit: true } } } });
+    if (!conversion) throw error;
+    reused = true;
+  }
+  req.audit = { action: reused ? "farm.pack.reused" : "farm.pack.create", resourceType: "farm_pack_conversion", resourceId: conversion.id, metadata: { inputProductId, outputProductId, inputQuantity, outputQuantity } };
+  res.status(reused ? 200 : 201).json({ conversion: redactConversion(conversion, req), reused });
 });
 
-module.exports = { overview, saveConfiguration, saveProfiles, createGroup, recordAnimalEvent, createProduction, packOutput, costsFor, redactBatch, redactConversion };
+module.exports = { overview, listProducts, saveConfiguration, saveProfiles, createGroup, setLiveProduct, recordAnimalEvent, createProduction, packOutput, costsFor, redactBatch, redactConversion };

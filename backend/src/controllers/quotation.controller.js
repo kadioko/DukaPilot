@@ -4,6 +4,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
+const { recordLiveAnimalSale } = require("../lib/farmLivestockSales");
 
 const STATUSES = new Set(["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CONVERTED", "ARCHIVED", "CANCELLED"]);
 const CATEGORIES = new Set(["MATERIAL", "LABOUR", "TRANSPORT", "DESIGN", "INSTALLATION", "SUBCONTRACTOR", "SERVICE", "OTHER"]);
@@ -855,6 +856,7 @@ const convert = asyncHandler(async (req, res) => {
         customerPhone: quotation.customer.phone,
         customerName: quotation.customer.name,
         customerId: quotation.customer.id,
+        createdByStaffId: req.user.staffId || null,
         quotationId: quotation.id,
         note: `Converted from quotation ${quotation.quotationNumber}`,
         receiptNumber,
@@ -883,6 +885,14 @@ const convert = asyncHandler(async (req, res) => {
       if (updated.count !== 1) throw Object.assign(new Error(`Stock changed before ${item.name} could be converted`), { status: 409 });
       await tx.stockMovement.create({ data: { type: "OUT", quantity, note: `Quotation ${quotation.quotationNumber} converted to receipt #${String(receiptNumber).padStart(6, "0")}`, productId: item.productId } });
     }
+    await recordLiveAnimalSale(tx, {
+      shopId,
+      saleItems: sale.items,
+      quantityByProduct: Object.fromEntries(linkedItems.map((item) => [item.productId, item.quantityMilli / 1000])),
+      receiptNumber,
+      recordedBy: actorId(req),
+      occurredAt: sale.createdAt,
+    });
     if (outstanding > 0) {
       const debt = await tx.debt.create({ data: { customerName: quotation.customer.name, customerPhone: quotation.customer.phone, amount: quotation.totalAmount, amountPaid: quotation.amountPaid, status: quotation.amountPaid > 0 ? "PARTIAL" : "OPEN", dueDate: quotation.depositDueDate, note: `Quotation ${quotation.quotationNumber}`, saleId: sale.id, shopId } });
       for (const payment of quotation.payments) {

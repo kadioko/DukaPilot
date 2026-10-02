@@ -3,6 +3,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { allocateInputCostsToHarvest, reconcileCropCycleCosts } = require("../services/cropCosting.service");
 const { findCropOperationReceipt, recordCropOperationReceipt } = require("../services/cropOfflineReceipt.service");
+const { weightedAverageCost } = require("../lib/weightedAverageCost");
 
 const CYCLE_STATUSES = new Set(["PLANNED", "PLANTED", "GROWING", "HARVESTING", "CLOSED", "CANCELLED"]);
 const INPUT_CATEGORIES = new Set(["SEED", "FERTILIZER", "PESTICIDE", "LABOUR", "TRANSPORT", "IRRIGATION", "OTHER"]);
@@ -86,7 +87,10 @@ function safeCycle(cycle, allowFinancials) {
     ...cycle,
     inputUsages: cycle.inputUsages?.map(({ totalCost, unitCost, ...input }) => input) || [],
     unrecoveredCost: null,
-    harvestBatches: cycle.harvestBatches?.map(({ totalCost, unitCost, remainingCost, realizedRevenue, realizedCost, inputCostAllocations, ...batch }) => batch) || [],
+    harvestBatches: cycle.harvestBatches?.map(({ totalCost, unitCost, remainingCost, realizedRevenue, realizedCost, inputCostAllocations, outputProduct, ...batch }) => ({
+      ...batch,
+      outputProduct: outputProduct ? (({ sellingPrice, buyingPrice, wholesalePrice, ...safeProduct }) => safeProduct)(outputProduct) : outputProduct,
+    })) || [],
   };
 }
 
@@ -262,12 +266,16 @@ const updateCycle = asyncHandler(async (req, res) => {
     return res.status(403).json({ error: "Only the business owner can close or cancel a crop cycle" });
   }
   const result = await prisma.$transaction(async (tx) => {
-    const cycle = await tx.cropCycle.findFirst({ where: { id: req.params.id, shopId }, select: { id: true } });
+    const cycle = await tx.cropCycle.findFirst({ where: { id: req.params.id, shopId }, select: { id: true, status: true } });
     if (!cycle) return null;
-    await tx.cropCycle.update({
-      where: { id: cycle.id },
+    if (["CLOSED", "CANCELLED"].includes(cycle.status)) {
+      throw Object.assign(new Error("Closed or cancelled crop cycles cannot be reopened or changed"), { status: 409 });
+    }
+    const updated = await tx.cropCycle.updateMany({
+      where: { id: cycle.id, shopId, status: cycle.status },
       data: { status, closedAt: ["CLOSED", "CANCELLED"].includes(status) ? new Date() : null },
     });
+    if (updated.count !== 1) throw Object.assign(new Error("Crop cycle changed before this update. Refresh and try again."), { status: 409 });
     const reconciliation = ["CLOSED", "CANCELLED"].includes(status)
       ? await reconcileCropCycleCosts(tx, cycle.id)
       : null;
@@ -363,10 +371,11 @@ const recordHarvest = asyncHandler(async (req, res) => {
     const product = await tx.product.findFirst({ where: { id: outputProductId, shopId, isActive: true } });
     if (!product) throw Object.assign(new Error("Harvest output product not found"), { status: 404 });
     const [priorCycleHarvests, existingOutputHarvestCount] = await Promise.all([
-      tx.cropHarvestBatch.findMany({ where: { cropCycleId, shopId }, select: { actualYield: true, expectedYield: true } }),
+      tx.cropHarvestBatch.findMany({ where: { cropCycleId, shopId }, select: { actualYield: true, expectedYield: true, wasteQuantity: true } }),
       tx.cropHarvestBatch.count({ where: { shopId, outputProductId } }),
     ]);
     const priorHarvestedYield = priorCycleHarvests.reduce((sum, prior) => sum + prior.actualYield, 0);
+    const priorWaste = priorCycleHarvests.reduce((sum, prior) => sum + (Number(prior.wasteQuantity) || 0), 0);
     const originalPlannedYield = priorCycleHarvests[0]?.expectedYield || null;
     const plannedYield = originalPlannedYield || Math.max(cycle.expectedYield || 0, expectedYield || 0, actualYield);
     if (priorCycleHarvests.length && ((expectedYield && expectedYield !== originalPlannedYield) || (cycle.expectedYield && cycle.expectedYield !== originalPlannedYield))) {
@@ -374,6 +383,9 @@ const recordHarvest = asyncHandler(async (req, res) => {
     }
     if (priorCycleHarvests.length && plannedYield <= priorHarvestedYield) {
       throw Object.assign(new Error("Multiple harvests require an expected total yield larger than the first harvest. Start a new crop cycle for a separate planting."), { status: 400 });
+    }
+    if (wasteQuantity > plannedYield || (plannedYield > 0 && priorWaste + wasteQuantity > plannedYield)) {
+      throw Object.assign(new Error("Waste quantity cannot exceed the crop cycle's planned total yield."), { status: 400 });
     }
     if (!existingOutputHarvestCount && product.currentStock > 0) {
       throw Object.assign(new Error("Use a dedicated inventory product for this harvest. The selected product already has stock from another source."), { status: 409 });
@@ -387,7 +399,11 @@ const recordHarvest = asyncHandler(async (req, res) => {
       actualYield,
     });
     if (plannedYield > (cycle.expectedYield || 0)) await tx.cropCycle.update({ where: { id: cycle.id }, data: { expectedYield: plannedYield } });
-    await tx.product.update({ where: { id: product.id }, data: { currentStock: { increment: actualYield }, buyingPrice: Math.round(costing.allocatedCost / actualYield) } });
+    const productUpdated = await tx.product.updateMany({ where: { id: product.id, shopId, currentStock: product.currentStock, buyingPrice: product.buyingPrice }, data: {
+      currentStock: { increment: actualYield },
+      buyingPrice: weightedAverageCost({ currentQuantity: product.currentStock, currentUnitCost: product.buyingPrice, addedQuantity: actualYield, addedTotalCost: costing.allocatedCost }),
+    } });
+    if (productUpdated.count !== 1) throw Object.assign(new Error("Harvest product stock changed before this harvest was saved. Refresh and retry."), { status: 409 });
     await tx.stockMovement.create({ data: { type: "IN", quantity: actualYield, note: `Crop harvest #${created.id.slice(-6)}${wasteQuantity ? `; waste ${wasteQuantity}` : ""}`, productId: product.id, cropHarvestBatchId: created.id } });
     await tx.cropCycle.update({ where: { id: cropCycleId }, data: { status: "HARVESTING" } });
     return tx.cropHarvestBatch.findUnique({ where: { id: created.id }, include: { outputProduct: { select: { id: true, name: true, unit: true } }, cropCycle: { select: { id: true, cropName: true } } } });
@@ -885,7 +901,7 @@ const updateWeatherAlert = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  overview, listProducts, createPlot, createCycle, updateCycle, recordInput, recordHarvest,
+  overview, listProducts, createPlot, createCycle, updateCycle, recordInput, recordHarvest, safeCycle,
   operationsOverview, createStarterProducts, recordIrrigation, createTask, updateTask,
   saveBudget, createBuyerContract, updateBuyerContract, recordHarvestGrade, createWeatherAlert,
   updateWeatherAlert, reportCycle, canViewFinancials,

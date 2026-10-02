@@ -3,6 +3,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
+const { recordLiveAnimalSale } = require("../lib/farmLivestockSales");
 
 const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK", "CREDIT"]);
 
@@ -220,6 +221,7 @@ const convertToSale = asyncHandler(async (req, res) => {
           pricingTier,
           customerName: order.customerName,
           customerPhone: normalizePhone(order.customerPhone),
+          createdByStaffId: req.user.staffId || null,
           customerOrderId: order.id,
           note: `Customer catalog order #${order.id.slice(-6)}`,
           receiptNumber,
@@ -228,6 +230,14 @@ const convertToSale = asyncHandler(async (req, res) => {
           items: { create: items },
         },
         include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+      });
+      await recordLiveAnimalSale(tx, {
+        shopId: shop.id,
+        saleItems: sale.items,
+        quantityByProduct: Object.fromEntries(order.items.map((item) => [item.productId, item.quantity])),
+        receiptNumber,
+        recordedBy: req.user.staffId || req.user.userId,
+        occurredAt: sale.createdAt,
       });
       if (paymentMethod === "CREDIT") {
         await tx.debt.create({

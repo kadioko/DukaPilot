@@ -9,9 +9,11 @@ router.use(requireActiveSubscription);
 router.use(requireFarmCategory());
 
 router.get("/", requirePermission("canManageFarm"), controller.overview);
+router.get("/products", requirePermission("canManageFarm"), controller.listProducts);
 router.post("/configuration", requirePermission("canManageFarm"), controller.saveConfiguration);
 router.post("/profiles", requireFarmMode("LIVESTOCK"), requirePermission("canManageFarm"), controller.saveProfiles);
 router.post("/groups", requireFarmMode("LIVESTOCK"), requirePermission("canManageFarm"), controller.createGroup);
+router.patch("/groups/:id/live-product", requireFarmMode("LIVESTOCK"), requirePermission("canManageFarm"), controller.setLiveProduct);
 router.post("/groups/:id/events", requireFarmMode("LIVESTOCK"), requirePermission("canManageFarm"), controller.recordAnimalEvent);
 router.post("/production", requireFarmMode("LIVESTOCK"), requirePermission("canManageFarm"), controller.createProduction);
 router.post("/pack", requireFarmMode("LIVESTOCK"), requirePermission("canManageFarm"), controller.packOutput);

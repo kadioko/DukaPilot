@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Bird, Boxes, ChevronLeft, ChevronRight, ClipboardList, Egg, LoaderCircle, Milk, PackageOpen, Plus, Search, Tractor, Trash2, Users, Wheat, type LucideIcon } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS } from "@/lib/api";
+import { clearFarmRequestId, getFarmRequestId } from "@/lib/farmRequestId";
 import { useLang, type Lang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 
@@ -11,7 +12,7 @@ type ProfileType = "LAYERS" | "BROILERS" | "DAIRY" | "BEEF" | "GOATS_SHEEP" | "P
 type ProductionType = "EGGS" | "MILK" | "HARVEST" | "OTHER";
 
 interface Product { id: string; name: string; unit: string; currentStock: number; buyingPrice?: number | null; }
-interface Group { id: string; name: string; profileType: ProfileType; currentAnimals: number; isActive: boolean; note?: string | null; }
+interface Group { id: string; name: string; profileType: ProfileType; currentAnimals: number; isActive: boolean; note?: string | null; liveProduct?: Product | null; }
 interface Profile { id: string; type: ProfileType; isActive: boolean; }
 interface Batch {
   id: string; type: ProductionType; expectedYield: number; actualYield: number; wasteQuantity: number; ingredientCost: number | null; additionalCost: number | null; totalCost: number | null; unitCost: number | null; producedAt: string;
@@ -56,9 +57,11 @@ export default function FarmPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingProfiles, setSavingProfiles] = useState(false);
+  const [savingLiveGroup, setSavingLiveGroup] = useState<string | null>(null);
   const [farmMode, setFarmMode] = useState<"CROPS" | "LIVESTOCK" | "BOTH">("BOTH");
   const [page, setPage] = useState(1);
   const [selectedProfiles, setSelectedProfiles] = useState<ProfileType[]>([]);
+  const [liveProductDrafts, setLiveProductDrafts] = useState<Record<string, Product | null>>({});
   const [groupForm, setGroupForm] = useState<{ name: string; profileType: ProfileType | ""; currentAnimals: string; note: string }>({ name: "", profileType: "", currentAnimals: "", note: "" });
   const [eventForm, setEventForm] = useState({ groupId: "", type: "MORTALITY", quantity: "", occurredAt: today(), note: "" });
   const [productionForm, setProductionForm] = useState({ groupId: "", type: "EGGS" as ProductionType, outputProduct: null as Product | null, expectedYield: "", actualYield: "", additionalCost: "0", paymentMethod: "CASH", producedAt: today(), note: "", additionalCostNote: "" });
@@ -70,6 +73,7 @@ export default function FarmPage() {
     try {
       const result = await api.get<FarmData>(`/farm?page=${nextPage}&limit=12`, lang);
       setData(result);
+      setLiveProductDrafts(Object.fromEntries(result.groups.map((group) => [group.id, group.liveProduct || null])));
       const activeTypes = result.profiles.filter((profile) => profile.isActive).map((profile) => profile.type);
       setSelectedProfiles(activeTypes);
       setGroupForm((current) => ({ ...current, profileType: activeTypes.includes(current.profileType as ProfileType) ? current.profileType : activeTypes[0] || "" }));
@@ -129,8 +133,11 @@ export default function FarmPage() {
     event.preventDefault();
     if (!eventForm.groupId) return;
     setSaving(true);
+    const payload = { ...eventForm, quantity: Number(eventForm.quantity), note: eventForm.note.trim() || undefined };
+    const clientRequestId = getFarmRequestId("animal-event", payload);
     try {
-      await api.post(`/farm/groups/${eventForm.groupId}/events`, { ...eventForm, quantity: Number(eventForm.quantity), note: eventForm.note.trim() || undefined }, lang);
+      await api.post(`/farm/groups/${eventForm.groupId}/events`, { ...payload, clientRequestId }, lang);
+      clearFarmRequestId("animal-event", clientRequestId);
       setEventForm((current) => ({ ...current, quantity: "", note: "", occurredAt: today() }));
       toast(lang === "sw" ? "Tukio la mifugo limehifadhiwa." : "Animal event saved.", "success");
       await load(1);
@@ -141,13 +148,16 @@ export default function FarmPage() {
     event.preventDefault();
     if (!productionForm.outputProduct || !productionForm.groupId) { toast(lang === "sw" ? "Chagua kundi na bidhaa inayotoka." : "Choose a group and output product.", "error"); return; }
     setSaving(true);
+    const payload = {
+      groupId: productionForm.groupId, type: productionForm.type, outputProductId: productionForm.outputProduct.id,
+      expectedYield: Number(productionForm.expectedYield), actualYield: Number(productionForm.actualYield), additionalCost: Number(productionForm.additionalCost || 0),
+      paymentMethod: productionForm.paymentMethod, producedAt: productionForm.producedAt, note: productionForm.note.trim() || undefined, additionalCostNote: productionForm.additionalCostNote.trim() || undefined,
+      items: supplyLines.map((line) => ({ productId: line.product.id, quantity: Number(line.quantity) })),
+    };
+    const clientRequestId = getFarmRequestId("production", payload);
     try {
-      const result = await api.post<{ batch: Batch }>("/farm/production", {
-        groupId: productionForm.groupId, type: productionForm.type, outputProductId: productionForm.outputProduct.id,
-        expectedYield: Number(productionForm.expectedYield), actualYield: Number(productionForm.actualYield), additionalCost: Number(productionForm.additionalCost || 0),
-        paymentMethod: productionForm.paymentMethod, producedAt: productionForm.producedAt, note: productionForm.note.trim() || undefined, additionalCostNote: productionForm.additionalCostNote.trim() || undefined,
-        items: supplyLines.map((line) => ({ productId: line.product.id, quantity: Number(line.quantity) })),
-      }, lang);
+      const result = await api.post<{ batch: Batch }>("/farm/production", { ...payload, clientRequestId }, lang);
+      clearFarmRequestId("production", clientRequestId);
       const cost = typeof result.batch.unitCost === "number" ? ` ${lang === "sw" ? `Gharama ni ${formatTZS(result.batch.unitCost)} kwa ${result.batch.outputProduct.unit}.` : `Cost is ${formatTZS(result.batch.unitCost)} per ${result.batch.outputProduct.unit}.`}` : "";
       toast((lang === "sw" ? "Uzalishaji umehifadhiwa." : "Production saved.") + cost, "success");
       setProductionForm((current) => ({ ...current, outputProduct: null, expectedYield: "", actualYield: "", additionalCost: "0", producedAt: today(), note: "", additionalCostNote: "" }));
@@ -160,12 +170,27 @@ export default function FarmPage() {
     event.preventDefault();
     if (!packForm.inputProduct || !packForm.outputProduct) { toast(lang === "sw" ? "Chagua stock ya kuingiza na bidhaa ya kifurushi." : "Choose the base stock and packed product.", "error"); return; }
     setSaving(true);
+    const payload = { inputProductId: packForm.inputProduct.id, outputProductId: packForm.outputProduct.id, inputQuantity: Number(packForm.inputQuantity), outputQuantity: Number(packForm.outputQuantity), convertedAt: packForm.convertedAt, note: packForm.note.trim() || undefined };
+    const clientRequestId = getFarmRequestId("pack", payload);
     try {
-      await api.post("/farm/pack", { inputProductId: packForm.inputProduct.id, outputProductId: packForm.outputProduct.id, inputQuantity: Number(packForm.inputQuantity), outputQuantity: Number(packForm.outputQuantity), convertedAt: packForm.convertedAt, note: packForm.note.trim() || undefined }, lang);
+      await api.post("/farm/pack", { ...payload, clientRequestId }, lang);
+      clearFarmRequestId("pack", clientRequestId);
       toast(lang === "sw" ? "Kifurushi kimeongezwa kwenye stock." : "Packed stock added.", "success");
       setPackForm({ inputProduct: null, outputProduct: null, inputQuantity: "30", outputQuantity: "1", convertedAt: today(), note: "" });
       await load(1);
     } catch (error) { toast(error instanceof Error ? error.message : "Could not pack output", "error"); } finally { setSaving(false); }
+  }
+
+  async function saveLiveProduct(group: Group) {
+    const product = liveProductDrafts[group.id] || null;
+    setSavingLiveGroup(group.id);
+    try {
+      await api.patch(`/farm/groups/${group.id}/live-product`, { productId: product?.id || null }, lang);
+      toast(lang === "sw" ? "Bidhaa ya mifugo imeunganishwa." : "Live-animal product link saved.", "success");
+      await load(1);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kuunganisha bidhaa." : "Could not link the product."), "error");
+    } finally { setSavingLiveGroup(null); }
   }
 
   async function saveFarmConfiguration() {
@@ -254,6 +279,15 @@ export default function FarmPage() {
       </div>
     </section>
 
+    {activeGroups.length > 0 && <section className="border border-gray-200 bg-white p-5">
+      <h2 className="font-bold text-gray-950">{lang === "sw" ? "Unganisha bidhaa za kuuza mifugo" : "Link live-animal sale products"}</h2>
+      <p className="mt-1 max-w-3xl text-sm leading-6 text-gray-600">{lang === "sw" ? "Unganisha bidhaa maalum ya stock na kundi. Mauzo ya POS yatapunguza idadi ya kundi na stock pamoja. Tumia bidhaa ya mifugo pekee; stock yake inapaswa kuwa sifuri au ilingane na idadi ya kundi." : "Link a dedicated inventory product to each group. POS sales will reduce the group count and product stock together. Use a product reserved for live animals; its stock must be zero or match the group count."}</p>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">{activeGroups.map((group) => <div key={group.id} className="grid gap-3 border border-gray-200 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div><p className="mb-2 text-sm font-semibold text-gray-950">{group.name} · {group.currentAnimals} {lang === "sw" ? "wanyama" : "animals"}</p><ProductPicker label={lang === "sw" ? "Bidhaa ya mifugo" : "Live-animal product"} selected={liveProductDrafts[group.id] || null} onSelect={(product) => setLiveProductDrafts((current) => ({ ...current, [group.id]: product }))} onClear={() => setLiveProductDrafts((current) => ({ ...current, [group.id]: null }))} lang={lang} excludeIds={[]} /></div>
+        <button type="button" disabled={savingLiveGroup === group.id || (liveProductDrafts[group.id]?.id || null) === (group.liveProduct?.id || null)} onClick={() => saveLiveProduct(group)} className="inline-flex min-h-11 items-center justify-center gap-2 border border-brand-300 bg-white px-4 py-2 text-sm font-semibold text-brand-800 disabled:opacity-60">{savingLiveGroup === group.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4" />}{lang === "sw" ? (liveProductDrafts[group.id] ? "Unganisha bidhaa" : group.liveProduct ? "Ondoa muunganisho" : "Hakuna mabadiliko") : (liveProductDrafts[group.id] ? "Link product" : group.liveProduct ? "Unlink product" : "No change")}</button>
+      </div>)}</div>
+    </section>}
+
     {selectedProfiles.includes("DAIRY") && <section className="border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-950"><Milk className="mr-2 inline h-4 w-4" /><strong>{lang === "sw" ? "Maziwa:" : "Dairy:"}</strong> {lang === "sw" ? "Kwa sasa tumia millilitre (ml) kama stock ya msingi; 1,000 ml ni litre 1. Unaweza kupakia ml kuwa chupa ya litre 1 kwa sehemu ya Kifurushi." : "Use millilitres (ml) as the base stock for now; 1,000 ml equals one litre. You can pack ml into a one-litre bottle below."}</section>}
 
     <section className="grid gap-5 lg:grid-cols-2"><form onSubmit={addGroup} className="border border-gray-200 bg-white p-5"><h2 className="font-bold text-gray-950">{lang === "sw" ? "Hatua ya 2: Ongeza kundi la ufugaji" : "Step 2: Add a farm group"}</h2><p className="mt-1 text-xs leading-5 text-gray-500">{lang === "sw" ? "Kundi linaweza kuwa banda, zizi, herd au batch unayofuatilia." : "A group can be a house, pen, herd, or batch you track."}</p><fieldset disabled={saving || profilesChanged || !savedProfiles.length} className="disabled:opacity-60"><div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label={lang === "sw" ? "Jina la kundi" : "Group name"} value={groupForm.name} onChange={(value) => setGroupForm({ ...groupForm, name: value })} placeholder={lang === "sw" ? "Mfano: Banda A - Layers" : "For example: Layer house A"} required /><SelectField label={lang === "sw" ? "Aina" : "Profile"} value={groupForm.profileType} onChange={(value) => setGroupForm({ ...groupForm, profileType: value as ProfileType })}><option value="">{lang === "sw" ? "Chagua aina" : "Choose profile"}</option>{savedProfiles.map((type) => <option key={type} value={type}>{profileLabel(type, lang)}</option>)}</SelectField><Field label={lang === "sw" ? "Idadi ya kuanzia" : "Opening animals"} value={groupForm.currentAnimals} onChange={(value) => setGroupForm({ ...groupForm, currentAnimals: value })} type="number" placeholder="100" /><Field label={lang === "sw" ? "Dokezo (hiari)" : "Note (optional)"} value={groupForm.note} onChange={(value) => setGroupForm({ ...groupForm, note: value })} /></div><button disabled={saving || profilesChanged || !savedProfiles.length} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"><Plus className="h-4 w-4" />{lang === "sw" ? "Ongeza kundi" : "Add group"}</button></fieldset>{(profilesChanged || !savedProfiles.length) && <p className="mt-3 text-xs font-semibold leading-5 text-amber-800">{lang === "sw" ? "Chagua na uhifadhi aina ya ufugaji kwenye Hatua ya 1 kwanza." : "Choose and save a farm profile in Step 1 first."}</p>}</form>
@@ -295,6 +329,6 @@ function SelectField({ label, value, onChange, children }: { label: string; valu
 function ProductPicker({ label, selected, onSelect, onClear, lang, excludeIds, compact = false }: { label: string; selected: Product | null; onSelect: (product: Product) => void; onClear?: () => void; lang: Lang; excludeIds: string[]; compact?: boolean }) {
   const [query, setQuery] = useState(""); const [results, setResults] = useState<Product[]>([]); const [searching, setSearching] = useState(false); const [open, setOpen] = useState(false);
   const excludedKey = excludeIds.filter(Boolean).sort().join("|");
-  useEffect(() => { const term = query.trim(); if (term.length < 2) { setResults([]); return undefined; } let cancelled = false; const timer = window.setTimeout(async () => { setSearching(true); try { const data = await api.get<{ products: Product[] }>(`/products?search=${encodeURIComponent(term)}&limit=20`, lang); if (!cancelled) setResults(data.products.filter((product) => !excludeIds.includes(product.id))); } catch { if (!cancelled) setResults([]); } finally { if (!cancelled) setSearching(false); } }, 250); return () => { cancelled = true; window.clearTimeout(timer); }; }, [excludedKey, lang, query]);
+  useEffect(() => { const term = query.trim(); if (term.length < 2) { setResults([]); return undefined; } let cancelled = false; const timer = window.setTimeout(async () => { setSearching(true); try { const data = await api.get<{ products: Product[] }>(`/farm/products?search=${encodeURIComponent(term)}&limit=20`, lang); if (!cancelled) setResults(data.products.filter((product) => !excludeIds.includes(product.id))); } catch { if (!cancelled) setResults([]); } finally { if (!cancelled) setSearching(false); } }, 250); return () => { cancelled = true; window.clearTimeout(timer); }; }, [excludedKey, lang, query]);
   return <label className="relative grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span>{selected ? <div className="flex min-h-11 items-center justify-between gap-2 border border-brand-200 bg-brand-50 px-3 text-sm"><span className="truncate"><strong>{selected.name}</strong> <span className="text-xs">({selected.currentStock} {selected.unit})</span></span>{onClear && <button type="button" onClick={onClear} className="h-7 w-7 border border-brand-200 bg-white text-brand-800" aria-label={lang === "sw" ? "Ondoa bidhaa" : "Clear product"}>×</button>}</div> : <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={query} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onBlur={() => window.setTimeout(() => setOpen(false), 150)} autoComplete="off" placeholder={lang === "sw" ? "Tafuta bidhaa" : "Search products"} className={`min-h-11 w-full border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 ${compact ? "" : ""}`} />{open && <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-gray-200 bg-white p-1 shadow-lg">{query.trim().length < 2 ? <p className="px-3 py-2 text-xs font-normal text-gray-500">{lang === "sw" ? "Andika angalau herufi 2." : "Type at least 2 letters."}</p> : searching ? <p className="px-3 py-2 text-xs font-normal text-gray-500">{lang === "sw" ? "Inatafuta..." : "Searching..."}</p> : results.length ? results.map((product) => <button key={product.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { onSelect(product); setQuery(""); setOpen(false); }} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-brand-50"><span className="truncate font-semibold text-gray-950">{product.name}</span><span className="shrink-0 text-xs font-normal text-gray-500">{product.currentStock} {product.unit}</span></button>) : <p className="px-3 py-2 text-xs font-normal text-gray-500">{lang === "sw" ? "Hakuna bidhaa." : "No products found."}</p>}</div>}</div>}</label>;
 }

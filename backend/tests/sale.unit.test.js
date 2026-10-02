@@ -57,6 +57,85 @@ test("sales history caps a client-requested page to a bounded payload", async ()
   assert.equal(res.payload.limit, 200);
 });
 
+test("sales history applies shop-scoped search and filters before pagination", async () => {
+  let findManyArgs;
+  let countWhere;
+  const prismaMock = {
+    sale: {
+      findMany: async (args) => { findManyArgs = args; return []; },
+      count: async ({ where }) => { countWhere = where; return 0; },
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.list({
+    user: { userId: "owner-1", role: "MERCHANT" },
+    query: { limit: "20", offset: "20", search: "DP-42", paymentMethod: "mpesa", status: "voided" },
+  }, res);
+
+  assert.equal(findManyArgs.take, 20);
+  assert.equal(findManyArgs.skip, 20);
+  assert.equal(findManyArgs.where.shopId, "shop-1");
+  assert.equal(findManyArgs.where.paymentMethod, "MPESA");
+  assert.equal(findManyArgs.where.status, "VOIDED");
+  assert.equal(countWhere, findManyArgs.where);
+  assert.deepEqual(findManyArgs.where.OR.at(-1), { receiptNumber: 42 });
+  assert.ok(findManyArgs.where.OR.some((entry) => entry.customerPhone));
+  assert.ok(findManyArgs.where.OR.some((entry) => entry.items?.some?.name));
+});
+
+test("cashier sales history is scoped to their own sales unless they have Reports permission", async () => {
+  const whereByRequest = [];
+  const prismaMock = {
+    sale: {
+      findMany: async ({ where }) => { whereByRequest.push(where); return []; },
+      count: async () => 0,
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const cashierRes = createRes();
+  const reportsRes = createRes();
+
+  await ctrl.list({ user: { userId: "owner-1", staffId: "staff-1", role: "MERCHANT", permissions: { canViewReports: false } }, query: {} }, cashierRes);
+  await ctrl.list({ user: { userId: "owner-1", staffId: "staff-1", role: "MERCHANT", permissions: { canViewReports: true } }, query: {} }, reportsRes);
+
+  assert.equal(whereByRequest[0].shopId, "shop-1");
+  assert.equal(whereByRequest[0].createdByStaffId, "staff-1");
+  assert.equal("createdByStaffId" in whereByRequest[1], false);
+});
+
+test("cashier cannot fetch another person's sale by ID", async () => {
+  let where;
+  const prismaMock = { sale: { findFirst: async (args) => { where = args.where; return null; } } };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.get({ user: { userId: "owner-1", staffId: "staff-1", role: "MERCHANT", permissions: { canViewReports: false } }, params: { id: "sale-owner" } }, res);
+
+  assert.equal(where.shopId, "shop-1");
+  assert.equal(where.createdByStaffId, "staff-1");
+  assert.equal(res.statusCode, 404);
+});
+
+test("cashier sales summary counts only their sales", async () => {
+  let summaryWhere;
+  const prismaMock = {
+    sale: {
+      findMany: async ({ where }) => { summaryWhere = where; return []; },
+      aggregate: async () => ({ _sum: { totalAmount: 0, profit: 0 }, _count: { id: 0 } }),
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.summary({ user: { userId: "owner-1", staffId: "staff-1", role: "MERCHANT", permissions: { canViewReports: false } }, query: { period: "today" } }, res);
+
+  assert.equal(summaryWhere.shopId, "shop-1");
+  assert.equal(summaryWhere.createdByStaffId, "staff-1");
+  assert.equal(res.payload.totalProfit, null);
+});
+
 test("sale create rejects insufficient stock", async () => {
   const prismaMock = {
     shop: {
@@ -112,6 +191,7 @@ test("sale create calculates total and profit before persisting transaction", as
         return { count: 1 };
       },
     },
+    farmGroup: { findFirst: async () => null },
     stockMovement: {
       create: async () => {
         stockMovements += 1;
@@ -134,7 +214,7 @@ test("sale create calculates total and profit before persisting transaction", as
 
   const ctrl = loadController(prismaMock);
   const req = {
-    user: { userId: "user-1" },
+    user: { userId: "owner-1", staffId: "cashier-1", role: "MERCHANT" },
     body: {
       paymentMethod: "cash",
       items: [
@@ -151,6 +231,7 @@ test("sale create calculates total and profit before persisting transaction", as
   assert.equal(capturedSaleCreate.totalAmount, 6500);
   assert.equal(capturedSaleCreate.profit, 1700);
   assert.equal(capturedSaleCreate.paymentMethod, "CASH");
+  assert.equal(capturedSaleCreate.createdByStaffId, "cashier-1");
   assert.equal(capturedSaleCreate.receiptNumber, 41);
   assert.equal(stockUpdates, 2);
   assert.equal(stockMovements, 2);
