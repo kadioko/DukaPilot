@@ -21,6 +21,7 @@ interface UserSettings {
     district?: string | null;
     category: string;
     isCatalogPublished: boolean;
+    hiddenMenuItems?: string[];
   };
 }
 
@@ -37,6 +38,18 @@ const SHOP_CATEGORIES = [
   { value: "farm", sw: "Mazao na Ufugaji", en: "Crop & Livestock Farm" },
   { value: "general", sw: "Bidhaa Mchanganyiko", en: "General / Mixed" },
 ];
+
+const OPTIONAL_MENU_ITEMS = [
+  ["/assistant", "Msaidizi wa AI", "AI assistant"], ["/daily-close", "Shift na kufunga siku", "Shifts and daily close"],
+  ["/debts", "Madeni", "Debts"], ["/orders/customers", "Maagizo ya wateja", "Customer orders"],
+  ["/quotations", "Nukuu", "Quotations"], ["/receiving", "Kupokea bidhaa", "Receive stock"],
+  ["/food-preparation", "Maandalizi ya chakula", "Food preparation"], ["/farm", "Ufugaji", "Livestock"],
+  ["/crops", "Mazao", "Crops"], ["/barcodes", "Barcode na lebo", "Barcodes and labels"],
+  ["/suppliers", "Wasambazaji", "Suppliers"], ["/orders", "Manunuzi", "Purchases"],
+  ["/expenses", "Matumizi", "Expenses"], ["/profit", "Uchambuzi wa faida", "Profit analytics"],
+  ["/wallet", "Wallet ya biashara", "Business wallet"], ["/billing", "Usajili na malipo", "Subscription and billing"],
+  ["/staff", "Wafanyakazi", "Staff"], ["/branches", "Matawi", "Branches"], ["/referrals", "Rufaa", "Referrals"],
+] as const;
 
 function SectionCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -91,6 +104,9 @@ export default function SettingsPage() {
   const [pinMsg, setPinMsg] = useState("");
   const [pinError, setPinError] = useState("");
   const [barcodeSettings, setBarcodeSettings] = useState<Record<string, boolean> | null>(null);
+  const [hiddenMenuItems, setHiddenMenuItems] = useState<string[]>([]);
+  const [menuSaving, setMenuSaving] = useState(false);
+  const [menuError, setMenuError] = useState("");
 
   useEffect(() => {
     setCatalogOrigin(window.location.origin);
@@ -105,6 +121,7 @@ export default function SettingsPage() {
           setShopDistrict(s.shop.district || "");
           setShopCategory(s.shop.category);
           setCatalogPublished(s.shop.isCatalogPublished !== false);
+          setHiddenMenuItems(s.shop.hiddenMenuItems || []);
         }
       })
       .catch(console.error)
@@ -242,6 +259,22 @@ export default function SettingsPage() {
     const next = { ...barcodeSettings, [key]: !barcodeSettings[key] };
     setBarcodeSettings(next);
     try { await api.patch("/barcodes/settings", { [key]: next[key] }); } catch { setBarcodeSettings(barcodeSettings); }
+  }
+
+  async function toggleMenuItem(href: string) {
+    const next = hiddenMenuItems.includes(href) ? hiddenMenuItems.filter((item) => item !== href) : [...hiddenMenuItems, href];
+    setMenuSaving(true);
+    setMenuError("");
+    try {
+      const result = await api.patch<{ hiddenMenuItems: string[] }>("/settings/menu", { hiddenMenuItems: next }, lang);
+      setHiddenMenuItems(result.hiddenMenuItems);
+      setSettings((current) => current?.shop ? { ...current, shop: { ...current.shop, hiddenMenuItems: result.hiddenMenuItems } } : current);
+      window.dispatchEvent(new CustomEvent("dukapilot:menu-preferences", { detail: result.hiddenMenuItems }));
+    } catch (error) {
+      setMenuError(error instanceof Error ? error.message : t("common.error", lang));
+    } finally {
+      setMenuSaving(false);
+    }
   }
 
   if (loading) {
@@ -427,6 +460,17 @@ export default function SettingsPage() {
                 {shopSaving ? "..." : t("common.save", lang)}
               </button>
             </form>
+          </SectionCard>
+        )}
+
+        {settings?.role === "MERCHANT" && !settings.isStaff && settings.shop && (
+          <SectionCard title={lang === "sw" ? "Vipengele vya menyu" : "Menu modules"} icon={<Store className="w-4 h-4" />}>
+            <p className="text-sm leading-5 text-gray-600">{lang === "sw" ? "Ficha maeneo ambayo biashara yako haitumii. Hii hubadilisha menyu tu; ruhusa na data havibadilishwi." : "Hide areas your business does not use. This changes the menu only; it does not change permissions or delete data."}</p>
+            {OPTIONAL_MENU_ITEMS.map(([href, sw, en]) => <label key={href} className="flex min-h-11 items-center justify-between gap-3 border-b border-gray-100 py-2 last:border-0">
+              <span className="text-sm text-gray-700">{lang === "sw" ? sw : en}</span>
+              <input type="checkbox" checked={!hiddenMenuItems.includes(href)} disabled={menuSaving} onChange={() => toggleMenuItem(href)} aria-label={`${lang === "sw" ? sw : en} ${lang === "sw" ? "ionekane kwenye menyu" : "visible in menu"}`} className="h-5 w-5 rounded border-gray-300 text-brand-600" />
+            </label>)}
+            {menuError && <p role="alert" className="text-sm text-red-700">{menuError}</p>}
           </SectionCard>
         )}
 

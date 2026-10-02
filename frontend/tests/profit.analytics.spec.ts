@@ -10,6 +10,7 @@ test("owner profit analytics distinguishes cash, credit, costs, debt and exports
   await page.route("**/*api/dashboard/profit*", (route) => route.fulfill({ json: {
     period: "today", from: "2026-10-02T00:00:00.000Z", to: "2026-10-02T08:00:00.000Z", compareFrom: null, compareTo: null, group: "hour",
     summary: { salesRevenue: 100000, cashCollected: 80000, creditSales: 20000, costOfGoodsSold: 60000, grossProfit: 30000, grossProfitMargin: 50, expenses: 5000, netProfit: 25000, salesCount: 4, unitsSold: 12, missingCostSalesRevenue: 10000, costComplete: false },
+    production: { batchCount: 1, grossOutput: 280, brokenEggs: 8, usableOutput: 272, productionVariance: 0, ingredientCost: 52500, directCost: 0, totalCost: 52500, inputs: [{ productId: "feed", name: "Layer mash", unit: "kg", quantity: 37.5, cost: 52500 }] },
     comparison: null, debtAging: { overdue: 12000, dueSoon: 3000, noDueDate: 4000, outstanding: 19000 }, collectionBreakdown: [{ paymentMethod: "CASH", amount: 80000 }],
     products: [{ id: "flour", name: "Unga", unit: "kg", currentStock: 8, quantity: 12, revenue: 60000, grossProfit: 20000, missingCostSalesRevenue: 10000, lastSoldAt: "2026-10-02T07:00:00Z" }],
     slowMovingProducts: [{ id: "rice", name: "Rice", unit: "kg", currentStock: 15 }],
@@ -22,6 +23,8 @@ test("owner profit analytics distinguishes cash, credit, costs, debt and exports
   await expect(page.getByText(/no recorded cost/i)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Receivables and collections" })).toBeVisible();
   await expect(page.getByText("Stock with no sale in 30 days")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Production costs and inputs" })).toBeVisible();
+  await expect(page.getByText("37.5 kg", { exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();
   expect((await download).suggestedFilename()).toContain("dukapilot-owner-report");

@@ -43,7 +43,7 @@ interface User {
   name: string;
   role: string;
   language?: Lang;
-  shop?: { name: string; category?: string };
+  shop?: { name: string; category?: string; hiddenMenuItems?: string[] };
   supplier?: { name: string };
   staff?: {
     role: string;
@@ -169,6 +169,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [router]);
 
   useEffect(() => {
+    const syncMenuPreferences = (event: Event) => {
+      const hiddenMenuItems = (event as CustomEvent<string[]>).detail;
+      if (!Array.isArray(hiddenMenuItems)) return;
+      setUser((current) => current?.shop ? { ...current, shop: { ...current.shop, hiddenMenuItems } } : current);
+    };
+    window.addEventListener("dukapilot:menu-preferences", syncMenuPreferences);
+    return () => window.removeEventListener("dukapilot:menu-preferences", syncMenuPreferences);
+  }, []);
+
+  useEffect(() => {
     if (!user?.staff || staffCanUseCurrentPage()) return;
     const destination = staffHome();
     if (pathname !== destination) router.replace(destination);
@@ -220,6 +230,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       : merchantNav.filter((item) =>
           (!user?.staff || (!item.permission || user.staff.permissions[item.permission]) && (!item.anyPermissions || item.anyPermissions.some((permission) => user.staff?.permissions[permission]))) &&
           (!item.feature || user?.features?.[item.feature] !== false) &&
+          !user?.shop?.hiddenMenuItems?.includes(item.href) &&
           (!item.ownerOnly || !user?.staff) &&
           (!item.shopCategories || item.shopCategories.includes(String(user?.shop?.category || "").toLowerCase()))
         );

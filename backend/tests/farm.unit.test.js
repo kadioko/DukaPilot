@@ -35,6 +35,13 @@ test("farm production spreads used feed and direct cost across actual output", (
   });
 });
 
+test("egg production excludes broken eggs from sellable stock and spreads feed cost across good eggs", () => {
+  const { costsFor } = loadController({});
+  const costs = costsFor([{ productId: "feed", quantity: 5, unitCost: 1400 }], 0, 280, 288, 8);
+  assert.equal(280 - 8, 272);
+  assert.deepEqual(costs, { ingredientCost: 7000, totalCost: 7000, unitCost: 26, wasteQuantity: 8 });
+});
+
 test("farm output cost uses moving weighted average across on-hand and new batches", () => {
   assert.equal(weightedAverageCost({ currentQuantity: 5, currentUnitCost: 3000, addedQuantity: 2, addedTotalCost: 12000 }), 3857);
   assert.equal(weightedAverageCost({ currentQuantity: 0, currentUnitCost: 9999, addedQuantity: 4, addedTotalCost: 18000 }), 4500);
@@ -70,7 +77,7 @@ test("farm production deducts used supplies and adds only the produced output", 
     farmProductionBatch: {
       create: async () => ({ id: "farm-batch-1" }),
       findUnique: async () => ({
-        id: "farm-batch-1", ingredientCost: 7000, additionalCost: 0, totalCost: 7000, unitCost: 25, wasteQuantity: 8,
+        id: "farm-batch-1", ingredientCost: 7000, additionalCost: 0, totalCost: 7000, unitCost: 26, wasteQuantity: 8, brokenQuantity: 8,
         group: { id: "group-1", name: "Layer house A", profileType: "LAYERS" }, outputProduct: { id: "eggs", name: "Egg", unit: "egg" },
         items: [{ id: "item-1", quantity: 5, unitCost: 1400, totalCost: 7000, product: { id: "feed", name: "Layer feed", unit: "kg" } }],
       }),
@@ -82,16 +89,16 @@ test("farm production deducts used supplies and adds only the produced output", 
 
   await controller.createProduction({
     user: { userId: "owner-1", role: "MERCHANT" },
-    body: { groupId: "group-1", outputProductId: "eggs", type: "EGGS", expectedYield: 288, actualYield: 280, additionalCost: 0, paymentMethod: "CASH", producedAt: "2026-09-02", items: [{ productId: "feed", quantity: 5 }] },
+    body: { groupId: "group-1", outputProductId: "eggs", type: "EGGS", expectedYield: 288, actualYield: 280, brokenQuantity: 8, additionalCost: 0, paymentMethod: "CASH", producedAt: "2026-09-02", items: [{ productId: "feed", quantity: 1.5 }] },
   }, res);
 
   assert.equal(res.statusCode, 201);
   assert.equal(productUpdates[0].where.id, "feed");
-  assert.equal(productUpdates[0].data.currentStock.decrement, 5);
+  assert.equal(productUpdates[0].data.currentStock, 18.5);
   assert.equal(productUpdates[1].where.id, "eggs");
-  assert.equal(productUpdates[1].data.currentStock.increment, 280);
-  assert.deepEqual(stockMovements.map((movement) => [movement.type, movement.productId, movement.quantity]), [["OUT", "feed", 5], ["IN", "eggs", 280]]);
-  assert.equal(res.payload.batch.unitCost, 25);
+  assert.equal(productUpdates[1].data.currentStock.increment, 272);
+  assert.deepEqual(stockMovements.map((movement) => [movement.type, movement.productId, movement.quantity]), [["OUT", "feed", 1.5], ["IN", "eggs", 272]]);
+  assert.equal(res.payload.batch.unitCost, 26);
 });
 
 test("retried livestock events reuse their key without changing animal or linked-product stock twice", async () => {

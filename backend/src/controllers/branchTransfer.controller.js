@@ -36,8 +36,10 @@ const transfer = wrap(async (req, res) => {
     if (source.expiryDate && source.expiryDate <= new Date()) fail("Expired stock cannot be transferred");
     if (+source.expiryDate !== +target.expiryDate || source.doesNotExpire !== target.doesNotExpire) fail("Use destination stock with the same expiry date to preserve expiry tracking");
     if (target.currentStock + quantity > 2147483647) fail("Destination stock exceeds the supported quantity");
-    const count = BigInt(target.currentStock + quantity);
-    const cost = Number((BigInt(target.currentStock) * BigInt(target.buyingPrice) + BigInt(quantity) * BigInt(source.buyingPrice) + count / 2n) / count);
+    const totalQuantity = Number(target.currentStock) + quantity;
+    const cost = totalQuantity > 0
+      ? Math.round((Number(target.currentStock) * target.buyingPrice + quantity * source.buyingPrice) / totalQuantity)
+      : 0;
     const record = await tx.branchTransfer.create({ data: { businessId: rootId, requestKey, sourceShopId: source.shopId, targetShopId: target.shopId, sourceProductId, targetProductId, quantity, unitCost: source.buyingPrice, createdBy: req.user.userId } });
     await tx.product.update({ where: { id: source.id }, data: { currentStock: { decrement: quantity } } });
     await tx.product.update({ where: { id: target.id }, data: { currentStock: { increment: quantity }, buyingPrice: cost } });

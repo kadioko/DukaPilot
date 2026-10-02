@@ -20,6 +20,9 @@ test("profit analytics uses historical sale-item costs and shop-scoped totals", 
     exports: {
       shop: { findUnique: async () => ({ id: "shop-1" }) },
       debtPayment: { aggregate: async () => ({ _sum: { amount: 10000 } }) },
+      farmProductionBatch: { aggregate: async () => ({ _sum: { actualYield: 75, brokenQuantity: 8, wasteQuantity: 10, ingredientCost: 40000, additionalCost: 10000, totalCost: 50000 }, _count: { id: 2 } }) },
+      farmProductionItem: { groupBy: async () => [{ productId: "feed-1", _sum: { quantity: 25, totalCost: 40000 } }] },
+      product: { findMany: async () => [{ id: "feed-1", name: "Layer feed", unit: "kg" }] },
       $queryRawUnsafe: async (query, ...params) => {
         calls.push({ query, params });
         if (query.includes("knownCostGrossProfit") && query.includes(" AS expenses")) {
@@ -58,6 +61,11 @@ test("profit analytics uses historical sale-item costs and shop-scoped totals", 
   assert.equal(res.payload.debtAging.overdue, 5000);
   assert.equal(res.payload.collectionBreakdown[0].paymentMethod, "CASH");
   assert.equal(res.payload.products[0].name, "Unga");
+  assert.equal(res.payload.production.batchCount, 2);
+  assert.equal(res.payload.production.usableOutput, 67);
+  assert.equal(res.payload.production.brokenEggs, 8);
+  assert.equal(res.payload.production.totalCost, 50000);
+  assert.deepEqual(res.payload.production.inputs[0], { productId: "feed-1", name: "Layer feed", unit: "kg", quantity: 25, cost: 40000 });
   assert.equal(res.payload.chart[0].grossProfit, 85000);
   assert.equal(res.payload.chart[0].expenses, 12000);
   assert.equal(res.payload.chart[0].netProfit, 73000);
@@ -71,6 +79,9 @@ test("profit analytics flags revenue with missing cost and excludes it from marg
     exports: {
       shop: { findUnique: async () => ({ id: "shop-1" }) },
       debtPayment: { aggregate: async () => ({ _sum: { amount: 0 } }) },
+      farmProductionBatch: { aggregate: async () => ({ _sum: {}, _count: { id: 0 } }) },
+      farmProductionItem: { groupBy: async () => [] },
+      product: { findMany: async () => [] },
       $queryRawUnsafe: async (query) => {
         if (query.includes("knownCostGrossProfit") && query.includes(" AS expenses")) return [{ salesRevenue: 1500, cashCollected: 1500, creditSales: 0, costOfGoodsSold: 500, knownCostRevenue: 1000, knownCostGrossProfit: 500, missingCostSalesRevenue: 500, salesCount: 2, unitsSold: 3, expenses: 100 }];
         if (query.includes("FROM expenses e") && query.includes("AS expenses")) return [];

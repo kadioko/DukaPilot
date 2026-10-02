@@ -96,6 +96,31 @@ and sheep, pigs, and mixed livestock. Farmers can create flocks, pens, herds, or
 batches; record additions, mortality, and culls; consume feed and supplies; add
 eggs, milk, or other output to stock; and pack output such as eggs into trays.
 
+For layer farms, use a stock product measured in individual eggs as the base
+output. For egg production, enter full trays (30 eggs each) plus any loose eggs;
+the form calculates the total egg count. Enter broken eggs separately; only good
+eggs enter stock. Pack 30 individual eggs into one tray. For example, 75 good
+eggs become 2 trays plus 15 loose eggs, with the remaining 15 still tracked as
+individual eggs. Production history is searchable and filterable by product or
+house, group, output type, and Tanzania-local date range. It shows usable output,
+broken eggs, and shortfall against expected production separately.
+
+Feed and other livestock inputs can use quantities to three decimal places.
+For example, if feed stock is measured in kilograms and one bag contains 25 kg,
+using 1.5 bags is recorded as 37.5 kg. Keep the product unit consistent (kg or
+bag) between receiving, stock, and production, and set its buying cost per that
+unit. Stock adjustments also accept up to three decimals for reconciliation.
+The Profit Analytics page shows batch input quantities and costs for the
+selected day, week, month, quarter, year, or custom period. Production cost is
+capitalized into output inventory and becomes cost of goods sold as that output
+sells; the report displays production cost separately and does not subtract it
+again from net profit. This avoids double-counting feed and labour.
+
+Owners can hide optional modules from the navigation under **Settings → Menu
+modules**. This only changes menu visibility: it does not revoke permissions,
+disable backend features, or delete business data. Core sales, inventory, and
+settings remain visible.
+
 For live-animal sales, first create a dedicated inventory product (for example,
 "Goat - live") and link it to one active animal group in Livestock. Linking
 initializes product stock from the group's animal count when the product is
@@ -163,16 +188,19 @@ The additive migration is:
 20260914002000_crop_operations_v2
 20260914003000_crop_field_offline_sync
 20261002002000_farm_reliability_and_livestock_sales
+20261002004000_farm_production_accounting_and_shop_menu
 \`\`\`
 
 Together they add farm settings, crop plots and cycles, input usages, harvest
 batches, harvest-sale allocations, durable input-cost allocations, seasonal
 budgets, irrigation logs, field tasks, buyer commitments, harvest grades, manual
 weather alerts, durable field-operation receipts, crop-field sync event labels,
-and client request keys for duplicate-safe crop retries. The final migration in
-that list adds livestock retry keys, live-animal sale linkage/void history, and
-safe whole-herd synchronization with POS stock. Deploy it with
-`npm run db:deploy` before enabling live-animal product linking in production.
+and client request keys for duplicate-safe crop retries. The livestock
+reliability migration adds livestock retry keys, live-animal sale linkage/void
+history, and safe whole-herd synchronization with POS stock. The latest
+migration adds broken-egg quantities, fractional product stock and farm input
+quantities (up to three decimal places), and owner-managed menu visibility.
+Deploy it with `npm run db:deploy` before publishing the related frontend.
 
 Deploy the backend migration before publishing the frontend:
 

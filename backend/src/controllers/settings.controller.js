@@ -4,6 +4,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 
 const VALID_CATEGORIES = new Set(["grocery", "pharmacy", "beauty", "bar", "restaurant", "hardware", "electronics", "clothing", "livestock", "farm", "general"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
+const HIDEABLE_MENU_ITEMS = new Set(["/assistant", "/daily-close", "/debts", "/orders/customers", "/quotations", "/receiving", "/food-preparation", "/farm", "/crops", "/barcodes", "/suppliers", "/orders", "/expenses", "/profit", "/wallet", "/billing", "/staff", "/branches", "/referrals"]);
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -25,7 +26,7 @@ const getSettings = asyncHandler(async (req, res) => {
         role: true,
         language: true,
         createdAt: true,
-        shop: { select: { id: true, name: true, location: true, district: true, category: true, isCatalogPublished: true } },
+        shop: { select: { id: true, name: true, location: true, district: true, category: true, isCatalogPublished: true, hiddenMenuItems: true } },
       },
     });
     if (!staff) return res.status(404).json({ error: "Staff member not found" });
@@ -39,21 +40,21 @@ const getSettings = asyncHandler(async (req, res) => {
       name: true,
       role: true,
       language: true,
-      shop: { select: { id: true, name: true, location: true, district: true, category: true, isCatalogPublished: true } },
+      shop: { select: { id: true, name: true, location: true, district: true, category: true, isCatalogPublished: true, hiddenMenuItems: true } },
       supplier: { select: { id: true, name: true, phone: true, address: true } },
       createdAt: true,
     },
   });
   if (!user) return res.status(404).json({ error: "User not found" });
   if (user.shop && req.user.resolvedShopId && user.shop.id !== req.user.resolvedShopId) {
-    user.shop = await prisma.shop.findUnique({ where: { id: req.user.resolvedShopId }, select: { id: true, name: true, location: true, district: true, category: true, isCatalogPublished: true } });
+    user.shop = await prisma.shop.findUnique({ where: { id: req.user.resolvedShopId }, select: { id: true, name: true, location: true, district: true, category: true, isCatalogPublished: true, hiddenMenuItems: true } });
   }
   res.json({ settings: user });
 });
 
 // PATCH /api/settings/shop — update shop details (merchant only)
 const updateShop = asyncHandler(async (req, res) => {
-  if (req.user.role !== "MERCHANT" && req.user.role !== "ADMIN") {
+  if (req.user.staffId || (req.user.role !== "MERCHANT" && req.user.role !== "ADMIN")) {
     return res.status(403).json({ error: "Only merchants can update shop settings" });
   }
 
@@ -85,6 +86,20 @@ const updateShop = asyncHandler(async (req, res) => {
   const updated = await prisma.shop.update({ where: { id: shop.id }, data });
   req.audit = { action: "settings.shop.update", resourceType: "shop", resourceId: shop.id, metadata: data };
   res.json({ shop: updated });
+});
+
+const updateMenuPreferences = asyncHandler(async (req, res) => {
+  if (req.user.staffId || (req.user.role !== "MERCHANT" && req.user.role !== "ADMIN")) {
+    return res.status(403).json({ error: "Only the business owner can change menu preferences" });
+  }
+  if (!Array.isArray(req.body.hiddenMenuItems) || req.body.hiddenMenuItems.length > HIDEABLE_MENU_ITEMS.size || req.body.hiddenMenuItems.some((item) => typeof item !== "string" || !HIDEABLE_MENU_ITEMS.has(item))) {
+    return res.status(400).json({ error: "Choose valid optional menu items to hide" });
+  }
+  const shopId = await getShopIdForUser(req.user);
+  const hiddenMenuItems = [...new Set(req.body.hiddenMenuItems)];
+  await prisma.shop.update({ where: { id: shopId }, data: { hiddenMenuItems } });
+  req.audit = { action: "settings.menu_preferences.update", resourceType: "shop", resourceId: shopId, metadata: { hiddenMenuItems } };
+  res.json({ hiddenMenuItems });
 });
 
 // PATCH /api/settings/language — update preferred language
@@ -142,4 +157,4 @@ const updateProfile = asyncHandler(async (req, res) => {
   res.json({ message: "Profile updated", name });
 });
 
-module.exports = { getSettings, updateShop, updateLanguage, changePin, updateProfile };
+module.exports = { getSettings, updateShop, updateMenuPreferences, updateLanguage, changePin, updateProfile };

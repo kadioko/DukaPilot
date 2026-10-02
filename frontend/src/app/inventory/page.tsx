@@ -329,8 +329,9 @@ export default function InventoryPage() {
   async function handleAdjust() {
     if (mutationInFlight.current) return;
     if (!adjustProduct || adjustForm.quantity === "") return;
-    if (!Number.isInteger(Number(adjustForm.quantity)) || Number(adjustForm.quantity) < 0 || (adjustForm.type !== "ADJUSTMENT" && Number(adjustForm.quantity) === 0)) {
-      toast(lang === "sw" ? "Weka idadi sahihi ya namba kamili." : "Enter a valid whole quantity.", "error");
+    const quantity = Number(adjustForm.quantity);
+    if (!Number.isFinite(quantity) || Math.abs(quantity - Math.round(quantity * 1000) / 1000) > 1e-9 || quantity < 0 || (adjustForm.type !== "ADJUSTMENT" && quantity === 0)) {
+      toast(lang === "sw" ? "Weka kiasi chanya chenye decimal zisizozidi 3." : "Enter a valid quantity with at most 3 decimal places.", "error");
       return;
     }
     mutationInFlight.current = true;
@@ -929,7 +930,7 @@ export default function InventoryPage() {
               </div>
             )}
             <Field label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)}>
-              <input aria-label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)} type="number" min="0" step="1" value={adjustForm.quantity}
+              <input aria-label={adjustForm.type === "ADJUSTMENT" ? t("inventory.adjustNewQty", lang) : t("inventory.adjustQty", lang)} type="number" min="0" step="0.001" value={adjustForm.quantity}
                 onChange={(e) => setAdjustForm({ ...adjustForm, quantity: e.target.value })}
                 className={INPUT} placeholder="0" />
             </Field>

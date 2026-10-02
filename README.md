@@ -459,7 +459,7 @@ To refresh the complete public business showcase used on `/demo`, run the separa
 - **Manual migration:** `npm run db:deploy`
 - **Policy:** create and commit Prisma migrations in git, then let production apply them with `prisma migrate deploy`
 - **Do not use in production:** `prisma migrate dev`, `prisma db push`
-- **Current production migration sequence:** through `20260928001000_print_bridge_and_label_profiles`. This adds manufacturer/internal product codes, richer templates, saved printer connection metadata, owner-protected wholesale label data, and audited local-bridge label output. See [Barcode and Label Management](./docs/BARCODE_MANAGEMENT.md) before enabling the label UI for merchants.
+- **Latest project migration:** `20261002004000_farm_production_accounting_and_shop_menu`. Apply it to production before deploying the matching frontend: it adds broken-egg recording, fractional stock/input quantities to three decimal places, and owner-controlled optional menu visibility. The immediately preceding migration adds printer profiles; see [Barcode and Label Management](./docs/BARCODE_MANAGEMENT.md).
 
 ### Deployment Checklist
 

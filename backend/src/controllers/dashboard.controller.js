@@ -366,7 +366,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
        COALESCE((SELECT SUM(si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"unitsSold\",
        COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $2 AND e.\"spentAt\" < $3), 0)::bigint AS expenses`;
 
-  const [totalsRows, previousRows, chartRows, expenseChartRows, slowProductRows, productRows, debtAgingRows, collectionRows] = await Promise.all([
+  const [totalsRows, previousRows, chartRows, expenseChartRows, slowProductRows, productRows, debtAgingRows, collectionRows, productionAggregate, productionInputRows] = await Promise.all([
     prisma.$queryRawUnsafe(summaryQuery, shopId, range.from, range.to),
     previousRange ? prisma.$queryRawUnsafe(summaryQuery, shopId, previousRange.from, previousRange.to) : Promise.resolve([]),
     prisma.$queryRawUnsafe(
@@ -403,7 +403,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       `SELECT COALESCE(p.id, 'unlinked:' || COALESCE(si.name, si.description, 'Item') || '|' || COALESCE(si.unit, '')) AS id,
               COALESCE(p.name, si.name, si.description, 'Item') AS name,
               COALESCE(p.unit, si.unit, '') AS unit,
-              COALESCE(p.\"currentStock\", 0)::bigint AS \"currentStock\",
+              COALESCE(p.\"currentStock\", 0)::double precision AS \"currentStock\",
               COALESCE(SUM(si.quantity), 0)::bigint AS quantity,
               COALESCE(SUM(si.\"totalPrice\"), 0)::bigint AS revenue,
               COALESCE(SUM(CASE WHEN si.\"buyingPrice\" > 0 THEN si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity ELSE 0 END), 0)::bigint AS \"knownCostGrossProfit\",
@@ -441,6 +441,16 @@ const profitAnalytics = asyncHandler(async (req, res) => {
        ) collections GROUP BY method ORDER BY amount DESC`,
       shopId, range.from, range.to,
     ),
+    prisma.farmProductionBatch.aggregate({
+      where: { shopId, producedAt: { gte: range.from, lt: range.to } },
+      _sum: { actualYield: true, brokenQuantity: true, wasteQuantity: true, ingredientCost: true, additionalCost: true, totalCost: true },
+      _count: { id: true },
+    }),
+    prisma.farmProductionItem.groupBy({
+      by: ["productId"],
+      where: { farmProduction: { shopId, producedAt: { gte: range.from, lt: range.to } } },
+      _sum: { quantity: true, totalCost: true },
+    }),
   ]);
 
   const totals = totalsRows[0] || {};
@@ -448,6 +458,27 @@ const profitAnalytics = asyncHandler(async (req, res) => {
   const costOfGoodsSold = Number(totals.costOfGoodsSold || 0);
   const grossProfit = Number(totals.knownCostGrossProfit || 0);
   const expenses = Number(totals.expenses || 0);
+  const inputProducts = productionInputRows.length
+    ? await prisma.product.findMany({ where: { id: { in: productionInputRows.map((row) => row.productId) }, shopId }, select: { id: true, name: true, unit: true } })
+    : [];
+  const inputProductById = new Map(inputProducts.map((product) => [product.id, product]));
+  const production = {
+    batchCount: Number(productionAggregate._count?.id || 0),
+    grossOutput: Number(productionAggregate._sum?.actualYield || 0),
+    brokenEggs: Number(productionAggregate._sum?.brokenQuantity || 0),
+    usableOutput: Number(productionAggregate._sum?.actualYield || 0) - Number(productionAggregate._sum?.brokenQuantity || 0),
+    productionVariance: Number(productionAggregate._sum?.wasteQuantity || 0),
+    ingredientCost: Number(productionAggregate._sum?.ingredientCost || 0),
+    directCost: Number(productionAggregate._sum?.additionalCost || 0),
+    totalCost: Number(productionAggregate._sum?.totalCost || 0),
+    inputs: productionInputRows.map((row) => ({
+      productId: row.productId,
+      name: inputProductById.get(row.productId)?.name || "Supply",
+      unit: inputProductById.get(row.productId)?.unit || "",
+      quantity: Number(row._sum?.quantity || 0),
+      cost: Number(row._sum?.totalCost || 0),
+    })).sort((a, b) => b.cost - a.cost),
+  };
   const currentSummary = {
     salesRevenue: revenue,
     cashCollected: Number(totals.cashCollected || 0),
@@ -505,6 +536,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
     compareFrom: previousRange?.from || null,
     compareTo: previousRange?.to || null,
     summary: currentSummary,
+    production,
     previousSummary,
     comparison,
     debtAging: {

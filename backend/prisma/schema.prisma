@@ -290,6 +290,7 @@ model Shop {
   subscriptionEndsAt       DateTime?
   isActive                 Boolean                 @default(true)
   isCatalogPublished       Boolean                 @default(true)
+  hiddenMenuItems          String[]                @default([])
   isDemo                   Boolean                 @default(false)
   onboardingStatus         OnboardingStatus        @default(NEW)
   lastContactedAt          DateTime?
@@ -934,7 +935,7 @@ model Product {
   sellingPrice             Int
   wholesalePrice           Int?
   wholesaleMinQty          Int?
-  currentStock             Int                     @default(0)
+  currentStock             Float                   @default(0)
   minimumStock             Int                     @default(5) // low-stock threshold
   expiryDate               DateTime? // null = not set
   doesNotExpire            Boolean                 @default(false)
@@ -1088,8 +1089,8 @@ model StockCountItem {
   stockCount   StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
   productId    String
   product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  expected     Int
-  counted      Int        @default(0)
+  expected     Float
+  counted      Float      @default(0)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -1143,7 +1144,7 @@ model BranchTransfer {
 model StockMovement {
   id                     String                @id @default(cuid())
   type                   StockMovementType
-  quantity               Int
+  quantity               Float
   note                   String?
   productId              String
   product                Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1581,6 +1582,7 @@ model FarmProductionBatch {
   expectedYield      Int
   actualYield        Int
   wasteQuantity      Int                  @default(0)
+  brokenQuantity     Int                  @default(0)
   ingredientCost     Int
   additionalCost     Int                  @default(0)
   totalCost          Int
@@ -1610,7 +1612,7 @@ model FarmProductionItem {
   farmProduction   FarmProductionBatch @relation(fields: [farmProductionId], references: [id], onDelete: Cascade)
   productId        String
   product          Product             @relation("FarmProductionInput", fields: [productId], references: [id], onDelete: Restrict)
-  quantity         Int
+  quantity         Float
   unitCost         Int
   totalCost        Int
 
