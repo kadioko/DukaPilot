@@ -248,12 +248,9 @@ const recordAnimalEvent = asyncHandler(async (req, res) => {
           return { event: existing, group: await tx.farmGroup.findUnique({ where: { id: existing.groupId } }) };
         }
       }
-      const group = await tx.farmGroup.findFirst({ where: { id: req.params.id, shopId }, select: { id: true, currentAnimals: true, liveProductId: true, liveProduct: { select: { currentStock: true } } } });
+      const group = await tx.farmGroup.findFirst({ where: { id: req.params.id, shopId }, select: { id: true, currentAnimals: true, liveProductId: true } });
       if (!group) throw Object.assign(new Error("Farm group not found"), { status: 404 });
       const decrement = type === "MORTALITY" || type === "CULL";
-      if (group.liveProductId && group.liveProduct?.currentStock !== group.currentAnimals) {
-        throw Object.assign(new Error("The linked live-animal product stock does not match the herd count. Reconcile it before recording this event."), { status: 409 });
-      }
       const updated = await tx.farmGroup.updateMany({
         where: { id: group.id, shopId, ...(decrement ? { currentAnimals: { gte: quantity } } : {}) },
         data: { currentAnimals: decrement ? { decrement: quantity } : { increment: quantity } },

@@ -368,8 +368,9 @@ const recordHarvest = asyncHandler(async (req, res) => {
     }
     const cycle = await tx.cropCycle.findFirst({ where: { id: cropCycleId, shopId, status: { notIn: ["CLOSED", "CANCELLED"] } }, select: { id: true, expectedYield: true } });
     if (!cycle) throw Object.assign(new Error("Active crop cycle not found"), { status: 404 });
-    const product = await tx.product.findFirst({ where: { id: outputProductId, shopId, isActive: true } });
+    const product = await tx.product.findFirst({ where: { id: outputProductId, shopId, isActive: true }, include: { livestockGroup: { select: { id: true } } } });
     if (!product) throw Object.assign(new Error("Harvest output product not found"), { status: 404 });
+    if (product.livestockGroup) throw Object.assign(new Error("A live-animal sale product cannot also be used as a crop harvest output"), { status: 409 });
     const [priorCycleHarvests, existingOutputHarvestCount] = await Promise.all([
       tx.cropHarvestBatch.findMany({ where: { cropCycleId, shopId }, select: { actualYield: true, expectedYield: true, wasteQuantity: true } }),
       tx.cropHarvestBatch.count({ where: { shopId, outputProductId } }),
