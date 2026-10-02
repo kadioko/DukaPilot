@@ -96,14 +96,29 @@ and sheep, pigs, and mixed livestock. Farmers can create flocks, pens, herds, or
 batches; record additions, mortality, and culls; consume feed and supplies; add
 eggs, milk, or other output to stock; and pack output such as eggs into trays.
 
-For layer farms, use a stock product measured in individual eggs as the base
-output. For egg production, enter full trays (30 eggs each) plus any loose eggs;
-the form calculates the total egg count. Enter broken eggs separately; only good
-eggs enter stock. Pack 30 individual eggs into one tray. For example, 75 good
-eggs become 2 trays plus 15 loose eggs, with the remaining 15 still tracked as
-individual eggs. Production history is searchable and filterable by product or
-house, group, output type, and Tanzania-local date range. It shows usable output,
-broken eggs, and shortfall against expected production separately.
+For layers, create two distinct inventory products: **single egg** (unit: egg)
+and **tray of 30 eggs** (unit: tray). In Farm -> Daily work -> Record production,
+choose whether good eggs enter stock as individual eggs or full trays plus
+leftover good eggs. In single-egg mode, enter all collected eggs, including
+broken ones, then enter the broken count in the same form. In tray mode, enter
+full trays of **good** eggs, 0-29 extra good eggs, and the broken count. For
+example, 2 trays, 15 extra good eggs, and 5 broken eggs means 80 collected:
+2 trays enter tray stock, 15 enter single-egg stock, and 5 enter neither.
+Saving the batch moves stock and feed in one transaction. The last selected
+stock mode is saved for the shop; staff can choose a mode per batch without
+changing the shop preference. Existing single-egg stock can still be packed
+later with **Pack farm output**. Farm -> History supports search by product or
+house, group, output type, and Tanzania-local date range; batch details show
+collected, broken, packed, and leftover quantities. Farm -> Setup holds profile,
+group, and live-animal product settings.
+
+If egg or tray selling prices change by buyer or season, the owner can turn on
+**Settings -> Sale prices -> Allow price changes at checkout**. In Sales, select
+Retail or Wholesale and change the unit price in the cart for that transaction.
+The inventory/catalog price is not rewritten; the sale and its profit use the
+actual charged price, while sale history retains the listed price for review.
+Only staff with Sell permission can use checkout, and the API enforces the
+business-wide setting even when a request bypasses the UI.
 
 Feed and other livestock inputs can use quantities to three decimal places.
 For example, if feed stock is measured in kilograms and one bag contains 25 kg,
@@ -189,6 +204,8 @@ The additive migration is:
 20260914003000_crop_field_offline_sync
 20261002002000_farm_reliability_and_livestock_sales
 20261002004000_farm_production_accounting_and_shop_menu
+20261002005000_farm_egg_stock_mode
+20261002006000_variable_sale_prices
 \`\`\`
 
 Together they add farm settings, crop plots and cycles, input usages, harvest
@@ -200,6 +217,11 @@ reliability migration adds livestock retry keys, live-animal sale linkage/void
 history, and safe whole-herd synchronization with POS stock. The latest
 migration adds broken-egg quantities, fractional product stock and farm input
 quantities (up to three decimal places), and owner-managed menu visibility.
+The egg-stock migration adds the preferred mode and links automatic tray packing
+to its production batch. Apply the migration before serving the updated farm UI.
+The sale-pricing migration lets owners opt in to transaction-specific prices
+and snapshots the listed price on new sale lines. Existing businesses retain
+their prior ability to adjust checkout prices; new businesses start with it off.
 Deploy it with `npm run db:deploy` before publishing the related frontend.
 
 Deploy the backend migration before publishing the frontend:

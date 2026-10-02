@@ -4,7 +4,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
-import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode, Share2 } from "lucide-react";
+import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode, Share2, Tags } from "lucide-react";
 import NotificationSettings from "@/components/notifications/NotificationSettings";
 
 interface UserSettings {
@@ -21,6 +21,7 @@ interface UserSettings {
     district?: string | null;
     category: string;
     isCatalogPublished: boolean;
+    allowVariableSalePrices?: boolean;
     hiddenMenuItems?: string[];
   };
 }
@@ -107,6 +108,10 @@ export default function SettingsPage() {
   const [hiddenMenuItems, setHiddenMenuItems] = useState<string[]>([]);
   const [menuSaving, setMenuSaving] = useState(false);
   const [menuError, setMenuError] = useState("");
+  const [variablePricesEnabled, setVariablePricesEnabled] = useState(false);
+  const [pricingSaving, setPricingSaving] = useState(false);
+  const [pricingError, setPricingError] = useState("");
+  const [pricingMsg, setPricingMsg] = useState("");
 
   useEffect(() => {
     setCatalogOrigin(window.location.origin);
@@ -121,6 +126,7 @@ export default function SettingsPage() {
           setShopDistrict(s.shop.district || "");
           setShopCategory(s.shop.category);
           setCatalogPublished(s.shop.isCatalogPublished !== false);
+          setVariablePricesEnabled(s.shop.allowVariableSalePrices === true);
           setHiddenMenuItems(s.shop.hiddenMenuItems || []);
         }
       })
@@ -156,6 +162,24 @@ export default function SettingsPage() {
       setShopError(err instanceof Error ? err.message : t("common.error", lang));
     } finally {
       setShopSaving(false);
+    }
+  }
+
+  async function updateVariablePrices(enabled: boolean) {
+    const previous = variablePricesEnabled;
+    setVariablePricesEnabled(enabled);
+    setPricingSaving(true);
+    setPricingError("");
+    setPricingMsg("");
+    try {
+      const result = await api.patch<{ allowVariableSalePrices: boolean }>("/settings/sale-pricing", { allowVariableSalePrices: enabled }, lang);
+      setVariablePricesEnabled(result.allowVariableSalePrices);
+      setPricingMsg(lang === "sw" ? "Mpangilio wa bei umehifadhiwa." : "Sale pricing setting saved.");
+    } catch (error) {
+      setVariablePricesEnabled(previous);
+      setPricingError(error instanceof Error ? error.message : (lang === "sw" ? "Bei haikuhifadhiwa." : "Could not save sale pricing."));
+    } finally {
+      setPricingSaving(false);
     }
   }
 
@@ -460,6 +484,21 @@ export default function SettingsPage() {
                 {shopSaving ? "..." : t("common.save", lang)}
               </button>
             </form>
+          </SectionCard>
+        )}
+
+        {settings?.role === "MERCHANT" && !settings.isStaff && settings.shop && (
+          <SectionCard title={lang === "sw" ? "Bei za mauzo" : "Sale prices"} icon={<Tags className="h-4 w-4" />}>
+            <label className="flex min-h-12 cursor-pointer items-start justify-between gap-4">
+              <span>
+                <span className="block text-sm font-semibold text-gray-900">{lang === "sw" ? "Ruhusu kubadili bei wakati wa kuuza" : "Allow price changes at checkout"}</span>
+                <span className="mt-1 block text-xs leading-5 text-gray-600">{lang === "sw" ? "Kwa bei za rejareja au jumla zinazobadilika, mmiliki na wafanyakazi wenye ruhusa ya kuuza wanaweza kuweka bei halisi ya mauzo hayo. Bei ya bidhaa kwenye stock na katalogi haibadiliki." : "For changing retail or wholesale prices, the owner and staff allowed to sell can enter the actual price for that sale. The product's listed inventory and catalog prices stay unchanged."}</span>
+              </span>
+              <input type="checkbox" checked={variablePricesEnabled} disabled={pricingSaving} onChange={(event) => updateVariablePrices(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-brand-600" />
+            </label>
+            {pricingSaving && <p role="status" className="text-xs text-gray-600">{lang === "sw" ? "Inahifadhi..." : "Saving..."}</p>}
+            {pricingMsg && <SuccessBanner msg={pricingMsg} />}
+            {pricingError && <p role="alert" className="text-sm text-red-700">{pricingError}</p>}
           </SectionCard>
         )}
 

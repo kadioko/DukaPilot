@@ -44,7 +44,7 @@ interface SaleRecord {
   customerName?: string | null;
   customerPhone?: string | null;
   shop?: { name: string };
-  items: Array<{ quantity: number; unitPrice: number; totalPrice: number; name?: string | null; unit?: string | null; product?: { id: string; name: string; unit: string } | null }>;
+  items: Array<{ quantity: number; unitPrice: number; listedUnitPrice?: number | null; totalPrice: number; name?: string | null; unit?: string | null; product?: { id: string; name: string; unit: string } | null }>;
 }
 
 interface PendingSale {
@@ -217,6 +217,7 @@ export default function SalesPage() {
   const [voidingSaleId, setVoidingSaleId] = useState<string | null>(null);
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const [shopName, setShopName] = useState("DukaPilot");
+  const [variablePricesEnabled, setVariablePricesEnabled] = useState(false);
   const scannerBuffer = useRef("");
   const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -234,8 +235,11 @@ export default function SalesPage() {
     api.get<{ customers: CustomerRecord[] }>("/debts/customers")
       .then((d) => setCustomers(d.customers))
       .catch(() => setCustomers([]));
-    api.get<{ settings: { shop?: { name?: string } } }>("/settings")
-      .then((data) => setShopName(data.settings.shop?.name || "DukaPilot"))
+    api.get<{ settings: { shop?: { name?: string; allowVariableSalePrices?: boolean } } }>("/settings")
+      .then((data) => {
+        setShopName(data.settings.shop?.name || "DukaPilot");
+        setVariablePricesEnabled(data.settings.shop?.allowVariableSalePrices === true);
+      })
       .catch(() => {});
     api.get<{ settings: Partial<typeof barcodeSettings> }>("/barcodes/settings")
       .then((data) => setBarcodeSettings((current) => ({ ...current, ...data.settings })))
@@ -567,6 +571,7 @@ export default function SalesPage() {
   }
 
   function updatePrice(productId: string, price: number) {
+    if (!variablePricesEnabled || !Number.isSafeInteger(price) || price < 0) return;
     setCart((prev) =>
       prev.map((i) => i.product.id === productId ? { ...i, unitPrice: price } : i)
     );
@@ -1008,15 +1013,22 @@ export default function SalesPage() {
                         <div key={item.product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-gray-100 p-2 sm:flex sm:border-0 sm:p-0">
                           <div className="min-w-0 sm:flex-1">
                             <p className="text-xs font-medium text-gray-800 truncate">{item.product.name}</p>
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              aria-label={`${lang === "sw" ? "Bei ya" : "Unit price for"} ${item.product.name}`}
-                              value={item.unitPrice}
-                              onChange={(e) => updatePrice(item.product.id, Number(e.target.value))}
-                              className="w-24 max-w-full border-b border-dashed border-gray-300 bg-transparent text-base font-bold text-brand-600 focus:outline-none sm:text-xs"
-                            />
+                            {variablePricesEnabled ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={0}
+                                  step={1}
+                                  title={lang === "sw" ? "Bei ya mauzo haya tu" : "Price for this sale only"}
+                                  aria-label={`${lang === "sw" ? "Bei ya" : "Unit price for"} ${item.product.name}`}
+                                  value={item.unitPrice}
+                                  onChange={(e) => updatePrice(item.product.id, Number(e.target.value))}
+                                  className="w-24 max-w-full border-b border-dashed border-gray-300 bg-transparent text-base font-bold text-brand-600 focus:outline-none sm:text-xs"
+                                />
+                                {item.unitPrice !== defaultPriceFor(item.product) && <button type="button" onClick={() => updatePrice(item.product.id, defaultPriceFor(item.product))} title={lang === "sw" ? "Rudisha bei ya kawaida" : "Reset listed price"} aria-label={`${lang === "sw" ? "Rudisha bei ya" : "Reset price for"} ${item.product.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center text-brand-700"><RotateCcw className="h-3.5 w-3.5" /></button>}
+                              </div>
+                            ) : <p className="text-sm font-bold text-brand-700">{formatTZS(item.unitPrice)}</p>}
                           </div>
                           <div className="col-span-2 row-start-2 flex items-center justify-start gap-1 sm:order-none sm:col-auto sm:row-auto">
                             <button aria-label={`${lang === "sw" ? "Punguza idadi ya" : "Decrease quantity of"} ${item.product.name}`} onClick={() => updateQty(item.product.id, -1)} className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center min-h-0 sm:h-9 sm:w-9">
@@ -1195,6 +1207,7 @@ export default function SalesPage() {
                       {sale.items.map((item, i) => (
                         <p key={i} className="text-xs text-gray-500 py-0.5">
                           {item.product?.name || item.name || "Custom service"} x {item.quantity} @ {formatTZS(item.unitPrice)}
+                          {item.listedUnitPrice != null && item.listedUnitPrice !== item.unitPrice && <span className="ml-1 text-amber-700">({lang === "sw" ? "bei ya kawaida" : "listed"}: {formatTZS(item.listedUnitPrice)})</span>}
                         </p>
                       ))}
                     </div>
