@@ -1,6 +1,6 @@
 const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
-const { getShopIdForUser } = require("../lib/shopAccess");
+const { getShopIdForUser, getBillingShopIdForUser } = require("../lib/shopAccess");
 
 const VALID_CATEGORIES = new Set(["grocery", "pharmacy", "beauty", "bar", "restaurant", "hardware", "electronics", "clothing", "livestock", "farm", "general"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
@@ -30,7 +30,9 @@ const getSettings = asyncHandler(async (req, res) => {
       },
     });
     if (!staff) return res.status(404).json({ error: "Staff member not found" });
-    return res.json({ settings: { ...staff, isStaff: true } });
+    const businessShopId = await getBillingShopIdForUser(req.user);
+    const business = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { allowVariableSalePrices: true } });
+    return res.json({ settings: { ...staff, isStaff: true, shop: { ...staff.shop, allowVariableSalePrices: business?.allowVariableSalePrices === true } } });
   }
   const user = await prisma.user.findUnique({
     where: { id: req.user.userId },
@@ -48,6 +50,11 @@ const getSettings = asyncHandler(async (req, res) => {
   if (!user) return res.status(404).json({ error: "User not found" });
   if (user.shop && req.user.resolvedShopId && user.shop.id !== req.user.resolvedShopId) {
     user.shop = await prisma.shop.findUnique({ where: { id: req.user.resolvedShopId }, select: { id: true, name: true, location: true, district: true, category: true, isCatalogPublished: true, hiddenMenuItems: true } });
+  }
+  if (user.shop) {
+    const businessShopId = await getBillingShopIdForUser(req.user);
+    const business = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { allowVariableSalePrices: true } });
+    user.shop.allowVariableSalePrices = business?.allowVariableSalePrices === true;
   }
   res.json({ settings: user });
 });
@@ -100,6 +107,19 @@ const updateMenuPreferences = asyncHandler(async (req, res) => {
   await prisma.shop.update({ where: { id: shopId }, data: { hiddenMenuItems } });
   req.audit = { action: "settings.menu_preferences.update", resourceType: "shop", resourceId: shopId, metadata: { hiddenMenuItems } };
   res.json({ hiddenMenuItems });
+});
+
+const updateSalePricing = asyncHandler(async (req, res) => {
+  if (req.user.staffId || (req.user.role !== "MERCHANT" && req.user.role !== "ADMIN")) {
+    return res.status(403).json({ error: "Only the business owner can change checkout pricing" });
+  }
+  if (typeof req.body.allowVariableSalePrices !== "boolean") {
+    return res.status(400).json({ error: "Choose whether sale price adjustments are allowed" });
+  }
+  const shopId = await getBillingShopIdForUser(req.user);
+  const shop = await prisma.shop.update({ where: { id: shopId }, data: { allowVariableSalePrices: req.body.allowVariableSalePrices }, select: { id: true, allowVariableSalePrices: true } });
+  req.audit = { action: "settings.sale_pricing.update", resourceType: "shop", resourceId: shopId, metadata: { allowVariableSalePrices: shop.allowVariableSalePrices } };
+  res.json({ allowVariableSalePrices: shop.allowVariableSalePrices });
 });
 
 // PATCH /api/settings/language — update preferred language
@@ -157,4 +177,4 @@ const updateProfile = asyncHandler(async (req, res) => {
   res.json({ message: "Profile updated", name });
 });
 
-module.exports = { getSettings, updateShop, updateMenuPreferences, updateLanguage, changePin, updateProfile };
+module.exports = { getSettings, updateShop, updateMenuPreferences, updateSalePricing, updateLanguage, changePin, updateProfile };

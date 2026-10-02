@@ -8,6 +8,7 @@ const { startOfTanzaniaDay } = require("../lib/businessTime");
 const PROFILE_TYPES = new Set(["LAYERS", "BROILERS", "DAIRY", "BEEF", "GOATS_SHEEP", "PIGS", "MIXED"]);
 const EVENT_TYPES = new Set(["ADDITION", "MORTALITY", "CULL"]);
 const PRODUCTION_TYPES = new Set(["EGGS", "MILK", "HARVEST", "OTHER"]);
+const EGG_STOCK_MODES = new Set(["EGGS", "TRAYS"]);
 const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
 
 function asyncHandler(fn) {
@@ -85,6 +86,7 @@ function batchInclude() {
     group: { select: { id: true, name: true, profileType: true } },
     outputProduct: { select: { id: true, name: true, unit: true } },
     items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+    autoPackConversion: { select: { id: true, inputQuantity: true, outputQuantity: true, outputProduct: { select: { id: true, name: true, unit: true } } } },
   };
 }
 
@@ -320,7 +322,9 @@ const createProduction = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const groupId = String(req.body.groupId || "").trim();
   const outputProductId = String(req.body.outputProductId || "").trim();
+  const trayProductId = String(req.body.trayProductId || "").trim();
   const type = String(req.body.type || "OTHER").toUpperCase();
+  const eggStockMode = String(req.body.eggStockMode || "EGGS").toUpperCase();
   const expectedYield = Number(req.body.expectedYield);
   const actualYield = Number(req.body.actualYield);
   const brokenQuantity = Number(req.body.brokenQuantity || 0);
@@ -332,7 +336,7 @@ const createProduction = asyncHandler(async (req, res) => {
   const requestId = clientRequestId(req.body.clientRequestId);
   if (req.body.clientRequestId && !requestId) return res.status(400).json({ error: "Invalid livestock retry key" });
   const requestedItems = normalizeItems(req.body.items);
-  if (!groupId || !outputProductId || !PRODUCTION_TYPES.has(type) || !Number.isInteger(expectedYield) || expectedYield <= 0 || !Number.isInteger(actualYield) || actualYield <= 0 || !Number.isInteger(brokenQuantity) || brokenQuantity < 0 || brokenQuantity >= actualYield || (type !== "EGGS" && brokenQuantity !== 0) || !Number.isInteger(additionalCost) || additionalCost < 0 || !PAYMENT_METHODS.has(paymentMethod) || !producedAt || requestedItems === null) {
+  if (!groupId || !outputProductId || !PRODUCTION_TYPES.has(type) || !EGG_STOCK_MODES.has(eggStockMode) || (type !== "EGGS" && (brokenQuantity !== 0 || eggStockMode !== "EGGS" || trayProductId)) || (eggStockMode === "TRAYS" && !trayProductId) || (eggStockMode === "EGGS" && trayProductId) || !Number.isInteger(expectedYield) || expectedYield <= 0 || !Number.isInteger(actualYield) || actualYield <= 0 || !Number.isInteger(brokenQuantity) || brokenQuantity < 0 || brokenQuantity >= actualYield || !Number.isInteger(additionalCost) || additionalCost < 0 || !PAYMENT_METHODS.has(paymentMethod) || !producedAt || requestedItems === null) {
     return res.status(400).json({ error: "Choose a group, output, valid yields, costs, payment method, date, and valid supplies" });
   }
   if (!requestedItems.length && additionalCost === 0) return res.status(400).json({ error: "Add supplies used or a direct production cost so the output cost is meaningful" });
@@ -347,12 +351,14 @@ const createProduction = asyncHandler(async (req, res) => {
     }
     const group = await tx.farmGroup.findFirst({ where: { id: groupId, shopId, isActive: true }, select: { id: true, profileType: true } });
     if (!group) throw Object.assign(new Error("Active farm group not found"), { status: 404 });
-    const productIds = [outputProductId, ...requestedItems.map((item) => item.productId)];
-    if (new Set(productIds).size !== productIds.length) throw Object.assign(new Error("The output product cannot also be a supply"), { status: 400 });
+    const productIds = [outputProductId, ...(trayProductId ? [trayProductId] : []), ...requestedItems.map((item) => item.productId)];
+    if (new Set(productIds).size !== productIds.length) throw Object.assign(new Error("Egg, tray, and supply products must be different"), { status: 400 });
     const products = await tx.product.findMany({ where: { shopId, isActive: true, id: { in: productIds } }, include: { livestockGroup: { select: { id: true } } } });
     if (products.length !== productIds.length) throw Object.assign(new Error("One or more products do not belong to this farm"), { status: 400 });
     const productMap = new Map(products.map((product) => [product.id, product]));
     if (productMap.get(outputProductId).livestockGroup) throw Object.assign(new Error("A live-animal sale product cannot be used as a production output"), { status: 400 });
+    if (type === "EGGS" && /tray|trei/i.test(productMap.get(outputProductId).unit || "")) throw Object.assign(new Error("Choose a single-egg product as the base output. Trays are packed separately."), { status: 400 });
+    if (trayProductId && productMap.get(trayProductId).livestockGroup) throw Object.assign(new Error("A live-animal sale product cannot be used as a tray output"), { status: 400 });
     for (const item of requestedItems) {
       const product = productMap.get(item.productId);
       if (product.currentStock < item.quantity) throw Object.assign(new Error(`Insufficient supply stock for ${product.name}`), { status: 409 });
@@ -363,7 +369,7 @@ const createProduction = asyncHandler(async (req, res) => {
     const cashSession = additionalCost > 0 && paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     const created = await tx.farmProductionBatch.create({
       data: {
-        shopId, groupId, outputProductId, type, expectedYield, actualYield, brokenQuantity, wasteQuantity: costs.wasteQuantity,
+        shopId, groupId, outputProductId, type, expectedYield, actualYield, brokenQuantity, eggStockMode, wasteQuantity: costs.wasteQuantity,
         ingredientCost: costs.ingredientCost, additionalCost, totalCost: costs.totalCost, unitCost: costs.unitCost,
         additionalCostNote, paymentMethod, cashSessionId: cashSession?.id || null, note, producedAt, producedBy: req.user.staffId || req.user.userId,
         items: { create: costItems.map((item) => ({ productId: item.productId, quantity: item.quantity, unitCost: item.unitCost, totalCost: Math.round(item.quantity * item.unitCost) })) },
@@ -378,12 +384,33 @@ const createProduction = asyncHandler(async (req, res) => {
     }
     const outputProduct = productMap.get(outputProductId);
     const weightedCost = weightedAverageCost({ currentQuantity: outputProduct.currentStock, currentUnitCost: outputProduct.buyingPrice, addedQuantity: usableYield, addedTotalCost: costs.totalCost });
+    const afterProductionQuantity = roundQuantity(outputProduct.currentStock + usableYield);
     const outputUpdated = await tx.product.updateMany({
       where: { id: outputProductId, shopId, currentStock: outputProduct.currentStock, buyingPrice: outputProduct.buyingPrice },
-      data: { currentStock: { increment: usableYield }, buyingPrice: weightedCost },
+      data: { currentStock: afterProductionQuantity, buyingPrice: weightedCost },
     });
     if (outputUpdated.count !== 1) throw Object.assign(new Error("Output stock changed before production was saved. Refresh and retry."), { status: 409 });
     await tx.stockMovement.create({ data: { type: "IN", quantity: usableYield, note: `Farm production #${created.id.slice(-6)}${costs.wasteQuantity || brokenQuantity ? `; loss ${costs.wasteQuantity + brokenQuantity}` : ""}`, productId: outputProductId } });
+    if (eggStockMode === "TRAYS") {
+      const fullTrays = Math.floor(usableYield / 30);
+      if (fullTrays > 0) {
+        const packedEggs = fullTrays * 30;
+        const remainingEggs = roundQuantity(afterProductionQuantity - packedEggs);
+        const eggUpdated = await tx.product.updateMany({ where: { id: outputProductId, shopId, currentStock: afterProductionQuantity, buyingPrice: weightedCost }, data: { currentStock: remainingEggs } });
+        if (eggUpdated.count !== 1) throw Object.assign(new Error("Egg stock changed during tray packing. Refresh and retry."), { status: 409 });
+        const trayProduct = productMap.get(trayProductId);
+        const totalPackedCost = weightedCost * packedEggs;
+        const trayUnitCost = weightedAverageCost({ currentQuantity: trayProduct.currentStock, currentUnitCost: trayProduct.buyingPrice, addedQuantity: fullTrays, addedTotalCost: totalPackedCost });
+        const trayUpdated = await tx.product.updateMany({ where: { id: trayProductId, shopId, currentStock: trayProduct.currentStock, buyingPrice: trayProduct.buyingPrice }, data: { currentStock: roundQuantity(trayProduct.currentStock + fullTrays), buyingPrice: trayUnitCost } });
+        if (trayUpdated.count !== 1) throw Object.assign(new Error("Tray stock changed during packing. Refresh and retry."), { status: 409 });
+        const conversion = await tx.farmPackConversion.create({ data: { shopId, inputProductId: outputProductId, outputProductId: trayProductId, inputQuantity: packedEggs, outputQuantity: fullTrays, totalCost: totalPackedCost, unitCost: Math.round(totalPackedCost / fullTrays), note: "Packed during egg production", convertedAt: producedAt, convertedBy: req.user.staffId || req.user.userId, farmProductionId: created.id } });
+        await tx.stockMovement.create({ data: { type: "OUT", quantity: packedEggs, note: `Farm packing #${conversion.id.slice(-6)}`, productId: outputProductId } });
+        await tx.stockMovement.create({ data: { type: "IN", quantity: fullTrays, note: `Farm packing #${conversion.id.slice(-6)}`, productId: trayProductId } });
+      }
+    }
+    if (type === "EGGS" && !req.user.staffId) {
+      await tx.farmSettings.upsert({ where: { shopId }, create: { shopId, hasLivestock: true, preferredEggStockMode: eggStockMode }, update: { preferredEggStockMode: eggStockMode } });
+    }
     return tx.farmProductionBatch.findUnique({ where: { id: created.id }, include: batchInclude() });
     });
   } catch (error) {
@@ -392,7 +419,7 @@ const createProduction = asyncHandler(async (req, res) => {
     if (!batch) throw error;
     reused = true;
   }
-  req.audit = { action: reused ? "farm.production.reused" : "farm.production.create", resourceType: "farm_production_batch", resourceId: batch.id, metadata: { groupId, outputProductId, type, actualYield, wasteQuantity: batch.wasteQuantity, paymentMethod, cashSessionId: batch.cashSessionId || null } };
+  req.audit = { action: reused ? "farm.production.reused" : "farm.production.create", resourceType: "farm_production_batch", resourceId: batch.id, metadata: { groupId, outputProductId, trayProductId: trayProductId || null, type, eggStockMode, actualYield, brokenQuantity, wasteQuantity: batch.wasteQuantity, paymentMethod, cashSessionId: batch.cashSessionId || null } };
   res.status(reused ? 200 : 201).json({ batch: redactBatch(batch, req), reused });
 });
 

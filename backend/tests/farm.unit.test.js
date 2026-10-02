@@ -82,6 +82,7 @@ test("farm production deducts used supplies and adds only the produced output", 
         items: [{ id: "item-1", quantity: 5, unitCost: 1400, totalCost: 7000, product: { id: "feed", name: "Layer feed", unit: "kg" } }],
       }),
     },
+    farmSettings: { upsert: async () => ({}) },
     stockMovement: { create: async (args) => { stockMovements.push(args.data); return args.data; } },
   };
   const controller = loadController({ $transaction: async (fn) => fn(tx) });
@@ -96,9 +97,65 @@ test("farm production deducts used supplies and adds only the produced output", 
   assert.equal(productUpdates[0].where.id, "feed");
   assert.equal(productUpdates[0].data.currentStock, 18.5);
   assert.equal(productUpdates[1].where.id, "eggs");
-  assert.equal(productUpdates[1].data.currentStock.increment, 272);
+  assert.equal(productUpdates[1].data.currentStock, 272);
   assert.deepEqual(stockMovements.map((movement) => [movement.type, movement.productId, movement.quantity]), [["OUT", "feed", 1.5], ["IN", "eggs", 272]]);
   assert.equal(res.payload.batch.unitCost, 26);
+});
+
+test("tray-mode production atomically stocks full trays and leaves loose eggs, including safe retry", async () => {
+  const products = new Map([
+    ["eggs", { id: "eggs", name: "Single egg", unit: "egg", currentStock: 0, buyingPrice: 0 }],
+    ["trays", { id: "trays", name: "Tray of 30 eggs", unit: "tray", currentStock: 0, buyingPrice: 0 }],
+    ["feed", { id: "feed", name: "Layer feed", unit: "bag", currentStock: 2, buyingPrice: 50000 }],
+  ]);
+  const movements = [];
+  const conversions = [];
+  const preferences = [];
+  let batch;
+  const tx = {
+    farmGroup: { findFirst: async () => ({ id: "group-1", profileType: "LAYERS" }) },
+    product: {
+      findMany: async ({ where }) => where.id.in.map((id) => products.get(id)).filter(Boolean).map((product) => ({ ...product, livestockGroup: null })),
+      updateMany: async ({ where, data }) => {
+        const product = products.get(where.id);
+        if (typeof where.currentStock === "number" && where.currentStock !== product.currentStock) return { count: 0 };
+        if (where.AND?.some((condition) => typeof condition.currentStock === "number" ? condition.currentStock !== product.currentStock : product.currentStock < condition.currentStock.gte)) return { count: 0 };
+        product.currentStock = data.currentStock;
+        if (data.buyingPrice != null) product.buyingPrice = data.buyingPrice;
+        return { count: 1 };
+      },
+    },
+    farmProductionBatch: {
+      findUnique: async () => batch || null,
+      create: async ({ data }) => {
+        batch = { id: "batch-1", ...data, unitCost: 1000, outputProduct: { id: "eggs", name: "Single egg", unit: "egg" }, items: [] };
+        return batch;
+      },
+    },
+    farmPackConversion: { create: async ({ data }) => { const conversion = { id: "pack-1", ...data }; conversions.push(conversion); batch.autoPackConversion = { ...conversion, outputProduct: { id: "trays", name: "Tray of 30 eggs", unit: "tray" } }; return conversion; } },
+    farmSettings: { upsert: async ({ create, update }) => { preferences.push({ create, update }); return {}; } },
+    stockMovement: { create: async ({ data }) => { movements.push(data); return data; } },
+  };
+  const controller = loadController({ $transaction: async (fn) => fn(tx) });
+  const request = () => ({ user: { userId: "owner-1", role: "MERCHANT" }, body: { groupId: "group-1", outputProductId: "eggs", trayProductId: "trays", eggStockMode: "TRAYS", type: "EGGS", expectedYield: 85, actualYield: 80, brokenQuantity: 5, additionalCost: 0, paymentMethod: "CASH", producedAt: "2026-10-02", clientRequestId: "egg-batch-20261002", items: [{ productId: "feed", quantity: 1.5 }] } });
+
+  const first = response();
+  await controller.createProduction(request(), first, assert.fail);
+  assert.equal(first.statusCode, 201);
+  assert.equal(products.get("feed").currentStock, 0.5);
+  assert.equal(products.get("eggs").currentStock, 15);
+  assert.equal(products.get("trays").currentStock, 2);
+  assert.equal(products.get("trays").buyingPrice, 30000);
+  assert.deepEqual(movements.map((movement) => [movement.type, movement.productId, movement.quantity]), [["OUT", "feed", 1.5], ["IN", "eggs", 75], ["OUT", "eggs", 60], ["IN", "trays", 2]]);
+  assert.equal(conversions[0].farmProductionId, "batch-1");
+  assert.equal(conversions[0].totalCost, 60000);
+  assert.equal(preferences[0].update.preferredEggStockMode, "TRAYS");
+
+  const retry = response();
+  await controller.createProduction(request(), retry, assert.fail);
+  assert.equal(retry.payload.reused, true);
+  assert.equal(conversions.length, 1);
+  assert.equal(movements.length, 4);
 });
 
 test("retried livestock events reuse their key without changing animal or linked-product stock twice", async () => {

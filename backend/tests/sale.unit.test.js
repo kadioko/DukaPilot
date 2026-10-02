@@ -34,7 +34,7 @@ function loadController(prismaMock) {
     id: shopAccessPath,
     filename: shopAccessPath,
     loaded: true,
-    exports: { getShopIdForUser: async () => "shop-1" },
+    exports: { getShopIdForUser: async () => "shop-1", getBillingShopIdForUser: async () => "shop-1" },
   };
   return require(controllerPath);
 }
@@ -139,7 +139,7 @@ test("cashier sales summary counts only their sales", async () => {
 test("sale create rejects insufficient stock", async () => {
   const prismaMock = {
     shop: {
-      findUnique: async () => ({ id: "shop-1" }),
+      findUnique: async () => ({ id: "shop-1", allowVariableSalePrices: false }),
     },
     product: {
       findMany: async () => [
@@ -201,7 +201,7 @@ test("sale create calculates total and profit before persisting transaction", as
 
   const prismaMock = {
     shop: {
-      findUnique: async () => ({ id: "shop-1" }),
+      findUnique: async () => ({ id: "shop-1", allowVariableSalePrices: true }),
     },
     product: {
       findMany: async () => [
@@ -231,16 +231,35 @@ test("sale create calculates total and profit before persisting transaction", as
   assert.equal(capturedSaleCreate.totalAmount, 6500);
   assert.equal(capturedSaleCreate.profit, 1700);
   assert.equal(capturedSaleCreate.paymentMethod, "CASH");
+  assert.equal(capturedSaleCreate.items.create[1].listedUnitPrice, 3200);
+  assert.equal(capturedSaleCreate.items.create[1].unitPrice, 3500);
   assert.equal(capturedSaleCreate.createdByStaffId, "cashier-1");
   assert.equal(capturedSaleCreate.receiptNumber, 41);
   assert.equal(stockUpdates, 2);
   assert.equal(stockMovements, 2);
 });
 
+test("sale price adjustments are rejected for retail and wholesale when the owner setting is off", async () => {
+  let transactionStarted = false;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ allowVariableSalePrices: false }) },
+    product: { findMany: async () => [{ id: "eggs", name: "Egg tray", unit: "tray", currentStock: 4, sellingPrice: 12000, wholesalePrice: 11000, buyingPrice: 8500, doesNotExpire: true }] },
+    $transaction: async () => { transactionStarted = true; },
+  };
+  const ctrl = loadController(prismaMock);
+  for (const [saleMode, unitPrice] of [["RETAIL", 12500], ["WHOLESALE", 10500]]) {
+    const res = createRes();
+    await ctrl.create({ user: { userId: "owner-1", role: "MERCHANT" }, body: { saleMode, items: [{ productId: "eggs", quantity: 1, unitPrice }] } }, res);
+    assert.equal(res.statusCode, 403);
+    assert.match(res.payload.error, /off for this business/);
+  }
+  assert.equal(transactionStarted, false);
+});
+
 test("sale create blocks an expired product before opening a transaction", async () => {
   let transactionStarted = false;
   const prismaMock = {
-    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    shop: { findUnique: async () => ({ id: "shop-1", allowVariableSalePrices: false }) },
     product: {
       findMany: async () => [{
         id: "prod-1",

@@ -1,5 +1,5 @@
 const prisma = require("../lib/prisma");
-const { getShopIdForUser } = require("../lib/shopAccess");
+const { getShopIdForUser, getBillingShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTime");
 const { normalizePhone, isValidPhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
@@ -125,6 +125,10 @@ const create = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "A valid customer phone is required for credit sales" });
   }
 
+  const businessShopId = await getBillingShopIdForUser(req.user);
+  const pricingShop = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { allowVariableSalePrices: true } });
+  if (!pricingShop) return res.status(404).json({ error: "Business not found" });
+
   // Validate products belong to this shop and have sufficient stock
   const productIds = items.map((i) => i.productId);
   if (new Set(productIds).size !== productIds.length) {
@@ -154,24 +158,39 @@ const create = asyncHandler(async (req, res) => {
 
   let totalAmount = 0;
   let totalProfit = 0;
-  const saleItemsData = items.map((item) => {
+  let priceAdjustedItemsCount = 0;
+  const saleItemsData = [];
+  for (const item of items) {
     const product = productMap[item.productId];
     const defaultPrice = pricingTier === "WHOLESALE" && product.wholesalePrice != null
       ? product.wholesalePrice
       : product.sellingPrice;
     const unitPrice = item.unitPrice != null && item.unitPrice !== "" ? Number(item.unitPrice) : defaultPrice;
+    if (!Number.isSafeInteger(unitPrice) || unitPrice < 0) {
+      return res.status(400).json({ error: "Sale price must be a whole TZS amount" });
+    }
+    if (unitPrice !== defaultPrice) {
+      if (!pricingShop.allowVariableSalePrices) {
+        return res.status(403).json({ error: "Sale price changes are off for this business. Ask the owner to enable them in Settings, or refresh the listed price." });
+      }
+      priceAdjustedItemsCount += 1;
+    }
     const totalPrice = unitPrice * item.quantity;
     const itemProfit = (unitPrice - product.buyingPrice) * item.quantity;
     totalAmount += totalPrice;
     totalProfit += itemProfit;
-    return {
+    saleItemsData.push({
       quantity: item.quantity,
       unitPrice,
+      listedUnitPrice: defaultPrice,
       buyingPrice: product.buyingPrice,
       totalPrice,
       productId: item.productId,
-    };
-  });
+    });
+  }
+  if (!Number.isSafeInteger(totalAmount) || totalAmount > 2147483647 || !Number.isSafeInteger(totalProfit) || Math.abs(totalProfit) > 2147483647) {
+    return res.status(400).json({ error: "Sale total is too large" });
+  }
 
   // Create sale and update stock in a transaction.
   let sale;
@@ -276,7 +295,7 @@ const create = asyncHandler(async (req, res) => {
   }
 
   await invalidateDashboardHistory(shopId);
-  req.audit = { action: "sale.create", resourceType: "sale", resourceId: sale.id, metadata: { receiptNumber: sale.receiptNumber } };
+  req.audit = { action: "sale.create", resourceType: "sale", resourceId: sale.id, metadata: { receiptNumber: sale.receiptNumber, priceAdjustedItemsCount } };
   res.status(201).json({ sale: redactSale(sale, req) });
 });
 

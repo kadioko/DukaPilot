@@ -5,7 +5,7 @@ const FARM_CATEGORIES = new Set(["livestock", "farm"]);
 async function getFarmConfiguration(shopId, client = prisma) {
   const shop = await client.shop.findUnique({
     where: { id: shopId },
-    select: { category: true, farmSettings: { select: { hasLivestock: true, hasCrops: true } } },
+    select: { category: true, farmSettings: { select: { hasLivestock: true, hasCrops: true, preferredEggStockMode: true } } },
   });
   if (!shop) return null;
 
@@ -19,6 +19,7 @@ async function getFarmConfiguration(shopId, client = prisma) {
     isFarm: FARM_CATEGORIES.has(category),
     hasLivestock,
     hasCrops,
+    preferredEggStockMode: settings?.preferredEggStockMode || "EGGS",
     needsSetup: category === "farm" && !hasLivestock && !hasCrops,
   };
 }

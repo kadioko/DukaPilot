@@ -290,6 +290,7 @@ model Shop {
   subscriptionEndsAt       DateTime?
   isActive                 Boolean                 @default(true)
   isCatalogPublished       Boolean                 @default(true)
+  allowVariableSalePrices  Boolean                 @default(false)
   hiddenMenuItems          String[]                @default([])
   isDemo                   Boolean                 @default(false)
   onboardingStatus         OnboardingStatus        @default(NEW)
@@ -1327,6 +1328,7 @@ model SaleItem {
   id                     String                  @id @default(cuid())
   quantity               Int
   unitPrice              Int
+  listedUnitPrice         Int?
   buyingPrice            Int
   totalPrice             Int
   saleId                 String
@@ -1583,6 +1585,7 @@ model FarmProductionBatch {
   actualYield        Int
   wasteQuantity      Int                  @default(0)
   brokenQuantity     Int                  @default(0)
+  eggStockMode       String               @default("EGGS")
   ingredientCost     Int
   additionalCost     Int                  @default(0)
   totalCost          Int
@@ -1595,6 +1598,7 @@ model FarmProductionBatch {
   producedAt         DateTime             @default(now())
   producedBy         String?
   items              FarmProductionItem[]
+  autoPackConversion FarmPackConversion?  @relation("ProductionAutoPack")
   clientRequestId    String?
   createdAt          DateTime             @default(now())
 
@@ -1631,6 +1635,8 @@ model FarmPackConversion {
   inputProduct    Product  @relation("FarmPackInput", fields: [inputProductId], references: [id], onDelete: Restrict)
   outputProductId String
   outputProduct   Product  @relation("FarmPackOutput", fields: [outputProductId], references: [id], onDelete: Restrict)
+  farmProductionId String? @unique
+  farmProduction   FarmProductionBatch? @relation("ProductionAutoPack", fields: [farmProductionId], references: [id], onDelete: Cascade)
   inputQuantity   Int
   outputQuantity  Int
   totalCost       Int
@@ -1656,6 +1662,7 @@ model FarmSettings {
   shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   hasLivestock Boolean  @default(false)
   hasCrops     Boolean  @default(false)
+  preferredEggStockMode String @default("EGGS")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
