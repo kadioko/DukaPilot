@@ -1,6 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { startOfTanzaniaDay, startOfTanzaniaMonth, tanzaniaDateKey } = require("../lib/businessTime");
+const { startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, lastSevenTanzaniaDays, tanzaniaDateKey } = require("../lib/businessTime");
 const { featureSnapshot } = require("../lib/entitlements");
 const { dashboardHistory } = require("../services/dashboard-cache.service");
 
@@ -8,10 +8,9 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-function startOf(period) {
-  const now = new Date();
+function startOf(period, now = new Date()) {
   if (period === "today") return startOfTanzaniaDay(now);
-  if (period === "week") return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (period === "week") return startOfTanzaniaWeek(now);
   if (period === "month") return startOfTanzaniaMonth(now);
   if (period === "all") return null;
   return startOfTanzaniaDay(now);
@@ -63,8 +62,9 @@ function profitRange(period, fromInput, toInput) {
 
 const overview = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const now = new Date();
   const { period = "today" } = req.query;
-  const from = startOf(period);
+  const from = startOf(period, now);
   const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from } } : { shopId, status: "COMPLETED" };
   const activeProductsWhere = { shopId, isActive: true };
 
@@ -107,7 +107,7 @@ const overview = asyncHandler(async (req, res) => {
   const outOfStockProducts = lowStockCandidates.filter((p) => p.currentStock === 0);
   const needsAttentionProducts = [...outOfStockProducts, ...lowStockProducts];
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const chartDays = lastSevenTanzaniaDays(now);
   const dailySales = await prisma.$queryRawUnsafe(
     `SELECT to_char("createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam', 'YYYY-MM-DD') AS date,
             COALESCE(SUM("totalAmount"), 0)::bigint AS sales,
@@ -116,14 +116,12 @@ const overview = asyncHandler(async (req, res) => {
      WHERE "shopId" = $1 AND status = 'COMPLETED' AND "createdAt" >= $2
      GROUP BY 1`,
     shopId,
-    sevenDaysAgo,
+    chartDays[0],
   );
 
   const dailyMap = {};
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = tanzaniaDateKey(d);
+  for (const day of chartDays) {
+    const key = tanzaniaDateKey(day);
     dailyMap[key] = { date: key, sales: 0, profit: 0 };
   }
   for (const row of dailySales) {
@@ -306,4 +304,4 @@ const profitAnalytics = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { overview, profitAnalytics };
+module.exports = { overview, profitAnalytics, startOf };

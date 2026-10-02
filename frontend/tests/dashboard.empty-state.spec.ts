@@ -95,7 +95,7 @@ test("zero-data dashboard recovers from an interrupted read without clipped Swah
   await expect(actionLabel).toBeVisible();
   await expect(actionLabel).not.toHaveCSS("text-overflow", "ellipsis");
 
-  await page.getByRole("button", { name: "Wiki" }).click();
-  await expect(page.getByText("Hakuna mauzo ya wiki bado.").first()).toBeVisible();
+  await page.getByRole("button", { name: "Wiki hii" }).click();
+  await expect(page.getByText("Hakuna mauzo ya wiki hii bado.").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
 });

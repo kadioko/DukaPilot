@@ -52,7 +52,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "dashboard.pendingOrders": { sw: "Maagizo Yanayosubiri", en: "Pending Orders" },
   "dashboard.lowStock": { sw: "Bidhaa Zinazokwisha", en: "Low Stock Items" },
   "dashboard.outOfStock": { sw: "Bidhaa Zilizokwisha", en: "Out of Stock" },
-  "dashboard.weeklyChart": { sw: "Mauzo ya Wiki Iliyopita", en: "Last 7 Days Sales" },
+  "dashboard.weeklyChart": { sw: "Mauzo ya Siku 7 Zilizopita", en: "Last 7 Days Sales" },
   "dashboard.topProducts": { sw: "Bidhaa Zinazouzwa Zaidi", en: "Top Selling Products" },
   "dashboard.recentSales": { sw: "Mauzo ya Hivi Karibuni", en: "Recent Sales" },
   "dashboard.allTime": { sw: "Muda Wote", en: "All Time" },
@@ -251,7 +251,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "common.success": { sw: "Imefanikiwa", en: "Success" },
   "common.confirm": { sw: "Thibitisha", en: "Confirm" },
   "common.today": { sw: "Leo", en: "Today" },
-  "common.week": { sw: "Wiki", en: "Week" },
+  "common.week": { sw: "Wiki hii", en: "This week" },
   "common.month": { sw: "Mwezi", en: "Month" },
   "common.all": { sw: "Muda Wote", en: "All Time" },
 

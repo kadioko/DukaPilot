@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const { lastSevenTanzaniaDays, tanzaniaDateKey } = require("../src/lib/businessTime");
 
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
@@ -42,4 +43,24 @@ test("profit analytics uses historical sale-item costs and shop-scoped totals", 
   assert.equal(res.payload.chart[0].grossProfit, 85000);
   assert.equal(calls[0].params[0], "shop-1");
   assert.match(calls[0].query, /sale_items/);
+});
+
+test("dashboard week starts Monday in Tanzania while its chart spans seven complete local dates", () => {
+  const controller = require(controllerPath);
+  const friday = new Date("2026-10-02T10:00:00.000Z");
+  const sundayBeforeMidnight = new Date("2026-10-04T20:59:59.000Z");
+  const mondayAfterMidnight = new Date("2026-10-04T21:00:01.000Z");
+
+  assert.equal(controller.startOf("week", friday).toISOString(), "2026-09-27T21:00:00.000Z");
+  assert.equal(controller.startOf("week", sundayBeforeMidnight).toISOString(), "2026-09-27T21:00:00.000Z");
+  assert.equal(controller.startOf("week", mondayAfterMidnight).toISOString(), "2026-10-04T21:00:00.000Z");
+  assert.deepEqual(lastSevenTanzaniaDays(friday).map(tanzaniaDateKey), [
+    "2026-09-26",
+    "2026-09-27",
+    "2026-09-28",
+    "2026-09-29",
+    "2026-09-30",
+    "2026-10-01",
+    "2026-10-02",
+  ]);
 });
