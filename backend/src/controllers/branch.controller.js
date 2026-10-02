@@ -6,6 +6,24 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(nex
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const select = { id: true, name: true, location: true, district: true, parentShopId: true, branchArchived: true, isActive: true, createdAt: true };
 
+function parseTanzaniaDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const utc = Date.UTC(year, month - 1, day);
+  const check = new Date(utc);
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+  return new Date(utc - 3 * 60 * 60 * 1000);
+}
+
+function parseTanzaniaRange(fromInput, toInput) {
+  const from = parseTanzaniaDate(fromInput);
+  const toDate = parseTanzaniaDate(toInput);
+  if (!from || !toDate || toDate < from) fail("Choose a valid date range");
+  const to = new Date(toDate.getTime() + 86400000);
+  if (+to - +from > 366 * 86400000) fail("Choose a date range of up to one year");
+  return { from, to };
+}
+
 function ownerOnly(req, res, next) {
   if (req.user.staffId || req.user.role !== "MERCHANT") return res.status(403).json({ error: "Only the business owner can manage branches" });
   next();
@@ -73,19 +91,91 @@ const overview = wrap(async (req, res) => {
   const rootId = await getBillingShopIdForUser(req.user);
   const root = await prisma.shop.findUnique({ where: { id: rootId } });
   if (activePlan(root) !== "PRO") fail("Combined branch reports require Pro", 403);
-  const from = new Date(String(req.query.from || new Date().toISOString().slice(0, 7) + "-01"));
-  const to = req.query.to ? new Date(String(req.query.to)) : new Date();
-  if (Number.isNaN(+from) || Number.isNaN(+to) || to < from || +to - +from > 366 * 86400000) fail("Choose a date range of up to one year");
-  const branches = await prisma.shop.findMany({ where: { OR: [{ id: rootId }, { parentShopId: rootId }] }, select });
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const defaultFrom = `${today.slice(0, 7)}-01`;
+  const fromInput = String(req.query.from || defaultFrom);
+  const toInput = String(req.query.to || today);
+  const { from, to } = parseTanzaniaRange(fromInput, toInput);
+  const branches = await prisma.shop.findMany({ where: { OR: [{ id: rootId }, { parentShopId: rootId }] }, select, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   const shopIds = branches.map((b) => b.id);
-  const [sales, expenses, debts] = await Promise.all([
-    prisma.sale.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, status: "COMPLETED", createdAt: { gte: from, lte: to } }, _sum: { totalAmount: true, profit: true }, _count: { _all: true } }),
-    prisma.expense.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, spentAt: { gte: from, lte: to }, category: { not: "STOCK" } }, _sum: { amount: true } }),
+  const shopPlaceholders = shopIds.map((_, index) => `$${index + 1}`).join(", ");
+  const fromParam = shopIds.length + 1;
+  const toParam = shopIds.length + 2;
+  const rangeDuration = to.getTime() - from.getTime();
+  const previousRange = { from: new Date(from.getTime() - rangeDuration), to: from };
+  const [sales, expenseGroups, debts, saleCosts, previousSales, previousExpenses, previousCosts] = await Promise.all([
+    prisma.sale.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, status: "COMPLETED", createdAt: { gte: from, lt: to } }, _sum: { totalAmount: true, profit: true }, _count: { _all: true } }),
+    prisma.expense.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, spentAt: { gte: from, lt: to }, category: { not: "STOCK" } }, _sum: { amount: true } }),
     prisma.debt.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, status: { in: ["OPEN", "PARTIAL"] } }, _sum: { amount: true, amountPaid: true } }),
+    prisma.$queryRawUnsafe(
+      `SELECT s.\"shopId\",
+              COALESCE(SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FILTER (WHERE si.\"buyingPrice\" > 0), 0)::bigint AS \"knownCostGrossProfit\",
+              COALESCE(SUM(CASE WHEN si.id IS NULL THEN s.\"totalAmount\" WHEN si.\"buyingPrice\" <= 0 THEN si.\"totalPrice\" ELSE 0 END), 0)::bigint AS \"missingCostSalesRevenue\"
+       FROM sales s LEFT JOIN sale_items si ON si.\"saleId\" = s.id
+       WHERE s.\"shopId\" IN (${shopPlaceholders}) AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $${fromParam} AND s.\"createdAt\" < $${toParam}
+       GROUP BY s.\"shopId\"`,
+      ...shopIds, from, to,
+    ),
+    prisma.sale.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, status: "COMPLETED", createdAt: { gte: previousRange.from, lt: previousRange.to } }, _sum: { totalAmount: true }, _count: { _all: true } }),
+    prisma.expense.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, spentAt: { gte: previousRange.from, lt: previousRange.to }, category: { not: "STOCK" } }, _sum: { amount: true } }),
+    prisma.$queryRawUnsafe(
+      `SELECT s.\"shopId\",
+              COALESCE(SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FILTER (WHERE si.\"buyingPrice\" > 0), 0)::bigint AS \"knownCostGrossProfit\"
+       FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id
+       WHERE s.\"shopId\" IN (${shopPlaceholders}) AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $${fromParam} AND s.\"createdAt\" < $${toParam}
+       GROUP BY s.\"shopId\"`,
+      ...shopIds, previousRange.from, previousRange.to,
+    ),
   ]);
-  res.json({ from, to, branches: branches.map((b) => {
-    const s = sales.find((row) => row.shopId === b.id), e = expenses.find((row) => row.shopId === b.id), d = debts.find((row) => row.shopId === b.id);
-    return { ...b, sales: s?._sum.totalAmount || 0, saleCount: s?._count._all || 0, grossProfit: s?._sum.profit || 0, expenses: e?._sum.amount || 0, receivables: (d?._sum.amount || 0) - (d?._sum.amountPaid || 0) };
-  }) });
+  const rows = branches.map((b) => {
+    const s = sales.find((row) => row.shopId === b.id), e = expenseGroups.find((row) => row.shopId === b.id), d = debts.find((row) => row.shopId === b.id), costs = saleCosts.find((row) => row.shopId === b.id);
+    const previousSale = previousSales.find((row) => row.shopId === b.id), previousExpense = previousExpenses.find((row) => row.shopId === b.id), previousCost = previousCosts.find((row) => row.shopId === b.id);
+    const grossProfit = Number(costs?.knownCostGrossProfit || 0);
+    const expenses = e?._sum.amount || 0;
+    const previousGrossProfit = Number(previousCost?.knownCostGrossProfit || 0);
+    const previousExpensesAmount = Number(previousExpense?._sum.amount || 0);
+    return {
+      ...b,
+      sales: s?._sum.totalAmount || 0,
+      saleCount: s?._count._all || 0,
+      grossProfit,
+      missingCostSalesRevenue: Number(costs?.missingCostSalesRevenue || 0),
+      expenses,
+      netProfit: grossProfit - expenses,
+      receivables: (d?._sum.amount || 0) - (d?._sum.amountPaid || 0),
+      previousSales: Number(previousSale?._sum.totalAmount || 0),
+      previousSaleCount: Number(previousSale?._count._all || 0),
+      previousGrossProfit,
+      previousExpenses: previousExpensesAmount,
+      previousNetProfit: previousGrossProfit - previousExpensesAmount,
+    };
+  });
+  const previousTotals = {
+    sales: previousSales.reduce((sum, row) => sum + Number(row._sum.totalAmount || 0), 0),
+    saleCount: previousSales.reduce((sum, row) => sum + Number(row._count._all || 0), 0),
+    grossProfit: previousCosts.reduce((sum, row) => sum + Number(row.knownCostGrossProfit || 0), 0),
+    expenses: previousExpenses.reduce((sum, row) => sum + Number(row._sum.amount || 0), 0),
+  };
+  previousTotals.netProfit = previousTotals.grossProfit - previousTotals.expenses;
+  const currentTotals = rows.reduce((total, row) => ({
+    sales: total.sales + Number(row.sales), saleCount: total.saleCount + Number(row.saleCount),
+    grossProfit: total.grossProfit + Number(row.grossProfit), expenses: total.expenses + Number(row.expenses),
+    netProfit: total.netProfit + Number(row.netProfit), missingCostSalesRevenue: total.missingCostSalesRevenue + Number(row.missingCostSalesRevenue),
+    receivables: total.receivables + Number(row.receivables),
+  }), { sales: 0, saleCount: 0, grossProfit: 0, expenses: 0, netProfit: 0, missingCostSalesRevenue: 0, receivables: 0 });
+  const comparison = Object.fromEntries(["sales", "saleCount", "grossProfit", "expenses", "netProfit"].map((key) => {
+    const current = currentTotals[key], previous = previousTotals[key];
+    return [key, { current, previous, change: current - previous, changePercent: previous === 0 ? null : Number((((current - previous) / Math.abs(previous)) * 100).toFixed(1)) }];
+  }));
+  res.json({
+    from: fromInput,
+    to: toInput,
+    branches: rows,
+    compareFrom: previousRange.from,
+    compareTo: previousRange.to,
+    totals: currentTotals,
+    previousTotals,
+    comparison,
+  });
 });
-module.exports = { ownerOnly, list, create, update, overview };
+module.exports = { ownerOnly, list, create, update, overview, parseTanzaniaDate, parseTanzaniaRange };

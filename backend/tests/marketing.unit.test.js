@@ -157,10 +157,45 @@ test("public shop catalog searches and returns a bounded product page", async ()
   assert.equal(productFindArgs.take, 100);
   assert.equal(productFindArgs.skip, 2);
   assert.equal(productFindArgs.where.shopId, "shop-1");
+  assert.equal(productFindArgs.where.isCatalogVisible, true);
   assert.deepEqual(productFindArgs.where.OR, [
     { name: { contains: "rice", mode: "insensitive" } },
     { sku: { contains: "rice", mode: "insensitive" } },
     { barcode: "RICE" },
   ]);
   assert.deepEqual(res.payload.pagination, { total: 101, limit: 100, offset: 2, hasMore: true });
+});
+
+test("hidden products are excluded from public catalog search and ordering", async () => {
+  let publicProductWhere;
+  let orderProductWhere;
+  mockPrisma({
+    shop: {
+      findUnique: async () => ({
+        id: "shop-1", name: "Duka la Amina", location: "Mwanza", category: "RETAIL", plan: "PRO",
+        subscriptionEndsAt: new Date(Date.now() + 86400000), isActive: true, isCatalogPublished: true, isDemo: false,
+        user: { phone: "+255700000001" },
+      }),
+    },
+    product: {
+      findMany: async ({ where }) => {
+        if (where.id) { orderProductWhere = where; return []; }
+        publicProductWhere = where;
+        return [];
+      },
+      count: async () => 0,
+    },
+  });
+  delete require.cache[publicRoutesPath];
+  const router = require(publicRoutesPath);
+  const productsHandler = router.stack.find((layer) => layer.route?.path === "/products" && layer.route.methods.get).route.stack.at(-1).handle;
+  const ordersHandler = router.stack.find((layer) => layer.route?.path === "/orders" && layer.route.methods.post).route.stack.at(-1).handle;
+  const productsRes = response();
+  await productsHandler({ query: { shopId: "shop-1" } }, productsRes, (error) => { throw error; });
+  assert.equal(publicProductWhere.isCatalogVisible, true);
+
+  const orderRes = response();
+  await ordersHandler({ body: { shopId: "shop-1", customerName: "Buyer", customerPhone: "+255700000002", items: [{ productId: "hidden-product", quantity: 1 }] } }, orderRes, (error) => { throw error; });
+  assert.equal(orderProductWhere.isCatalogVisible, true);
+  assert.equal(orderRes.statusCode, 400);
 });

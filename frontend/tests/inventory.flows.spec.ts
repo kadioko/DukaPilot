@@ -65,6 +65,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
       currentStock: 12,
       minimumStock: 5,
       isActive: true,
+      isCatalogVisible: true,
       expiryDate: null,
       doesNotExpire: true,
       supplier: suppliers[0],
@@ -129,6 +130,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     }
 
     const body = JSON.parse(route.request().postData() || "{}");
+    expect(body.isCatalogVisible).toBe(true);
     products.unshift({
       id: `prod-${products.length + 1}`,
       isActive: true,
@@ -213,9 +215,17 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
 
   await expect(page.getByRole("heading", { name: /inventory|hifadhi ya bidhaa/i })).toBeVisible();
   await expect(page.getByText("Mchele Super")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Share catalog" })).toHaveAttribute("href", "/settings#catalog-sharing");
+  await page.getByLabel(/actions for mchele super/i).click();
+  await page.getByRole("button", { name: "Hide from catalog" }).click();
+  await expect(page.getByText("Hidden from catalog")).toBeVisible();
+  await page.getByLabel(/actions for mchele super/i).click();
+  await page.getByRole("button", { name: "Show in catalog" }).click();
+  await expect(page.getByText("Hidden from catalog")).toHaveCount(0);
 
   await page.getByRole("button", { name: /add product|ongeza bidhaa/i }).click();
   await expect(page.getByText(/add new product|ongeza bidhaa mpya/i)).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /show this product in the public catalog/i })).toBeChecked();
   await page.getByLabel(/product name|jina la bidhaa/i).fill("Sukari White");
   await page.getByLabel(/sku/i).fill("SKR001");
   await page.getByLabel(/buying price|bei ya kununua/i).fill("3000");

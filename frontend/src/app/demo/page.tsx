@@ -52,7 +52,7 @@ export default function DemoPage() {
               </section>
             ))}
           </div>
-          <p className="mt-4 text-xs leading-5 text-gray-500">{lang === "sw" ? "Hizi ni akaunti za majaribio tu. Usiongeze taarifa binafsi za wateja au malipo halisi." : "These are test accounts only. Do not add real customer details or real payments."}</p>
+          <p className="mt-4 text-xs leading-5 text-gray-500">{lang === "sw" ? "Akaunti hizi zinashirikiwa na zina taarifa za mfano. Usihifadhi taarifa halisi za wateja, madeni au malipo; mabadiliko yanaweza kufutwa au kubadilishwa demo ikisasishwa." : "These shared accounts contain sample data. Do not enter real customer details, debts, or payment references; changes may be cleared or replaced when the demo is refreshed."}</p>
           <Link href="/#sign-in" className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white hover:bg-brand-700">
             {lang === "sw" ? "Fungua login ya demo" : "Open demo login"}
             <ArrowRight className="h-4 w-4" />

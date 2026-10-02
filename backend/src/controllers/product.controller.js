@@ -47,6 +47,10 @@ function canGenerateBarcode(req) {
   return req.user.role === "ADMIN" || !req.user.staffId || Boolean(req.user.permissions?.canManageStock);
 }
 
+function canManageCatalogVisibility(req) {
+  return req.user.role === "ADMIN" || !req.user.staffId;
+}
+
 function redactProduct(product, req) {
   return canViewFinancials(req)
     ? product
@@ -370,10 +374,13 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
+  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, isCatalogVisible, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
 
   if (!name || buyingPrice == null || sellingPrice == null) {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
+  }
+  if (isCatalogVisible !== undefined && !canManageCatalogVisibility(req)) {
+    return res.status(403).json({ error: "Only the shop owner can change public catalog visibility" });
   }
   const productUnit = normalizedUnit(unit);
   if (productUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
@@ -431,6 +438,7 @@ const create = asyncHandler(async (req, res) => {
       shopId,
       supplierId: supplierId || null,
       doesNotExpire: Boolean(doesNotExpire),
+      isCatalogVisible: isCatalogVisible !== false,
       expiryDate: doesNotExpire ? null : (expiryDate ? new Date(expiryDate) : null),
       barcode,
       barcodeType: barcode ? inferBarcodeType(barcode, internalBarcode ? "INTERNAL" : barcodeType) : null,
@@ -506,7 +514,10 @@ const update = asyncHandler(async (req, res) => {
     });
   }
 
-  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, expiryDate, doesNotExpire, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
+  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, isCatalogVisible, expiryDate, doesNotExpire, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
+  if (isCatalogVisible !== undefined && !canManageCatalogVisibility(req)) {
+    return res.status(403).json({ error: "Only the shop owner can change public catalog visibility" });
+  }
   const nextUnit = unit === undefined ? normalizedUnit(existing.unit) : normalizedUnit(unit);
   if (nextUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
   const nextSellingPrice = sellingPrice === undefined ? existing.sellingPrice : Number(sellingPrice);
@@ -564,6 +575,7 @@ const update = asyncHandler(async (req, res) => {
       ...(minimumStock !== undefined && { minimumStock: Number(minimumStock) }),
       ...(supplierId !== undefined && { supplierId }),
       ...(isActive !== undefined && { isActive }),
+      ...(isCatalogVisible !== undefined && { isCatalogVisible }),
       ...(doesNotExpire !== undefined && { doesNotExpire: Boolean(doesNotExpire) }),
       ...(doesNotExpire !== undefined && doesNotExpire ? { expiryDate: null } :
           expiryDate !== undefined ? { expiryDate: expiryDate ? new Date(expiryDate) : null } : {}),

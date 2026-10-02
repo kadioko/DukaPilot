@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api, formatTZS, getCurrentSession, isNetworkError, selectedBranchId } from "@/lib/api";
-import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle, PackagePlus } from "lucide-react";
+import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle, PackagePlus, ChevronLeft, ChevronRight } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
@@ -41,6 +41,7 @@ interface SaleRecord {
   receiptNumber?: number | null;
   status?: "COMPLETED" | "VOIDED";
   voidReason?: string | null;
+  customerName?: string | null;
   customerPhone?: string | null;
   shop?: { name: string };
   items: Array<{ quantity: number; unitPrice: number; totalPrice: number; name?: string | null; unit?: string | null; product?: { id: string; name: string; unit: string } | null }>;
@@ -168,6 +169,7 @@ export default function SalesPage() {
   const { toast } = useToast();
   const syncingRef = useRef(false);
   const cartPanelRef = useRef<HTMLDivElement>(null);
+  const historyRequestRef = useRef(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [productPage, setProductPage] = useState(1);
   const [productTotal, setProductTotal] = useState(0);
@@ -190,6 +192,10 @@ export default function SalesPage() {
   const [view, setView] = useState<"pos" | "history">("pos");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historySearchInput, setHistorySearchInput] = useState("");
+  const [historyFilters, setHistoryFilters] = useState({ search: "", from: "", to: "", paymentMethod: "", status: "" });
   const [pendingSales, setPendingSales] = useState<PendingSale[]>([]);
   const [syncHistory, setSyncHistory] = useState<SyncEvent[]>([]);
   const [syncing, setSyncing] = useState(false);
@@ -398,22 +404,57 @@ export default function SalesPage() {
     toast(lang === "sw" ? "Mauzo ya bila intaneti yameondolewa." : "Offline sale removed.", "success");
   }
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setHistoryFilters((current) => current.search === historySearchInput.trim() ? current : { ...current, search: historySearchInput.trim() });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [historySearchInput]);
+
   const fetchHistory = useCallback(async () => {
+    const requestId = ++historyRequestRef.current;
     setHistoryLoading(true);
     setHistoryError("");
     try {
-      const data = await api.get<{ sales: SaleRecord[] }>("/sales?limit=30", lang);
-      setRecentSales(data.sales);
+      const limit = 20;
+      const query = new URLSearchParams({ limit: String(limit), offset: String((historyPage - 1) * limit) });
+      if (historyFilters.search) query.set("search", historyFilters.search);
+      if (historyFilters.paymentMethod) query.set("paymentMethod", historyFilters.paymentMethod);
+      if (historyFilters.status) query.set("status", historyFilters.status);
+      if (historyFilters.from) query.set("from", new Date(`${historyFilters.from}T00:00:00.000+03:00`).toISOString());
+      if (historyFilters.to) query.set("to", new Date(`${historyFilters.to}T23:59:59.999+03:00`).toISOString());
+      const data = await api.get<{ sales: SaleRecord[]; total: number }>(`/sales?${query.toString()}`, lang);
+      if (requestId !== historyRequestRef.current) return;
+      setHistoryTotal(data.total);
+      const totalPages = Math.max(1, Math.ceil(data.total / limit));
+      if (historyPage > totalPages) {
+        setHistoryPage(totalPages);
+        return;
+      }
+      setRecentSales(Array.isArray(data.sales) ? data.sales : []);
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : (lang === "sw" ? "Historia ya mauzo haikupatikana kwa sasa." : "Sales history could not be loaded right now."));
+      if (requestId === historyRequestRef.current) {
+        setHistoryError(error instanceof Error ? error.message : (lang === "sw" ? "Historia ya mauzo haikupatikana kwa sasa." : "Sales history could not be loaded right now."));
+      }
     } finally {
-      setHistoryLoading(false);
+      if (requestId === historyRequestRef.current) setHistoryLoading(false);
     }
-  }, [lang]);
+  }, [historyFilters, historyPage, lang]);
 
   useEffect(() => {
     if (view === "history") void fetchHistory();
   }, [view, fetchHistory]);
+
+  function updateHistoryFilter(field: keyof typeof historyFilters, value: string) {
+    setHistoryPage(1);
+    setHistoryFilters((current) => ({ ...current, [field]: value }));
+  }
+
+  function clearHistoryFilters() {
+    setHistorySearchInput("");
+    setHistoryFilters({ search: "", from: "", to: "", paymentMethod: "", status: "" });
+    setHistoryPage(1);
+  }
 
   const hiddenOutOfStock = products.filter((p) => p.currentStock <= 0).length;
   const hiddenExpired = products.filter((p) => p.currentStock > 0 && isExpired(p)).length;
@@ -1069,8 +1110,49 @@ export default function SalesPage() {
             </div>
           </div>
         ) : (
-          <div>
-            {historyLoading ? (
+          <div className="min-w-0">
+            <section aria-label={lang === "sw" ? "Vichujio vya historia ya mauzo" : "Sales history filters"} className="mb-4 grid min-w-0 gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
+              <div className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-[minmax(220px,2fr)_repeat(4,minmax(120px,1fr))]">
+                <label className="col-span-2 grid min-w-0 gap-1 lg:col-span-1">
+                  <span className="text-xs font-semibold text-gray-600">{lang === "sw" ? "Tafuta risiti, mteja au bidhaa" : "Search receipt, customer, or product"}</span>
+                  <span className="relative min-w-0">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input value={historySearchInput} onChange={(event) => { setHistorySearchInput(event.target.value); setHistoryPage(1); }} aria-label={lang === "sw" ? "Tafuta mauzo" : "Search sales"} placeholder={lang === "sw" ? "Namba ya risiti, jina, simu..." : "Receipt no., name, phone..."} className="h-11 w-full min-w-0 rounded-lg border border-gray-300 pl-9 pr-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm" />
+                  </span>
+                </label>
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-semibold text-gray-600">{lang === "sw" ? "Kuanzia" : "From"}</span>
+                  <input type="date" value={historyFilters.from} max={historyFilters.to || undefined} onChange={(event) => updateHistoryFilter("from", event.target.value)} className="h-11 w-full min-w-0 rounded-lg border border-gray-300 px-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm" />
+                </label>
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-semibold text-gray-600">{lang === "sw" ? "Hadi" : "To"}</span>
+                  <input type="date" value={historyFilters.to} min={historyFilters.from || undefined} onChange={(event) => updateHistoryFilter("to", event.target.value)} className="h-11 w-full min-w-0 rounded-lg border border-gray-300 px-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 sm:text-sm" />
+                </label>
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-semibold text-gray-600">{lang === "sw" ? "Malipo" : "Payment"}</span>
+                  <select value={historyFilters.paymentMethod} onChange={(event) => updateHistoryFilter("paymentMethod", event.target.value)} className="h-11 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <option value="">{lang === "sw" ? "Njia zote" : "All methods"}</option>
+                    {PAYMENT_METHODS.map((method) => <option key={method.value} value={method.value}>{t(method.labelKey, lang)}</option>)}
+                  </select>
+                </label>
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-semibold text-gray-600">{lang === "sw" ? "Hali" : "Status"}</span>
+                  <select value={historyFilters.status} onChange={(event) => updateHistoryFilter("status", event.target.value)} className="h-11 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <option value="">{lang === "sw" ? "Hali zote" : "All statuses"}</option>
+                    <option value="COMPLETED">{lang === "sw" ? "Yamekamilika" : "Completed"}</option>
+                    <option value="VOIDED">{lang === "sw" ? "Yaliyofutwa" : "Voided"}</option>
+                  </select>
+                </label>
+              </div>
+              {(historyFilters.search || historyFilters.from || historyFilters.to || historyFilters.paymentMethod || historyFilters.status || historySearchInput) && (
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2">
+                  <p className="text-xs text-gray-500">{lang === "sw" ? `${historyTotal} mauzo yanalingana` : `${historyTotal} matching sale${historyTotal === 1 ? "" : "s"}`}</p>
+                  <button type="button" onClick={clearHistoryFilters} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-brand-800 hover:bg-brand-50"><X className="h-3.5 w-3.5" />{lang === "sw" ? "Futa vichujio" : "Clear filters"}</button>
+                </div>
+              )}
+            </section>
+            {historyLoading && recentSales.length > 0 && <p role="status" className="mb-2 text-xs text-gray-500">{lang === "sw" ? "Inasasisha historia..." : "Updating sales history..."}</p>}
+            {historyLoading && recentSales.length === 0 ? (
               <div className="text-center py-16 text-gray-400">{t("common.loading", lang)}</div>
             ) : historyError ? (
               <div role="alert" className="mx-auto max-w-md rounded-lg border border-amber-200 bg-amber-50 p-5 text-center text-sm text-amber-950">
@@ -1081,7 +1163,9 @@ export default function SalesPage() {
             ) : recentSales.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
                 <Clock className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                <p>{t("sales.noSales", lang)}</p>
+                <p>{historyFilters.search || historyFilters.from || historyFilters.to || historyFilters.paymentMethod || historyFilters.status
+                  ? (lang === "sw" ? "Hakuna mauzo yanayolingana na vichujio hivi." : "No sales match these filters.")
+                  : t("sales.noSales", lang)}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1125,6 +1209,16 @@ export default function SalesPage() {
                   </div>
                 ))}
               </div>
+            )}
+            {!historyLoading && !historyError && historyTotal > 0 && (
+              <nav aria-label={lang === "sw" ? "Kurasa za historia ya mauzo" : "Sales history pages"} className="mt-4 flex min-w-0 items-center justify-between gap-3 border-t border-gray-200 pt-3">
+                <p className="min-w-0 text-xs text-gray-500">{lang === "sw" ? `Inaonyesha ${(historyPage - 1) * 20 + 1}-${Math.min(historyPage * 20, historyTotal)} kati ya ${historyTotal}` : `Showing ${(historyPage - 1) * 20 + 1}-${Math.min(historyPage * 20, historyTotal)} of ${historyTotal}`}</p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="hidden text-xs text-gray-500 sm:inline">{lang === "sw" ? `Ukurasa ${historyPage} / ${Math.ceil(historyTotal / 20)}` : `Page ${historyPage} / ${Math.ceil(historyTotal / 20)}`}</span>
+                  <button type="button" onClick={() => setHistoryPage((page) => Math.max(1, page - 1))} disabled={historyPage <= 1} aria-label={lang === "sw" ? "Ukurasa uliopita" : "Previous page"} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-700 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setHistoryPage((page) => Math.min(Math.ceil(historyTotal / 20), page + 1))} disabled={historyPage >= Math.ceil(historyTotal / 20)} aria-label={lang === "sw" ? "Ukurasa unaofuata" : "Next page"} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-700 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+                </div>
+              </nav>
             )}
           </div>
         )}

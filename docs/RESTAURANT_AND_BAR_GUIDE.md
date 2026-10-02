@@ -54,5 +54,9 @@ Packaged drinks, bottles, cans, and barcode products do not need food preparatio
 
 Use `Hassan Bar & Kitchen` to show bar drinks plus prepared chicken portions,
 and `Mama Ntilie Restaurant` to show a daily meal recipe and prepared plates.
-Both include a current food-preparation batch and are refreshed with the guarded
-showcase seed documented in [Demo Showcase Seeding](./DEMO_SHOWCASE_SEEDING.md).
+Their existing sample setup includes food-preparation examples. As of
+2026-10-02, each has 72 illustrative sales across 30 days, but the separate
+sales-history refresh did not refresh recipes or preparation batches. The full
+showcase refresh completed on 2026-10-02 after Railway applied migration
+`20261002001000_sales_staff_ownership`; check [Demo Showcase Seeding](./DEMO_SHOWCASE_SEEDING.md)
+before promising a freshly reset bar or restaurant walkthrough.

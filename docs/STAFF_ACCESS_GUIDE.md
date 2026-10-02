@@ -23,6 +23,10 @@ The owner can fine-tune permissions per individual after creating them. Deactiva
 
 When a cashier has **Sell** permission, they can open a Daily Close cash session, record the opening cash, and close only their own session. DukaPilot reconciles that session's cash sales, cash debt collections, and cash expenses against the amount they count in the drawer. A cashier cannot close another staff member's session.
 
+In Sales History, staff without **Reports** permission see only sales recorded by their own staff account. The owner sees all business sales. Granting **Reports** lets a staff member see the full sales history and financial reporting; keep it disabled for cashiers who should not see the owner's figures.
+
+Sales History can be searched by receipt number, customer name, or phone, and filtered by date range, payment method, and sale status. Filters apply to the paginated results; clearing them restores the default history view.
+
 Each cashier's shift is a separate drawer. If an owner also sells, the owner opens a separate shift; the two cash totals never mix. Owners can always view and close every active team shift. An owner may also tick **Manage team shifts** for a trusted manager; that permission reveals all team shifts and permits review/close after the manager physically counts that staff drawer. It can work without **Sell**, but that supervisor cannot open a personal sales drawer unless **Sell** is also enabled. It does not grant business reports, stock, staff administration, or other permissions by itself.
 
 Cashiers without **Reports** still do not receive buying cost, profit, margin, or shop-wide financial analytics.

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Bot, CircleHelp, FileText, MessageCircle, PackagePlus, Settings, Share2, ShoppingCart, Sparkles, X } from "lucide-react";
+import { ArrowRight, BookOpen, Bot, CircleHelp, FileText, MessageCircle, PackagePlus, Settings, Share2, ShoppingCart, Sparkles, X } from "lucide-react";
 import type { Lang } from "@/lib/i18n";
 
 interface QuickStartGuideProps {
@@ -139,6 +139,10 @@ export default function QuickStartGuide({ lang }: QuickStartGuideProps) {
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Link href="/onboarding" onClick={() => setOpen(false)} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-brand-200 px-4 py-2.5 text-sm font-bold text-brand-800 transition hover:bg-brand-50">
                   {isSwahili ? "Fungua checklist" : "Open checklist"}
+                </Link>
+                <Link href="/help" onClick={() => setOpen(false)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-800 transition hover:border-brand-300 hover:bg-brand-50">
+                  <BookOpen className="h-4 w-4" />
+                  {isSwahili ? "Miongozo yote" : "All help guides"}
                 </Link>
                 <a href="https://wa.me/255743910580?text=Habari%20DukaPilot%2C%20nahitaji%20msaada%20kuanza%20kutumia%20app." target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-800">
                   <MessageCircle className="h-4 w-4" />

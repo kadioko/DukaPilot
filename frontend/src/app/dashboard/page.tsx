@@ -29,6 +29,10 @@ interface DashboardData {
   features?: { staff: boolean; assistant: boolean; exports: boolean };
   summary: {
     totalSales: number;
+    cashCollected: number;
+    creditSales: number;
+    missingCostSalesRevenue: number;
+    costComplete: boolean;
     totalProfit: number;
     totalExpenses: number;
     netProfit: number;
@@ -39,11 +43,14 @@ interface DashboardData {
     lowStockCount: number;
     outOfStockCount: number;
   };
+  comparison: Record<string, { current: number; previous: number; change: number; changePercent: number | null }> | null;
   allTimeSummary: {
     totalSales: number;
     totalProfit: number;
     totalExpenses: number;
     netProfit: number;
+    missingCostSalesRevenue: number;
+    costComplete: boolean;
     expenseCount: number;
     salesCount: number;
     firstSaleAt: string | null;
@@ -180,13 +187,17 @@ export default function DashboardPage() {
                     )}
                   </div>
                 )}
-                <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 xl:grid-cols-5">
-                  <PeriodStat label={t("dashboard.sales", lang)} value={formatTZS(s?.totalSales || 0)} />
-                  <PeriodStat label={period === "today" ? (lang === "sw" ? "Faida Leo" : "Profit Today") : (lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit")} value={formatTZS(s?.totalProfit || 0)} danger={(s?.totalProfit || 0) < 0} sub={s && s.totalSales > 0 ? `${((s.totalProfit / s.totalSales) * 100).toFixed(0)}% ${t("dashboard.margin", lang)}` : undefined} />
-                  <PeriodStat label={lang === "sw" ? "Faida halisi" : "Net profit"} value={formatTZS(s?.netProfit || 0)} danger={(s?.netProfit || 0) < 0} sub={`${formatTZS(s?.totalExpenses || 0)} ${lang === "sw" ? "matumizi" : "expenses"}`} />
-                  <PeriodStat label={t("dashboard.salesCount", lang)} value={String(s?.salesCount || 0)} />
+                <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 xl:grid-cols-4">
+                  <PeriodStat label={t("dashboard.sales", lang)} value={formatTZS(s?.totalSales || 0)} comparison={data?.comparison?.sales} sw={lang === "sw"} />
+                  <PeriodStat label={lang === "sw" ? "Pesa zilizokusanywa" : "Cash collected"} value={formatTZS(s?.cashCollected || 0)} sub={lang === "sw" ? "Mauzo yasiyo ya mkopo + malipo ya madeni" : "Non-credit sales + debt payments"} />
+                  <PeriodStat label={lang === "sw" ? "Mauzo ya mkopo" : "Credit sales"} value={formatTZS(s?.creditSales || 0)} />
+                  <PeriodStat label={period === "today" ? (lang === "sw" ? "Faida ghafi ya leo" : "Today's gross profit") : (lang === "sw" ? "Faida ghafi" : "Gross profit")} value={formatTZS(s?.totalProfit || 0)} danger={(s?.totalProfit || 0) < 0} sub={s && s.totalSales > 0 ? `${((s.totalProfit / s.totalSales) * 100).toFixed(0)}% ${t("dashboard.margin", lang)}` : undefined} comparison={data?.comparison?.grossProfit} sw={lang === "sw"} />
+                  <PeriodStat label={lang === "sw" ? "Matumizi" : "Expenses"} value={formatTZS(s?.totalExpenses || 0)} />
+                  <PeriodStat label={lang === "sw" ? "Faida halisi" : "Net profit"} value={formatTZS(s?.netProfit || 0)} danger={(s?.netProfit || 0) < 0} comparison={data?.comparison?.netProfit} sw={lang === "sw"} />
+                  <PeriodStat label={t("dashboard.salesCount", lang)} value={String(s?.salesCount || 0)} comparison={data?.comparison?.salesCount} sw={lang === "sw"} />
                   <PeriodStat label={t("dashboard.pendingOrders", lang)} value={String(s?.pendingOrders || 0)} />
                 </div>
+                {(s?.missingCostSalesRevenue || 0) > 0 && <p role="status" className="mt-3 border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950">{lang === "sw" ? `Bei ya gharama haipo kwa mauzo yenye thamani ya ${formatTZS(s?.missingCostSalesRevenue || 0)}. Faida inayoonyeshwa inahusu bidhaa zenye gharama iliyorekodiwa pekee.` : `${formatTZS(s?.missingCostSalesRevenue || 0)} of sales has no recorded item cost. Profit shown covers costed items only and is incomplete.`}</p>}
               </div>
             </div>
             <div className="border-t border-gray-100 bg-gray-950 p-5 text-white lg:border-l lg:border-t-0 sm:p-6 lg:p-7">
@@ -263,6 +274,7 @@ export default function DashboardPage() {
             color="orange"
           />
         </div>
+        {(allTime?.missingCostSalesRevenue || 0) > 0 && <p role="status" className="mb-6 border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950">{lang === "sw" ? `Kwa muda wote, gharama haipo kwa mauzo yenye thamani ya ${formatTZS(allTime?.missingCostSalesRevenue || 0)}. Faida inaonyesha bidhaa zenye gharama iliyorekodiwa pekee.` : `Across all time, ${formatTZS(allTime?.missingCostSalesRevenue || 0)} in sales has no recorded cost. Profit includes costed items only.`}</p>}
 
         {data && data.lowStockAlerts.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
@@ -414,12 +426,13 @@ export default function DashboardPage() {
   );
 }
 
-function PeriodStat({ label, value, sub, danger = false }: { label: string; value: string; sub?: string; danger?: boolean }) {
+function PeriodStat({ label, value, sub, danger = false, comparison, sw = false }: { label: string; value: string; sub?: string; danger?: boolean; comparison?: { change: number; changePercent: number | null }; sw?: boolean }) {
   return (
     <div className="min-w-0 border-b border-r border-gray-200 px-3 py-3 last:border-r-0 xl:border-b-0">
       <p className={`break-words text-base font-bold leading-tight ${danger ? "text-red-700" : "text-gray-950"}`}>{value}</p>
       <p className="mt-1 text-xs font-medium leading-4 text-gray-600">{label}</p>
       {sub && <p className="mt-1 text-[11px] leading-4 text-gray-500">{sub}</p>}
+      {comparison && <p className={`mt-1 text-[11px] leading-4 ${comparison.change >= 0 ? "text-emerald-700" : "text-red-700"}`}>{comparison.change >= 0 ? "+" : ""}{comparison.changePercent === null ? formatTZS(comparison.change) : `${comparison.changePercent}%`} {sw ? "dhidi ya kipindi kilichopita" : "vs previous period"}</p>}
     </div>
   );
 }

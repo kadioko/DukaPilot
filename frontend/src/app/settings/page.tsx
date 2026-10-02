@@ -309,7 +309,7 @@ export default function SettingsPage() {
                   required
                 />
               </div>
-              <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <label id="catalog-sharing" className="scroll-mt-24 flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <input
                   type="checkbox"
                   checked={catalogPublished}

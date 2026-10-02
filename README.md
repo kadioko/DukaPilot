@@ -38,6 +38,8 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Error monitoring:** Backend Sentry alerts are live; see [docs/SENTRY_MONITORING.md](./docs/SENTRY_MONITORING.md)
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
 - **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and branch operations
+- **Owner reports:** [docs/OWNER_REPORTS_GUIDE.md](./docs/OWNER_REPORTS_GUIDE.md) - Sales vs collections, cost coverage, profit definitions, date ranges, branch comparisons, and exports
+- **Staff access:** [docs/STAFF_ACCESS_GUIDE.md](./docs/STAFF_ACCESS_GUIDE.md) - Staff roles, permissions, sales-history visibility, and Daily Close shifts
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
 - **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Crop, livestock, and mixed-farm setup; plots, crop cycles, inputs, harvest-to-stock, livestock production, staff privacy, cash rules, and farm AI boundaries
 - **Barcode and labels:** [docs/BARCODE_MANAGEMENT.md](./docs/BARCODE_MANAGEMENT.md) - Product codes, camera/HID scanning, label templates, browser/PDF labels, and safe raw-printer output
@@ -380,9 +382,9 @@ cp .env.example .env.local
 npm run dev         # runs on :3000
 ```
 
-For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm run db:seed-demo-history` from `backend/`. It redistributes existing demo sales across 30 days before adding any missing history; it never enables backdating in the live sales API. Read [docs/DEMO_HISTORY_SEEDING.md](./docs/DEMO_HISTORY_SEEDING.md) before running it against a hosted database.
+For a realistic 30-day chart on a demo shop, use the guarded Prisma command `npm run db:seed-demo-history` from `backend/`. It redistributes existing demo sales across 30 days before adding any missing history; it never enables backdating in the live sales API. Read [docs/DEMO_HISTORY_SEEDING.md](./docs/DEMO_HISTORY_SEEDING.md) before running it against a hosted database. As of 2026-10-02, each of the seven public merchant demo accounts has 72 illustrative completed sales across the last 30 days. These sales do not decrement stock or create Daily Close records.
 
-To refresh the complete public business showcase used on `/demo`, run the separate guarded command `npm run db:seed-demo-showcase`. It creates or refreshes only named `isDemo` shops, their current operational examples, and the public cashier demo. Read [docs/DEMO_SHOWCASE_SEEDING.md](./docs/DEMO_SHOWCASE_SEEDING.md) before using it against Railway.
+To refresh the complete public business showcase used on `/demo`, run the separate guarded command `npm run db:seed-demo-showcase`. It creates or refreshes only named `isDemo` shops, their current operational examples, and the public cashier demo. Read [docs/DEMO_SHOWCASE_SEEDING.md](./docs/DEMO_SHOWCASE_SEEDING.md) before using it against Railway. Do not run either production seeder until Railway has applied the migrations required by the deployed backend.
 
 ### Local Verification Checklist
 
@@ -509,11 +511,11 @@ Merchant and supplier demo PINs: `1234`. Admin credentials are not published in 
 
 | Role | Phone | Name / Shop | Key scenarios |
 | --- | --- | --- | --- |
-| **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED** — 12 products (all stock/expiry states), 10 sales (all payment methods + wholesale + online), 5 supplier order statuses, 6 customer order statuses, stock movements IN/OUT/ADJUSTMENT |
+| **Merchant** | **+255700000002** | **Mama Amina / Duka la Amina** | **FEATURED** — 12 products (all stock/expiry states), 72 illustrative sales across 30 days (as of 2026-10-02), 5 supplier order statuses, 6 customer order statuses, stock movements IN/OUT/ADJUSTMENT |
 | Merchant | +255700000003 | Bwana Salum / Salum Pharmacy | Pharmacy, Kinondoni — orders from Jumla Traders visible in supplier portal |
 | Cashier / stock | +255700000008 | Rehema - Sales & Stock / Duka la Amina | Can sell and manage stock without reports or profit access |
-| Merchant | +255700000004 | Hassan Juma / Hassan Bar & Kitchen | Bar, Buguruni (Ilala) — drinks, prepared food, recipe, and current batch |
-| Merchant | +255700000009 | Mama Ntilie / Mama Ntilie Restaurant | Restaurant — ingredients, menu plates, recipe, and current batch |
+| Merchant | +255700000004 | Hassan Juma / Hassan Bar & Kitchen | Bar, Buguruni (Ilala) — drinks, prepared food, sample recipe, and preparation batch |
+| Merchant | +255700000009 | Mama Ntilie / Mama Ntilie Restaurant | Restaurant — ingredients, menu plates, sample recipe, and preparation batch |
 | Merchant | +255700000012 | Asha Macha / Kijani Mazao Farm | Crops-only farm — plots, cycles, inputs, two harvests, field plan, and crop sale |
 | Merchant | +255700000013 | Musa Selemani / Upendo Poultry & Pigs Farm | Livestock farm — layers, pigs, feed, egg/pork production, and egg packing |
 | Merchant | +255700000005 | Fatuma Ally / Fatuma Beauty Shop | Beauty shop, Tegeta (Kinondoni) — online channel + Beauty Supplies TZ orders |

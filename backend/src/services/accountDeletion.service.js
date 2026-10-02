@@ -59,6 +59,7 @@ async function anonymizeMerchantAccount(userId) {
     await tx.order.updateMany({ where: { shopId: { in: shopIds } }, data: { note: null } });
     await tx.stockReceipt.updateMany({ where: { shopId: { in: shopIds } }, data: { invoiceNumber: null, note: null, receivedBy: null } });
     await tx.stockMovement.updateMany({ where: { product: { shopId: { in: shopIds } } }, data: { note: null } });
+    await tx.sale.updateMany({ where: { shopId: { in: shopIds } }, data: { createdByStaffId: null } });
     await tx.cashSession.updateMany({ where: { shopId: { in: shopIds } }, data: { openedByName: "Deleted staff", note: null } });
     await tx.quotationSettings.updateMany({
       where: { shopId: { in: shopIds } },

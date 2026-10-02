@@ -18,9 +18,17 @@ legacy seed is not appropriate for repeatedly refreshing a hosted demo database.
   egg and pork production, egg packing, stock movements, and a current sale.
 
 All refreshed shops are marked `isDemo`, hidden from the public catalog, and
-given an active Pro subscription for one year. The script adds only records with
-the `demo-showcase-` identifier prefix, so it can update its own data safely.
-It never deletes ordinary merchant records.
+given an active Pro subscription for one year. Operational fixture records use
+the `demo-showcase-` identifier prefix. The script also upserts the explicitly
+allowlisted demo owners, staff, shops, and suppliers by their configured phone
+or shop keys; those account fields can be reset by a run. It never deletes
+ordinary merchant records.
+
+## Current Production Status
+
+The seven public merchant accounts have current illustrative sale history: 72 completed sales each across 30 days ending 2026-10-02. See [Demo Sales History Seeding](./DEMO_HISTORY_SEEDING.md) for the boundaries of that data. Sales history was refreshed separately; it does not mean every product, crop, livestock, restaurant, or staff example was refreshed on that date.
+
+The full showcase command initially stopped on 2026-10-02 because Railway lacked `sales.createdByStaffId`. Migration `20261002001000_sales_staff_ownership` was applied and verified on Railway on 2026-10-02. The guarded showcase refresh then completed successfully for 7 merchant demos, 3 supplier demos, the cashier demo, food operations, crop operations, and livestock operations. Railway reported all 48 migrations applied, and the API health check returned `ok`.
 
 ## Safety rules
 
@@ -86,6 +94,8 @@ After the command reports success, test at least these paths:
 5. Log in to Upendo Poultry & Pigs Farm and confirm Farm shows Layers and Pigs
    groups, production batches, and egg packing.
 6. Confirm demo shops do not appear in the public `/catalog`.
+
+The seeded sale history is illustrative and does not reduce current inventory or create matching Daily Close cash movements. Use a controlled fresh sale/stock receipt when demonstrating those reconciliations.
 
 Do not record real customer information, real payment references, or real
 commercial sales in any demo account. Refresh the showcase before an important

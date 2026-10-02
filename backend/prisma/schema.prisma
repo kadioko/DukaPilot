@@ -939,6 +939,7 @@ model Product {
   expiryDate               DateTime? // null = not set
   doesNotExpire            Boolean                 @default(false)
   isActive                 Boolean                 @default(true)
+  isCatalogVisible         Boolean                 @default(true)
   shopId                   String
   shop                     Shop                    @relation(fields: [shopId], references: [id], onDelete: Cascade)
   supplierId               String?

@@ -11,7 +11,7 @@ async function mockSalesShell(page: import("@playwright/test").Page, productStat
     if (url.includes("/debts/customers")) return route.fulfill({ json: { customers: [] } });
     if (url.includes("/settings") || url.includes("/barcodes/settings")) return route.fulfill({ json: { settings: {} } });
     if (url.includes("/products?")) return route.fulfill({ status: productStatus, contentType: "application/json", body: JSON.stringify({ error: productStatus === 403 ? "Forbidden" : "Internal server error" }) });
-    if (url.includes("/sales?limit=30")) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Service unavailable" }) });
+    if (url.includes("/sales?limit=20")) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Service unavailable" }) });
     return route.fulfill({ json: {} });
   });
 }

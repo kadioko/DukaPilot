@@ -231,7 +231,27 @@ test("product creation commits opening stock and stock movement together", async
   assert.equal(res.payload.product.currentStock, 12);
   assert.equal(res.payload.product.minimumStock, 0);
   assert.equal(res.payload.product.unit, "nusu ya kuku");
+  assert.equal(res.payload.product.isCatalogVisible, true);
   assert.deepEqual(movements, [{ type: "IN", quantity: 12, note: "Initial stock", productId: "prod-1" }]);
+});
+
+test("product creation can start hidden from the public catalog", async () => {
+  let createdData;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (work) => work({
+      product: { create: async ({ data }) => { createdData = data; return { id: "prod-1", ...data, supplier: null }; } },
+      stockMovement: { create: async () => {} },
+    }),
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.create({ user: { userId: "user-1" }, body: { name: "Seasonal gift box", buyingPrice: 1000, sellingPrice: 1500, isCatalogVisible: false } }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createdData.isCatalogVisible, false);
+  assert.equal(res.payload.product.isCatalogVisible, false);
 });
 
 test("product creation cannot attach a supplier private to another shop", async () => {
@@ -306,6 +326,42 @@ test("product update accepts unchanged legacy currentStock while changing produc
   assert.equal(updated.name, "Premium Rice");
   assert.equal(updated.buyingPrice, 2400);
   assert.equal(res.payload.product.currentStock, 5);
+});
+
+test("product update persists catalog visibility changes", async () => {
+  let updated;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findFirst: async () => ({ id: "prod-1", shopId: "shop-1", currentStock: 5, sellingPrice: 3000, wholesalePrice: null }),
+      update: async ({ data }) => { updated = data; return { id: "prod-1", ...data }; },
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.update({ user: { userId: "user-1" }, params: { id: "prod-1" }, body: { isCatalogVisible: false } }, res);
+
+  assert.equal(updated.isCatalogVisible, false);
+  assert.equal(res.payload.product.isCatalogVisible, false);
+});
+
+test("staff cannot change a product's public catalog visibility", async () => {
+  let updateCalled = false;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findFirst: async () => ({ id: "prod-1", shopId: "shop-1", currentStock: 5, sellingPrice: 3000, wholesalePrice: null }),
+      update: async () => { updateCalled = true; },
+    },
+  };
+  const ctrl = loadController(prismaMock);
+  const res = createRes();
+
+  await ctrl.update({ user: { userId: "staff-1", staffId: "staff-1", shopId: "shop-1", role: "MERCHANT", permissions: { canManageStock: true } }, params: { id: "prod-1" }, body: { isCatalogVisible: false } }, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(updateCalled, false);
 });
 
 test("CSV import creates products and an opening stock movement for each stocked item", async () => {

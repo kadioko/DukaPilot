@@ -17,6 +17,9 @@ import {
   ScanLine,
   Printer,
   MoreVertical,
+  Eye,
+  EyeOff,
+  Share2,
   Download,
   FileUp,
   ChevronLeft,
@@ -40,6 +43,7 @@ interface Product {
   currentStock: number;
   minimumStock: number;
   isActive: boolean;
+  isCatalogVisible?: boolean;
   expiryDate?: string | null;
   doesNotExpire: boolean;
   supplier?: { id: string; name: string; phone: string };
@@ -145,7 +149,7 @@ export default function InventoryPage() {
     name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "",
     wholesalePrice: "", wholesaleMinQty: "",
     currentStock: "0", minimumStock: "5", supplierId: "",
-    expiryDate: "", doesNotExpire: false, barcode: "", barcodeType: "", generateBarcode: false,
+    expiryDate: "", doesNotExpire: false, isCatalogVisible: true, barcode: "", barcodeType: "", generateBarcode: false,
   });
   const [adjustForm, setAdjustForm] = useState({ type: "IN", quantity: "", note: "" });
   const [saving, setSaving] = useState(false);
@@ -153,6 +157,7 @@ export default function InventoryPage() {
   const latestLoad = useRef(0);
   const mutationInFlight = useRef(false);
   const [canViewFinancials, setCanViewFinancials] = useState(true);
+  const [canManageCatalog, setCanManageCatalog] = useState(false);
   const [isFoodBusiness, setIsFoodBusiness] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -228,8 +233,9 @@ export default function InventoryPage() {
       .then((data) => {
         setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports));
         setIsFoodBusiness(["bar", "restaurant"].includes(String(data.user.shop?.category || "").toLowerCase()));
+        setCanManageCatalog(data.user.role === "MERCHANT" && !data.user.staff);
       })
-      .catch(() => { setCanViewFinancials(false); setIsFoodBusiness(false); });
+      .catch(() => { setCanViewFinancials(false); setIsFoodBusiness(false); setCanManageCatalog(false); });
     // This can race with the shared shell's auth redirect. Handle its rejection
     // locally so a signed-out visit never becomes an unhandled browser error.
     api.get<{ suppliers: Supplier[] }>("/suppliers")
@@ -244,7 +250,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditProduct(null);
-    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, barcode: "", barcodeType: "", generateBarcode: false });
+    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, barcode: "", barcodeType: "", generateBarcode: false });
     setError("");
     setShowForm(true);
   }
@@ -260,6 +266,7 @@ export default function InventoryPage() {
       supplierId: p.supplier?.id || "",
       expiryDate: p.expiryDate ? p.expiryDate.slice(0, 10) : "",
       doesNotExpire: p.doesNotExpire,
+      isCatalogVisible: p.isCatalogVisible !== false,
       barcode: p.manufacturerBarcode || (p.barcodeType !== "INTERNAL" ? p.barcode || "" : ""), barcodeType: p.barcodeType || "", generateBarcode: false,
     });
     setError("");
@@ -293,6 +300,7 @@ export default function InventoryPage() {
         minimumStock: Number(form.minimumStock),
         supplierId: form.supplierId || undefined,
         doesNotExpire: form.doesNotExpire,
+        ...(canManageCatalog ? { isCatalogVisible: form.isCatalogVisible } : {}),
         expiryDate: form.doesNotExpire ? null : (form.expiryDate || null),
         barcode: form.barcode || null,
         barcodeType: form.barcodeType || undefined,
@@ -340,6 +348,26 @@ export default function InventoryPage() {
       await fetchProducts();
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : t("common.error", lang), "error");
+    } finally {
+      setSaving(false);
+      mutationInFlight.current = false;
+    }
+  }
+
+  async function toggleCatalogVisibility(product: Product) {
+    if (mutationInFlight.current) return;
+    const isCatalogVisible = product.isCatalogVisible === false;
+    mutationInFlight.current = true;
+    setSaving(true);
+    try {
+      const response = await api.patch<{ product: Product }>(`/products/${product.id}`, { isCatalogVisible });
+      setProducts((current) => current.map((item) => item.id === product.id ? response.product : item));
+      setActionMenuProductId(null);
+      toast(isCatalogVisible
+        ? (lang === "sw" ? "Bidhaa sasa inaonekana kwenye orodha ya umma." : "Product is now visible in the public catalog.")
+        : (lang === "sw" ? "Bidhaa imefichwa kwenye orodha ya umma." : "Product hidden from the public catalog."), "success");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
     } finally {
       setSaving(false);
       mutationInFlight.current = false;
@@ -439,7 +467,7 @@ export default function InventoryPage() {
         {/* Header */}
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold text-gray-900">{t("inventory.title", lang)}</h1>
-          <div className="flex flex-wrap gap-2">{canViewFinancials && <button onClick={startStockCount} aria-label="Start stock count" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title="Stock count"><ScanLine className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={downloadCsvTemplate} aria-label={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} title={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:text-brand-700"><Download className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={() => { setCsvFile(null); setCsvErrors([]); setShowCsvImport(true); }} className="flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><FileUp className="h-4 w-4" /><span className="hidden sm:inline">{lang === "sw" ? "Ingiza CSV" : "Import CSV"}</span></button>}{canViewFinancials && <button onClick={openAdd} aria-label={t("inventory.addProduct", lang)} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"><Plus className="w-4 h-4" /><span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span></button>}</div>
+          <div className="flex flex-wrap gap-2">{canManageCatalog && <a href="/settings#catalog-sharing" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><Share2 className="h-4 w-4" /><span>{lang === "sw" ? "Shiriki orodha" : "Share catalog"}</span></a>}{canViewFinancials && <button onClick={startStockCount} aria-label="Start stock count" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title="Stock count"><ScanLine className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={downloadCsvTemplate} aria-label={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} title={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:text-brand-700"><Download className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={() => { setCsvFile(null); setCsvErrors([]); setShowCsvImport(true); }} className="flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><FileUp className="h-4 w-4" /><span className="hidden sm:inline">{lang === "sw" ? "Ingiza CSV" : "Import CSV"}</span></button>}{canViewFinancials && <button onClick={openAdd} aria-label={t("inventory.addProduct", lang)} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"><Plus className="w-4 h-4" /><span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span></button>}</div>
         </div>
 
         {stockCount && <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 p-3"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-brand-950">{lang === "sw" ? "Uhesabuji wa stock unaendelea" : "Stock count in progress"}</p><p className="text-xs text-brand-700">{stockCount.items.reduce((sum, item) => sum + item.counted, 0)} {lang === "sw" ? "zimescanwa" : "scanned"}</p></div><button onClick={() => setStockCountScannerOpen(true)} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white">Scan</button></div><div className="mt-3 flex gap-2"><input value={stockCountCode} onChange={(event) => setStockCountCode(event.target.value)} onKeyDown={(event) => event.key === "Enter" && scanStockCount(stockCountCode)} placeholder="Barcode" className="min-w-0 flex-1 rounded-lg border border-brand-200 px-3 py-2 text-sm" /><button onClick={() => scanStockCount(stockCountCode)} className="rounded-lg border border-brand-300 px-3 text-sm font-semibold text-brand-800">Add</button></div><div className="mt-3 max-h-32 overflow-y-auto text-xs">{stockCount.items.filter((item) => item.counted > 0).map((item) => <div key={item.id} className="flex justify-between border-t border-brand-100 py-1"><span>{item.product.name}</span><span>{item.expected} / {item.counted} ({item.counted - item.expected >= 0 ? "+" : ""}{item.counted - item.expected})</span></div>)}</div><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => finishStockCount(false)} className="rounded-lg border border-brand-300 py-2 text-sm font-semibold text-brand-800">{lang === "sw" ? "Maliza bila kubadili" : "Finish only"}</button><button onClick={() => finishStockCount(true)} className="rounded-lg bg-brand-700 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Tumia tofauti" : "Apply differences"}</button></div></div>}
@@ -599,6 +627,12 @@ export default function InventoryPage() {
                             {t("inventory.lowStockBadge", lang)}
                           </span>
                         )}
+                        {p.isCatalogVisible === false && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            <EyeOff className="h-3 w-3" aria-hidden="true" />
+                            {lang === "sw" ? "Haionekani kwenye orodha ya umma" : "Hidden from catalog"}
+                          </span>
+                        )}
                         {expiry && (
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${expiry.color}`}>
                             <CalendarClock className="w-3 h-3" />
@@ -653,6 +687,7 @@ export default function InventoryPage() {
                       </button>
                       {actionMenuProductId === p.id && <div className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
                         <button onClick={() => { setLabelProduct(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Printer className="h-4 w-4" />{lang === "sw" ? "Chapisha lebo" : "Print label"}</button>
+                        {canManageCatalog && <button onClick={() => toggleCatalogVisibility(p)} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">{p.isCatalogVisible === false ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}{p.isCatalogVisible === false ? (lang === "sw" ? "Onyesha kwenye orodha" : "Show in catalog") : (lang === "sw" ? "Ficha kwenye orodha" : "Hide from catalog")}</button>}
                         <button onClick={() => { openEdit(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Edit2 className="h-4 w-4" />{t("common.edit", lang)}</button>
                         <button onClick={() => { setDeleteProduct(p); setActionMenuProductId(null); }} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-4 w-4" />{t("inventory.deleteProduct", lang)}</button>
                       </div>}
@@ -706,6 +741,13 @@ export default function InventoryPage() {
               <input aria-label={t("inventory.nameLabel", lang)} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={INPUT} placeholder={t("inventory.namePlaceholder", lang)} />
             </Field>
+            {canManageCatalog && <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <input type="checkbox" checked={form.isCatalogVisible} onChange={(event) => setForm({ ...form, isCatalogVisible: event.target.checked })} className="mt-0.5 h-5 w-5 rounded border-gray-300 text-brand-600" />
+              <span>
+                <span className="block text-sm font-semibold text-gray-800">{lang === "sw" ? "Onyesha bidhaa hii kwenye orodha ya umma" : "Show this product in the public catalog"}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-gray-500">{lang === "sw" ? "Zima ikiwa hutaki wateja waione au waiagize kupitia kiungo cha duka." : "Turn this off to keep customers from seeing or ordering this item through your shop link."}</span>
+              </span>
+            </label>}
             <Field label={lang === "sw" ? "Jina fupi kwenye label (hiari)" : "Short label name (optional)"}>
               <input aria-label={lang === "sw" ? "Jina fupi kwenye label" : "Short label name"} value={form.labelName} onChange={(e) => setForm({ ...form, labelName: e.target.value })} className={INPUT} placeholder={lang === "sw" ? "Mfano: Soda 300ml" : "For example: Soda 300ml"} maxLength={100} />
             </Field>
