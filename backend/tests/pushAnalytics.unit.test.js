@@ -171,6 +171,57 @@ test("shop alert queue excludes staff who lack permission for its content", asyn
   assert.deepEqual(queued.map((item) => item.subscriptionId), ["owner-device", "stock-device"]);
 });
 
+test("referral reward pushes are restricted to owner devices", async () => {
+  let queued;
+  mockPrisma({
+    pushSubscription: { findMany: async () => [
+      { id: "owner-device", staffId: null },
+      { id: "staff-device", staffId: "staff-1" },
+    ] },
+    staffMember: { findMany: async () => [
+      { id: "staff-1", isActive: true, canManageStock: true, canViewReports: true, canViewQuotations: true, canUseAssistant: true },
+    ] },
+    pushDelivery: { createMany: async ({ data }) => { queued = data; return { count: data.length }; } },
+  });
+  delete require.cache[pushServicePath];
+  const { queueForShop } = require(pushServicePath);
+  await queueForShop("shop-a", "REFERRAL_REWARD", { title: "Reward", body: "Seven days added", href: "/referrals" }, { dedupeKeyPrefix: "referral-reward:referral-2" });
+
+  assert.deepEqual(queued.map((item) => item.subscriptionId), ["owner-device"]);
+  assert.equal(queued[0].dedupeKey, "referral-reward:referral-2:owner-device");
+});
+
+test("push worker backfills recent referral rewards and deduplicates each reward", async () => {
+  let queued;
+  mockPrisma({
+    shop: { findMany: async () => [{
+      id: "shop-a",
+      plan: "FREE_TRIAL",
+      trialEndsAt: new Date(Date.now() + 20 * 86400000),
+      subscriptionEndsAt: null,
+      isActive: true,
+      user: { language: "en" },
+      parentShop: null,
+      notificationPreference: null,
+      referralsMade: [{ id: "referral-old" }],
+      products: [],
+      debts: [],
+      assistantActions: [],
+    }] },
+    pushSubscription: { findMany: async () => [{ id: "owner-device", staffId: null }] },
+    pushDelivery: { createMany: async ({ data }) => { queued = data; return { count: data.length }; } },
+  });
+  delete require.cache[pushServicePath];
+  const { queueShopAlerts } = require(pushServicePath);
+
+  const result = await queueShopAlerts();
+
+  assert.equal(result.queued, 1);
+  assert.equal(queued[0].kind, "REFERRAL_REWARD");
+  assert.equal(queued[0].dedupeKey, "referral-reward:referral-old:owner-device");
+  assert.equal(queued[0].href, "/referrals");
+});
+
 test("push worker claims a delivery and does not deactivate a valid device after transient retry exhaustion", async () => {
   process.env.VAPID_PUBLIC_KEY = "public";
   process.env.VAPID_PRIVATE_KEY = "private";

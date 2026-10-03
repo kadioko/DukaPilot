@@ -92,6 +92,7 @@ export default function SuppliersPage() {
         <div className="flex items-center justify-between mb-5">
           <h1 className="text-xl font-bold text-gray-900">{t("suppliers.title", lang)}</h1>
           <button onClick={openAdd}
+            aria-label={lang === "sw" ? "Ongeza msambazaji" : "Add Supplier"}
             className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">{t("suppliers.addBtn", lang)}</span>
@@ -114,6 +115,7 @@ export default function SuppliersPage() {
                   <div className="flex-1">
                     <p className="font-semibold text-gray-900">{s.name}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {!isAdmin && s.canEdit && <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">{t("suppliers.privateBadge", lang)}</span>}
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
                         s.verificationStatus === "VERIFIED" ? "bg-green-100 text-green-700" :
                         s.verificationStatus === "REJECTED" ? "bg-red-100 text-red-700" :
@@ -210,6 +212,7 @@ export default function SuppliersPage() {
             </div>
             <div className="p-4 space-y-3">
               {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg p-2">{error}</p>}
+              {!isAdmin && !editSupplier && <p className="border border-blue-200 bg-blue-50 p-3 text-sm leading-5 text-blue-900">{t("suppliers.privateHelp", lang)}</p>}
               {FIELDS.map(({ labelKey, key, placeholder, type }) => (
                 <div key={key}>
                   <label className="text-xs font-medium text-gray-600 mb-1 block">{t(labelKey, lang)}</label>

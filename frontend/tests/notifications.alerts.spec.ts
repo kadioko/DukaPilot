@@ -23,7 +23,7 @@ test("shop alerts render quotation alerts from the merchant demo data", async ({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        unreadCount: 1,
+        unreadCount: 2,
         items: [{
           id: "quotation-expiring",
           type: "QUOTATION",
@@ -34,6 +34,17 @@ test("shop alerts render quotation alerts from the merchant demo data", async ({
           descriptionSw: "Fuatilia kabla muda wa bei kuisha.",
           href: "/quotations?status=SENT",
           count: 1,
+        }, {
+          id: "referral-reward-referral-1",
+          type: "REFERRAL_REWARD",
+          severity: "ACTION",
+          title: "Referral reward confirmed",
+          titleSw: "Zawadi ya referral imethibitishwa",
+          description: "An admin added 7 free days to your account after Juma Shop qualified.",
+          descriptionSw: "Admin ameongeza siku 7 za bure kwenye akaunti yako baada ya Juma Shop kustahili.",
+          href: "/referrals",
+          count: 1,
+          createdAt: "2026-10-02T10:00:00.000Z",
         }],
       }),
     });
@@ -44,5 +55,7 @@ test("shop alerts render quotation alerts from the merchant demo data", async ({
   await expect(page.getByRole("heading", { name: "Shop alerts" })).toBeVisible();
   await expect(page.getByText("1 quotation expires soon")).toBeVisible();
   await expect(page.getByRole("link", { name: /1 quotation expires soon/i })).toHaveAttribute("href", "/quotations?status=SENT");
+  await expect(page.getByText("Referral reward confirmed")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Referral reward confirmed/i })).toHaveAttribute("href", "/referrals");
   await expect(page.getByText("Something went wrong. Please try again or refresh the page.")).not.toBeVisible();
 });

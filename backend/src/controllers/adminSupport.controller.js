@@ -41,7 +41,7 @@ const operationsSummary = wrap(async (_req, res) => {
 
 const listShops = wrap(async (req, res) => {
   const now = new Date();
-  const page = Math.max(1, Math.min(100000, Number.parseInt(req.query.page, 10) || 1));
+  const requestedPage = Math.max(1, Math.min(100000, Number.parseInt(req.query.page, 10) || 1));
   const limit = Math.max(10, Math.min(50, Number.parseInt(req.query.limit, 10) || 20));
   const search = String(req.query.search || "").trim().slice(0, 100);
   const filter = req.query.filter === "all" ? "all" : "action";
@@ -53,9 +53,10 @@ const listShops = wrap(async (req, res) => {
       { user: { phone: { contains: search, mode: "insensitive" } } },
     ] }];
   }
-  const [total, shops] = await Promise.all([
-    prisma.shop.count({ where }),
-    prisma.shop.findMany({
+  const total = await prisma.shop.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, totalPages);
+  const shops = await prisma.shop.findMany({
       where,
       select: {
         id: true, name: true, location: true, plan: true, isActive: true, trialEndsAt: true, subscriptionEndsAt: true,
@@ -67,9 +68,8 @@ const listShops = wrap(async (req, res) => {
       orderBy: [{ lastContactedAt: "asc" }, { createdAt: "desc" }],
       skip: (page - 1) * limit,
       take: limit,
-    }),
-  ]);
-  res.json({ shops: shops.map((shop) => ({ ...shop, ...subscriptionSnapshot(shop, now) })), total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) });
+    });
+  res.json({ shops: shops.map((shop) => ({ ...shop, ...subscriptionSnapshot(shop, now) })), total, page, limit, totalPages });
 });
 
 const shopDetail = wrap(async (req, res) => {

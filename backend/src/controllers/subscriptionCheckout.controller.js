@@ -149,14 +149,31 @@ const retryCheckout = wrap(async (req, res) => {
   res.json(publicCheckout(record));
 });
 
-const adminListExceptions = wrap(async (_req, res) => {
+const adminListExceptions = wrap(async (req, res) => {
+  const limit = Math.max(1, Math.min(100, Number.parseInt(req.query.limit, 10) || 25));
+  const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const search = String(req.query.search || "").trim().slice(0, 120);
+  const where = {
+    status: "REVIEW",
+    ...(search ? { OR: [
+      { phone: { contains: search } },
+      { providerId: { contains: search, mode: "insensitive" } },
+      { shop: { is: { name: { contains: search, mode: "insensitive" } } } },
+      { shop: { is: { user: { is: { name: { contains: search, mode: "insensitive" } } } } } },
+      { shop: { is: { user: { is: { phone: { contains: search } } } } } },
+    ] } : {}),
+  };
+  const total = await prisma.subscriptionCheckout.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, totalPages);
   const checkouts = await prisma.subscriptionCheckout.findMany({
-    where: { status: "REVIEW" },
+    where,
     orderBy: { updatedAt: "asc" },
-    take: 100,
+    skip: (page - 1) * limit,
+    take: limit,
     include: { shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } } },
   });
-  res.json({ checkouts: checkouts.map((record) => ({ ...publicCheckout(record), phone: record.phone, providerId: record.providerId, updatedAt: record.updatedAt, shop: record.shop })) });
+  res.json({ checkouts: checkouts.map((record) => ({ ...publicCheckout(record), phone: record.phone, providerId: record.providerId, updatedAt: record.updatedAt, shop: record.shop })), total, page, limit, totalPages });
 });
 
 const adminRetryException = wrap(async (req, res) => {

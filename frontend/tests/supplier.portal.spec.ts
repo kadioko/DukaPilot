@@ -1,5 +1,32 @@
 import { expect, test } from "@playwright/test";
 
+test("merchant can add a clearly private supplier to their own business", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem("dukapilot_token", "supplier-owner-token"));
+  let createdSupplier: Record<string, unknown> | null = null;
+  let submitted: Record<string, unknown> | null = null;
+  await page.route("**/*api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/auth/me")) return route.fulfill({ json: { user: { id: "owner", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" } } } });
+    if (url.pathname.endsWith("/suppliers") && route.request().method() === "GET") return route.fulfill({ json: { suppliers: createdSupplier ? [createdSupplier] : [] } });
+    if (url.pathname.endsWith("/suppliers") && route.request().method() === "POST") {
+      submitted = route.request().postDataJSON();
+      createdSupplier = { id: "supplier-1", ...submitted, createdByShopId: "shop-1", canEdit: true, verificationStatus: "NEEDS_REVIEW", _count: { products: 0, orders: 0, catalogProducts: 0 } };
+      return route.fulfill({ status: 201, json: { supplier: createdSupplier } });
+    }
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/suppliers");
+  await page.getByRole("button", { name: "Add Supplier" }).click();
+  await expect(page.getByText("This supplier is visible only to your business and DukaPilot administrators. They will not be added to the shared supplier directory.")).toBeVisible();
+  await page.getByLabel("Company Name").fill("Mlimani Wholesale");
+  await page.getByLabel("Phone Number").fill("+255 712 345 678");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Your private supplier")).toBeVisible();
+  expect(submitted).toMatchObject({ name: "Mlimani Wholesale", phone: "+255 712 345 678" });
+});
+
 test("supplier can confirm, dispatch, and cancel portal orders", async ({ page }) => {
   const orders = [
     {

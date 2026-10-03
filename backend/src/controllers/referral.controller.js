@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getBillingShopIdForUser: getShopIdForUser } = require("../lib/shopAccess");
 const { phoneLookupValues } = require("../lib/phone");
+const { queueForShop } = require("../services/push.service");
 
 const SALES_REQUIRED = 10;
 const REWARD_DAYS = 7;
@@ -109,11 +110,28 @@ const adminListReferrals = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Invalid referral status" });
   }
 
-  const pagination = paginationParams(req.query);
-  const where = status === "ALL" ? {} : { status };
-  const [total, referrals] = await Promise.all([
+  const requestedPagination = paginationParams(req.query);
+  const search = String(req.query.search || "").trim().slice(0, 120);
+  const where = {
+    ...(status === "ALL" ? {} : { status }),
+    ...(search ? { OR: [
+      { referralCode: { contains: search, mode: "insensitive" } },
+      { referrerShop: { is: { name: { contains: search, mode: "insensitive" } } } },
+      { referrerShop: { is: { user: { is: { name: { contains: search, mode: "insensitive" } } } } } },
+      { referrerShop: { is: { user: { is: { phone: { contains: search } } } } } },
+      { referredShop: { is: { name: { contains: search, mode: "insensitive" } } } },
+      { referredShop: { is: { user: { is: { name: { contains: search, mode: "insensitive" } } } } } },
+      { referredShop: { is: { user: { is: { phone: { contains: search } } } } } },
+    ] } : {}),
+  };
+  const [total, statusRows] = await Promise.all([
     prisma.shopReferral.count({ where }),
-    prisma.shopReferral.findMany({
+    prisma.shopReferral.groupBy({ by: ["status"], _count: { id: true } }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / requestedPagination.limit));
+  const page = Math.min(requestedPagination.page, totalPages);
+  const pagination = { ...requestedPagination, page, skip: (page - 1) * requestedPagination.limit };
+  const referrals = await prisma.shopReferral.findMany({
     where,
     include: {
       referrerShop: { select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, user: { select: { name: true, phone: true } } } },
@@ -122,8 +140,7 @@ const adminListReferrals = asyncHandler(async (req, res) => {
     orderBy: { createdAt: "desc" },
     skip: pagination.skip,
     take: pagination.limit,
-    }),
-  ]);
+  });
 
   const { saleCounts, newlyQualifiedIds } = await qualifyPendingReferrals(prisma, referrals);
 
@@ -131,6 +148,7 @@ const adminListReferrals = asyncHandler(async (req, res) => {
     salesRequired: SALES_REQUIRED,
     rewardDays: REWARD_DAYS,
     pagination: paginationResponse(pagination, total),
+    statusCounts: Object.fromEntries(statusRows.map((row) => [row.status, row._count.id])),
     referrals: referrals.map((referral) => {
       const salesCount = saleCounts.get(referral.referredShopId) || 0;
       const statusValue = newlyQualifiedIds.includes(referral.id) ? "QUALIFIED" : referral.status;
@@ -155,7 +173,7 @@ const adminRewardReferral = asyncHandler(async (req, res) => {
     const referral = await tx.shopReferral.findUnique({
       where: { id: referralId },
       include: {
-        referrerShop: { select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true } },
+        referrerShop: { select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true, user: { select: { language: true } } } },
         referredShop: { select: { id: true, name: true } },
       },
     });
@@ -194,6 +212,20 @@ const adminRewardReferral = asyncHandler(async (req, res) => {
 
     return { referral, shop, salesCount, rewardAppliedTo: paidPlanActive ? "subscription" : "trial" };
   });
+
+  const rewardIsSwahili = result.referral.referrerShop.user?.language !== "en";
+  try {
+    await queueForShop(result.referral.referrerShopId, "REFERRAL_REWARD", {
+      title: rewardIsSwahili ? "Zawadi ya referral imethibitishwa" : "Referral reward confirmed",
+      body: rewardIsSwahili
+        ? `Admin ameongeza siku ${REWARD_DAYS} za bure kwenye akaunti yako. Fungua DukaPilot kuona maelezo.`
+        : `An admin added ${REWARD_DAYS} free days to your account. Open DukaPilot to see the details.`,
+      href: "/referrals",
+    }, { dedupeKeyPrefix: `referral-reward:${referralId}` });
+  } catch (error) {
+    // The referral record is the durable in-app confirmation; push is best effort.
+    console.error("Could not queue referral reward push", { referralId });
+  }
 
   req.audit = {
     action: "admin.referral.rewarded",

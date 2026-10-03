@@ -1,5 +1,5 @@
 const prisma = require("../lib/prisma");
-const { getShopIdForUser } = require("../lib/shopAccess");
+const { getBillingShopIdForUser, getShopIdForUser } = require("../lib/shopAccess");
 const { isSubscriptionActive } = require("../middleware/subscription");
 
 function asyncHandler(fn) {
@@ -8,6 +8,7 @@ function asyncHandler(fn) {
 
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const billingShopId = req.user.staffId ? null : await getBillingShopIdForUser(req.user);
   const permissions = req.user.staffId ? req.user.permissions || {} : {
     canSell: true,
     canManageStock: true,
@@ -15,7 +16,7 @@ const list = asyncHandler(async (req, res) => {
     canViewReports: true,
   };
 
-  const [shop, products, debts, customerOrders, syncFailures, quotations] = await Promise.all([
+  const [shop, products, debts, customerOrders, syncFailures, quotations, referralRewards] = await Promise.all([
     prisma.shop.findUnique({
       where: { id: shopId },
       select: { id: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
@@ -35,9 +36,33 @@ const list = asyncHandler(async (req, res) => {
     permissions.canViewQuotations || !req.user.staffId
       ? prisma.quotation.findMany({ where: { shopId, status: { in: ["SENT", "ACCEPTED"] } }, select: { id: true, quotationNumber: true, status: true, expiryDate: true, depositDueDate: true, depositRequiredAmount: true, amountPaid: true }, orderBy: { updatedAt: "desc" }, take: 100 })
       : [],
+    billingShopId
+      ? prisma.shopReferral.findMany({
+        where: { referrerShopId: billingShopId, status: "REWARDED", rewardedAt: { gte: new Date(Date.now() - 90 * 86400000) } },
+        select: { id: true, rewardedAt: true, referredShop: { select: { name: true } } },
+        orderBy: { rewardedAt: "desc" },
+        take: 20,
+      })
+      : [],
   ]);
 
   const items = [];
+  for (const reward of referralRewards) {
+    const referredShopName = reward.referredShop?.name || "a referred shop";
+    items.push({
+      id: `referral-reward-${reward.id}`,
+      type: "REFERRAL_REWARD",
+      severity: "ACTION",
+      title: "Referral reward confirmed",
+      titleSw: "Zawadi ya referral imethibitishwa",
+      description: `An admin added 7 free days to your account after ${referredShopName} qualified. Open Referrals to see your reward status.`,
+      descriptionSw: `Admin ameongeza siku 7 za bure kwenye akaunti yako baada ya ${referredShopName} kustahili. Fungua Mialiko na Zawadi kuona hali ya zawadi yako.`,
+      href: "/referrals",
+      count: 1,
+      createdAt: reward.rewardedAt,
+    });
+  }
+
   const lowStock = products.filter((product) => product.currentStock <= product.minimumStock);
   if (lowStock.length) {
     const outCount = lowStock.filter((product) => product.currentStock === 0).length;

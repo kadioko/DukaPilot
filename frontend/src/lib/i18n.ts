@@ -198,6 +198,8 @@ const translations: Record<string, Record<Lang, string>> = {
 
   "suppliers.title": { sw: "Wasambazaji", en: "Suppliers" },
   "suppliers.addBtn": { sw: "Ongeza Msambazaji", en: "Add Supplier" },
+  "suppliers.privateBadge": { sw: "Msambazaji wako binafsi", en: "Your private supplier" },
+  "suppliers.privateHelp": { sw: "Msambazaji huyu ataonekana kwa biashara yako na wasimamizi wa DukaPilot pekee. Hataongezwa kwenye orodha ya pamoja ya wasambazaji.", en: "This supplier is visible only to your business and DukaPilot administrators. They will not be added to the shared supplier directory." },
   "suppliers.none": { sw: "Hakuna wasambazaji bado", en: "No suppliers yet" },
   "suppliers.addFirst": { sw: "Ongeza msambazaji wako wa kwanza", en: "Add your first supplier" },
   "suppliers.productsCount": { sw: "bidhaa", en: "products" },

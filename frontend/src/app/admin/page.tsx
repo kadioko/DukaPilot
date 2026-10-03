@@ -163,6 +163,13 @@ interface AdminReportsResponse {
   statusCounts: Record<string, number>;
 }
 
+interface AdminPagedResponse {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 interface Subscription {
   additionalBranchSlots?: number;
   id: string;
@@ -211,6 +218,10 @@ interface CheckoutException {
   shop: { id: string; name: string; user?: { name: string; phone: string } | null };
 }
 
+interface CheckoutExceptionListResponse extends AdminPagedResponse {
+  checkouts: CheckoutException[];
+}
+
 interface AdminReferral {
   id: string;
   status: "PENDING" | "QUALIFIED" | "REWARDED" | "REJECTED";
@@ -240,6 +251,7 @@ interface AdminReferral {
 interface AdminReferralListResponse {
   referrals: AdminReferral[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
+  statusCounts?: Record<string, number>;
 }
 
 interface AdminMetric {
@@ -257,6 +269,12 @@ interface Supplier {
   verifiedAt?: string | null;
   adminNotes?: string | null;
   _count?: { products: number; orders: number };
+}
+
+interface AdminSupplierListResponse extends AdminPagedResponse {
+  suppliers: Supplier[];
+  statusCounts?: Record<string, number>;
+  globalStatusCounts?: Record<string, number>;
 }
 
 interface SyncShopSummary {
@@ -301,8 +319,14 @@ interface AdminSyncEvent {
   shop?: { id: string; name: string; user?: { name: string; phone: string } | null };
 }
 
+interface AdminSyncEventsResponse extends AdminPagedResponse {
+  events: AdminSyncEvent[];
+  devices: AdminSyncDeviceRow[];
+}
+
 interface AdminSyncDeviceRow {
   shopId: string;
+  shop?: { id: string; name: string; user?: { name: string; phone: string } | null } | null;
   deviceId?: string | null;
   deviceLabel?: string | null;
   status: "QUEUED" | "SYNCED" | "FAILED" | "REMOVED";
@@ -420,6 +444,22 @@ function ActionCard({
   );
 }
 
+function AdminPager({ page, totalPages, total, pageSize = 25, sw, onPage }: { page: number; totalPages: number; total: number; pageSize?: number; sw: boolean; onPage: (page: number) => void }) {
+  if (total === 0) return null;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 bg-white px-3 py-3 text-xs">
+      <span className="text-gray-500">{from}-{to} {sw ? "kati ya" : "of"} {total.toLocaleString()}</span>
+      <div className="flex items-center gap-2">
+        <span className="mr-1 text-gray-500">{sw ? "Ukurasa" : "Page"} {page} / {totalPages}</span>
+        <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className="min-h-9 rounded border border-gray-200 px-3 font-semibold text-gray-700 disabled:opacity-40">{sw ? "Nyuma" : "Previous"}</button>
+        <button type="button" disabled={page >= totalPages} onClick={() => onPage(page + 1)} className="min-h-9 rounded border border-gray-200 px-3 font-semibold text-gray-700 disabled:opacity-40">{sw ? "Mbele" : "Next"}</button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const sw = useLang() === "sw";
   const [tab, setTab] = useState<Tab>("overview");
@@ -430,18 +470,38 @@ export default function AdminPage() {
   const [sectionLoading, setSectionLoading] = useState<Record<string, boolean>>({});
   const [pageError, setPageError] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersTotalPages, setUsersTotalPages] = useState(1);
+  const [usersSearch, setUsersSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("ALL");
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
+  const [auditSearch, setAuditSearch] = useState("");
+  const [auditSearchDraft, setAuditSearchDraft] = useState("");
   const [reports, setReports] = useState<Report[]>([]);
+  const [reportTotal, setReportTotal] = useState(0);
   const [reportPage, setReportPage] = useState(1);
   const [reportTotalPages, setReportTotalPages] = useState(1);
   const [reportStatusCounts, setReportStatusCounts] = useState<Record<string, number>>({});
   const [reportFilter, setReportFilter] = useState("OPEN");
+  const [reportSearch, setReportSearch] = useState("");
+  const [reportSearchDraft, setReportSearchDraft] = useState("");
+  const [reportTypeFilter, setReportTypeFilter] = useState("ALL");
+  const [reportPriorityFilter, setReportPriorityFilter] = useState("ALL");
   const [updatingReport, setUpdatingReport] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [subscriptionSupportQueue, setSubscriptionSupportQueue] = useState<Subscription[]>([]);
   const [selectedSupportShop, setSelectedSupportShop] = useState<Subscription | null>(null);
   const [subscriptionOperationalCounts, setSubscriptionOperationalCounts] = useState({ expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 });
   const [checkoutExceptions, setCheckoutExceptions] = useState<CheckoutException[]>([]);
+  const [checkoutExceptionTotal, setCheckoutExceptionTotal] = useState(0);
+  const [checkoutExceptionPage, setCheckoutExceptionPage] = useState(1);
+  const [checkoutExceptionTotalPages, setCheckoutExceptionTotalPages] = useState(1);
+  const [checkoutExceptionSearch, setCheckoutExceptionSearch] = useState("");
+  const [checkoutExceptionSearchDraft, setCheckoutExceptionSearchDraft] = useState("");
   const [retryingCheckout, setRetryingCheckout] = useState<string | null>(null);
   const [subscriptionTotal, setSubscriptionTotal] = useState(0);
   const [subscriptionPage, setSubscriptionPage] = useState(1);
@@ -452,7 +512,19 @@ export default function AdminPage() {
   const [referralPage, setReferralPage] = useState(1);
   const [referralTotal, setReferralTotal] = useState(0);
   const [referralTotalPages, setReferralTotalPages] = useState(1);
+  const [referralSearch, setReferralSearch] = useState("");
+  const [referralSearchDraft, setReferralSearchDraft] = useState("");
+  const [referralStatusFilter, setReferralStatusFilter] = useState("ALL");
+  const [referralStatusCounts, setReferralStatusCounts] = useState<Record<string, number>>({});
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierTotal, setSupplierTotal] = useState(0);
+  const [supplierPage, setSupplierPage] = useState(1);
+  const [supplierTotalPages, setSupplierTotalPages] = useState(1);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [supplierSearchDraft, setSupplierSearchDraft] = useState("");
+  const [supplierStatusFilter, setSupplierStatusFilter] = useState("ALL");
+  const [supplierStatusCounts, setSupplierStatusCounts] = useState<Record<string, number>>({});
+  const [supplierGlobalStatusCounts, setSupplierGlobalStatusCounts] = useState<Record<string, number>>({});
   const [syncSummaries, setSyncSummaries] = useState<SyncShopSummary[]>([]);
   const [syncEvents, setSyncEvents] = useState<AdminSyncEvent[]>([]);
   const [syncDevices, setSyncDevices] = useState<AdminSyncDeviceRow[]>([]);
@@ -460,6 +532,11 @@ export default function AdminPage() {
   const [syncDeviceFilter, setSyncDeviceFilter] = useState("");
   const [syncStatusFilter, setSyncStatusFilter] = useState("");
   const [syncOperationFilter, setSyncOperationFilter] = useState("");
+  const [syncSearch, setSyncSearch] = useState("");
+  const [syncSearchDraft, setSyncSearchDraft] = useState("");
+  const [syncPage, setSyncPage] = useState(1);
+  const [syncTotal, setSyncTotal] = useState(0);
+  const [syncTotalPages, setSyncTotalPages] = useState(1);
   const [loadingSyncEvents, setLoadingSyncEvents] = useState(false);
   const [smsMonitoring, setSmsMonitoring] = useState<SmsMonitoring | null>(null);
   const [loadingSmsMonitoring, setLoadingSmsMonitoring] = useState(false);
@@ -505,16 +582,16 @@ export default function AdminPage() {
         setLoading(false);
         start<AdminOverview | null>("overview", api.get<AdminOverview>("/admin/overview"), null, setOverview);
         start<OperationsSummary | null>("operations summary", api.get<OperationsSummary>("/admin/operations-summary"), null, setOperationsSummary);
-        start("users", api.get<{ users: AdminUser[] }>("/admin/users"), { users: [] }, (data) => setUsers(data.users));
-        start("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }, (data) => setAuditLogs(data.logs));
-        start<AdminReportsResponse>("reports", api.get<AdminReportsResponse>("/reports/admin?limit=25&status=OPEN"), { reports: [], total: 0, page: 1, totalPages: 1, statusCounts: {} }, (data) => { setReports(data.reports); setReportPage(data.page); setReportTotalPages(data.totalPages); setReportStatusCounts(data.statusCounts); });
+        start("users", api.get<{ users: AdminUser[] } & AdminPagedResponse>("/admin/users?page=1&limit=25"), { users: [], total: 0, page: 1, limit: 25, totalPages: 1 }, (data) => { setUsers(data.users); setUsersTotal(data.total); setUsersPage(data.page); setUsersTotalPages(data.totalPages); });
+        start("audit logs", api.get<{ logs: AuditLog[] } & AdminPagedResponse>("/admin/audit-logs?page=1&limit=25"), { logs: [], total: 0, page: 1, limit: 25, totalPages: 1 }, (data) => { setAuditLogs(data.logs); setAuditTotal(data.total); setAuditPage(data.page); setAuditTotalPages(data.totalPages); });
+        start<AdminReportsResponse>("reports", api.get<AdminReportsResponse>("/reports/admin?limit=25&status=OPEN"), { reports: [], total: 0, page: 1, totalPages: 1, statusCounts: {} }, (data) => { setReports(data.reports); setReportTotal(data.total); setReportPage(data.page); setReportTotalPages(data.totalPages); setReportStatusCounts(data.statusCounts); });
         start<SubscriptionListResponse>("subscriptions", api.get<SubscriptionListResponse>("/subscription/admin?page=1&limit=24"), { shops: [], supportQueue: [], operationalCounts: { expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 }, total: 0, page: 1, limit: 24, totalPages: 1, statusCounts: { trial: 0, active: 0, expired: 0, suspended: 0 } }, (data) => { setSubscriptions(data.shops); setSubscriptionSupportQueue(data.supportQueue || []); setSubscriptionOperationalCounts(data.operationalCounts || { expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 }); setSubscriptionTotal(data.total); setSubscriptionPage(data.page); setSubscriptionPageSize(data.limit); setSubscriptionTotalPages(data.totalPages); setSubscriptionStatusCounts(data.statusCounts); setFollowUpDrafts(Object.fromEntries(data.shops.map((shop) => [shop.id, shop.followUpNotes || ""]))); });
-        start<AdminReferralListResponse>("referrals", api.get<AdminReferralListResponse>("/admin/referrals?page=1&limit=25"), { referrals: [], pagination: { page: 1, limit: 25, total: 0, totalPages: 1 } }, (data) => { setReferrals(data.referrals); setReferralPage(data.pagination.page); setReferralTotal(data.pagination.total); setReferralTotalPages(data.pagination.totalPages); });
-        start("suppliers", api.get<{ suppliers: Supplier[] }>("/suppliers"), { suppliers: [] }, (data) => { setSuppliers(data.suppliers); setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""]))); });
+        start<AdminReferralListResponse>("referrals", api.get<AdminReferralListResponse>("/admin/referrals?page=1&limit=25"), { referrals: [], pagination: { page: 1, limit: 25, total: 0, totalPages: 1 } }, (data) => { setReferrals(data.referrals); setReferralPage(data.pagination.page); setReferralTotal(data.pagination.total); setReferralTotalPages(data.pagination.totalPages); setReferralStatusCounts(data.statusCounts || {}); });
+        start<AdminSupplierListResponse>("suppliers", api.get<AdminSupplierListResponse>("/suppliers?page=1&limit=25"), { suppliers: [], total: 0, page: 1, limit: 25, totalPages: 1 }, (data) => { setSuppliers(data.suppliers); setSupplierTotal(data.total); setSupplierPage(data.page); setSupplierTotalPages(data.totalPages); setSupplierStatusCounts(data.statusCounts || {}); setSupplierGlobalStatusCounts(data.globalStatusCounts || {}); setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""]))); });
         start("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }, (data) => setSyncSummaries(data.shops));
-        start("sync events", api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"), { events: [], devices: [] }, (data) => { setSyncEvents(data.events); setSyncDevices(data.devices); });
+        start<AdminSyncEventsResponse>("sync events", api.get<AdminSyncEventsResponse>("/sync/admin/events?page=1&limit=50"), { events: [], devices: [], total: 0, page: 1, limit: 50, totalPages: 1 }, (data) => { setSyncEvents(data.events); setSyncDevices(data.devices); setSyncTotal(data.total); setSyncPage(data.page); setSyncTotalPages(data.totalPages); });
         start<NonNullable<AdminOverview["assistantAnalytics"]> | null>("assistant analytics", api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"), null, setAssistantAnalytics);
-        start("payment exceptions", api.get<{ checkouts: CheckoutException[] }>("/subscription/admin-checkouts/review"), { checkouts: [] }, (data) => setCheckoutExceptions(data.checkouts));
+        start<CheckoutExceptionListResponse>("payment exceptions", api.get<CheckoutExceptionListResponse>("/subscription/admin-checkouts/review?page=1&limit=25"), { checkouts: [], total: 0, page: 1, limit: 25, totalPages: 1 }, (data) => { setCheckoutExceptions(data.checkouts); setCheckoutExceptionTotal(data.total); setCheckoutExceptionPage(data.page); setCheckoutExceptionTotalPages(data.totalPages); });
       })
       .catch((error) => {
         if (!cancelled) setPageError(error instanceof Error ? error.message : "Could not verify admin access");
@@ -531,8 +608,8 @@ export default function AdminPage() {
       switch (section) {
         case "overview": setOverview(await api.get<AdminOverview>("/admin/overview")); break;
         case "operations summary": setOperationsSummary(await api.get<OperationsSummary>("/admin/operations-summary")); break;
-        case "users": setUsers((await api.get<{ users: AdminUser[] }>("/admin/users")).users); break;
-        case "audit logs": setAuditLogs((await api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50")).logs); break;
+        case "users": await refreshUsers(); break;
+        case "audit logs": await refreshAuditLogs(); break;
         case "reports": await refreshReports(); break;
         case "subscriptions": await refreshSubscriptions(); break;
         case "referrals": await refreshReferrals(); break;
@@ -543,11 +620,31 @@ export default function AdminPage() {
           setAssistantAnalytics(await api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"));
           break;
         }
-        case "payment exceptions": setCheckoutExceptions((await api.get<{ checkouts: CheckoutException[] }>("/subscription/admin-checkouts/review")).checkouts); break;
+        case "payment exceptions": await refreshCheckoutExceptions(); break;
       }
     } catch (error) {
       setSectionErrors((previous) => ({ ...previous, [section]: error instanceof Error ? error.message : "Request failed" }));
     } finally { setSectionLoading((previous) => ({ ...previous, [section]: false })); }
+  }
+
+  async function refreshUsers(page = usersPage, role = userRoleFilter, search = usersSearch) {
+    const params = new URLSearchParams({ page: String(page), limit: "25", role });
+    if (search.trim()) params.set("search", search.trim());
+    const data = await api.get<{ users: AdminUser[] } & AdminPagedResponse>(`/admin/users?${params}`);
+    setUsers(data.users);
+    setUsersTotal(data.total);
+    setUsersPage(data.page);
+    setUsersTotalPages(data.totalPages);
+  }
+
+  async function refreshAuditLogs(page = auditPage, search = auditSearch) {
+    const params = new URLSearchParams({ page: String(page), limit: "25" });
+    if (search.trim()) params.set("search", search.trim());
+    const data = await api.get<{ logs: AuditLog[] } & AdminPagedResponse>(`/admin/audit-logs?${params}`);
+    setAuditLogs(data.logs);
+    setAuditTotal(data.total);
+    setAuditPage(data.page);
+    setAuditTotalPages(data.totalPages);
   }
 
   async function handleSearch(e: React.FormEvent) {
@@ -597,14 +694,54 @@ export default function AdminPage() {
     }
   }
 
-  async function refreshReports(status = reportFilter, page = reportPage) {
+  async function refreshReports(status = reportFilter, page = reportPage, search = reportSearch, type = reportTypeFilter, priority = reportPriorityFilter) {
     const params = new URLSearchParams({ limit: "25", page: String(page) });
     if (status !== "ALL") params.set("status", status);
+    if (search.trim()) params.set("search", search.trim());
+    if (type !== "ALL") params.set("type", type);
+    if (priority !== "ALL") params.set("priority", priority);
     const data = await api.get<AdminReportsResponse>(`/reports/admin?${params.toString()}`);
     setReports(data.reports);
+    setReportTotal(data.total);
     setReportPage(data.page);
     setReportTotalPages(data.totalPages);
     setReportStatusCounts(data.statusCounts);
+  }
+
+  function submitUsersSearch(event: React.FormEvent) {
+    event.preventDefault();
+    setUsersSearch(usersSearch.trim());
+    refreshUsers(1, userRoleFilter, usersSearch.trim()).catch((error) => setSectionErrors((previous) => ({ ...previous, users: error instanceof Error ? error.message : "Could not search users" })));
+  }
+
+  function submitAuditSearch(event: React.FormEvent) {
+    event.preventDefault();
+    setAuditSearch(auditSearchDraft.trim());
+    refreshAuditLogs(1, auditSearchDraft.trim()).catch((error) => setSectionErrors((previous) => ({ ...previous, "audit logs": error instanceof Error ? error.message : "Could not search audit logs" })));
+  }
+
+  function submitReportsSearch(event: React.FormEvent) {
+    event.preventDefault();
+    setReportSearch(reportSearchDraft.trim());
+    refreshReports(reportFilter, 1, reportSearchDraft.trim()).catch((error) => setSectionErrors((previous) => ({ ...previous, reports: error instanceof Error ? error.message : "Could not search reports" })));
+  }
+
+  function submitReferralsSearch(event: React.FormEvent) {
+    event.preventDefault();
+    setReferralSearch(referralSearchDraft.trim());
+    refreshReferrals(1, referralSearchDraft.trim()).catch((error) => setSectionErrors((previous) => ({ ...previous, referrals: error instanceof Error ? error.message : "Could not search referrals" })));
+  }
+
+  function submitSuppliersSearch(event: React.FormEvent) {
+    event.preventDefault();
+    setSupplierSearch(supplierSearchDraft.trim());
+    refreshSuppliers(1, supplierSearchDraft.trim()).catch((error) => setSectionErrors((previous) => ({ ...previous, suppliers: error instanceof Error ? error.message : "Could not search suppliers" })));
+  }
+
+  function submitSyncSearch(event: React.FormEvent) {
+    event.preventDefault();
+    setSyncSearch(syncSearchDraft.trim());
+    refreshSyncEvents({ search: syncSearchDraft.trim(), page: 1 }).catch(console.error);
   }
 
   async function handleUpdateReport(reportId: string, status: string, adminNotes?: string) {
@@ -686,12 +823,29 @@ export default function AdminPage() {
     setFollowUpDrafts(Object.fromEntries(data.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
   }
 
+  async function refreshCheckoutExceptions(page = checkoutExceptionPage, search = checkoutExceptionSearch) {
+    const params = new URLSearchParams({ page: String(page), limit: "25" });
+    if (search.trim()) params.set("search", search.trim());
+    const data = await api.get<CheckoutExceptionListResponse>(`/subscription/admin-checkouts/review?${params}`);
+    setCheckoutExceptions(data.checkouts);
+    setCheckoutExceptionTotal(data.total);
+    setCheckoutExceptionPage(data.page);
+    setCheckoutExceptionTotalPages(data.totalPages);
+  }
+
+  function submitCheckoutExceptionSearch(event: React.FormEvent) {
+    event.preventDefault();
+    const search = checkoutExceptionSearchDraft.trim();
+    setCheckoutExceptionSearch(search);
+    refreshCheckoutExceptions(1, search).catch((error) => setSectionErrors((previous) => ({ ...previous, "payment exceptions": error instanceof Error ? error.message : "Could not search payment exceptions" })));
+  }
+
   async function retryCheckoutException(id: string) {
     setRetryingCheckout(id);
     try {
       const data = await api.post<{ checkout: { status: string } }>(`/subscription/admin-checkouts/${id}/retry`, {});
       if (data.checkout.status !== "REVIEW") setCheckoutExceptions((current) => current.filter((item) => item.id !== id));
-      await refreshSubscriptions();
+      await Promise.all([refreshSubscriptions(), refreshCheckoutExceptions()]);
     } finally {
       setRetryingCheckout(null);
     }
@@ -707,12 +861,15 @@ export default function AdminPage() {
     refreshSubscriptions({ page: 1 }).catch(console.error);
   }
 
-  async function refreshReferrals(page = referralPage) {
-    const data = await api.get<AdminReferralListResponse>(`/admin/referrals?page=${page}&limit=25`);
+  async function refreshReferrals(page = referralPage, search = referralSearch, status = referralStatusFilter) {
+    const params = new URLSearchParams({ page: String(page), limit: "25", status });
+    if (search.trim()) params.set("search", search.trim());
+    const data = await api.get<AdminReferralListResponse>(`/admin/referrals?${params}`);
     setReferrals(data.referrals);
     setReferralPage(data.pagination.page);
     setReferralTotal(data.pagination.total);
     setReferralTotalPages(data.pagination.totalPages);
+    setReferralStatusCounts(data.statusCounts || {});
   }
 
   async function handleRewardReferral(referral: AdminReferral) {
@@ -764,27 +921,40 @@ export default function AdminPage() {
     }
   }
 
-  async function refreshSuppliers() {
-    const data = await api.get<{ suppliers: Supplier[] }>("/suppliers");
+  async function refreshSuppliers(page = supplierPage, search = supplierSearch, status = supplierStatusFilter) {
+    const params = new URLSearchParams({ page: String(page), limit: "25", status });
+    if (search.trim()) params.set("search", search.trim());
+    const data = await api.get<AdminSupplierListResponse>(`/suppliers?${params}`);
     setSuppliers(data.suppliers);
+    setSupplierTotal(data.total);
+    setSupplierPage(data.page);
+    setSupplierTotalPages(data.totalPages);
+    setSupplierStatusCounts(data.statusCounts || {});
+    setSupplierGlobalStatusCounts(data.globalStatusCounts || {});
     setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
   }
 
-  async function refreshSyncEvents(patch?: { shopId?: string; deviceId?: string; status?: string; operationKind?: string }) {
+  async function refreshSyncEvents(patch?: { shopId?: string; deviceId?: string; status?: string; operationKind?: string; search?: string; page?: number }) {
     const nextShopId = patch?.shopId ?? syncShopFilter;
     const nextDeviceId = patch?.deviceId ?? syncDeviceFilter;
     const nextStatus = patch?.status ?? syncStatusFilter;
     const nextOperationKind = patch?.operationKind ?? syncOperationFilter;
+    const nextSearch = patch?.search ?? syncSearch;
+    const nextPage = patch?.page ?? syncPage;
     setLoadingSyncEvents(true);
     try {
-      const params = new URLSearchParams({ limit: "150" });
+      const params = new URLSearchParams({ limit: "50", page: String(nextPage) });
       if (nextShopId) params.set("shopId", nextShopId);
       if (nextDeviceId) params.set("deviceId", nextDeviceId);
       if (nextStatus) params.set("status", nextStatus);
       if (nextOperationKind) params.set("operationKind", nextOperationKind);
-      const data = await api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>(`/sync/admin/events?${params.toString()}`);
+      if (nextSearch.trim()) params.set("search", nextSearch.trim());
+      const data = await api.get<AdminSyncEventsResponse>(`/sync/admin/events?${params.toString()}`);
       setSyncEvents(data.events);
       setSyncDevices(data.devices);
+      setSyncTotal(data.total);
+      setSyncPage(data.page);
+      setSyncTotalPages(data.totalPages);
     } finally {
       setLoadingSyncEvents(false);
     }
@@ -811,8 +981,10 @@ export default function AdminPage() {
     setSyncDeviceFilter(nextDevice);
     setSyncStatusFilter("");
     setSyncOperationFilter("");
+    setSyncSearch("");
+    setSyncSearchDraft("");
     setTab("sync");
-    refreshSyncEvents({ shopId: nextShop, deviceId: nextDevice, status: "", operationKind: "" }).catch(console.error);
+    refreshSyncEvents({ shopId: nextShop, deviceId: nextDevice, status: "", operationKind: "", search: "", page: 1 }).catch(console.error);
   }
 
   function displayDeviceLabel(deviceId?: string | null, label?: string | null, ownerName?: string | null) {
@@ -964,7 +1136,7 @@ export default function AdminPage() {
 
     try {
       await api.delete(`/admin/users/${user.id}`);
-      setUsers((prev) => prev.filter((item) => item.id !== user.id));
+      await refreshUsers(usersPage);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to remove user");
     }
@@ -1062,7 +1234,7 @@ export default function AdminPage() {
   const failedSyncEvents = syncSummaries.reduce((sum, shop) => sum + shop.failed, 0);
   const stalledTrials = subscriptionOperationalCounts.stalledTrials;
   const suppliersNeedingReview = operationsSummary?.supplierReview ?? 0;
-  const verifiedSuppliers = suppliers.filter((supplier) => supplier.verificationStatus === "VERIFIED").length;
+  const verifiedSuppliers = supplierGlobalStatusCounts.VERIFIED || 0;
   const qualifiedReferrals = operationsSummary?.qualifiedReferrals ?? 0;
   const shopsNeedingFollowUp = subscriptionSupportQueue
     .filter((shop) =>
@@ -1583,8 +1755,15 @@ export default function AdminPage() {
         {/* USERS */}
         {tab === "users" && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-800 text-sm">All Users ({users.length})</h2>
+            <div className="border-b border-gray-100 bg-gray-50 p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-gray-800 text-sm">All Users ({usersTotal.toLocaleString()})</h2><span className="text-xs text-gray-500">Search by name, phone, shop, or supplier</span></div>
+              <form onSubmit={submitUsersSearch} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <input aria-label="Search users" value={usersSearch} onChange={(event) => setUsersSearch(event.target.value)} placeholder="Search users, phone, or business" className="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <select aria-label="Filter users by role" value={userRoleFilter} onChange={(event) => { const role = event.target.value; setUserRoleFilter(role); refreshUsers(1, role).catch((error) => setSectionErrors((previous) => ({ ...previous, users: error instanceof Error ? error.message : "Could not filter users" }))); }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="ALL">All roles</option><option value="MERCHANT">Merchants</option><option value="SUPPLIER">Suppliers</option><option value="ADMIN">Admins</option>
+                </select>
+                <button type="submit" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-semibold text-white"><Search className="h-4 w-4" /> Search</button>
+              </form>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1599,6 +1778,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {users.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">No users match these filters.</td></tr>}
                   {users.map((u) => (
                     <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-4 py-2.5 font-medium text-gray-900">{u.name}</td>
@@ -1631,6 +1811,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            <AdminPager page={usersPage} totalPages={usersTotalPages} total={usersTotal} sw={sw} onPage={(page) => refreshUsers(page).catch((error) => setSectionErrors((previous) => ({ ...previous, users: error instanceof Error ? error.message : "Could not load users" })))} />
           </div>
         )}
 
@@ -1720,8 +1901,12 @@ export default function AdminPage() {
         {/* AUDIT LOG */}
         {tab === "audit" && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-              <h2 className="font-semibold text-gray-800 text-sm">Recent Audit Events (last 50)</h2>
+            <div className="border-b border-gray-100 bg-gray-50 p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-gray-800 text-sm">Audit Events ({auditTotal.toLocaleString()})</h2><span className="text-xs text-gray-500">Search by action, account, resource, or path</span></div>
+              <form onSubmit={submitAuditSearch} className="flex gap-2">
+                <input aria-label="Search audit events" value={auditSearchDraft} onChange={(event) => setAuditSearchDraft(event.target.value)} placeholder="Search audit history" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <button type="submit" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-semibold text-white"><Search className="h-4 w-4" /> Search</button>
+              </form>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1734,6 +1919,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {auditLogs.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-500">No audit events match this search.</td></tr>}
                   {auditLogs.map((log) => (
                     <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-4 py-2.5">
@@ -1758,6 +1944,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            <AdminPager page={auditPage} totalPages={auditTotalPages} total={auditTotal} sw={sw} onPage={(page) => refreshAuditLogs(page).catch((error) => setSectionErrors((previous) => ({ ...previous, "audit logs": error instanceof Error ? error.message : "Could not load audit history" })))} />
           </div>
         )}
 
@@ -1777,6 +1964,16 @@ export default function AdminPage() {
                 </button>
               ))}
             </div>
+            <form onSubmit={submitReportsSearch} className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+              <input aria-label="Search support reports" value={reportSearchDraft} onChange={(event) => setReportSearchDraft(event.target.value)} placeholder="Search title, message, owner, phone, or shop" className="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <select aria-label="Filter reports by type" value={reportTypeFilter} onChange={(event) => { const type = event.target.value; setReportTypeFilter(type); refreshReports(reportFilter, 1, reportSearch, type).catch(console.error); }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="ALL">All types</option><option value="BUG">Bug</option><option value="FEATURE_REQUEST">Feature request</option><option value="ACCOUNT_ISSUE">Account issue</option><option value="BILLING">Billing</option><option value="OTHER">Other</option>
+              </select>
+              <select aria-label="Filter reports by priority" value={reportPriorityFilter} onChange={(event) => { const priority = event.target.value; setReportPriorityFilter(priority); refreshReports(reportFilter, 1, reportSearch, reportTypeFilter, priority).catch(console.error); }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="ALL">All priorities</option><option value="URGENT">Urgent</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option>
+              </select>
+              <button type="submit" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-semibold text-white"><Search className="h-4 w-4" /> Search</button>
+            </form>
             <div className="space-y-3">
               {reports.length === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-500 text-sm">
@@ -1867,7 +2064,7 @@ export default function AdminPage() {
                 ))
               )}
             </div>
-            {reportTotalPages > 1 && <div className="mt-4 flex items-center justify-between text-sm"><button type="button" disabled={reportPage <= 1} onClick={() => refreshReports(reportFilter, reportPage - 1).catch((error) => setSectionErrors((previous) => ({ ...previous, reports: error instanceof Error ? error.message : "Could not load reports" })))} className="rounded border px-3 py-2 disabled:opacity-40">{sw ? "Nyuma" : "Previous"}</button><span>{reportPage} / {reportTotalPages}</span><button type="button" disabled={reportPage >= reportTotalPages} onClick={() => refreshReports(reportFilter, reportPage + 1).catch((error) => setSectionErrors((previous) => ({ ...previous, reports: error instanceof Error ? error.message : "Could not load reports" })))} className="rounded border px-3 py-2 disabled:opacity-40">{sw ? "Mbele" : "Next"}</button></div>}
+            <AdminPager page={reportPage} totalPages={reportTotalPages} total={reportTotal} sw={sw} onPage={(page) => refreshReports(reportFilter, page).catch((error) => setSectionErrors((previous) => ({ ...previous, reports: error instanceof Error ? error.message : "Could not load reports" })))} />
           </div>
         )}
 
@@ -1894,7 +2091,14 @@ export default function AdminPage() {
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="rounded-full bg-white px-2.5 py-1 text-gray-700">{referralTotal} tracked</span>
                 <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{operationsSummary ? qualifiedReferrals : "—"} ready overall</span>
-                <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-800">{referrals.filter((referral) => referral.status === "REWARDED").length} rewarded on this page</span>
+                <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-800">{referralStatusCounts.REWARDED || 0} rewarded</span>
+              </div>
+              <form onSubmit={submitReferralsSearch} className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input aria-label="Search referrals" value={referralSearchDraft} onChange={(event) => setReferralSearchDraft(event.target.value)} placeholder="Search shops, owners, phones, or referral code" className="min-w-0 flex-1 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm" />
+                <button type="submit" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-brand-700 px-3 py-2 text-sm font-semibold text-white"><Search className="h-4 w-4" /> Search</button>
+              </form>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {["ALL", "PENDING", "QUALIFIED", "REWARDED", "REJECTED"].map((status) => <button key={status} type="button" onClick={() => { setReferralStatusFilter(status); refreshReferrals(1, referralSearch, status).catch(console.error); }} className={`min-h-9 rounded-full px-3 py-1.5 text-xs font-semibold ${referralStatusFilter === status ? "bg-brand-700 text-white" : "bg-white text-gray-700 hover:bg-brand-100"}`}>{status} ({status === "ALL" ? referralTotal : referralStatusCounts[status] || 0})</button>)}
               </div>
             </section>
 
@@ -1995,15 +2199,21 @@ export default function AdminPage() {
         {/* SUBSCRIPTIONS */}
         {tab === "subscriptions" && (
           <div>
-            {checkoutExceptions.length > 0 && <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <h2 className="text-sm font-semibold text-amber-950">Online payments needing review</h2>
+            {(checkoutExceptionTotal > 0 || checkoutExceptionSearch || checkoutExceptionSearchDraft) && <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <h2 className="text-sm font-semibold text-amber-950">Online payments needing review ({checkoutExceptionTotal.toLocaleString()})</h2>
               <p className="mt-1 text-xs text-amber-800">Retry uses the original provider idempotency key, so it does not create a second payment request.</p>
+              <form onSubmit={submitCheckoutExceptionSearch} className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input aria-label="Search payment exceptions" value={checkoutExceptionSearchDraft} onChange={(event) => setCheckoutExceptionSearchDraft(event.target.value)} placeholder="Search shop, owner, phone, or provider ID" className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" />
+                <button type="submit" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-amber-800 px-3 py-2 text-sm font-semibold text-white"><Search className="h-4 w-4" /> Search</button>
+              </form>
               <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                {checkoutExceptions.length === 0 && <p className="rounded-lg bg-white p-3 text-sm text-gray-600">No payment exceptions match this search.</p>}
                 {checkoutExceptions.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-white p-3 text-xs shadow-sm">
                   <div><p className="font-semibold text-gray-950">{item.shop.name} - {item.plan}</p><p className="text-gray-500">{formatTZS(item.amount)} - {item.phone} - {item.providerId ? "Provider payment found" : "Provider ID missing"}</p></div>
                   <button type="button" onClick={() => retryCheckoutException(item.id).catch((error) => window.alert(error instanceof Error ? error.message : "Retry failed"))} disabled={retryingCheckout === item.id} className="shrink-0 rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white disabled:opacity-50">{retryingCheckout === item.id ? "Checking..." : "Retry safely"}</button>
                 </div>)}
               </div>
+              <div className="mt-3 overflow-hidden rounded-lg border border-amber-200"><AdminPager page={checkoutExceptionPage} totalPages={checkoutExceptionTotalPages} total={checkoutExceptionTotal} sw={sw} onPage={(page) => refreshCheckoutExceptions(page).catch(console.error)} /></div>
             </section>}
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <form onSubmit={submitSubscriptionSearch} className="flex w-full max-w-xl gap-2">
@@ -2409,24 +2619,15 @@ export default function AdminPage() {
                   Refresh
                 </button>
               </div>
-              <div className="grid gap-2 md:grid-cols-5">
-                <select
-                  value={syncShopFilter}
-                  onChange={(e) => {
-                    setSyncShopFilter(e.target.value);
-                    refreshSyncEvents({ shopId: e.target.value }).catch(console.error);
-                  }}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">All shops</option>
-                  {subscriptions.map((shop) => (
-                    <option key={shop.id} value={shop.id}>{shop.name}</option>
-                  ))}
-                </select>
+              <form onSubmit={submitSyncSearch} className="mb-3 flex flex-col gap-2 sm:flex-row">
+                <input aria-label="Search sync history" value={syncSearchDraft} onChange={(event) => setSyncSearchDraft(event.target.value)} placeholder="Search any shop, owner phone, device, or local event ID" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <button type="submit" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-semibold text-white"><Search className="h-4 w-4" /> Search all shops</button>
+              </form>
+              <div className="grid gap-2 md:grid-cols-4">
                 <input
                   value={syncDeviceFilter}
                   onChange={(e) => setSyncDeviceFilter(e.target.value)}
-                  onBlur={() => refreshSyncEvents().catch(console.error)}
+                  onBlur={() => refreshSyncEvents({ page: 1 }).catch(console.error)}
                   placeholder="Device ID"
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
@@ -2434,7 +2635,7 @@ export default function AdminPage() {
                   value={syncStatusFilter}
                   onChange={(e) => {
                     setSyncStatusFilter(e.target.value);
-                    refreshSyncEvents({ status: e.target.value }).catch(console.error);
+                    refreshSyncEvents({ status: e.target.value, page: 1 }).catch(console.error);
                   }}
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
@@ -2448,7 +2649,7 @@ export default function AdminPage() {
                   value={syncOperationFilter}
                   onChange={(e) => {
                     setSyncOperationFilter(e.target.value);
-                    refreshSyncEvents({ operationKind: e.target.value }).catch(console.error);
+                    refreshSyncEvents({ operationKind: e.target.value, page: 1 }).catch(console.error);
                   }}
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   aria-label="Filter sync operations"
@@ -2463,7 +2664,9 @@ export default function AdminPage() {
                     setSyncDeviceFilter("");
                     setSyncStatusFilter("");
                     setSyncOperationFilter("");
-                    refreshSyncEvents({ shopId: "", deviceId: "", status: "", operationKind: "" }).catch(console.error);
+                    setSyncSearch("");
+                    setSyncSearchDraft("");
+                    refreshSyncEvents({ shopId: "", deviceId: "", status: "", operationKind: "", search: "", page: 1 }).catch(console.error);
                   }}
                   className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
@@ -2494,7 +2697,7 @@ export default function AdminPage() {
                     </thead>
                     <tbody>
                       {syncDevices.map((device, index) => {
-                        const shop = subscriptions.find((item) => item.id === device.shopId);
+                        const shop = device.shop || subscriptions.find((item) => item.id === device.shopId);
                         const deviceLabel = displayDeviceLabel(device.deviceId, device.deviceLabel, shop?.user?.name);
                         return (
                           <tr key={`${device.shopId}-${device.deviceId || "unknown"}-${device.status}-${index}`} className="border-b border-gray-50">
@@ -2545,7 +2748,7 @@ export default function AdminPage() {
             <section className="rounded-xl border border-gray-200 bg-white">
               <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
                 <h2 className="text-sm font-semibold text-gray-900">Event Timeline</h2>
-                <span className="text-xs text-gray-400">{syncEvents.length} events</span>
+                <span className="text-xs text-gray-400">{syncEvents.length} of {syncTotal.toLocaleString()} events</span>
               </div>
               {syncEvents.length === 0 ? (
                 <p className="p-6 text-sm text-gray-500">No sync events found for this filter.</p>
@@ -2612,6 +2815,7 @@ export default function AdminPage() {
                   ))}
                 </div>
               )}
+              <AdminPager page={syncPage} totalPages={syncTotalPages} total={syncTotal} pageSize={50} sw={sw} onPage={(page) => refreshSyncEvents({ page }).catch(console.error)} />
             </section>
           </div>
         )}
@@ -2718,14 +2922,23 @@ export default function AdminPage() {
         {tab === "suppliers" && (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-              <MiniMetric label="Total suppliers" value={suppliers.length} tone="border-gray-200 bg-gray-50 text-gray-800" />
-              <MiniMetric label="Verified" value={verifiedSuppliers} tone="border-green-200 bg-green-50 text-green-800" />
-              <MiniMetric label="Needs review" value={suppliers.filter((s) => s.verificationStatus === "NEEDS_REVIEW" || s.verificationStatus === "UNVERIFIED").length} tone="border-amber-200 bg-amber-50 text-amber-800" />
-              <MiniMetric label="Rejected" value={suppliers.filter((s) => s.verificationStatus === "REJECTED").length} tone="border-red-200 bg-red-50 text-red-800" />
+              <MiniMetric label="Total suppliers" value={supplierTotal.toLocaleString()} tone="border-gray-200 bg-gray-50 text-gray-800" />
+              <MiniMetric label="Verified" value={supplierStatusCounts.VERIFIED || 0} tone="border-green-200 bg-green-50 text-green-800" />
+              <MiniMetric label="Needs review" value={(supplierStatusCounts.NEEDS_REVIEW || 0) + (supplierStatusCounts.UNVERIFIED || 0)} tone="border-amber-200 bg-amber-50 text-amber-800" />
+              <MiniMetric label="Rejected" value={supplierStatusCounts.REJECTED || 0} tone="border-red-200 bg-red-50 text-red-800" />
             </div>
+            <section className="rounded-xl border border-gray-200 bg-white p-3">
+              <form onSubmit={submitSuppliersSearch} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <input aria-label="Search suppliers" value={supplierSearchDraft} onChange={(event) => setSupplierSearchDraft(event.target.value)} placeholder="Search supplier, phone, or address" className="min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <select aria-label="Filter suppliers by verification status" value={supplierStatusFilter} onChange={(event) => { const status = event.target.value; setSupplierStatusFilter(status); refreshSuppliers(1, supplierSearch, status).catch(console.error); }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="ALL">All statuses</option><option value="UNVERIFIED">Unverified</option><option value="NEEDS_REVIEW">Needs review</option><option value="VERIFIED">Verified</option><option value="REJECTED">Rejected</option>
+                </select>
+                <button type="submit" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-gray-950 px-3 py-2 text-sm font-semibold text-white"><Search className="h-4 w-4" /> Search</button>
+              </form>
+            </section>
             {suppliers.length === 0 ? (
               <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
-                No suppliers have been added yet.
+                No suppliers match these filters.
               </div>
             ) : (
               suppliers.map((supplier) => (
@@ -2793,6 +3006,7 @@ export default function AdminPage() {
                 </div>
               ))
             )}
+            <div className="overflow-hidden rounded-xl border border-gray-200"><AdminPager page={supplierPage} totalPages={supplierTotalPages} total={supplierTotal} sw={sw} onPage={(page) => refreshSuppliers(page).catch(console.error)} /></div>
           </div>
         )}
         {selectedSupportShop && <div className="fixed inset-0 z-50 bg-gray-950/40" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSupportShop(null); }}>

@@ -30,7 +30,7 @@ function staffCanReceiveKind(staff, kind) {
   return false;
 }
 
-async function queueForShop(shopId, kind, message) {
+async function queueForShop(shopId, kind, message, { dedupeKeyPrefix = null } = {}) {
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { shopId, isActive: true },
     select: { id: true, staffId: true },
@@ -51,7 +51,9 @@ async function queueForShop(shopId, kind, message) {
       shopId,
       subscriptionId: subscription.id,
       kind,
-      dedupeKey: `${dayKey}:${shopId}:${subscription.id}:${kind}`,
+      dedupeKey: dedupeKeyPrefix
+        ? `${dedupeKeyPrefix}:${subscription.id}`
+        : `${dayKey}:${shopId}:${subscription.id}:${kind}`,
       ...message,
     })),
     skipDuplicates: true,
@@ -61,6 +63,7 @@ async function queueForShop(shopId, kind, message) {
 
 async function queueShopAlerts({ afterId = null, limit = 100 } = {}) {
   const batchSize = Math.min(Math.max(Number(limit) || 100, 1), 200);
+  const now = new Date();
   const shops = await prisma.shop.findMany({
     where: afterId ? { id: { gt: afterId } } : undefined,
     select: {
@@ -72,6 +75,10 @@ async function queueShopAlerts({ afterId = null, limit = 100 } = {}) {
       user: { select: { language: true } },
       parentShop: { select: { user: { select: { language: true } } } },
       notificationPreference: true,
+      referralsMade: {
+        where: { status: "REWARDED", rewardedAt: { gte: new Date(now.getTime() - 90 * DAY_MS) } },
+        select: { id: true },
+      },
       products: { where: { isActive: true }, select: { name: true, currentStock: true, minimumStock: true } },
       debts: { where: { status: { in: ["OPEN", "PARTIAL"] } }, select: { amount: true, amountPaid: true, dueDate: true } },
       assistantActions: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1, select: { title: true, href: true } },
@@ -80,7 +87,6 @@ async function queueShopAlerts({ afterId = null, limit = 100 } = {}) {
     take: batchSize,
   });
   let queued = 0;
-  const now = new Date();
   const expiryWindow = new Date(now.getTime() + 7 * DAY_MS);
 
   for (const shop of shops) {
@@ -123,6 +129,16 @@ async function queueShopAlerts({ afterId = null, limit = 100 } = {}) {
         body: action.title,
         href: action.href || "/assistant",
       }));
+    }
+
+    for (const reward of shop.referralsMade || []) {
+      queued += Number(await queueForShop(shop.id, "REFERRAL_REWARD", {
+        title: sw ? "Zawadi ya referral imethibitishwa" : "Referral reward confirmed",
+        body: sw
+          ? "Admin ameongeza siku 7 za bure kwenye akaunti yako. Fungua DukaPilot kuona maelezo."
+          : "An admin added 7 free days to your account. Open DukaPilot to see the details.",
+        href: "/referrals",
+      }, { dedupeKeyPrefix: `referral-reward:${reward.id}` }));
     }
   }
   return { queued, scanned: shops.length, nextCursor: shops.length === batchSize ? shops.at(-1).id : null };

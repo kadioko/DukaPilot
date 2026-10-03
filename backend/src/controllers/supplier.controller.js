@@ -22,8 +22,28 @@ async function getPortalSupplier(user) {
 // Merchant: manage their supplier relationships
 const list = asyncHandler(async (req, res) => {
   const shopId = req.user.role === "MERCHANT" ? await getShopIdForUser(req.user) : null;
+  const adminPaging = req.user.role === "ADMIN" && (req.query.page !== undefined || req.query.limit !== undefined || req.query.search !== undefined || req.query.status !== undefined);
+  const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, Number.parseInt(req.query.limit, 10) || 25));
+  const search = String(req.query.search || "").trim().slice(0, 120);
+  const status = String(req.query.status || "ALL").trim().toUpperCase();
+  if (req.user.role === "ADMIN" && !["ALL", "UNVERIFIED", "NEEDS_REVIEW", "VERIFIED", "REJECTED"].includes(status)) {
+    return res.status(400).json({ error: "Invalid supplier status filter" });
+  }
+  const searchWhere = {
+    ...(shopId ? supplierVisibilityWhere(shopId) : {}),
+    ...(req.user.role === "ADMIN" && search ? { OR: [
+      { name: { contains: search, mode: "insensitive" } },
+      { phone: { contains: search } },
+      { address: { contains: search, mode: "insensitive" } },
+    ] } : {}),
+  };
+  const where = { ...searchWhere, ...(req.user.role === "ADMIN" && status !== "ALL" ? { verificationStatus: status } : {}) };
+  const total = adminPaging ? await prisma.supplier.count({ where }) : null;
+  const totalPages = adminPaging ? Math.max(1, Math.ceil(total / limit)) : 1;
+  const page = Math.min(requestedPage, totalPages);
   const suppliers = await prisma.supplier.findMany({
-    where: shopId ? supplierVisibilityWhere(shopId) : undefined,
+    where,
     select: {
       id: true,
       name: true,
@@ -42,15 +62,33 @@ const list = asyncHandler(async (req, res) => {
       },
     },
     orderBy: { name: "asc" },
+    ...(adminPaging ? { skip: (page - 1) * limit, take: limit } : {}),
   });
-  res.json({
+  const response = {
     suppliers: suppliers.map((supplier) => ({
       ...supplier,
       // Shared suppliers can be browsed by every merchant, but only an admin
       // or the shop that created a private entry can change its details.
       canEdit: req.user.role === "ADMIN" || Boolean(shopId && supplier.createdByShopId === shopId),
     })),
-  });
+  };
+  if (adminPaging) {
+    const statuses = ["UNVERIFIED", "NEEDS_REVIEW", "VERIFIED", "REJECTED"];
+    const [statusRows, globalStatusRows] = await Promise.all([
+      prisma.supplier.groupBy({ by: ["verificationStatus"], where: searchWhere, _count: { id: true } }),
+      prisma.supplier.groupBy({ by: ["verificationStatus"], _count: { id: true } }),
+    ]);
+    const toCounts = (rows) => Object.fromEntries(statuses.map((value) => [value, rows.find((row) => row.verificationStatus === value)?._count.id || 0]));
+    Object.assign(response, {
+      total,
+      page: Math.min(page, totalPages),
+      limit,
+      totalPages,
+      statusCounts: toCounts(statusRows),
+      globalStatusCounts: toCounts(globalStatusRows),
+    });
+  }
+  res.json(response);
 });
 
 const get = asyncHandler(async (req, res) => {

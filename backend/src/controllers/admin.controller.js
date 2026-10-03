@@ -3,6 +3,12 @@ const bcrypt = require("bcryptjs");
 const { getNextSmsMonitoring } = require("../services/nextsms-monitor.service");
 const { verifyCoexistenceOnboarding, isMetaCoexistenceConfigured } = require("../services/meta-whatsapp-coexistence.service");
 
+function listPagination(query, defaultLimit = 25) {
+  const limit = Math.max(1, Math.min(100, Number.parseInt(query.limit, 10) || defaultLimit));
+  const requestedPage = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  return { limit, requestedPage };
+}
+
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
@@ -133,7 +139,26 @@ const overview = asyncHandler(async (req, res) => {
 });
 
 const listUsers = asyncHandler(async (req, res) => {
+  const { limit, requestedPage } = listPagination(req.query);
+  const search = String(req.query.search || "").trim().slice(0, 120);
+  const role = String(req.query.role || "ALL").trim().toUpperCase();
+  if (!["ALL", "ADMIN", "MERCHANT", "SUPPLIER"].includes(role)) {
+    return res.status(400).json({ error: "Invalid user role filter" });
+  }
+  const where = {
+    ...(role === "ALL" ? {} : { role }),
+    ...(search ? { OR: [
+      { name: { contains: search, mode: "insensitive" } },
+      { phone: { contains: search } },
+      { shop: { is: { name: { contains: search, mode: "insensitive" } } } },
+      { supplier: { is: { name: { contains: search, mode: "insensitive" } } } },
+    ] } : {}),
+  };
+  const total = await prisma.user.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, totalPages);
   const users = await prisma.user.findMany({
+    where,
     select: {
       id: true,
       phone: true,
@@ -145,19 +170,34 @@ const listUsers = asyncHandler(async (req, res) => {
       supplier: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
-    take: 200,
+    take: limit,
+    skip: (page - 1) * limit,
   });
 
-  res.json({ users });
+  res.json({ users, total, page, limit, totalPages });
 });
 
 const listAuditLogs = asyncHandler(async (req, res) => {
-  const { action, resourceType, userId, limit = 100 } = req.query;
+  const { action, resourceType, userId } = req.query;
+  const { limit, requestedPage } = listPagination(req.query, 50);
+  const search = String(req.query.search || "").trim().slice(0, 120);
   const where = {};
   if (action) where.action = String(action);
   if (resourceType) where.resourceType = String(resourceType);
   if (userId) where.userId = String(userId);
+  if (search) where.OR = [
+    { action: { contains: search, mode: "insensitive" } },
+    { resourceType: { contains: search, mode: "insensitive" } },
+    { resourceId: { contains: search, mode: "insensitive" } },
+    { path: { contains: search, mode: "insensitive" } },
+    { method: { contains: search, mode: "insensitive" } },
+    { user: { is: { name: { contains: search, mode: "insensitive" } } } },
+    { user: { is: { phone: { contains: search } } } },
+  ];
 
+  const total = await prisma.auditLog.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, totalPages);
   const logs = await prisma.auditLog.findMany({
     where,
     include: {
@@ -166,10 +206,11 @@ const listAuditLogs = asyncHandler(async (req, res) => {
       },
     },
     orderBy: { createdAt: "desc" },
-    take: Math.min(Number(limit) || 100, 500),
+    take: limit,
+    skip: (page - 1) * limit,
   });
 
-  res.json({ logs });
+  res.json({ logs, total, page, limit, totalPages });
 });
 
 const deleteUser = asyncHandler(async (req, res) => {

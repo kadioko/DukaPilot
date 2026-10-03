@@ -67,11 +67,19 @@ const getMyReports = asyncHandler(async (req, res) => {
 // Admin: get all reports with filters
 const getAllReports = asyncHandler(async (req, res) => {
   const { status, type, priority, userId, limit = 25 } = req.query;
+  const search = String(req.query.search || "").trim().slice(0, 120);
   const where = {};
   if (status && status !== "ALL") where.status = String(status);
   if (type) where.type = String(type);
   if (priority) where.priority = String(priority);
   if (userId) where.userId = String(userId);
+  if (search) where.OR = [
+    { title: { contains: search, mode: "insensitive" } },
+    { description: { contains: search, mode: "insensitive" } },
+    { user: { is: { name: { contains: search, mode: "insensitive" } } } },
+    { user: { is: { phone: { contains: search } } } },
+    { user: { is: { shop: { is: { name: { contains: search, mode: "insensitive" } } } } } },
+  ];
 
   const pageSize = Math.max(1, Math.min(Number.parseInt(limit, 10) || 25, 100));
   const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);

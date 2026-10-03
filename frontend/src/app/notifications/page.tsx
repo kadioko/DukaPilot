@@ -5,11 +5,11 @@ import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { AlertTriangle, Bell, ChevronRight, CircleCheck, CreditCard, FileText, HandCoins, Package, RefreshCw, ShoppingBag, WifiOff } from "lucide-react";
+import { AlertTriangle, Bell, ChevronRight, CircleCheck, CreditCard, FileText, Gift, HandCoins, Package, RefreshCw, ShoppingBag, WifiOff } from "lucide-react";
 
 interface NotificationItem {
   id: string;
-  type: "LOW_STOCK" | "DEBT" | "CUSTOMER_ORDER" | "SYNC" | "SUBSCRIPTION" | "QUOTATION";
+  type: "LOW_STOCK" | "DEBT" | "CUSTOMER_ORDER" | "SYNC" | "SUBSCRIPTION" | "QUOTATION" | "REFERRAL_REWARD";
   severity: "URGENT" | "WARNING" | "ACTION";
   title: string;
   titleSw: string;
@@ -17,6 +17,7 @@ interface NotificationItem {
   descriptionSw: string;
   href: string;
   count: number;
+  createdAt?: string;
 }
 
 const icons: Record<NotificationItem["type"], typeof Bell> = {
@@ -26,6 +27,7 @@ const icons: Record<NotificationItem["type"], typeof Bell> = {
   SYNC: WifiOff,
   SUBSCRIPTION: CreditCard,
   QUOTATION: FileText,
+  REFERRAL_REWARD: Gift,
 };
 
 export default function NotificationsPage() {
@@ -90,6 +92,7 @@ export default function NotificationsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-gray-950">{lang === "sw" ? item.titleSw : item.title}</p>
                     <p className="mt-1 text-sm leading-5 text-gray-600">{lang === "sw" ? item.descriptionSw : item.description}</p>
+                    {item.createdAt && <p className="mt-2 text-xs text-gray-500">{new Date(item.createdAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-TZ")}</p>}
                   </div>
                   <ChevronRight className="mt-2 h-4 w-4 flex-shrink-0 text-gray-400" />
                 </Link>

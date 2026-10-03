@@ -236,13 +236,25 @@ const update = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const existing = await prisma.expense.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Expense not found" });
+  if (existing.cashSessionId) {
+    const session = await prisma.cashSession.findFirst({ where: { id: existing.cashSessionId, shopId }, select: { status: true } });
+    if (session?.status === "CLOSED") return res.status(409).json({ error: "This cash expense belongs to a closed shift and cannot be edited. Keep the closed Z-report unchanged and record a separate correction with the owner." });
+  }
 
   const data = expenseDataFromRequest(req, existing);
   if (!validateExpenseData(req, res, data)) return;
 
-  const expense = await prisma.expense.update({
-    where: { id: existing.id },
-    data,
+  const expense = await prisma.$transaction(async (tx) => {
+    const current = await tx.expense.findFirst({ where: { id: existing.id, shopId } });
+    if (!current) throw Object.assign(new Error("Expense not found"), { status: 404 });
+    if (current.cashSessionId) {
+      if (typeof tx.$queryRawUnsafe === "function") {
+        await tx.$queryRawUnsafe('SELECT "id" FROM "cash_sessions" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', current.cashSessionId, shopId);
+      }
+      const session = await tx.cashSession.findFirst({ where: { id: current.cashSessionId, shopId }, select: { status: true } });
+      if (session?.status === "CLOSED") throw Object.assign(new Error("This cash expense belongs to a closed shift and cannot be edited. Keep the closed Z-report unchanged and record a separate correction with the owner."), { status: 409 });
+    }
+    return tx.expense.update({ where: { id: current.id }, data });
   });
 
   await invalidateDashboardHistory(shopId);
@@ -295,7 +307,18 @@ const remove = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const existing = await prisma.expense.findFirst({ where: { id: req.params.id, shopId } });
   if (!existing) return res.status(404).json({ error: "Expense not found" });
-  await prisma.expense.delete({ where: { id: existing.id } });
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.expense.findFirst({ where: { id: existing.id, shopId } });
+    if (!current) throw Object.assign(new Error("Expense not found"), { status: 404 });
+    if (current.cashSessionId) {
+      if (typeof tx.$queryRawUnsafe === "function") {
+        await tx.$queryRawUnsafe('SELECT "id" FROM "cash_sessions" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', current.cashSessionId, shopId);
+      }
+      const session = await tx.cashSession.findFirst({ where: { id: current.cashSessionId, shopId }, select: { status: true } });
+      if (session?.status === "CLOSED") throw Object.assign(new Error("This cash expense belongs to a closed shift and cannot be deleted. Keep the closed Z-report unchanged and record a separate correction with the owner."), { status: 409 });
+    }
+    await tx.expense.delete({ where: { id: current.id } });
+  });
   await invalidateDashboardHistory(shopId);
   req.audit = { action: "expense.delete", resourceType: "expense", resourceId: existing.id };
   res.json({ message: "Expense deleted" });

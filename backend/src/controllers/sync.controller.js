@@ -47,7 +47,9 @@ const myEvents = asyncHandler(async (req, res) => {
 });
 
 const adminEvents = asyncHandler(async (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 50, 100));
+  const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const search = String(req.query.search || "").trim().slice(0, 120);
   const shopId = String(req.query.shopId || "").trim();
   const deviceId = String(req.query.deviceId || "").trim();
   const status = String(req.query.status || "").trim().toUpperCase();
@@ -57,26 +59,42 @@ const adminEvents = asyncHandler(async (req, res) => {
   if (deviceId) where.deviceId = deviceId;
   if (["QUEUED", "SYNCED", "FAILED", "REMOVED"].includes(status)) where.status = status;
   if (["SALE", "CROP_FIELD"].includes(operationKind)) where.operationKind = operationKind;
+  if (search) where.OR = [
+    { deviceId: { contains: search, mode: "insensitive" } },
+    { deviceLabel: { contains: search, mode: "insensitive" } },
+    { localId: { contains: search, mode: "insensitive" } },
+    { shop: { is: { name: { contains: search, mode: "insensitive" } } } },
+    { shop: { is: { user: { is: { phone: { contains: search } } } } } },
+  ];
 
-  const events = await prisma.offlineSyncEvent.findMany({
+  const total = await prisma.offlineSyncEvent.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(requestedPage, totalPages);
+  const [events, deviceGroups] = await Promise.all([prisma.offlineSyncEvent.findMany({
     where,
     orderBy: { createdAt: "desc" },
     take: limit,
+    skip: (page - 1) * limit,
     include: {
       shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } },
     },
-  });
-
-  const devices = await prisma.offlineSyncEvent.groupBy({
+  }), prisma.offlineSyncEvent.groupBy({
     by: ["shopId", "deviceId", "deviceLabel", "status"],
     where,
     _count: { id: true },
     _max: { createdAt: true },
     orderBy: { _max: { createdAt: "desc" } },
     take: 200,
-  });
+  })]);
+  const deviceShopIds = Array.from(new Set(deviceGroups.map((item) => item.shopId)));
+  const deviceShops = deviceShopIds.length ? await prisma.shop.findMany({
+    where: { id: { in: deviceShopIds } },
+    select: { id: true, name: true, user: { select: { name: true, phone: true } } },
+  }) : [];
+  const shopById = new Map(deviceShops.map((shop) => [shop.id, shop]));
+  const devices = deviceGroups.map((device) => ({ ...device, shop: shopById.get(device.shopId) || null }));
 
-  res.json({ events, devices });
+  res.json({ events, devices, total, page, limit, totalPages });
 });
 
 function normalizeResolutionStatus(value) {

@@ -26,7 +26,7 @@ test("branch overview binds shop IDs and date bounds safely and returns combined
     $queryRawUnsafe: async (query, ...params) => { rawCalls.push({ query, params }); return []; },
   } };
   require.cache[accessPath] = { id: accessPath, filename: accessPath, loaded: true, exports: { getBillingShopIdForUser: async () => "main" } };
-  require.cache[entitlementPath] = { id: entitlementPath, filename: entitlementPath, loaded: true, exports: { activePlan: () => "PRO" } };
+  require.cache[entitlementPath] = { id: entitlementPath, filename: entitlementPath, loaded: true, exports: { activePlan: () => "PRO", canUseFeature: () => true } };
   delete require.cache[controllerPath];
   const controller = require(controllerPath);
   const res = { statusCode: 200, payload: null, status(code) { this.statusCode = code; return this; }, json(payload) { this.payload = payload; return this; } };

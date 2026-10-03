@@ -6,6 +6,7 @@ const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
 const authPath = path.resolve(__dirname, "../src/controllers/auth.controller.js");
 const referralPath = path.resolve(__dirname, "../src/controllers/referral.controller.js");
+const pushPath = path.resolve(__dirname, "../src/services/push.service.js");
 
 function mockPrisma(prismaMock) {
   require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: prismaMock };
@@ -67,6 +68,7 @@ test("merchant registration records the shop that supplied a valid referral link
 test("admin referral reward extends an active paid subscription once", async () => {
   let referralUpdate;
   let shopUpdate;
+  let queuedPush;
   const tx = {
     shopReferral: {
       findUnique: async () => ({
@@ -82,6 +84,7 @@ test("admin referral reward extends an active paid subscription once", async () 
           trialEndsAt: null,
           subscriptionEndsAt: new Date("2030-01-10T00:00:00.000Z"),
           isActive: true,
+          user: { language: "en" },
         },
         referredShop: { id: "shop-referred", name: "Juma Shop" },
       }),
@@ -95,6 +98,12 @@ test("admin referral reward extends an active paid subscription once", async () 
       },
     },
   };
+  require.cache[pushPath] = {
+    id: pushPath,
+    filename: pushPath,
+    loaded: true,
+    exports: { queueForShop: async (...args) => { queuedPush = args; } },
+  };
   mockPrisma({ $transaction: async (callback) => callback(tx) });
   delete require.cache[referralPath];
   const { adminRewardReferral } = require(referralPath);
@@ -107,6 +116,10 @@ test("admin referral reward extends an active paid subscription once", async () 
   assert.equal(referralUpdate.status, "REWARDED");
   assert.equal(referralUpdate.rewardedBy, "admin-1");
   assert.equal(shopUpdate.subscriptionEndsAt.toISOString(), "2030-01-17T00:00:00.000Z");
+  assert.equal(queuedPush[0], "shop-referrer");
+  assert.equal(queuedPush[1], "REFERRAL_REWARD");
+  assert.equal(queuedPush[2].href, "/referrals");
+  assert.deepEqual(queuedPush[3], { dedupeKeyPrefix: "referral-reward:referral-1" });
   assert.equal(req.audit.action, "admin.referral.rewarded");
 });
 

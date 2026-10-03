@@ -64,4 +64,39 @@ async function reverseCropHarvestSaleAllocations(tx, saleItemIds) {
   await tx.cropHarvestAllocation.deleteMany({ where: { saleItemId: { in: saleItemIds } } });
 }
 
-module.exports = { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations };
+async function restoreCropHarvestAllocationQuantity(tx, saleItemId, requestedQuantity) {
+  if (!tx.cropHarvestBatch || !tx.cropHarvestAllocation || requestedQuantity <= 0) return;
+  let quantityLeft = requestedQuantity;
+  const allocations = await tx.cropHarvestAllocation.findMany({
+    where: { saleItemId, quantity: { gt: 0 } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  for (const allocation of allocations) {
+    if (quantityLeft <= 0) break;
+    const quantity = Math.min(quantityLeft, allocation.quantity);
+    const cost = quantity === allocation.quantity
+      ? allocation.cost
+      : Math.floor(allocation.cost * quantity / allocation.quantity);
+    const revenue = quantity === allocation.quantity
+      ? allocation.revenue
+      : Math.floor(allocation.revenue * quantity / allocation.quantity);
+    const updated = await tx.cropHarvestAllocation.updateMany({
+      where: { id: allocation.id, quantity: allocation.quantity, cost: allocation.cost, revenue: allocation.revenue },
+      data: { quantity: { decrement: quantity }, cost: { decrement: cost }, revenue: { decrement: revenue } },
+    });
+    if (updated.count !== 1) throw Object.assign(new Error("Crop sale allocation changed during return; refresh and try again"), { status: 409 });
+    await tx.cropHarvestBatch.update({
+      where: { id: allocation.harvestBatchId },
+      data: {
+        remainingQuantity: { increment: quantity },
+        remainingCost: { increment: cost },
+        soldQuantity: { decrement: quantity },
+        realizedRevenue: { decrement: revenue },
+        realizedCost: { decrement: cost },
+      },
+    });
+    quantityLeft -= quantity;
+  }
+}
+
+module.exports = { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations, restoreCropHarvestAllocationQuantity };
