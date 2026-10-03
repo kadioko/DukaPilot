@@ -92,8 +92,10 @@ const getStatus = asyncHandler(async (req, res) => {
   if (!shop) return res.status(404).json({ error: "Shop not found" });
 
   const snapshot = subscriptionSnapshot(shop);
+  const activeBranchCount = await prisma.shop.count({ where: { parentShopId: shopId, branchArchived: false } });
 
   res.json({
+    activeBranchCount,
     extraBranches: shop.additionalBranchSlots,
     monthlyAmount: shop.plan === "PRO" ? 35000 + 10000 * shop.additionalBranchSlots : 15000,
     plan: shop.plan,
@@ -245,6 +247,7 @@ const adminUpdateSubscription = asyncHandler(async (req, res) => {
   if (plan) {
     const nextPlan = String(plan).toUpperCase();
     if (!["FREE_TRIAL", "BASIC", "PRO"].includes(nextPlan)) return res.status(400).json({ error: "Invalid subscription plan" });
+    if (nextPlan === "BASIC") await validateBranchCapacity(prisma, shopId, nextPlan, 0);
     updateData.plan = nextPlan;
   }
   if (trialEndsAt !== undefined) updateData.trialEndsAt = parseOptionalDate(trialEndsAt, "trialEndsAt");

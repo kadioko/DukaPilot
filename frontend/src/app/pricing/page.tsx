@@ -31,6 +31,7 @@ const plans: Plan[] = [
     period: { sw: "siku 14", en: "14 days" },
     color: "border-gray-200",
     features: [
+      { sw: "Vipengele vyote vya Pro kwa siku 14, pamoja na maeneo 4 kwa jumla (biashara kuu ikiwemo)", en: "All Pro features for 14 days, including up to 4 locations total (main business included)" },
       { sw: "Hifadhi ya bidhaa kamili", en: "Full inventory management" },
       { sw: "Mauzo dukani na mtandaoni", en: "POS and online sales" },
       { sw: "Nukuu za bei za huduma, kazi na miradi", en: "Quotations for services, work, and projects" },

@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const prisma = require("../lib/prisma");
 const { getBillingShopIdForUser, getShopIdForUser } = require("../lib/shopAccess");
-const { activePlan, branchLimit } = require("../lib/entitlements");
+const { activePlan, canUseFeature, branchLimit } = require("../lib/entitlements");
 const { resolveShopContactPhone, normalizeShopContactPhone } = require("../lib/shopContact");
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -35,7 +35,8 @@ const list = wrap(async (req, res) => {
   const root = await prisma.shop.findUnique({ where: { id: rootId }, include: { user: { select: { phone: true } } } });
   const branches = await prisma.shop.findMany({ where: { OR: [{ id: rootId }, { parentShopId: rootId }] }, select, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   const locations = branches.map((branch) => ({ ...branch, effectiveContactPhone: resolveShopContactPhone({ ...branch, user: branch.id === rootId ? root.user : null, parentShop: branch.id === rootId ? null : root }) }));
-  res.json({ branches: locations, selectedId: await getShopIdForUser(req.user), mainId: rootId, pro: activePlan(root) === "PRO", limit: branchLimit(root), extraBranches: root.additionalBranchSlots, monthlyAmount: root.plan === "PRO" ? 35000 + 10000 * root.additionalBranchSlots : 15000 });
+  const plan = activePlan(root);
+  res.json({ branches: locations, selectedId: await getShopIdForUser(req.user), mainId: rootId, pro: canUseFeature(root, "BRANCHES"), trial: plan === "FREE_TRIAL", trialEndsAt: plan === "FREE_TRIAL" ? root.trialEndsAt : null, limit: branchLimit(root), extraBranches: root.additionalBranchSlots, monthlyAmount: plan === "FREE_TRIAL" ? 0 : root.plan === "PRO" ? 35000 + 10000 * root.additionalBranchSlots : 15000 });
 });
 
 const create = wrap(async (req, res) => {
@@ -47,11 +48,11 @@ const create = wrap(async (req, res) => {
   const branch = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM shops WHERE id = ${rootId} FOR UPDATE`;
     const root = await tx.shop.findUnique({ where: { id: rootId } });
-    if (activePlan(root) !== "PRO") fail("Branches require an active Pro subscription", 403);
+    if (!canUseFeature(root, "BRANCHES")) fail("Branches are available during the free trial and with an active Pro subscription", 403);
     const count = await tx.shop.count({ where: { parentShopId: rootId, branchArchived: false } });
     if (count + 1 >= branchLimit(root)) fail("Branch limit reached. Pay for another branch in Billing first.", 403);
     if (await tx.shop.findFirst({ where: { OR: [{ id: rootId }, { parentShopId: rootId }], name: { equals: name, mode: "insensitive" } } })) fail("A branch with this name already exists", 409);
-    return tx.shop.create({ data: { parentShopId: rootId, name, location, contactPhone, category: root.category, plan: root.plan, subscriptionEndsAt: root.subscriptionEndsAt, isActive: root.isActive, isCatalogPublished: false, referralCode: crypto.randomBytes(16).toString("hex") }, select });
+    return tx.shop.create({ data: { parentShopId: rootId, name, location, contactPhone, category: root.category, plan: root.plan, trialEndsAt: root.trialEndsAt, subscriptionEndsAt: root.subscriptionEndsAt, isActive: root.isActive, isCatalogPublished: false, referralCode: crypto.randomBytes(16).toString("hex") }, select });
   });
   req.audit = { action: "branch.create", resourceType: "shop", resourceId: branch.id };
   res.status(201).json({ branch });
@@ -77,13 +78,13 @@ const update = wrap(async (req, res) => {
       if (typeof req.body.branchArchived !== "boolean") fail("Invalid archive option");
       const root = await tx.shop.findUnique({ where: { id: rootId } });
       if (!req.body.branchArchived && current.branchArchived) {
-        if (activePlan(root) !== "PRO") fail("Branches require an active Pro subscription", 403);
+        if (!canUseFeature(root, "BRANCHES")) fail("Branches are available during the free trial and with an active Pro subscription", 403);
         const count = await tx.shop.count({ where: { parentShopId: rootId, branchArchived: false } });
         if (count + 1 >= branchLimit(root)) fail("Branch limit reached", 403);
       }
       if (req.body.branchArchived && await tx.cashSession.findFirst({ where: { shopId: current.id, status: "OPEN" } })) fail("Close the branch's Daily Close sessions before archiving", 409);
       data.branchArchived = req.body.branchArchived;
-      data.isActive = !data.branchArchived && activePlan(root) === "PRO";
+      data.isActive = !data.branchArchived && canUseFeature(root, "BRANCHES");
       if (data.branchArchived) data.isCatalogPublished = false;
     }
     if (req.body.contactPhone !== undefined) data.contactPhone = normalizeShopContactPhone(req.body.contactPhone);
@@ -97,7 +98,7 @@ const update = wrap(async (req, res) => {
 const overview = wrap(async (req, res) => {
   const rootId = await getBillingShopIdForUser(req.user);
   const root = await prisma.shop.findUnique({ where: { id: rootId } });
-  if (activePlan(root) !== "PRO") fail("Combined branch reports require Pro", 403);
+  if (!canUseFeature(root, "BRANCHES")) fail("Combined branch reports are available during the free trial and with an active Pro subscription", 403);
   const today = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const defaultFrom = `${today.slice(0, 7)}-01`;
   const fromInput = String(req.query.from || defaultFrom);

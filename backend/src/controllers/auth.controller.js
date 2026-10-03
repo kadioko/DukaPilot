@@ -563,7 +563,15 @@ async function getStaffProfile(staffId) {
           isCatalogPublished: true,
           hiddenMenuItems: true,
           user: { select: { id: true, phone: true, name: true, role: true, language: true, createdAt: true } },
-          parentShop: { select: { user: { select: { id: true, phone: true, name: true, role: true, language: true, createdAt: true } } } },
+          parentShop: {
+            select: {
+              plan: true,
+              trialEndsAt: true,
+              subscriptionEndsAt: true,
+              isActive: true,
+              user: { select: { id: true, phone: true, name: true, role: true, language: true, createdAt: true } },
+            },
+          },
         },
       },
     },
@@ -592,7 +600,7 @@ async function getStaffProfile(staffId) {
       role: staff.role,
       permissions: staffPermissions(staff),
     },
-    features: featureSnapshot(staff.shop),
+    features: featureSnapshot(staff.shop.parentShop || staff.shop),
     createdAt: staff.shop.user.createdAt,
   };
 }

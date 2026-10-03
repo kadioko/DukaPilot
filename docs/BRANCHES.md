@@ -1,8 +1,9 @@
 # Branches and shared Pro billing
 
-Pro includes four locations in total (main shop plus three). Extra locations cost
-TZS 10,000/month each, added to the TZS 35,000 Pro subscription. Basic remains one
-location. Extra slots are purchased, not granted by creating a branch.
+The free trial includes Pro features and four locations in total (main shop plus
+three). Pro includes the same four locations; extra locations cost TZS 10,000/month
+each, added to the TZS 35,000 Pro subscription. Basic remains one location. Extra
+slots are purchased, not granted by creating a branch.
 
 ## Owner workflow
 
@@ -28,7 +29,10 @@ Identical retries reuse the transfer; changed requests with the same key fail.
 
 Sync pending offline sales before switching. Close open Daily Close sessions before
 archiving a location. Archive retains records. Archive excess locations before
-downgrading or reducing purchased slots. Archived locations stop public ordering.
+downgrading or reducing purchased slots. Close any open Daily Close first. Owners
+can close an existing shift and archive a branch after trial or subscription expiry
+so they can move to Basic; Basic activation stays blocked until only the main
+location remains active. Archived locations stop public ordering.
 
 ## Billing
 
@@ -63,7 +67,8 @@ No new branch environment variables are required.
 - Run backend tests, branches.unit.test.js and ntzs.unit.test.js.
 - Validate/generate Prisma and typecheck/build the frontend.
 - On a restored DB, verify main records remain unchanged and both migrations apply.
-- Create four total locations; verify a fifth is blocked until confirmed payment.
+- During trial, create four total locations; verify a fifth is blocked until confirmed payment.
+- Expire a trial, archive extra branches, then verify Basic activation; records remain retained.
 - Attempt cross-business header and product access; verify rejection.
 - Verify staff login, own-location permissions and rejection of location switching.
 - Transfer twice with one request key; verify only one stock movement pair.

@@ -1,6 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getBillingShopIdForUser } = require("../lib/shopAccess");
-const { activePlan } = require("../lib/entitlements");
+const { canUseFeature } = require("../lib/entitlements");
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 
@@ -25,7 +25,7 @@ const transfer = wrap(async (req, res) => {
       return prior;
     }
     const root = await tx.shop.findUnique({ where: { id: rootId } });
-    if (activePlan(root) !== "PRO") fail("Stock transfers require active Pro", 403);
+    if (!canUseFeature(root, "BRANCHES")) fail("Stock transfers require an active trial or Pro subscription", 403);
     // Lock in stable order so a concurrent sale/restock cannot change cost or quantity mid-transfer.
     await tx.$queryRaw`SELECT id FROM products WHERE id IN (${sourceProductId}, ${targetProductId}) ORDER BY id FOR UPDATE`;
     const items = await tx.product.findMany({ where: { id: { in: [sourceProductId, targetProductId] }, isActive: true, shop: { branchArchived: false, OR: [{ id: rootId }, { parentShopId: rootId }] } } });

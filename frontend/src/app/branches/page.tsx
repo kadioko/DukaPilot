@@ -9,7 +9,7 @@ import { api, formatTZS, switchBranch } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
 interface Branch { id: string; name: string; location: string; contactPhone: string | null; effectiveContactPhone: string | null; branchArchived: boolean }
-interface Listing { branches: Branch[]; mainId: string; selectedId: string; pro: boolean; limit: number; monthlyAmount: number }
+interface Listing { branches: Branch[]; mainId: string; selectedId: string; pro: boolean; trial: boolean; trialEndsAt: string | null; limit: number; monthlyAmount: number }
 interface Metric extends Branch { sales: number; saleCount: number; grossProfit: number; missingCostSalesRevenue: number; expenses: number; netProfit: number; receivables: number; previousSales: number; previousSaleCount: number; previousGrossProfit: number; previousExpenses: number; previousNetProfit: number }
 type Comparison = Record<string, { current: number; previous: number; change: number; changePercent: number | null }>;
 
@@ -101,7 +101,8 @@ export default function BranchesPage() {
 
   return <AppShell><main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
     <header className="border-b pb-4"><h1 className="text-2xl font-bold">{sw ? "Matawi" : "Branches"}</h1>
-      <p className="mt-2 text-sm text-gray-600">{sw ? "Pro inajumuisha maeneo 4, pamoja na duka kuu. Kila eneo la ziada ni TZS 10,000 kwa mwezi." : "Pro includes 4 locations, including your main shop. Each extra location is TZS 10,000 per month."}</p>
+      <p className="mt-2 text-sm text-gray-600">{data?.trial ? (sw ? "Jaribio la bure linajumuisha vipengele vya Pro na maeneo 4 kwa jumla, pamoja na biashara kuu. Ukichagua Basic, hifadhi matawi ya ziada kwanza; rekodi zake zitabaki." : "Your free trial includes Pro branch features and up to 4 locations total, including the main business. Before choosing Basic, archive extra branches; their records will be kept.") : (sw ? "Pro inajumuisha maeneo 4, pamoja na duka kuu. Kila eneo la ziada ni TZS 10,000 kwa mwezi." : "Pro includes 4 locations, including your main shop. Each extra location is TZS 10,000 per month.")}</p>
+      {data && !data.trial && !data.pro && <p className="mt-2 text-sm text-amber-800">{sw ? "Basic inaruhusu biashara kuu pekee. Funga Daily Close iliyo wazi kwanza, kisha hifadhi matawi ya ziada hapa hata baada ya muda kuisha; rekodi zitabaki." : "Basic allows the main business only. Close any open Daily Close session first, then archive extra branches here, even after your subscription expires; their records are retained."}</p>}
       <p className="mt-2 text-sm text-gray-600">{sw ? "Tumia namba moja ya akaunti kubadilisha matawi. Namba ya mawasiliano ya wateja ni tofauti na namba ya kuingia; kila tawi linaweza kurithi au kuweka namba yake." : "Use the same owner login to switch locations. Customer contact is separate from your sign-in number; each location can inherit the main number or set its own."}</p>
       <Link href="/billing" className="mt-2 inline-block font-medium text-brand-700">{sw ? "Usajili na malipo" : "Subscription and payments"}</Link>
     </header>

@@ -51,6 +51,7 @@ export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
+  const [actionError, setActionError] = useState("");
 
   async function load() {
     const [data, subscriptionStatus] = await Promise.all([
@@ -76,6 +77,20 @@ export default function StaffPage() {
   async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
     await load();
+  }
+
+  async function removeStaff(member: StaffMember) {
+    const confirmed = window.confirm(lang === "sw"
+      ? `Ondoa akaunti ya kuingia ya ${member.name}? Hataweza kuingia tena, lakini historia ya mauzo na shift itabaki. Namba ya simu itapatikana kwa staff mwingine.`
+      : `Remove ${member.name}'s staff login? They will no longer be able to sign in. Their sales and shift history will remain, and their phone number can be assigned to another staff member.`);
+    if (!confirmed) return;
+    setActionError("");
+    try {
+      const result = await api.delete<{ staff: StaffMember }>(`/staff/${member.id}`, lang);
+      setStaff((current) => current.map((item) => item.id === member.id ? result.staff : item));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kuondoa staff." : "Could not remove staff login."));
+    }
   }
 
   const permissionLabels = {
@@ -142,6 +157,8 @@ export default function StaffPage() {
         </form>
         <p className="-mt-3 text-xs text-gray-500">{basicLimitReached ? (lang === "sw" ? "Zima staff active ili kuongeza mwingine kwenye Basic." : "Deactivate the active staff member to add another on Basic.") : (lang === "sw" ? "PIN ikiachwa wazi, staff ataingia kwa 1234 na anaweza kuibadilisha kwenye Settings baada ya kuingia." : "When the PIN is blank, the staff member logs in with 1234 and can change it in Settings after signing in.")}{proAssistantAvailable ? (lang === "sw" ? " AI haiongezi ruhusa za fedha: cashier haoni faida, madeni, kiasi cha mauzo au matumizi." : " AI never adds financial access: a cashier cannot see profit, debts, sales amounts, or expenses.") : ""}</p>
 
+        {actionError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{actionError}</p>}
+
         <div className="grid gap-3">
           {staff.length === 0 ? (
             <div className="rounded-lg border border-gray-200 p-6 text-sm text-gray-500">{lang === "sw" ? "Hakuna wafanyakazi bado." : "No staff yet."}</div>
@@ -152,18 +169,21 @@ export default function StaffPage() {
                   <h2 className="font-semibold text-gray-950">{member.name}</h2>
                   <p className="text-sm text-gray-500">{member.role.replace("_", " ")}{member.phone ? ` · ${member.phone}` : ""}</p>
                 </div>
-                <button onClick={() => togglePermission(member, "isActive")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700">
-                  {member.isActive ? (lang === "sw" ? "Hai" : "Active") : (lang === "sw" ? "Imezimwa" : "Inactive")}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!member.isActive && !member.phone ? <span className="rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600">{lang === "sw" ? "Akaunti imeondolewa" : "Login removed"}</span> : <button onClick={() => togglePermission(member, "isActive")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700">
+                    {member.isActive ? (lang === "sw" ? "Hai" : "Active") : (lang === "sw" ? "Imezimwa" : "Inactive")}
+                  </button>}
+                  {!member.isActive && member.phone && <button type="button" onClick={() => removeStaff(member)} className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">{lang === "sw" ? "Ondoa staff" : "Remove staff"}</button>}
+                </div>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
+              {member.isActive || member.phone ? <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
                 {(Object.keys(permissionLabels) as Array<keyof typeof permissionLabels>).filter((field) => field !== "canUseAssistant" || proAssistantAvailable).map((field) => (
                   <label key={field} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
                     <input type="checkbox" checked={member[field]} onChange={() => togglePermission(member, field)} />
                     {permissionLabels[field]}
                   </label>
                 ))}
-              </div>
+              </div> : <p className="mt-3 text-sm text-gray-500">{lang === "sw" ? "Historia ya mauzo na shift imehifadhiwa kwa kumbukumbu." : "Sales and shift history is retained for records."}</p>}
             </section>
           ))}
         </div>

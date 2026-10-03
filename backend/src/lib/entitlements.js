@@ -15,7 +15,7 @@ function activePlan(shop, now = new Date()) {
 
 function canUseFeature(shop, feature, now = new Date()) {
   const plan = activePlan(shop, now);
-  if (plan === "FREE_TRIAL") return feature !== "BRANCHES";
+  if (plan === "FREE_TRIAL") return PLAN_FEATURES.PRO.has(feature);
   return Boolean(plan && PLAN_FEATURES[plan]?.has(feature));
 }
 
@@ -64,7 +64,9 @@ function requireAssistantAccess(req, res, next) {
 }
 
 function branchLimit(shop) {
-  return activePlan(shop) === "PRO" ? 4 + Math.max(0, Number(shop.additionalBranchSlots) || 0) : 1;
+  const plan = activePlan(shop);
+  if (plan === "FREE_TRIAL") return 4;
+  return plan === "PRO" ? 4 + Math.max(0, Number(shop.additionalBranchSlots) || 0) : 1;
 }
 
 module.exports = { activePlan, canUseFeature, featureSnapshot, branchLimit, requireFeature, requireAssistantAccess };

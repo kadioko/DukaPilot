@@ -11,6 +11,7 @@ import { Check, CheckCircle2, ClipboardCopy, MessageCircle, ReceiptText, Send, S
 
 interface SubscriptionStatus {
   extraBranches?: number;
+  activeBranchCount?: number;
   plan: string;
   isActive: boolean;
   status: string;
@@ -234,6 +235,7 @@ export default function BillingPage() {
           <legend className="mb-2 text-sm font-semibold">{lang === "sw" ? "Chagua mpango" : "Select plan"}</legend>
           {plans.map((item) => <label key={item.id} className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="plan" checked={plan === item.id} onChange={() => { setPlan(item.id); setKind("RENEWAL"); }} />{item.label} {formatTZS(item.amount)} / {lang === "sw" ? "mwezi" : "month"}</label>)}
         </fieldset>
+        {plan === "BASIC" && (status?.activeBranchCount || 0) > 0 && <p className="border border-amber-300 bg-amber-50 p-3 text-sm leading-5 text-amber-950">{lang === "sw" ? `Basic inaruhusu biashara kuu pekee. Funga Daily Close iliyo wazi kisha hifadhi matawi ${status?.activeBranchCount} ya ziada kabla ya malipo; rekodi zake zitabaki.` : `Basic includes the main business only. Close any open Daily Close sessions, then archive your ${status?.activeBranchCount} extra active branch${status?.activeBranchCount === 1 ? "" : "es"} before paying. Their records stay available.`} <Link href="/branches" className="ml-1 font-semibold underline">{lang === "sw" ? "Dhibiti matawi" : "Manage branches"}</Link></p>}
         {plan === "PRO" && <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">{lang === "sw" ? "Matawi ya ziada juu ya 4 yaliyojumuishwa" : "Extra branches beyond the 4 included"}<input type="number" min={0} max={100} value={extraBranches} onChange={(e) => setExtraBranches(Number(e.target.value))} className="rounded-lg border p-3" /></label>
           <label className="grid gap-1 text-sm">{lang === "sw" ? "Aina ya malipo" : "Payment purpose"}<select value={kind} onChange={(e) => setKind(e.target.value)} className="rounded-lg border p-3"><option value="RENEWAL">{lang === "sw" ? "Ongeza muda wa mwezi mmoja" : "Renew for one month"}</option><option value="BRANCH_ADDON">{lang === "sw" ? "Ongeza matawi hadi usajili uishe" : "Add branches until current expiry"}</option></select></label>
