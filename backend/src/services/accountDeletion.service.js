@@ -37,6 +37,7 @@ async function anonymizeMerchantAccount(userId) {
     await tx.appUsageEvent.deleteMany({ where: { shopId: { in: shopIds } } });
     await tx.offlineSyncEvent.deleteMany({ where: { shopId: { in: shopIds } } });
     await tx.assistantAction.deleteMany({ where: { shopId: { in: shopIds } } });
+    await tx.shopSupportNote.deleteMany({ where: { shopId: { in: shopIds } } });
 
     await tx.staffMember.updateMany({
       where: { shopId: { in: shopIds } },
@@ -106,6 +107,8 @@ async function anonymizeMerchantAccount(userId) {
       isCatalogPublished: false,
       followUpNotes: null,
       lastContactedAt: null,
+      nextFollowUpAt: null,
+      supportAssigneeId: null,
     };
     await tx.shop.updateMany({
       where: { parentShopId: rootId },

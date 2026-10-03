@@ -56,6 +56,7 @@ test("merchant deletion anonymizes a business with branches and retained financi
   const suffix = crypto.randomUUID();
   const user = await prisma.user.create({ data: { phone: `deleted-test-${suffix}`, pin: "not-a-real-pin", name: "Synthetic deletion owner" } });
   const root = await prisma.shop.create({ data: { name: "Synthetic root", location: "Test", userId: user.id, referralCode: `root-${suffix}` } });
+  const supportNote = await prisma.shopSupportNote.create({ data: { shopId: root.id, body: "Private owner phone and support history" } });
   const branch = await prisma.shop.create({ data: { name: "Synthetic branch", location: "Test", parentShopId: root.id, referralCode: `branch-${suffix}` } });
   const customer = await prisma.customer.create({ data: { shopId: branch.id, name: "Synthetic customer", phone: "+255700000001", email: `customer-${suffix}@example.test` } });
   const staff = await prisma.staffMember.create({ data: { shopId: branch.id, name: "Synthetic private staff", phone: `+255${suffix.replace(/\D/g, "").slice(0, 9).padEnd(9, "1")}`, pin: "not-a-real-pin", role: "CASHIER" } });
@@ -157,6 +158,8 @@ test("merchant deletion anonymizes a business with branches and retained financi
   assert.match(accountAfter.phone, /^deleted-/);
   assert.equal(rootAfter.userId, user.id);
   assert.equal(rootAfter.isActive, false);
+  assert.equal(rootAfter.nextFollowUpAt, null);
+  assert.equal(await prisma.shopSupportNote.count({ where: { id: supportNote.id } }), 0);
   assert.equal(branchAfter.isActive, false);
   assert.equal(branchAfter.branchArchived, true);
   assert.equal(customerAfter.phone, null);

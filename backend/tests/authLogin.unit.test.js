@@ -15,6 +15,7 @@ function response() {
 }
 
 test("login distinguishes an unregistered phone from an incorrect PIN", async () => {
+  const failures = [];
   require.cache[prismaPath] = {
     id: prismaPath,
     filename: prismaPath,
@@ -22,6 +23,7 @@ test("login distinguishes an unregistered phone from an incorrect PIN", async ()
     exports: {
       user: { findFirst: async () => null },
       staffMember: { findFirst: async () => null },
+      loginFailureEvent: { create: async ({ data }) => failures.push(data) },
     },
   };
   delete require.cache[authPath];
@@ -32,4 +34,5 @@ test("login distinguishes an unregistered phone from an incorrect PIN", async ()
 
   assert.equal(res.statusCode, 404);
   assert.deepEqual(res.payload, { error: "No account found for this phone number", code: "ACCOUNT_NOT_FOUND" });
+  assert.deepEqual(failures, [{ reason: "ACCOUNT_NOT_FOUND" }]);
 });

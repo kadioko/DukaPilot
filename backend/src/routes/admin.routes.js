@@ -2,11 +2,18 @@ const router = require("express").Router();
 const { overview, listUsers, listAuditLogs, deleteUser, resetUserPin, resetStaffPin, findUserByPhone, findStaffByPhone, smsMonitoring, completeWhatsAppCoexistence } = require("../controllers/admin.controller");
 const { adminListReferrals, adminRewardReferral, adminRecoverReferral, adminRejectReferral } = require("../controllers/referral.controller");
 const { authenticate, requireRole } = require("../middleware/auth");
+const support = require("../controllers/adminSupport.controller");
 
 router.use(authenticate);
 router.use(requireRole("ADMIN"));
 
 router.get("/overview", overview);
+router.get("/operations-summary", support.operationsSummary);
+router.get("/support/admins", support.listAdmins);
+router.get("/support/shops", support.listShops);
+router.get("/support/shops/:shopId", support.shopDetail);
+router.post("/support/shops/:shopId/notes", support.addNote);
+router.patch("/support/shops/:shopId", support.updateShopSupport);
 router.get("/users", listUsers);
 router.get("/users/search", findUserByPhone);
 router.get("/staff/search", findStaffByPhone);

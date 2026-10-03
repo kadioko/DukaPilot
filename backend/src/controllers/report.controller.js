@@ -66,23 +66,32 @@ const getMyReports = asyncHandler(async (req, res) => {
 
 // Admin: get all reports with filters
 const getAllReports = asyncHandler(async (req, res) => {
-  const { status, type, priority, userId, limit = 100 } = req.query;
+  const { status, type, priority, userId, limit = 25 } = req.query;
   const where = {};
-  if (status) where.status = String(status);
+  if (status && status !== "ALL") where.status = String(status);
   if (type) where.type = String(type);
   if (priority) where.priority = String(priority);
   if (userId) where.userId = String(userId);
 
+  const pageSize = Math.max(1, Math.min(Number.parseInt(limit, 10) || 25, 100));
+  const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const [total, statusRows] = await Promise.all([
+    prisma.report.count({ where }),
+    prisma.report.groupBy({ by: ["status"], _count: { id: true } }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
   const reports = await prisma.report.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    take: Math.min(Number(limit) || 100, 500),
+    take: pageSize,
+    skip: (page - 1) * pageSize,
     include: {
       user: { select: { id: true, name: true, phone: true, role: true, shop: { select: { id: true, name: true } } } },
     },
   });
 
-  res.json({ reports });
+  res.json({ reports, total, page, totalPages, statusCounts: Object.fromEntries(statusRows.map((row) => [row.status, row._count.id])) });
 });
 
 // Admin: update report status, add admin notes, resolve

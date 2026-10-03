@@ -2,7 +2,9 @@
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
 import WhatsAppCoexistencePanel from "@/components/admin/WhatsAppCoexistencePanel";
+import AdminSupportWorkspace from "@/components/admin/AdminSupportWorkspace";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 import {
   Users,
   Store,
@@ -99,6 +101,22 @@ interface AdminOverview {
   };
 }
 
+interface OperationsSummary {
+  openReports: number;
+  billingReports: number;
+  urgentReports: number;
+  qualifiedReferrals: number;
+  supplierReview: number;
+  loginFailures24h: number;
+  loginFailures7d: number;
+  shopsNeedingAction: number;
+  dueFollowUps: number;
+  reviewCheckouts: number;
+  recentNotes: Array<{ id: string; body: string; createdAt: string; shop: { id: string; name: string }; author: { name: string } | null }>;
+  latestAdminAction: AuditLog | null;
+  paymentReviewQueue: Report[];
+}
+
 interface AdminUser {
   id: string;
   phone: string;
@@ -135,6 +153,14 @@ interface Report {
   resolvedAt?: string;
   createdAt: string;
   user?: { id: string; name: string; phone: string; role: string; shop?: { id: string; name: string } | null } | null;
+}
+
+interface AdminReportsResponse {
+  reports: Report[];
+  total: number;
+  page: number;
+  totalPages: number;
+  statusCounts: Record<string, number>;
 }
 
 interface Subscription {
@@ -218,7 +244,7 @@ interface AdminReferralListResponse {
 
 interface AdminMetric {
   label: string;
-  value: number;
+  value: number | string;
   tone: string;
 }
 
@@ -318,13 +344,14 @@ interface BillingFeedback {
   message: string;
 }
 
-type Tab = "overview" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "referrals" | "suppliers" | "sync" | "sms" | "whatsapp";
+type Tab = "overview" | "support" | "users" | "audit" | "reset" | "reports" | "subscriptions" | "referrals" | "suppliers" | "sync" | "sms" | "whatsapp";
 
-async function optionalAdminLoad<T>(label: string, request: Promise<T>, fallback: T): Promise<T> {
+async function optionalAdminLoad<T>(label: string, request: Promise<T>, fallback: T, onFailure: (label: string, error: unknown) => void): Promise<T> {
   try {
     return await request;
   } catch (error) {
     console.warn(`Admin optional load failed: ${label}`, error);
+    onFailure(label, error);
     return fallback;
   }
 }
@@ -362,7 +389,7 @@ function ActionCard({
   icon: React.ReactNode;
   title: string;
   detail: string;
-  value: number;
+  value: number | string;
   tone: string;
   action: string;
   onClick: () => void;
@@ -394,11 +421,20 @@ function ActionCard({
 }
 
 export default function AdminPage() {
+  const sw = useLang() === "sw";
   const [tab, setTab] = useState<Tab>("overview");
   const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [assistantAnalytics, setAssistantAnalytics] = useState<NonNullable<AdminOverview["assistantAnalytics"]> | null>(null);
+  const [operationsSummary, setOperationsSummary] = useState<OperationsSummary | null>(null);
+  const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
+  const [sectionLoading, setSectionLoading] = useState<Record<string, boolean>>({});
+  const [pageError, setPageError] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [reportPage, setReportPage] = useState(1);
+  const [reportTotalPages, setReportTotalPages] = useState(1);
+  const [reportStatusCounts, setReportStatusCounts] = useState<Record<string, number>>({});
   const [reportFilter, setReportFilter] = useState("OPEN");
   const [updatingReport, setUpdatingReport] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -454,57 +490,65 @@ export default function AdminPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const failed = (label: string, error: unknown) => {
+      if (!cancelled) setSectionErrors((previous) => ({ ...previous, [label]: error instanceof Error ? error.message : "Request failed" }));
+    };
+    const start = <T,>(label: string, request: Promise<T>, fallback: T, accept: (data: T) => void) => {
+      setSectionLoading((previous) => ({ ...previous, [label]: true }));
+      void optionalAdminLoad(label, request, fallback, failed)
+        .then((data) => { if (!cancelled) accept(data); })
+        .finally(() => { if (!cancelled) setSectionLoading((previous) => ({ ...previous, [label]: false })); });
+    };
     getCurrentSession<{ user: { role: string } }>()
       .then(({ user }) => {
         if (user.role !== "ADMIN") throw new Error("Admin access required");
-        return Promise.all([
-      optionalAdminLoad<AdminOverview | null>("overview", api.get<AdminOverview>("/admin/overview"), null),
-      optionalAdminLoad("users", api.get<{ users: AdminUser[] }>("/admin/users"), { users: [] }),
-      optionalAdminLoad("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }),
-      optionalAdminLoad("reports", api.get<{ reports: Report[] }>("/reports/admin?limit=200"), { reports: [] }),
-      optionalAdminLoad<SubscriptionListResponse>("subscriptions", api.get<SubscriptionListResponse>("/subscription/admin?page=1&limit=24"), { shops: [], supportQueue: [], operationalCounts: { expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 }, total: 0, page: 1, limit: 24, totalPages: 1, statusCounts: { trial: 0, active: 0, expired: 0, suspended: 0 } }),
-      optionalAdminLoad<AdminReferralListResponse>("referrals", api.get<AdminReferralListResponse>("/admin/referrals?page=1&limit=25"), { referrals: [], pagination: { page: 1, limit: 25, total: 0, totalPages: 1 } }),
-      optionalAdminLoad("suppliers", api.get<{ suppliers: Supplier[] }>("/suppliers"), { suppliers: [] }),
-      optionalAdminLoad("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }),
-      optionalAdminLoad("sync events", api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"), { events: [], devices: [] }),
-      optionalAdminLoad<NonNullable<AdminOverview["assistantAnalytics"]> | null>("assistant analytics", api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"), null),
-      optionalAdminLoad("payment exceptions", api.get<{ checkouts: CheckoutException[] }>("/subscription/admin-checkouts/review"), { checkouts: [] }),
-        ]);
-      })
-      .then(([ov, u, al, rp, sub, referralData, supplierData, syncData, syncEventsData, assistantAnalytics, paymentExceptions]) => {
-        if (cancelled) return;
-        setOverview(ov && assistantAnalytics ? { ...ov, assistantAnalytics } : ov);
-        setUsers(u.users);
-        setAuditLogs(al.logs);
-        setReports(rp.reports);
-        setSubscriptions(sub.shops);
-        setSubscriptionSupportQueue(sub.supportQueue || []);
-        setSubscriptionOperationalCounts(sub.operationalCounts || { expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 });
-        setSubscriptionTotal(sub.total);
-        setSubscriptionPage(sub.page);
-        setSubscriptionPageSize(sub.limit);
-        setSubscriptionTotalPages(sub.totalPages);
-        setSubscriptionStatusCounts(sub.statusCounts);
-        setReferrals(referralData.referrals);
-        setReferralPage(referralData.pagination.page);
-        setReferralTotal(referralData.pagination.total);
-        setReferralTotalPages(referralData.pagination.totalPages);
-        setSuppliers(supplierData.suppliers);
-        setSyncSummaries(syncData.shops);
-        setSyncEvents(syncEventsData.events);
-        setSyncDevices(syncEventsData.devices);
-        setCheckoutExceptions(paymentExceptions.checkouts);
-        setFollowUpDrafts(Object.fromEntries(sub.shops.map((shop) => [shop.id, shop.followUpNotes || ""])));
-        setSupplierNotes(Object.fromEntries(supplierData.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""])));
+        setLoading(false);
+        start<AdminOverview | null>("overview", api.get<AdminOverview>("/admin/overview"), null, setOverview);
+        start<OperationsSummary | null>("operations summary", api.get<OperationsSummary>("/admin/operations-summary"), null, setOperationsSummary);
+        start("users", api.get<{ users: AdminUser[] }>("/admin/users"), { users: [] }, (data) => setUsers(data.users));
+        start("audit logs", api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50"), { logs: [] }, (data) => setAuditLogs(data.logs));
+        start<AdminReportsResponse>("reports", api.get<AdminReportsResponse>("/reports/admin?limit=25&status=OPEN"), { reports: [], total: 0, page: 1, totalPages: 1, statusCounts: {} }, (data) => { setReports(data.reports); setReportPage(data.page); setReportTotalPages(data.totalPages); setReportStatusCounts(data.statusCounts); });
+        start<SubscriptionListResponse>("subscriptions", api.get<SubscriptionListResponse>("/subscription/admin?page=1&limit=24"), { shops: [], supportQueue: [], operationalCounts: { expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 }, total: 0, page: 1, limit: 24, totalPages: 1, statusCounts: { trial: 0, active: 0, expired: 0, suspended: 0 } }, (data) => { setSubscriptions(data.shops); setSubscriptionSupportQueue(data.supportQueue || []); setSubscriptionOperationalCounts(data.operationalCounts || { expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 }); setSubscriptionTotal(data.total); setSubscriptionPage(data.page); setSubscriptionPageSize(data.limit); setSubscriptionTotalPages(data.totalPages); setSubscriptionStatusCounts(data.statusCounts); setFollowUpDrafts(Object.fromEntries(data.shops.map((shop) => [shop.id, shop.followUpNotes || ""]))); });
+        start<AdminReferralListResponse>("referrals", api.get<AdminReferralListResponse>("/admin/referrals?page=1&limit=25"), { referrals: [], pagination: { page: 1, limit: 25, total: 0, totalPages: 1 } }, (data) => { setReferrals(data.referrals); setReferralPage(data.pagination.page); setReferralTotal(data.pagination.total); setReferralTotalPages(data.pagination.totalPages); });
+        start("suppliers", api.get<{ suppliers: Supplier[] }>("/suppliers"), { suppliers: [] }, (data) => { setSuppliers(data.suppliers); setSupplierNotes(Object.fromEntries(data.suppliers.map((supplier) => [supplier.id, supplier.adminNotes || ""]))); });
+        start("sync summary", api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary"), { shops: [] }, (data) => setSyncSummaries(data.shops));
+        start("sync events", api.get<{ events: AdminSyncEvent[]; devices: AdminSyncDeviceRow[] }>("/sync/admin/events?limit=80"), { events: [], devices: [] }, (data) => { setSyncEvents(data.events); setSyncDevices(data.devices); });
+        start<NonNullable<AdminOverview["assistantAnalytics"]> | null>("assistant analytics", api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"), null, setAssistantAnalytics);
+        start("payment exceptions", api.get<{ checkouts: CheckoutException[] }>("/subscription/admin-checkouts/review"), { checkouts: [] }, (data) => setCheckoutExceptions(data.checkouts));
       })
       .catch((error) => {
+        if (!cancelled) setPageError(error instanceof Error ? error.message : "Could not verify admin access");
         if (!cancelled && error instanceof Error && !error.message.includes("Session expired")) console.error(error);
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  async function retrySection(section: string) {
+    setSectionLoading((previous) => ({ ...previous, [section]: true }));
+    setSectionErrors((previous) => { const next = { ...previous }; delete next[section]; return next; });
+    try {
+      switch (section) {
+        case "overview": setOverview(await api.get<AdminOverview>("/admin/overview")); break;
+        case "operations summary": setOperationsSummary(await api.get<OperationsSummary>("/admin/operations-summary")); break;
+        case "users": setUsers((await api.get<{ users: AdminUser[] }>("/admin/users")).users); break;
+        case "audit logs": setAuditLogs((await api.get<{ logs: AuditLog[] }>("/admin/audit-logs?limit=50")).logs); break;
+        case "reports": await refreshReports(); break;
+        case "subscriptions": await refreshSubscriptions(); break;
+        case "referrals": await refreshReferrals(); break;
+        case "suppliers": await refreshSuppliers(); break;
+        case "sync summary": setSyncSummaries((await api.get<{ shops: SyncShopSummary[] }>("/sync/admin/summary")).shops); break;
+        case "sync events": await refreshSyncEvents(); break;
+        case "assistant analytics": {
+          setAssistantAnalytics(await api.get<NonNullable<AdminOverview["assistantAnalytics"]>>("/assistant/admin/analytics"));
+          break;
+        }
+        case "payment exceptions": setCheckoutExceptions((await api.get<{ checkouts: CheckoutException[] }>("/subscription/admin-checkouts/review")).checkouts); break;
+      }
+    } catch (error) {
+      setSectionErrors((previous) => ({ ...previous, [section]: error instanceof Error ? error.message : "Request failed" }));
+    } finally { setSectionLoading((previous) => ({ ...previous, [section]: false })); }
+  }
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -553,13 +597,23 @@ export default function AdminPage() {
     }
   }
 
+  async function refreshReports(status = reportFilter, page = reportPage) {
+    const params = new URLSearchParams({ limit: "25", page: String(page) });
+    if (status !== "ALL") params.set("status", status);
+    const data = await api.get<AdminReportsResponse>(`/reports/admin?${params.toString()}`);
+    setReports(data.reports);
+    setReportPage(data.page);
+    setReportTotalPages(data.totalPages);
+    setReportStatusCounts(data.statusCounts);
+  }
+
   async function handleUpdateReport(reportId: string, status: string, adminNotes?: string) {
     setUpdatingReport(reportId);
     try {
-      const data = await api.patch<{ report: Report }>(`/reports/admin/${reportId}`, { status, adminNotes });
-      setReports((prev) => prev.map((r) => (r.id === reportId ? data.report : r)));
+      await api.patch<{ report: Report }>(`/reports/admin/${reportId}`, { status, adminNotes });
+      await Promise.all([refreshReports(), api.get<OperationsSummary>("/admin/operations-summary").then(setOperationsSummary)]);
     } catch (err: unknown) {
-      console.error("Failed to update report:", err);
+      setSectionErrors((previous) => ({ ...previous, reports: err instanceof Error ? err.message : "Could not update report" }));
     } finally {
       setUpdatingReport(null);
     }
@@ -875,14 +929,13 @@ export default function AdminPage() {
         note: `Verified from billing report ${report.id}`,
         sourceReportId: report.id,
       });
-      const data = await api.patch<{ report: Report }>(`/reports/admin/${report.id}`, {
+      await api.patch<{ report: Report }>(`/reports/admin/${report.id}`, {
         status: "RESOLVED",
         adminNotes: `Payment verified. Activated ${plan}.`,
       });
-      setReports((prev) => prev.map((r) => (r.id === report.id ? data.report : r)));
-      await refreshSubscriptions();
+      await Promise.all([refreshReports(), refreshSubscriptions(), api.get<OperationsSummary>("/admin/operations-summary").then(setOperationsSummary)]);
     } catch (err) {
-      console.error("Failed to verify billing report:", err);
+      setSectionErrors((previous) => ({ ...previous, reports: err instanceof Error ? err.message : "Could not verify billing report" }));
     } finally {
       setUpdatingReport(null);
     }
@@ -892,9 +945,9 @@ export default function AdminPage() {
     setUpdatingSupplier(supplier.id);
     try {
       await api.patch(`/suppliers/${supplier.id}`, patch);
-      await refreshSuppliers();
+      await Promise.all([refreshSuppliers(), api.get<OperationsSummary>("/admin/operations-summary").then(setOperationsSummary)]);
     } catch (err) {
-      console.error("Failed to update supplier:", err);
+      setSectionErrors((previous) => ({ ...previous, suppliers: err instanceof Error ? err.message : "Could not update supplier" }));
     } finally {
       setUpdatingSupplier(null);
     }
@@ -944,9 +997,9 @@ export default function AdminPage() {
     setUpdatingSub(shop.id);
     try {
       await api.patch(`/subscription/admin/${shop.id}`, { isActive: !shop.isActive });
-      await refreshSubscriptions();
+      await Promise.all([refreshSubscriptions(), api.get<OperationsSummary>("/admin/operations-summary").then(setOperationsSummary)]);
     } catch (err) {
-      console.error("Failed to update shop status:", err);
+      setSectionErrors((previous) => ({ ...previous, subscriptions: err instanceof Error ? err.message : "Could not update shop status" }));
     } finally {
       setUpdatingSub(null);
     }
@@ -958,10 +1011,16 @@ export default function AdminPage() {
   ) {
     setUpdatingSub(shop.id);
     try {
-      await api.patch(`/subscription/admin/${shop.id}`, patch);
-      await refreshSubscriptions();
+      if (patch.followUpNotes !== undefined) {
+        const body = (patch.followUpNotes || "").trim();
+        if (!body) throw new Error("Enter a support note before saving.");
+        await api.post(`/admin/support/shops/${shop.id}/notes`, { body });
+      } else {
+        await api.patch(`/subscription/admin/${shop.id}`, patch);
+      }
+      await Promise.all([refreshSubscriptions(), api.get<OperationsSummary>("/admin/operations-summary").then(setOperationsSummary)]);
     } catch (err) {
-      console.error("Failed to update follow-up:", err);
+      setSectionErrors((previous) => ({ ...previous, subscriptions: err instanceof Error ? err.message : "Could not update follow-up" }));
     } finally {
       setUpdatingSub(null);
     }
@@ -973,18 +1032,21 @@ export default function AdminPage() {
     return `https://wa.me/${phone}?text=${text}`;
   }
 
-  const TABS: { id: Tab; label: string }[] = [
-    { id: "overview", label: "Overview" },
-    { id: "users", label: "Users" },
-    { id: "reset", label: "PIN Reset" },
-    { id: "audit", label: "Audit Log" },
-    { id: "reports", label: "Reports" },
-    { id: "subscriptions", label: "Subscriptions" },
-    { id: "referrals", label: "Referrals" },
-    { id: "suppliers", label: "Suppliers" },
-    { id: "sync", label: "Sync History" },
-    { id: "sms", label: "SMS" },
-    { id: "whatsapp", label: "WhatsApp API" },
+  const primaryTabs: { id: Tab; en: string; sw: string }[] = [
+    { id: "overview", en: "Overview", sw: "Muhtasari" },
+    { id: "support", en: "Needs Action", sw: "Zinahitaji Hatua" },
+    { id: "subscriptions", en: "Payments", sw: "Malipo" },
+    { id: "reports", en: "Support", sw: "Msaada" },
+  ];
+  const moreTabs: { id: Tab; en: string; sw: string }[] = [
+    { id: "users", en: "Users", sw: "Watumiaji" },
+    { id: "suppliers", en: "Suppliers", sw: "Wasambazaji" },
+    { id: "referrals", en: "Referrals", sw: "Rufaa" },
+    { id: "sync", en: "Sync History", sw: "Historia ya Usawazishaji" },
+    { id: "sms", en: "SMS", sw: "SMS" },
+    { id: "whatsapp", en: "WhatsApp API", sw: "WhatsApp API" },
+    { id: "audit", en: "Audit Log", sw: "Kumbukumbu ya Ukaguzi" },
+    { id: "reset", en: "PIN Reset", sw: "Badili PIN" },
   ];
   const activeShops = subscriptionStatusCounts.active;
   const trialShops = subscriptionStatusCounts.trial;
@@ -992,23 +1054,16 @@ export default function AdminPage() {
   const suspendedShops = subscriptionStatusCounts.suspended;
   const expiringTrials = subscriptionOperationalCounts.expiringTrials;
   const activatedTrials = subscriptionOperationalCounts.activatedTrials;
-  const supportIssues = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS").length;
-  const billingIssues = reports.filter((report) => report.type === "BILLING" && report.status !== "RESOLVED").length;
-  const suspiciousAuditLogs = auditLogs.filter((log) =>
-    log.action.toLowerCase().includes("failed") ||
-    log.action.toLowerCase().includes("error") ||
-    log.path.includes("/auth/login")
-  );
-  const suspiciousErrors = suspiciousAuditLogs.length;
-  const openReports = reports.filter((report) => report.status === "OPEN" || report.status === "IN_PROGRESS");
-  const urgentReports = openReports.filter((report) => report.priority === "HIGH" || report.priority === "URGENT");
-  const failedLogins = auditLogs.filter((log) => log.path.includes("/auth/login") && log.action.toLowerCase().includes("failed")).length;
+  const supportIssues = operationsSummary?.openReports ?? 0;
+  const billingIssues = operationsSummary?.billingReports ?? 0;
+  const urgentReports = operationsSummary?.urgentReports ?? 0;
+  const failedLogins = operationsSummary?.loginFailures24h ?? 0;
   const failedSyncShops = syncSummaries.filter((shop) => shop.failed > 0).length;
   const failedSyncEvents = syncSummaries.reduce((sum, shop) => sum + shop.failed, 0);
   const stalledTrials = subscriptionOperationalCounts.stalledTrials;
-  const suppliersNeedingReview = suppliers.filter((supplier) => supplier.verificationStatus !== "VERIFIED").length;
+  const suppliersNeedingReview = operationsSummary?.supplierReview ?? 0;
   const verifiedSuppliers = suppliers.filter((supplier) => supplier.verificationStatus === "VERIFIED").length;
-  const qualifiedReferrals = referrals.filter((referral) => referral.status === "QUALIFIED").length;
+  const qualifiedReferrals = operationsSummary?.qualifiedReferrals ?? 0;
   const shopsNeedingFollowUp = subscriptionSupportQueue
     .filter((shop) =>
       shop.computedStatus === "expired" ||
@@ -1020,15 +1075,15 @@ export default function AdminPage() {
     )
     .sort((a, b) => supportPriority(b) - supportPriority(a))
     .slice(0, 5);
-  const paymentReviewQueue = reports
-    .filter((report) => report.type === "BILLING" && report.status !== "RESOLVED" && report.status !== "REJECTED")
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 4);
-  const latestAdminAction = auditLogs.find((log) => log.user?.role === "ADMIN") || auditLogs[0];
-  const recentShopNotes = subscriptions
-    .filter((shop) => shop.followUpNotes || shop.lastContactedAt)
-    .sort((a, b) => new Date(b.lastContactedAt || b.validUntil || b.trialEndsAt || 0).getTime() - new Date(a.lastContactedAt || a.validUntil || a.trialEndsAt || 0).getTime())
-    .slice(0, 4);
+  const paymentReviewQueue = operationsSummary?.paymentReviewQueue || [];
+  const latestAdminAction = operationsSummary?.latestAdminAction || null;
+  const recentShopNotes = operationsSummary?.recentNotes || [];
+  const tabSections: Record<Tab, string[]> = {
+    overview: ["overview", "operations summary", "assistant analytics", "subscriptions", "reports", "sync summary"],
+    support: [], subscriptions: ["subscriptions", "payment exceptions", "operations summary"], reports: ["reports"],
+    users: ["users"], reset: [], audit: ["audit logs"], referrals: ["referrals", "operations summary"],
+    suppliers: ["suppliers", "operations summary"], sync: ["sync events", "sync summary"], sms: [], whatsapp: [],
+  };
 
   function supportPriority(shop: Subscription) {
     if (shop.computedStatus === "suspended") return 100;
@@ -1064,6 +1119,8 @@ export default function AdminPage() {
     );
   }
 
+  if (pageError) return <AppShell><div role="alert" className="mx-auto max-w-xl rounded border border-red-200 bg-red-50 p-5 text-sm text-red-900"><p className="font-semibold">{sw ? "Imeshindikana kufungua admin" : "Could not open admin"}</p><p className="mt-2">{pageError}</p><button type="button" onClick={() => window.location.reload()} className="mt-3 rounded bg-red-700 px-3 py-2 font-semibold text-white">{sw ? "Jaribu tena" : "Retry"}</button></div></AppShell>;
+
   return (
     <AppShell>
       <div className="max-w-5xl mx-auto pb-24 lg:pb-6">
@@ -1071,26 +1128,39 @@ export default function AdminPage() {
           <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
             <Shield className="w-4 h-4 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+          <h1 className="text-xl font-bold text-gray-900">{sw ? "Dashibodi ya Admin" : "Admin Dashboard"}</h1>
         </div>
 
-        {/* Tab nav */}
-        <div className="mb-6 flex w-full gap-1 overflow-x-auto rounded-lg bg-gray-100 p-1 sm:w-fit">
-          {TABS.map((t) => (
+        <nav aria-label={sw ? "Sehemu za admin" : "Admin sections"} className="mb-5 space-y-2">
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 sm:flex sm:w-fit">
+          {primaryTabs.map((t) => (
             <button
               key={t.id}
+              type="button"
               onClick={() => {
                 setTab(t.id);
-                if (t.id === "sms" && !smsMonitoring) refreshSmsMonitoring().catch(console.error);
               }}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors min-h-0 ${
+              className={`min-h-11 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                 tab === t.id ? "bg-white text-brand-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              {t.label}
+              {sw ? t.sw : t.en}
             </button>
           ))}
-        </div>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+            <span>{sw ? "Zana zaidi" : "More tools"}</span>
+            <select value={moreTabs.some((item) => item.id === tab) ? tab : ""} onChange={(event) => { const next = event.target.value as Tab; setTab(next); if (next === "sms" && !smsMonitoring) refreshSmsMonitoring().catch(console.error); }} className="min-h-10 max-w-full rounded border border-gray-200 bg-white px-3 text-sm text-gray-800" aria-label={sw ? "Zana zaidi za admin" : "More admin tools"}>
+              <option value="" disabled>{sw ? "Chagua zana" : "Choose a tool"}</option>
+              {moreTabs.map((item) => <option key={item.id} value={item.id}>{sw ? item.sw : item.en}</option>)}
+            </select>
+          </label>
+        </nav>
+
+        {tabSections[tab].filter((section) => sectionErrors[section]).map((section) => <div key={section} role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900"><span>{sw ? "Sehemu haijapakiwa" : "Could not load"}: {section}. {sectionErrors[section]}</span><button type="button" disabled={sectionLoading[section]} onClick={() => void retrySection(section)} className="rounded border border-red-300 px-3 py-1 font-semibold disabled:opacity-50">{sectionLoading[section] ? (sw ? "Inapakia..." : "Loading...") : (sw ? "Jaribu tena" : "Retry")}</button></div>)}
+        {tabSections[tab].filter((section) => sectionLoading[section] && !sectionErrors[section]).map((section) => <p key={section} role="status" className="mb-2 rounded border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">{sw ? "Inapakia" : "Loading"}: {section}...</p>)}
+
+        {tab === "support" && <AdminSupportWorkspace onOpenBilling={(shop) => { setTab("subscriptions"); setSubscriptionSearch(shop.name); refreshSubscriptions({ search: shop.name, page: 1 }).catch((error) => setSectionErrors((previous) => ({ ...previous, subscriptions: error instanceof Error ? error.message : "Could not open billing" }))); }} />}
 
         {/* OVERVIEW */}
         {tab === "overview" && overview && (
@@ -1131,12 +1201,13 @@ export default function AdminPage() {
                 <MiniMetric label="Activated" value={activatedTrials} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
                 <MiniMetric label="Unpaid" value={unpaidShops} tone="border-red-200 bg-red-50 text-red-800" />
                 <MiniMetric label="Suspended" value={suspendedShops} tone="border-gray-200 bg-gray-50 text-gray-800" />
-                <MiniMetric label="Support issues" value={supportIssues} tone="border-blue-200 bg-blue-50 text-blue-800" />
-                <MiniMetric label="Billing requests" value={billingIssues} tone="border-purple-200 bg-purple-50 text-purple-800" />
-                <MiniMetric label="Suspicious errors" value={suspiciousErrors} tone="border-amber-200 bg-amber-50 text-amber-800" />
-                <MiniMetric label="Failed logins" value={failedLogins} tone="border-red-200 bg-red-50 text-red-800" />
+                <MiniMetric label={sw ? "Ripoti wazi" : "Support issues"} value={operationsSummary ? supportIssues : "—"} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                <MiniMetric label={sw ? "Maombi ya malipo" : "Billing requests"} value={operationsSummary ? billingIssues : "—"} tone="border-purple-200 bg-purple-50 text-purple-800" />
+                <MiniMetric label={sw ? "Login zilizoshindwa (saa 24)" : "Failed logins (24h)"} value={operationsSummary ? failedLogins : "—"} tone="border-red-200 bg-red-50 text-red-800" />
+                <MiniMetric label={sw ? "Login zilizoshindwa (siku 7)" : "Failed logins (7d)"} value={operationsSummary?.loginFailures7d ?? "—"} tone="border-red-200 bg-red-50 text-red-800" />
+                <MiniMetric label={sw ? "Ufuatiliaji unaodaiwa" : "Follow-ups due"} value={operationsSummary?.dueFollowUps ?? "—"} tone="border-amber-200 bg-amber-50 text-amber-800" />
                 <MiniMetric label="Failed sync shops" value={failedSyncShops} tone="border-red-200 bg-red-50 text-red-800" />
-                <MiniMetric label="Suppliers review" value={suppliersNeedingReview} tone="border-orange-200 bg-orange-50 text-orange-800" />
+                <MiniMetric label="Suppliers review" value={operationsSummary ? suppliersNeedingReview : "—"} tone="border-orange-200 bg-orange-50 text-orange-800" />
                 <MiniMetric label="Verified suppliers" value={verifiedSuppliers} tone="border-green-200 bg-green-50 text-green-800" />
               </div>
             </section>
@@ -1147,7 +1218,7 @@ export default function AdminPage() {
                   <p className="text-xs text-gray-500">A quick support command center for launch operations.</p>
                 </div>
                 <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
-                  {billingIssues + unpaidShops + suspendedShops + stalledTrials + failedSyncShops + suppliersNeedingReview + suspiciousErrors} signals
+                  {operationsSummary?.shopsNeedingAction ?? "—"} {sw ? "biashara zinahitaji hatua" : "shops need action"}
                 </span>
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1155,7 +1226,7 @@ export default function AdminPage() {
                   icon={<CreditCard className="h-5 w-5 text-purple-700" />}
                   title="Payment follow-up"
                   detail="Billing requests, unpaid shops, and suspended accounts that need confirmation or renewal."
-                  value={billingIssues + unpaidShops + suspendedShops}
+                  value={operationsSummary ? billingIssues + unpaidShops + suspendedShops : "—"}
                   tone="border-purple-200 bg-purple-50 text-purple-900"
                   action="Open subscriptions"
                   onClick={() => setTab("subscriptions")}
@@ -1164,16 +1235,16 @@ export default function AdminPage() {
                   icon={<BellRing className="h-5 w-5 text-orange-700" />}
                   title="Trial activation"
                   detail="Trials ending soon or shops that still need product/sale setup help."
-                  value={expiringTrials + stalledTrials}
+                  value={sectionErrors.subscriptions ? "—" : expiringTrials + stalledTrials}
                   tone="border-orange-200 bg-orange-50 text-orange-900"
                   action="Contact shops"
-                  onClick={() => setTab("subscriptions")}
+                  onClick={() => setTab("support")}
                 />
                 <ActionCard
                   icon={<BadgeCheck className="h-5 w-5 text-green-700" />}
                   title="Supplier verification"
                   detail="Suppliers waiting for admin review before they become trusted in the ecosystem."
-                  value={suppliersNeedingReview}
+                  value={operationsSummary ? suppliersNeedingReview : "—"}
                   tone="border-green-200 bg-green-50 text-green-900"
                   action="Verify suppliers"
                   onClick={() => setTab("suppliers")}
@@ -1182,25 +1253,17 @@ export default function AdminPage() {
                   icon={<RefreshCw className="h-5 w-5 text-red-700" />}
                   title="Offline sync watch"
                   detail="Shops with failed browser sync events that may need support before data feels stale."
-                  value={failedSyncShops}
+                  value={sectionErrors["sync summary"] ? "—" : failedSyncShops}
                   tone="border-red-200 bg-red-50 text-red-900"
                   action="Review sync issues"
-                  onClick={() => setTab("overview")}
+                  onClick={() => setTab("sync")}
                 />
-                <ActionCard
-                  icon={<AlertTriangle className="h-5 w-5 text-amber-700" />}
-                  title="Suspicious errors"
-                  detail="Recent failed login or error-looking audit events from the admin audit sample."
-                  value={suspiciousErrors}
-                  tone="border-amber-200 bg-amber-50 text-amber-900"
-                  action="Open audit logs"
-                  onClick={() => setTab("audit")}
-                />
+                <a href="https://necuva-group.sentry.io/issues/?query=is%3Aunresolved" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"><AlertTriangle className="h-5 w-5 text-amber-700" /><strong className="mt-2 block text-sm">{sw ? "Makosa ya programu" : "Application errors"}</strong><p className="mt-1 text-xs">{sw ? "Angalia Sentry kwa matukio halisi na hali yake." : "Review real issues and their status in Sentry."}</p><span className="mt-3 block text-xs font-bold underline">{sw ? "Fungua Sentry" : "Open Sentry"}</span></a>
                 <ActionCard
                   icon={<ClipboardList className="h-5 w-5 text-blue-700" />}
                   title="Open support reports"
                   detail="Merchant messages, billing reports, and issues that still need an admin decision."
-                  value={openReports.length}
+                  value={operationsSummary ? supportIssues : "—"}
                   tone="border-blue-200 bg-blue-50 text-blue-900"
                   action="Open reports"
                   onClick={() => setTab("reports")}
@@ -1281,14 +1344,14 @@ export default function AdminPage() {
                     <p className="mt-3 rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">No saved shop notes yet.</p>
                   ) : (
                     <div className="mt-3 space-y-2">
-                      {recentShopNotes.map((shop) => (
-                        <div key={shop.id} className="rounded-lg bg-gray-50 p-3 text-xs">
+                      {recentShopNotes.map((note) => (
+                        <div key={note.id} className="rounded-lg bg-gray-50 p-3 text-xs">
                           <div className="flex items-start justify-between gap-2">
-                            <p className="font-semibold text-gray-950">{shop.name}</p>
-                            <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-gray-600">{shop.onboardingStatus}</span>
+                            <p className="font-semibold text-gray-950">{note.shop.name}</p>
+                            <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-gray-600">{note.author?.name || "Admin"}</span>
                           </div>
-                          <p className="mt-1 text-gray-600">{shop.followUpNotes || "Contact logged without notes."}</p>
-                          <p className="mt-1 text-gray-400">Last contact: {shop.lastContactedAt ? new Date(shop.lastContactedAt).toLocaleDateString() : "not set"}</p>
+                          <p className="mt-1 text-gray-600">{note.body}</p>
+                          <p className="mt-1 text-gray-400">{new Date(note.createdAt).toLocaleString()}</p>
                         </div>
                       ))}
                     </div>
@@ -1382,18 +1445,18 @@ export default function AdminPage() {
                 <span className="text-xs text-gray-400">Last 30 days</span>
               </div>
               <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                <MiniMetric label="Tracked actions" value={overview.assistantAnalytics?.summary.total || 0} tone="border-brand-200 bg-brand-50 text-brand-800" />
-                <MiniMetric label="Opened rate" value={overview.assistantAnalytics?.summary.openedRate || 0} tone="border-blue-200 bg-blue-50 text-blue-800" />
-                <MiniMetric label="Completed rate" value={overview.assistantAnalytics?.summary.completedRate || 0} tone="border-green-200 bg-green-50 text-green-800" />
-                <MiniMetric label="Dismissed rate" value={overview.assistantAnalytics?.summary.dismissedRate || 0} tone="border-gray-200 bg-gray-50 text-gray-800" />
+                <MiniMetric label="Tracked actions" value={assistantAnalytics?.summary.total ?? "—"} tone="border-brand-200 bg-brand-50 text-brand-800" />
+                <MiniMetric label="Opened rate" value={assistantAnalytics?.summary.openedRate ?? "—"} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                <MiniMetric label="Completed rate" value={assistantAnalytics?.summary.completedRate ?? "—"} tone="border-green-200 bg-green-50 text-green-800" />
+                <MiniMetric label="Dismissed rate" value={assistantAnalytics?.summary.dismissedRate ?? "—"} tone="border-gray-200 bg-gray-50 text-gray-800" />
               </div>
               <div className="mt-3 rounded-lg bg-gray-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Top action types</p>
-                {(overview.assistantAnalytics?.topActions || []).length === 0 ? (
+                {(assistantAnalytics?.topActions || []).length === 0 ? (
                   <p className="mt-2 text-sm text-gray-500">No assistant actions tracked yet.</p>
                 ) : (
                   <div className="mt-2 grid gap-2 md:grid-cols-2">
-                    {overview.assistantAnalytics?.topActions.slice(0, 6).map((action) => (
+                    {assistantAnalytics?.topActions.slice(0, 6).map((action) => (
                       <div key={action.actionKey} className="rounded-lg bg-white px-3 py-2 text-xs">
                         <div className="flex items-start justify-between gap-2">
                           <p className="font-semibold text-gray-900">{action.title}</p>
@@ -1413,8 +1476,8 @@ export default function AdminPage() {
                   <p className="text-xs text-gray-500">Prioritized shops and reports that need admin attention today.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => setTab("subscriptions")} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
-                    Open subscriptions
+                  <button onClick={() => setTab("support")} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+                    {sw ? "Fungua biashara" : "Open shop support"}
                   </button>
                   <button onClick={() => setTab("reports")} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
                     Open reports
@@ -1427,11 +1490,11 @@ export default function AdminPage() {
               <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
                 <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Next shops to contact</p>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-gray-500">{shopsNeedingFollowUp.length}</span>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{sw ? "Biashara za kufuatilia" : "Shops to contact"}</p>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-gray-500">{operationsSummary?.shopsNeedingAction ?? "—"}</span>
                   </div>
                   {shopsNeedingFollowUp.length === 0 ? (
-                    <p className="rounded-lg bg-white px-3 py-4 text-sm text-gray-500">No urgent shop follow-ups right now.</p>
+                    <p className="rounded-lg bg-white px-3 py-4 text-sm text-gray-500">{operationsSummary?.shopsNeedingAction ? (sw ? "Fungua orodha kamili ya biashara zinazohitaji hatua." : "Open the full shop support queue to review every case.") : (sw ? "Hakuna biashara ya kufuatilia kwa sasa." : "No urgent shop follow-ups right now.")}</p>
                   ) : (
                     <div className="space-y-2">
                       {shopsNeedingFollowUp.map((shop) => (
@@ -1462,11 +1525,11 @@ export default function AdminPage() {
                   )}
                 </div>
                 <div className="grid gap-2">
-                  <MiniMetric label="High-priority reports" value={urgentReports.length} tone="border-red-200 bg-red-50 text-red-800" />
-                  <MiniMetric label="Open reports" value={openReports.length} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                  <MiniMetric label="High-priority reports" value={operationsSummary ? urgentReports : "—"} tone="border-red-200 bg-red-50 text-red-800" />
+                  <MiniMetric label="Open reports" value={operationsSummary ? supportIssues : "—"} tone="border-blue-200 bg-blue-50 text-blue-800" />
                   <MiniMetric label="Stalled trials" value={stalledTrials} tone="border-orange-200 bg-orange-50 text-orange-800" />
-                  <MiniMetric label="Needs billing action" value={billingIssues + unpaidShops + suspendedShops} tone="border-purple-200 bg-purple-50 text-purple-800" />
-                  <MiniMetric label="Suppliers to verify" value={suppliersNeedingReview} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                  <MiniMetric label="Needs billing action" value={operationsSummary && !sectionErrors.subscriptions ? billingIssues + unpaidShops + suspendedShops : "—"} tone="border-purple-200 bg-purple-50 text-purple-800" />
+                  <MiniMetric label="Suppliers to verify" value={operationsSummary ? suppliersNeedingReview : "—"} tone="border-amber-200 bg-amber-50 text-amber-800" />
                   <MiniMetric label="Failed sync events" value={failedSyncEvents} tone="border-red-200 bg-red-50 text-red-800" />
                 </div>
               </div>
@@ -1509,32 +1572,6 @@ export default function AdminPage() {
                       >
                         View history
                       </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-            {suspiciousAuditLogs.length > 0 && (
-              <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-amber-950">Suspicious / Error Watchlist</h2>
-                    <p className="text-xs text-amber-800">Recent login, failed, or error-looking audit events from the last audit sample.</p>
-                  </div>
-                  <button onClick={() => setTab("audit")} className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200">
-                    Open audit logs
-                  </button>
-                </div>
-                <div className="grid gap-2 lg:grid-cols-2">
-                  {suspiciousAuditLogs.slice(0, 6).map((log) => (
-                    <div key={log.id} className="rounded-lg bg-white p-3 text-sm shadow-sm">
-                      <div className="flex flex-col gap-1">
-                        <p className="font-mono text-xs font-semibold text-gray-900">{log.action}</p>
-                        <p className="font-mono text-[11px] text-gray-500">{log.method} {log.path}</p>
-                        <p className="text-xs text-gray-500">
-                          {log.user ? `${log.user.name} (${log.user.phone})` : "Unknown user"} - {new Date(log.createdAt).toLocaleString()}
-                        </p>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -1731,22 +1768,22 @@ export default function AdminPage() {
               {["OPEN", "IN_PROGRESS", "RESOLVED", "REJECTED", "ALL"].map((s) => (
                 <button
                   key={s}
-                  onClick={() => setReportFilter(s)}
+                  onClick={() => { setReportFilter(s); refreshReports(s, 1).catch((error) => setSectionErrors((previous) => ({ ...previous, reports: error instanceof Error ? error.message : "Could not load reports" }))); }}
                   className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                     reportFilter === s ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                   }`}
                 >
-                  {s} ({s === "ALL" ? reports.length : reports.filter((r) => r.status === s).length})
+                  {s} ({s === "ALL" ? Object.values(reportStatusCounts).reduce((sum, count) => sum + count, 0) : reportStatusCounts[s] || 0})
                 </button>
               ))}
             </div>
             <div className="space-y-3">
-              {(reportFilter === "ALL" ? reports : reports.filter((r) => r.status === reportFilter)).length === 0 ? (
+              {reports.length === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-500 text-sm">
                   No reports in this category
                 </div>
               ) : (
-                (reportFilter === "ALL" ? reports : reports.filter((r) => r.status === reportFilter)).map((report) => (
+                reports.map((report) => (
                   <div key={report.id} className="bg-white rounded-xl border border-gray-200 p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1 min-w-0">
@@ -1830,6 +1867,7 @@ export default function AdminPage() {
                 ))
               )}
             </div>
+            {reportTotalPages > 1 && <div className="mt-4 flex items-center justify-between text-sm"><button type="button" disabled={reportPage <= 1} onClick={() => refreshReports(reportFilter, reportPage - 1).catch((error) => setSectionErrors((previous) => ({ ...previous, reports: error instanceof Error ? error.message : "Could not load reports" })))} className="rounded border px-3 py-2 disabled:opacity-40">{sw ? "Nyuma" : "Previous"}</button><span>{reportPage} / {reportTotalPages}</span><button type="button" disabled={reportPage >= reportTotalPages} onClick={() => refreshReports(reportFilter, reportPage + 1).catch((error) => setSectionErrors((previous) => ({ ...previous, reports: error instanceof Error ? error.message : "Could not load reports" })))} className="rounded border px-3 py-2 disabled:opacity-40">{sw ? "Mbele" : "Next"}</button></div>}
           </div>
         )}
 
@@ -1855,7 +1893,7 @@ export default function AdminPage() {
               </div>
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="rounded-full bg-white px-2.5 py-1 text-gray-700">{referralTotal} tracked</span>
-                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{qualifiedReferrals} ready on this page</span>
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">{operationsSummary ? qualifiedReferrals : "—"} ready overall</span>
                 <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-800">{referrals.filter((referral) => referral.status === "REWARDED").length} rewarded on this page</span>
               </div>
             </section>

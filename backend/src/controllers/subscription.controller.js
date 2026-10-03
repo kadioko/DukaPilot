@@ -260,10 +260,7 @@ const adminUpdateSubscription = asyncHandler(async (req, res) => {
   if (lastContactedAt !== undefined) updateData.lastContactedAt = parseOptionalDate(lastContactedAt, "lastContactedAt");
   if (followUpNotes !== undefined) updateData.followUpNotes = String(followUpNotes || "").trim() || null;
 
-  const shop = await prisma.shop.update({
-    where: { id: shopId },
-    data: updateData,
-    select: {
+  const select = {
       id: true,
       name: true,
       plan: true,
@@ -273,14 +270,22 @@ const adminUpdateSubscription = asyncHandler(async (req, res) => {
       onboardingStatus: true,
       lastContactedAt: true,
       followUpNotes: true,
-    },
-  });
+    };
+  const note = typeof updateData.followUpNotes === "string" ? updateData.followUpNotes : null;
+  if (note && note.length > 2000) return res.status(400).json({ error: "Support note must be at most 2000 characters" });
+  const shop = note ? await prisma.$transaction(async (tx) => {
+    const updated = await tx.shop.update({ where: { id: shopId }, data: updateData, select });
+    await tx.shopSupportNote.create({ data: { shopId, authorId: req.user.userId, body: note } });
+    return updated;
+  }) : await prisma.shop.update({ where: { id: shopId }, data: updateData, select });
 
+  const auditChanges = { ...updateData };
+  delete auditChanges.followUpNotes;
   req.audit = {
     action: "admin.subscription.updated",
     resourceType: "shop",
     resourceId: shopId,
-    metadata: { adminId: req.user.userId, changes: updateData },
+    metadata: { adminId: req.user.userId, changes: auditChanges, noteSaved: Boolean(note) },
   };
 
   res.json({ shop });
@@ -477,4 +482,4 @@ const adminRecordPayment = asyncHandler(async (req, res) => {
   res.status(201).json({ payment, shop, active: isSubscriptionActive(shop), previousEndsAt: existing.subscriptionEndsAt, subscriptionEndsAt });
 });
 
-module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial, adminExtendSubscription, adminRemoveSubscription, adminRecordPayment };
+module.exports = { getStatus, adminListSubscriptions, adminUpdateSubscription, adminExtendTrial, adminExtendSubscription, adminRemoveSubscription, adminRecordPayment, subscriptionSnapshot, subscriptionStatusWhere };

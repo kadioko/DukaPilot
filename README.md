@@ -117,7 +117,8 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 
 | Feature | Description |
 | --- | --- |
-| **System overview** | User, shop, product, sale, order, active shop, trial, unpaid, suspended, billing, support, and suspicious-error counts |
+| **System overview** | User, shop, product, sale, order, plan, and database-wide support counts; anonymous failed-login attempt totals and a link to Sentry for application errors |
+| **Shop support workspace** | Search and page through businesses needing action, assign an admin, set a follow-up date, review branches/payments/issues/sync, and add dated notes |
 | **User management** | List all users; look up any user by phone |
 | **PIN reset** | Reset any user's PIN (all resets are audit-logged) |
 | **Subscription desk** | Mark Basic/Pro payments, extend active plans from the current end date, remove subscriptions, and see valid-until dates |
@@ -126,7 +127,9 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Sync support** | View offline sync failures by shop/device, rename devices, and mark issues Open, Contacted, or Resolved |
 | **SMS monitoring** | Platform-admin-only live NextSMS balance and recent delivery status, with masked recipients and no SMS body or PIN-code access |
 | **Merchant-wallet reconciliation** | Review pooled provider funds, merchant liabilities, pending settlements, masked transaction history, and audit-logged evidence-backed corrections |
-| **Audit log viewer** | Searchable log of all significant actions |
+| **Audit log viewer** | Recent successful administrative actions; application errors are reviewed in Sentry |
+
+Admin workflow and metric definitions: [docs/ADMIN_OPERATIONS.md](./docs/ADMIN_OPERATIONS.md).
 
 ---
 

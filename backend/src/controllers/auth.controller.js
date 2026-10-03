@@ -300,6 +300,7 @@ const register = asyncHandler(async (req, res) => {
 });
 
 const login = asyncHandler(async (req, res) => {
+  const { recordLoginFailure } = require("../services/loginFailure.service");
   const phone = normalizePhone(req.body.phone);
   const pin = String(req.body.pin || "").trim();
 
@@ -322,16 +323,28 @@ const login = asyncHandler(async (req, res) => {
 
   if (user) {
     const match = await bcrypt.compare(pin, user.pin);
-    if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
+    if (!match) {
+      recordLoginFailure("INVALID_PIN");
+      return res.status(401).json({ error: "Invalid phone or PIN" });
+    }
   } else {
     staff = await prisma.staffMember.findFirst({
       where: { phone: { in: phoneValues } },
       include: { shop: { include: { user: true, parentShop: { include: { user: true } } } } },
     });
-    if (!staff) return res.status(404).json({ error: "No account found for this phone number", code: "ACCOUNT_NOT_FOUND" });
-    if (!staff.isActive || !staff.pin) return res.status(401).json({ error: "Invalid phone or PIN" });
+    if (!staff) {
+      recordLoginFailure("ACCOUNT_NOT_FOUND");
+      return res.status(404).json({ error: "No account found for this phone number", code: "ACCOUNT_NOT_FOUND" });
+    }
+    if (!staff.isActive || !staff.pin) {
+      recordLoginFailure("STAFF_UNAVAILABLE");
+      return res.status(401).json({ error: "Invalid phone or PIN" });
+    }
     const match = await bcrypt.compare(pin, staff.pin);
-    if (!match) return res.status(401).json({ error: "Invalid phone or PIN" });
+    if (!match) {
+      recordLoginFailure("INVALID_PIN");
+      return res.status(401).json({ error: "Invalid phone or PIN" });
+    }
     if (!activePlan(staff.shop)) {
       return res.status(402).json({ error: "Subscription required", code: "SUBSCRIPTION_REQUIRED" });
     }
