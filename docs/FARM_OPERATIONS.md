@@ -5,6 +5,31 @@ supplier buying, and reports. Farm Operations adds a focused layer so a small
 farm can connect field or livestock activity to inventory and normal sales
 without recording the same cost twice.
 
+## Internal-use inputs and profit
+
+An owner can mark a product in **Inventory** as **Internal use - not for sale**.
+Use this for layers feed, seed, fertilizer, medicine, packaging, and kitchen
+ingredients consumed by the business rather than sold to customers. The item
+remains in inventory, receiving, stock counts, supplier orders, farm inputs,
+crop inputs, and food preparation. It is excluded from new POS sales, linked
+quotation sales, and the public catalog. No selling price is needed.
+Existing products are not classified automatically; edit each existing feed or
+input product and turn on the option. Marking a product internal also
+unpublishes it from the catalog. Turning it back into a saleable item does not
+republish it automatically.
+
+For example, receive layers feed as kg at its cost per kg. A 25 kg bag costs
+TZS 50,000, so the input cost is TZS 2,000 per kg. Recording 37.5 kg used in
+egg production removes that quantity from feed stock and assigns TZS 75,000 to
+the egg batch. The produced eggs or trays take that cost into their inventory
+valuation. **Profit Analytics** shows production input costs for the production
+period, but does not subtract them again as an operating expense. Their cost
+appears in cost of goods sold and known-cost profit when the eggs or trays are
+sold. Unsold output remains stock; an ordinary stock adjustment does not
+allocate feed to production. Do not also enter the feed purchase as a normal
+Expense, or the report will double-count it. Historical sales keep the cost
+snapshot recorded at the time of sale.
+
 ## Farm type and access
 
 There are two farm categories:
@@ -22,7 +47,8 @@ farm work; this permission does not grant report access.
 ## Crop workflow
 
 1. In **Crops**, use **Starter products** to create zero-stock input products
-   for \`Mbegu\`, \`NPK Mbolea\`, and \`Dawa ya mimea\`. When a cycle is
+   for \`Mbegu\`, \`NPK Mbolea\`, and \`Dawa ya mimea\`. New starter inputs
+   are internal-use stock and stay out of the public catalog. When a cycle is
    selected, it also creates a dedicated output product such as
    \`Mahindi - Shamba A\`. Prices and stock quantities are still set by the
    farmer in **Inventory**.
@@ -206,6 +232,7 @@ The additive migration is:
 20261002004000_farm_production_accounting_and_shop_menu
 20261002005000_farm_egg_stock_mode
 20261002006000_variable_sale_prices
+20261002007000_internal_use_products
 \`\`\`
 
 Together they add farm settings, crop plots and cycles, input usages, harvest

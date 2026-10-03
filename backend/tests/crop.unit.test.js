@@ -20,6 +20,25 @@ function loadController(prismaMock) {
   return require(controllerPath);
 }
 
+test("new crop starter inputs are internal stock while the harvest output remains saleable", async () => {
+  const created = [];
+  const controller = loadController({
+    cropCycle: { findFirst: async () => ({ id: "cycle-1", cropName: "Maize", yieldUnit: "kg", plot: { name: "Field A" } }) },
+    $transaction: async (work) => work({
+      product: {
+        findFirst: async () => null,
+        create: async ({ data }) => { created.push(data); return { id: `product-${created.length}`, name: data.name, unit: data.unit }; },
+      },
+    }),
+  });
+  const res = response();
+  await controller.createStarterProducts({ user: { userId: "owner-1", role: "MERCHANT" }, body: { cropCycleId: "cycle-1" } }, res);
+  assert.equal(res.statusCode, 201);
+  assert.equal(created.length, 4);
+  assert.ok(created.slice(0, 3).every((product) => product.isInternalUse && !product.isCatalogVisible));
+  assert.equal(created[3].isInternalUse, false);
+});
+
 test("crop reports hide financial values from field staff without report access", () => {
   const { reportCycle } = loadController({});
   const report = reportCycle({

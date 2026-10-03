@@ -260,6 +260,17 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
 
   await expect(page.getByText(/25 pcs/)).toBeVisible();
 
+  await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
+  await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();
+  await page.getByRole("checkbox", { name: /internal use - not for sale/i }).check();
+  await expect(page.getByRole("checkbox", { name: /show this product in the public catalog/i })).toBeDisabled();
+  await expect(page.getByLabel(/selling price|bei ya kuuza/i)).toHaveCount(0);
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText("Internal use - not for sale")).toBeVisible();
+  await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
+  await expect(page.getByRole("button", { name: "Show in catalog" })).toHaveCount(0);
+  await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
+
   await page.getByRole("button", { name: /import csv|ingiza csv/i }).click();
   await expect(page.getByText(/import products from csv|ingiza bidhaa kwa csv/i)).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles({

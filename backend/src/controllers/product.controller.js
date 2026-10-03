@@ -23,6 +23,7 @@ const PRODUCT_IMPORT_COLUMNS = {
   wholesaleenabled: "wholesaleEnabled",
   wholesaleprice: "wholesalePrice",
   wholesaleminqty: "wholesaleMinQty",
+  isinternaluse: "isInternalUse",
 };
 
 function asyncHandler(fn) {
@@ -189,8 +190,9 @@ function parseProductImport(csv) {
     if (sku) localSkus.add(sku);
     if (unit.length > 30) errors.push({ row, field: "unit", message: "unit must be 30 characters or less" });
 
+    const isInternalUse = parseImportBoolean(get("isInternalUse"), row, errors, "isInternalUse");
     const buyingPrice = parseImportInteger(get("buyingPrice"), { row, field: "buyingPrice", fallback: 0, required: true, errors });
-    const sellingPrice = parseImportInteger(get("sellingPrice"), { row, field: "sellingPrice", fallback: 0, required: true, errors });
+    const sellingPrice = parseImportInteger(get("sellingPrice"), { row, field: "sellingPrice", fallback: 0, required: !isInternalUse, errors });
     const currentStock = parseImportInteger(get("currentStock"), { row, field: "currentStock", fallback: 0, errors });
     const minimumStock = parseImportInteger(get("minimumStock"), { row, field: "minimumStock", fallback: 5, errors });
     const doesNotExpire = parseImportBoolean(get("doesNotExpire"), row, errors);
@@ -200,7 +202,9 @@ function parseProductImport(csv) {
       .some((value) => value !== undefined && value !== null && String(value).trim() !== "");
     let wholesalePrice = null;
     let wholesaleMinQty = null;
-    if (wholesaleEnabled) {
+    if (isInternalUse && (wholesaleEnabled || wholesaleValuesProvided)) {
+      errors.push({ row, field: "wholesaleEnabled", message: "Internal-use products cannot have wholesale pricing" });
+    } else if (wholesaleEnabled) {
       wholesalePrice = parseImportInteger(get("wholesalePrice"), { row, field: "wholesalePrice", fallback: 0, required: true, errors });
       wholesaleMinQty = parseImportInteger(get("wholesaleMinQty"), { row, field: "wholesaleMinQty", fallback: 5, minimum: 1, errors });
       if (wholesalePrice > sellingPrice) {
@@ -216,7 +220,7 @@ function parseProductImport(csv) {
     }
     if (barcodeCheck.value) localBarcodes.add(barcodeCheck.value);
 
-    products.push({ name, labelName, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, doesNotExpire, expiryDate, barcode: barcodeCheck.value });
+    products.push({ name, labelName, sku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, doesNotExpire, expiryDate, isInternalUse, isCatalogVisible: !isInternalUse, barcode: barcodeCheck.value });
   }
   return { errors, products };
 }
@@ -228,6 +232,7 @@ async function lowStockPage(shopId, {
   includeOutOfStock = true,
   supplierId,
   expiryStatus = "ALL",
+  usage = "ALL",
 }) {
   const term = String(search || "").trim();
   const barcode = term.toUpperCase();
@@ -240,6 +245,8 @@ async function lowStockPage(shopId, {
     ? Prisma.sql`AND "currentStock" <= "minimumStock"`
     : Prisma.sql`AND "currentStock" > 0 AND "currentStock" <= "minimumStock"`;
   const supplierFilter = supplierId ? Prisma.sql`AND "supplierId" = ${supplierId}` : Prisma.empty;
+  const usageFilter = usage === "FOR_SALE" ? Prisma.sql`AND "isInternalUse" = false`
+    : usage === "INTERNAL" ? Prisma.sql`AND "isInternalUse" = true` : Prisma.empty;
   const expiryFilter = expiryStatus === "EXPIRING_SOON"
     ? Prisma.sql`AND "doesNotExpire" = false AND "expiryDate" >= ${today} AND "expiryDate" <= ${expiryLimit}`
     : expiryStatus === "EXPIRED"
@@ -257,6 +264,7 @@ async function lowStockPage(shopId, {
         AND "isActive" = true
         ${stockFilter}
         ${supplierFilter}
+        ${usageFilter}
         ${expiryFilter}
         ${searchFilter}
       ORDER BY "currentStock" ASC, name ASC
@@ -267,6 +275,7 @@ async function lowStockPage(shopId, {
         AND "isActive" = true
         ${stockFilter}
         ${supplierFilter}
+        ${usageFilter}
         ${expiryFilter}
         ${searchFilter}`,
   ]);
@@ -288,6 +297,7 @@ const list = asyncHandler(async (req, res) => {
     stockStatus = "ALL",
     expiryStatus = "ALL",
     supplierId,
+    usage = "ALL",
     search,
     page = 1,
     limit = 50,
@@ -297,6 +307,8 @@ const list = asyncHandler(async (req, res) => {
   const skip = (pageNumber - 1) * limitNumber;
 
   const where = { shopId, isActive: true };
+  if (usage !== "ALL") where.isInternalUse = usage === "INTERNAL";
+  if (req.user.staffId && !req.user.permissions?.canManageStock) where.isInternalUse = false;
   if (supplierId) where.supplierId = supplierId;
   if (stockStatus === "OUT") where.currentStock = 0;
   if (stockStatus === "IN_STOCK") where.currentStock = { gt: 0 };
@@ -338,6 +350,7 @@ const list = asyncHandler(async (req, res) => {
       take: limitNumber,
       supplierId,
       expiryStatus,
+      usage: req.user.staffId && !req.user.permissions?.canManageStock ? "FOR_SALE" : usage,
       // Existing notification links intentionally keep showing both low and empty stock.
       includeOutOfStock: stockStatus !== "LOW" || lowStock === "true",
     }));
@@ -374,12 +387,12 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, isCatalogVisible, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
+  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, isCatalogVisible, isInternalUse = false, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
 
-  if (!name || buyingPrice == null || sellingPrice == null) {
+  if (!name || buyingPrice == null || (!isInternalUse && sellingPrice == null)) {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
   }
-  if (isCatalogVisible !== undefined && !canManageCatalogVisibility(req)) {
+  if ((isCatalogVisible !== undefined || isInternalUse) && !canManageCatalogVisibility(req)) {
     return res.status(403).json({ error: "Only the shop owner can change public catalog visibility" });
   }
   const productUnit = normalizedUnit(unit);
@@ -388,7 +401,7 @@ const create = asyncHandler(async (req, res) => {
   if (!Number.isInteger(initialStock) || initialStock < 0) {
     return res.status(400).json({ error: "Current stock must be a whole number 0 or greater" });
   }
-  const retailPrice = Number(sellingPrice);
+  const retailPrice = Number(sellingPrice ?? 0);
   const parsedWholesalePrice = wholesalePrice != null && wholesalePrice !== "" ? Number(wholesalePrice) : null;
   if (parsedWholesalePrice != null && parsedWholesalePrice > retailPrice) {
     return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
@@ -438,7 +451,8 @@ const create = asyncHandler(async (req, res) => {
       shopId,
       supplierId: supplierId || null,
       doesNotExpire: Boolean(doesNotExpire),
-      isCatalogVisible: isCatalogVisible !== false,
+      isCatalogVisible: !isInternalUse && isCatalogVisible !== false,
+      isInternalUse,
       expiryDate: doesNotExpire ? null : (expiryDate ? new Date(expiryDate) : null),
       barcode,
       barcodeType: barcode ? inferBarcodeType(barcode, internalBarcode ? "INTERNAL" : barcodeType) : null,
@@ -514,9 +528,13 @@ const update = asyncHandler(async (req, res) => {
     });
   }
 
-  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, isCatalogVisible, expiryDate, doesNotExpire, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
-  if (isCatalogVisible !== undefined && !canManageCatalogVisibility(req)) {
+  const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, isCatalogVisible, isInternalUse, expiryDate, doesNotExpire, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
+  if ((isCatalogVisible !== undefined || isInternalUse !== undefined) && !canManageCatalogVisibility(req)) {
     return res.status(403).json({ error: "Only the shop owner can change public catalog visibility" });
+  }
+  const nextInternalUse = isInternalUse === undefined ? existing.isInternalUse : isInternalUse;
+  if (nextInternalUse && isCatalogVisible === true) {
+    return res.status(400).json({ error: "Internal-use products cannot appear in the public catalog" });
   }
   const nextUnit = unit === undefined ? normalizedUnit(existing.unit) : normalizedUnit(unit);
   if (nextUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
@@ -575,7 +593,8 @@ const update = asyncHandler(async (req, res) => {
       ...(minimumStock !== undefined && { minimumStock: Number(minimumStock) }),
       ...(supplierId !== undefined && { supplierId }),
       ...(isActive !== undefined && { isActive }),
-      ...(isCatalogVisible !== undefined && { isCatalogVisible }),
+      ...(isInternalUse !== undefined && { isInternalUse }),
+      ...(nextInternalUse ? { isCatalogVisible: false } : isCatalogVisible !== undefined ? { isCatalogVisible } : {}),
       ...(doesNotExpire !== undefined && { doesNotExpire: Boolean(doesNotExpire) }),
       ...(doesNotExpire !== undefined && doesNotExpire ? { expiryDate: null } :
           expiryDate !== undefined ? { expiryDate: expiryDate ? new Date(expiryDate) : null } : {}),
@@ -604,6 +623,9 @@ const importCsv = asyncHandler(async (req, res) => {
       code: "PRODUCT_CSV_INVALID",
       details: errors.slice(0, 20),
     });
+  }
+  if (products.some((product) => product.isInternalUse) && !canManageCatalogVisibility(req)) {
+    return res.status(403).json({ error: "Only the shop owner can mark imported products for internal use" });
   }
 
   const barcodes = products.map((product) => product.barcode).filter(Boolean);

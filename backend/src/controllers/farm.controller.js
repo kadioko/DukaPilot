@@ -167,7 +167,7 @@ const listProducts = asyncHandler(async (req, res) => {
   const search = String(req.query.search || "").trim().slice(0, 100);
   const products = await prisma.product.findMany({
     where: { shopId, isActive: true, ...(search ? { name: { contains: search, mode: "insensitive" } } : {}) },
-    select: { id: true, name: true, unit: true, currentStock: true },
+    select: { id: true, name: true, unit: true, currentStock: true, isInternalUse: true },
     orderBy: [{ name: "asc" }],
     take: Math.min(100, Math.max(1, Number(req.query.limit) || 20)),
   });

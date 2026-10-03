@@ -44,6 +44,7 @@ interface Product {
   minimumStock: number;
   isActive: boolean;
   isCatalogVisible?: boolean;
+  isInternalUse?: boolean;
   expiryDate?: string | null;
   doesNotExpire: boolean;
   supplier?: { id: string; name: string; phone: string };
@@ -69,6 +70,7 @@ interface ProductPagination {
 
 type StockStatus = "ALL" | "LOW" | "OUT" | "IN_STOCK";
 type ExpiryFilter = "ALL" | "EXPIRING_SOON" | "EXPIRED";
+type ProductUsage = "ALL" | "FOR_SALE" | "INTERNAL";
 
 interface StockSummary {
   total: number;
@@ -120,6 +122,11 @@ export default function InventoryPage() {
     const requested = new URLSearchParams(window.location.search).get("expiryStatus");
     return ["ALL", "EXPIRING_SOON", "EXPIRED"].includes(requested || "") ? requested as ExpiryFilter : "ALL";
   });
+  const [usage, setUsage] = useState<ProductUsage>(() => {
+    if (typeof window === "undefined") return "ALL";
+    const requested = new URLSearchParams(window.location.search).get("usage");
+    return requested === "FOR_SALE" || requested === "INTERNAL" ? requested : "ALL";
+  });
   const [supplierId, setSupplierId] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("supplierId") || "";
@@ -149,7 +156,7 @@ export default function InventoryPage() {
     name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "",
     wholesalePrice: "", wholesaleMinQty: "",
     currentStock: "0", minimumStock: "5", supplierId: "",
-    expiryDate: "", doesNotExpire: false, isCatalogVisible: true, barcode: "", barcodeType: "", generateBarcode: false,
+    expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false,
   });
   const [adjustForm, setAdjustForm] = useState({ type: "IN", quantity: "", note: "" });
   const [saving, setSaving] = useState(false);
@@ -179,6 +186,7 @@ export default function InventoryPage() {
       params.set("limit", String(PRODUCTS_PER_PAGE));
       if (stockStatus !== "ALL") params.set("stockStatus", stockStatus);
       if (expiryFilter !== "ALL") params.set("expiryStatus", expiryFilter);
+      if (usage !== "ALL") params.set("usage", usage);
       if (supplierId) params.set("supplierId", supplierId);
       const [data, summaryData] = await Promise.all([
         api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?${params}`),
@@ -205,7 +213,7 @@ export default function InventoryPage() {
     } finally {
       if (requestId === latestLoad.current) setLoading(false);
     }
-  }, [search, stockStatus, expiryFilter, supplierId, currentPage, toast, lang]);
+  }, [search, stockStatus, expiryFilter, usage, supplierId, currentPage, toast, lang]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => {
@@ -213,12 +221,13 @@ export default function InventoryPage() {
     if (search) params.set("search", search); else params.delete("search");
     if (stockStatus !== "ALL") params.set("stockStatus", stockStatus); else params.delete("stockStatus");
     if (expiryFilter !== "ALL") params.set("expiryStatus", expiryFilter); else params.delete("expiryStatus");
+    if (usage !== "ALL") params.set("usage", usage); else params.delete("usage");
     if (supplierId) params.set("supplierId", supplierId); else params.delete("supplierId");
     // Retain legacy links when opened, but use the precise status filter going forward.
     params.delete("lowStock");
     const query = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
-  }, [search, stockStatus, expiryFilter, supplierId]);
+  }, [search, stockStatus, expiryFilter, usage, supplierId]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("action") === "add") {
@@ -250,7 +259,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditProduct(null);
-    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, barcode: "", barcodeType: "", generateBarcode: false });
+    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false });
     setError("");
     setShowForm(true);
   }
@@ -267,6 +276,7 @@ export default function InventoryPage() {
       expiryDate: p.expiryDate ? p.expiryDate.slice(0, 10) : "",
       doesNotExpire: p.doesNotExpire,
       isCatalogVisible: p.isCatalogVisible !== false,
+      isInternalUse: p.isInternalUse === true,
       barcode: p.manufacturerBarcode || (p.barcodeType !== "INTERNAL" ? p.barcode || "" : ""), barcodeType: p.barcodeType || "", generateBarcode: false,
     });
     setError("");
@@ -276,11 +286,11 @@ export default function InventoryPage() {
   async function handleSave() {
     if (mutationInFlight.current) return;
     setError("");
-    if (!form.name.trim() || (canViewFinancials && form.buyingPrice === "") || form.sellingPrice === "") {
+    if (!form.name.trim() || (canViewFinancials && form.buyingPrice === "") || (!form.isInternalUse && form.sellingPrice === "")) {
       setError(t("inventory.fieldRequired", lang));
       return;
     }
-    const numericFields = [form.sellingPrice, form.minimumStock, ...(editProduct ? [] : [form.currentStock]), ...(canViewFinancials ? [form.buyingPrice] : [])];
+    const numericFields = [...(!form.isInternalUse || form.sellingPrice !== "" ? [form.sellingPrice] : []), form.minimumStock, ...(editProduct ? [] : [form.currentStock]), ...(canViewFinancials ? [form.buyingPrice] : [])];
     if (numericFields.some((value) => !Number.isInteger(Number(value)) || Number(value) < 0)) {
       setError(lang === "sw" ? "Bei na idadi ziwe namba kamili zisizo hasi." : "Prices and quantities must be whole, non-negative numbers.");
       return;
@@ -294,13 +304,13 @@ export default function InventoryPage() {
     try {
       const sharedBody = {
         name: form.name, labelName: form.labelName || null, sku: form.sku || undefined, generateSku: form.generateSku, unit: form.unit,
-        ...(canViewFinancials ? { buyingPrice: Number(form.buyingPrice) } : {}), sellingPrice: Number(form.sellingPrice),
+        ...(canViewFinancials ? { buyingPrice: Number(form.buyingPrice) } : {}), sellingPrice: Number(form.sellingPrice || 0),
         wholesalePrice: form.wholesalePrice === "" ? null : Number(form.wholesalePrice),
         wholesaleMinQty: form.wholesaleMinQty === "" ? null : Number(form.wholesaleMinQty),
         minimumStock: Number(form.minimumStock),
         supplierId: form.supplierId || undefined,
         doesNotExpire: form.doesNotExpire,
-        ...(canManageCatalog ? { isCatalogVisible: form.isCatalogVisible } : {}),
+        ...(canManageCatalog ? { isCatalogVisible: form.isInternalUse ? false : form.isCatalogVisible, isInternalUse: form.isInternalUse } : {}),
         expiryDate: form.doesNotExpire ? null : (form.expiryDate || null),
         barcode: form.barcode || null,
         barcodeType: form.barcodeType || undefined,
@@ -395,9 +405,10 @@ export default function InventoryPage() {
 
   function downloadCsvTemplate() {
     const csv = [
-      "name,labelName,sku,unit,buyingPrice,sellingPrice,currentStock,minimumStock,barcode,expiryDate,doesNotExpire,wholesaleEnabled,wholesalePrice,wholesaleMinQty",
-      "Sukari 1kg,Sukari 1kg,SKR001,pcs,2500,3000,10,5,,,true,false,,",
-      "Mchele 1kg,Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true,true,2500,5",
+      "name,labelName,sku,unit,buyingPrice,sellingPrice,currentStock,minimumStock,barcode,expiryDate,doesNotExpire,wholesaleEnabled,wholesalePrice,wholesaleMinQty,isInternalUse",
+      "Sukari 1kg,Sukari 1kg,SKR001,pcs,2500,3000,10,5,,,true,false,,,false",
+      "Mchele 1kg,Mchele 1kg,MCH001,kg,2200,2800,20,5,,,true,true,2500,5,false",
+      "Layers feed,Layers feed,FEED001,bag,85000,,8,2,,,true,false,,,true",
     ].join("\n");
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
@@ -533,7 +544,15 @@ export default function InventoryPage() {
             })}
           </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <label className="min-w-0">
+              <span className="sr-only">{lang === "sw" ? "Matumizi ya bidhaa" : "Product use"}</span>
+              <select value={usage} onChange={(event) => { setUsage(event.target.value as ProductUsage); setCurrentPage(1); }} aria-label={lang === "sw" ? "Matumizi ya bidhaa" : "Product use"} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <option value="ALL">{lang === "sw" ? "Bidhaa zote" : "All products"}</option>
+                <option value="FOR_SALE">{lang === "sw" ? "Za kuuza" : "For sale"}</option>
+                <option value="INTERNAL">{lang === "sw" ? "Matumizi ya ndani" : "Internal use"}</option>
+              </select>
+            </label>
             <label className="min-w-0">
               <span className="sr-only">{t("inventory.supplierFilter", lang)}</span>
               <select
@@ -561,13 +580,14 @@ export default function InventoryPage() {
             </label>
           </div>
 
-          {(search || stockStatus !== "ALL" || expiryFilter !== "ALL" || supplierId) && (
+          {(search || stockStatus !== "ALL" || expiryFilter !== "ALL" || usage !== "ALL" || supplierId) && (
             <button
               type="button"
               onClick={() => {
                 setSearch("");
                 setStockStatus("ALL");
                 setExpiryFilter("ALL");
+                setUsage("ALL");
                 setSupplierId("");
                 setCurrentPage(1);
               }}
@@ -586,12 +606,12 @@ export default function InventoryPage() {
           <div className="text-center py-16">
             <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">
-              {search || stockStatus !== "ALL" || expiryFilter !== "ALL" || supplierId
+              {search || stockStatus !== "ALL" || expiryFilter !== "ALL" || usage !== "ALL" || supplierId
                 ? t("inventory.noMatchingProducts", lang)
                 : t("inventory.noProducts", lang)}
             </p>
             <p className="text-gray-400 text-sm mt-1">
-              {search || stockStatus !== "ALL" || expiryFilter !== "ALL" || supplierId
+              {search || stockStatus !== "ALL" || expiryFilter !== "ALL" || usage !== "ALL" || supplierId
                 ? t("inventory.noMatchingProductsHint", lang)
                 : t("inventory.noProductsHint", lang)}
             </p>
@@ -628,7 +648,8 @@ export default function InventoryPage() {
                             {t("inventory.lowStockBadge", lang)}
                           </span>
                         )}
-                        {p.isCatalogVisible === false && (
+                        {p.isInternalUse && <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">{lang === "sw" ? "Matumizi ya ndani - haiuzwi" : "Internal use - not for sale"}</span>}
+                        {!p.isInternalUse && p.isCatalogVisible === false && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
                             <EyeOff className="h-3 w-3" aria-hidden="true" />
                             {lang === "sw" ? "Haionekani kwenye orodha ya umma" : "Hidden from catalog"}
@@ -655,11 +676,11 @@ export default function InventoryPage() {
                           <p className="text-xs text-gray-400">{t("inventory.buyingPrice", lang)}</p>
                           <p className="text-sm font-medium text-gray-700">{p.buyingPrice == null ? "-" : formatTZS(p.buyingPrice)}</p>
                         </div>}
-                        <div>
+                        {!p.isInternalUse && <div>
                           <p className="text-xs text-gray-400">{t("inventory.sellingPrice", lang)}</p>
                           <p className="text-sm font-medium text-brand-700">{formatTZS(p.sellingPrice)}</p>
-                        </div>
-                        {canViewFinancials && <div>
+                        </div>}
+                        {canViewFinancials && !p.isInternalUse && <div>
                           <p className="text-xs text-gray-400">{t("inventory.marginLabel", lang)}</p>
                           <p className={`text-sm font-medium ${p.sellingPrice - p.buyingPrice < 0 ? "text-red-600" : "text-green-600"}`}>{formatTZS(p.sellingPrice - p.buyingPrice)} <span className="text-xs">({margin(p)}%)</span></p>
                         </div>}
@@ -688,7 +709,7 @@ export default function InventoryPage() {
                       </button>
                       {actionMenuProductId === p.id && <div className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
                         <button onClick={() => { setLabelProduct(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Printer className="h-4 w-4" />{lang === "sw" ? "Chapisha lebo" : "Print label"}</button>
-                        {canManageCatalog && <button onClick={() => toggleCatalogVisibility(p)} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">{p.isCatalogVisible === false ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}{p.isCatalogVisible === false ? (lang === "sw" ? "Onyesha kwenye orodha" : "Show in catalog") : (lang === "sw" ? "Ficha kwenye orodha" : "Hide from catalog")}</button>}
+                        {canManageCatalog && !p.isInternalUse && <button onClick={() => toggleCatalogVisibility(p)} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">{p.isCatalogVisible === false ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}{p.isCatalogVisible === false ? (lang === "sw" ? "Onyesha kwenye orodha" : "Show in catalog") : (lang === "sw" ? "Ficha kwenye orodha" : "Hide from catalog")}</button>}
                         <button onClick={() => { openEdit(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Edit2 className="h-4 w-4" />{t("common.edit", lang)}</button>
                         <button onClick={() => { setDeleteProduct(p); setActionMenuProductId(null); }} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-4 w-4" />{t("inventory.deleteProduct", lang)}</button>
                       </div>}
@@ -742,11 +763,15 @@ export default function InventoryPage() {
               <input aria-label={t("inventory.nameLabel", lang)} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={INPUT} placeholder={t("inventory.namePlaceholder", lang)} />
             </Field>
+            {canManageCatalog && <label className="flex items-start gap-3 border border-blue-200 bg-blue-50 p-3">
+              <input type="checkbox" checked={form.isInternalUse} onChange={(event) => setForm((current) => ({ ...current, isInternalUse: event.target.checked, isCatalogVisible: event.target.checked ? false : current.isCatalogVisible }))} className="mt-0.5 h-5 w-5 border-blue-300 text-brand-600" />
+              <span><span className="block text-sm font-semibold text-blue-950">{lang === "sw" ? "Matumizi ya ndani - haiuzwi" : "Internal use - not for sale"}</span><span className="mt-0.5 block text-xs leading-5 text-blue-900">{lang === "sw" ? "Kwa chakula cha mifugo, mbegu, mbolea au viungo vya jikoni. Bado itafuatiliwa kwenye stock na gharama zake zitahesabiwa ikitumika kwenye uzalishaji. Haitapatikana kwenye mauzo au katalogi." : "For feed, seed, fertilizer or kitchen ingredients. Stock remains tracked and its cost moves into production when used. It will not appear in sales or the public catalog."}</span></span>
+            </label>}
             {canManageCatalog && <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <input type="checkbox" checked={form.isCatalogVisible} onChange={(event) => setForm({ ...form, isCatalogVisible: event.target.checked })} className="mt-0.5 h-5 w-5 rounded border-gray-300 text-brand-600" />
+              <input type="checkbox" checked={form.isCatalogVisible && !form.isInternalUse} disabled={form.isInternalUse} onChange={(event) => setForm({ ...form, isCatalogVisible: event.target.checked })} className="mt-0.5 h-5 w-5 rounded border-gray-300 text-brand-600 disabled:opacity-50" />
               <span>
                 <span className="block text-sm font-semibold text-gray-800">{lang === "sw" ? "Onyesha bidhaa hii kwenye orodha ya umma" : "Show this product in the public catalog"}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-gray-500">{lang === "sw" ? "Zima ikiwa hutaki wateja waione au waiagize kupitia kiungo cha duka." : "Turn this off to keep customers from seeing or ordering this item through your shop link."}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-gray-500">{form.isInternalUse ? (lang === "sw" ? "Bidhaa ya matumizi ya ndani hufichwa moja kwa moja." : "Internal-use products are hidden automatically.") : (lang === "sw" ? "Zima ikiwa hutaki wateja waione au waiagize kupitia kiungo cha duka." : "Turn this off to keep customers from seeing or ordering this item through your shop link.")}</span>
               </span>
             </label>}
             <Field label={lang === "sw" ? "Jina fupi kwenye label (hiari)" : "Short label name (optional)"}>
@@ -772,10 +797,10 @@ export default function InventoryPage() {
                 <input aria-label={t("inventory.buyingPriceLabel", lang)} type="number" min="0" step="1" value={form.buyingPrice} onChange={(e) => setForm({ ...form, buyingPrice: e.target.value })}
                   className={INPUT} placeholder="2800" />
               </Field>}
-              <Field label={t("inventory.sellingPriceLabel", lang)}>
+              {!form.isInternalUse && <Field label={t("inventory.sellingPriceLabel", lang)}>
                 <input aria-label={t("inventory.sellingPriceLabel", lang)} type="number" min="0" step="1" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
                   className={INPUT} placeholder="3200" />
-              </Field>
+              </Field>}
             </div>
             <div className="grid grid-cols-2 gap-3">
               {editProduct ? (
@@ -794,7 +819,7 @@ export default function InventoryPage() {
               </Field>
             </div>
             {/* Wholesale section */}
-            <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+            {!form.isInternalUse && <div className="border border-gray-200 rounded-lg p-3 space-y-2">
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t("inventory.wholesaleSection", lang)}</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t("inventory.wholesalePriceLabel", lang)}>
@@ -808,7 +833,7 @@ export default function InventoryPage() {
                     className={INPUT} placeholder="5" />
                 </Field>
               </div>
-            </div>
+            </div>}
 
             <Field label={t("inventory.supplierLabel", lang)}>
               <select aria-label={t("inventory.supplierLabel", lang)} value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })} className={INPUT}>
@@ -952,7 +977,7 @@ export default function InventoryPage() {
         </Modal>
       )}
       {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase() }); setBarcodeScannerOpen(false); }} />}
-      {showCsvImport && <Modal title={lang === "sw" ? "Ingiza bidhaa kwa CSV" : "Import products from CSV"} onClose={() => setShowCsvImport(false)}><div className="space-y-4"><ol className="space-y-2 text-sm leading-6 text-gray-700"><li>{lang === "sw" ? "1. Pakua template, kisha ifungue kwa Excel au Google Sheets." : "1. Download the template and open it in Excel or Google Sheets."}</li><li>{lang === "sw" ? "2. Jaza bidhaa zako. Jina, bei ya kununua na bei ya kuuza zinahitajika." : "2. Fill in products. Name, buying price, and selling price are required."}</li><li>{lang === "sw" ? "3. Bei ya jumla huwa imezimwa. Weka wholesaleEnabled kuwa true kwa bidhaa inayouzwa jumla, kisha jaza wholesalePrice." : "3. Wholesale is off by default. Set wholesaleEnabled to true only for a wholesale product, then add wholesalePrice."}</li><li>{lang === "sw" ? "4. Hifadhi kama CSV, kisha chagua file hapa chini." : "4. Save as CSV, then choose the file below."}</li></ol><button type="button" onClick={downloadCsvTemplate} className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-900"><Download className="h-4 w-4" />{lang === "sw" ? "Pakua CSV template" : "Download CSV template"}</button><label className="grid gap-2 rounded-lg border border-dashed border-gray-300 p-4 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Chagua CSV file" : "Choose CSV file"}</span><input type="file" accept=".csv,text/csv" onChange={(event) => { setCsvFile(event.target.files?.[0] || null); setCsvErrors([]); }} className="block w-full text-sm" />{csvFile && <span className="text-xs font-normal text-gray-500">{csvFile.name}</span>}</label><p className="text-xs leading-5 text-gray-500">{lang === "sw" ? "SKU, stock ya kuanzia, minimum stock, barcode na expiry date ni hiari. wholesaleMinQty pia ni hiari; ukiweka jumla bila idadi, mfumo utatumia 5. Stock ya kuanzia ni 0 na minimum stock ni 5 ukiiacha wazi. Bei za TZS zinaweza kuandikwa 12500, 12,500, 12 500, au TZS 12,500." : "SKU, opening stock, minimum stock, barcode, and expiry date are optional. wholesaleMinQty is also optional; enabled wholesale products default to 5 units. Blank opening stock is 0 and minimum stock is 5. TZS prices can be written as 12500, 12,500, 12 500, or TZS 12,500."}</p>{csvErrors.length > 0 && <section aria-live="polite" className="max-h-48 overflow-y-auto rounded-lg border border-red-200 bg-red-50 p-3"><p className="text-sm font-bold text-red-900">{lang === "sw" ? "Rekebisha makosa haya, kisha chagua file tena:" : "Fix these errors, then choose the file again:"}</p><ul className="mt-2 space-y-1.5 text-xs leading-5 text-red-800">{csvErrors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}><strong>{lang === "sw" ? "Mstari" : "Row"} {item.row || 1}{item.field ? ` - ${item.field}` : ""}:</strong> {item.message}</li>)}</ul></section>}<div className="flex gap-2"><button type="button" onClick={() => setShowCsvImport(false)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700">{t("common.cancel", lang)}</button><button type="button" onClick={importCsv} disabled={!csvFile || csvImporting} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{csvImporting ? (lang === "sw" ? "Inaingiza..." : "Importing...") : (lang === "sw" ? "Ingiza bidhaa" : "Import products")}</button></div></div></Modal>}
+      {showCsvImport && <Modal title={lang === "sw" ? "Ingiza bidhaa kwa CSV" : "Import products from CSV"} onClose={() => setShowCsvImport(false)}><div className="space-y-4"><ol className="space-y-2 text-sm leading-6 text-gray-700"><li>{lang === "sw" ? "1. Pakua template, kisha ifungue kwa Excel au Google Sheets." : "1. Download the template and open it in Excel or Google Sheets."}</li><li>{lang === "sw" ? "2. Jaza jina na bei ya kununua. Bei ya kuuza inahitajika tu kwa bidhaa za kuuza." : "2. Add each name and buying price. Selling price is required only for products for sale."}</li><li>{lang === "sw" ? "3. Weka isInternalUse kuwa true kwa chakula cha mifugo, mbegu au viungo visivyouzwa. Bei ya jumla itumike kwa bidhaa zinazouzwa tu." : "3. Set isInternalUse to true for feed, seed or ingredients not sold to customers. Wholesale pricing is only for saleable products."}</li><li>{lang === "sw" ? "4. Hifadhi kama CSV, kisha chagua file hapa chini." : "4. Save as CSV, then choose the file below."}</li></ol><button type="button" onClick={downloadCsvTemplate} className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-900"><Download className="h-4 w-4" />{lang === "sw" ? "Pakua CSV template" : "Download CSV template"}</button><label className="grid gap-2 rounded-lg border border-dashed border-gray-300 p-4 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Chagua CSV file" : "Choose CSV file"}</span><input type="file" accept=".csv,text/csv" onChange={(event) => { setCsvFile(event.target.files?.[0] || null); setCsvErrors([]); }} className="block w-full text-sm" />{csvFile && <span className="text-xs font-normal text-gray-500">{csvFile.name}</span>}</label><p className="text-xs leading-5 text-gray-500">{lang === "sw" ? "SKU, stock ya kuanzia, minimum stock, barcode na expiry date ni hiari. wholesaleMinQty pia ni hiari; ukiweka jumla bila idadi, mfumo utatumia 5. Stock ya kuanzia ni 0 na minimum stock ni 5 ukiiacha wazi. Bei za TZS zinaweza kuandikwa 12500, 12,500, 12 500, au TZS 12,500." : "SKU, opening stock, minimum stock, barcode, and expiry date are optional. wholesaleMinQty is also optional; enabled wholesale products default to 5 units. Blank opening stock is 0 and minimum stock is 5. TZS prices can be written as 12500, 12,500, 12 500, or TZS 12,500."}</p>{csvErrors.length > 0 && <section aria-live="polite" className="max-h-48 overflow-y-auto rounded-lg border border-red-200 bg-red-50 p-3"><p className="text-sm font-bold text-red-900">{lang === "sw" ? "Rekebisha makosa haya, kisha chagua file tena:" : "Fix these errors, then choose the file again:"}</p><ul className="mt-2 space-y-1.5 text-xs leading-5 text-red-800">{csvErrors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}><strong>{lang === "sw" ? "Mstari" : "Row"} {item.row || 1}{item.field ? ` - ${item.field}` : ""}:</strong> {item.message}</li>)}</ul></section>}<div className="flex gap-2"><button type="button" onClick={() => setShowCsvImport(false)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700">{t("common.cancel", lang)}</button><button type="button" onClick={importCsv} disabled={!csvFile || csvImporting} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{csvImporting ? (lang === "sw" ? "Inaingiza..." : "Importing...") : (lang === "sw" ? "Ingiza bidhaa" : "Import products")}</button></div></div></Modal>}
       {stockCountScannerOpen && <BarcodeScanner onClose={() => setStockCountScannerOpen(false)} onDetected={scanStockCount} />}
       {labelProduct && <Modal title={lang === "sw" ? "Chapisha label" : "Print label"} onClose={() => setLabelProduct(null)}><LabelComposer products={[labelProduct]} initialProductIds={[labelProduct.id]} compact /></Modal>}
     </AppShell>

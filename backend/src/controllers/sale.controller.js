@@ -146,6 +146,9 @@ const create = asyncHandler(async (req, res) => {
 
   for (const item of items) {
     const product = productMap[item.productId];
+    if (product.isInternalUse) {
+      return res.status(400).json({ error: `${product.name} is for internal use and cannot be sold` });
+    }
     if (!product.doesNotExpire && product.expiryDate && product.expiryDate < startOfTanzaniaDay()) {
       return res.status(400).json({ error: `${product.name} is expired and cannot be sold` });
     }
@@ -232,7 +235,7 @@ const create = asyncHandler(async (req, res) => {
     for (const item of items) {
       const product = productMap[item.productId];
       const updated = await tx.product.updateMany({
-        where: { id: item.productId, shopId, isActive: true, currentStock: { gte: item.quantity } },
+        where: { id: item.productId, shopId, isActive: true, isInternalUse: false, currentStock: { gte: item.quantity } },
         data: { currentStock: { decrement: item.quantity } },
       });
       if (updated.count !== 1) {

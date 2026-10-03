@@ -942,6 +942,7 @@ model Product {
   doesNotExpire            Boolean                 @default(false)
   isActive                 Boolean                 @default(true)
   isCatalogVisible         Boolean                 @default(true)
+  isInternalUse            Boolean                 @default(false)
   shopId                   String
   shop                     Shop                    @relation(fields: [shopId], references: [id], onDelete: Cascade)
   supplierId               String?

@@ -252,7 +252,7 @@ export default function SalesPage() {
       setLoadingProducts(true);
       setProductError("");
       try {
-        const query = new URLSearchParams({ page: String(productPage), limit: "100" });
+        const query = new URLSearchParams({ page: String(productPage), limit: "100", usage: "FOR_SALE" });
         if (search.trim()) query.set("search", search.trim());
         const data = await api.get<{ products: Product[]; pagination: { total: number } }>(`/products?${query.toString()}`, lang);
         if (cancelled) return;

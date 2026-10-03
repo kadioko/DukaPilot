@@ -97,7 +97,7 @@ const updateStatus = asyncHandler(async (req, res) => {
     // Deduct stock when confirming (reserve)
     if (newStatus === "CONFIRMED" && order.status === "PENDING") {
       for (const item of order.items) {
-        const product = await tx.product.findFirst({ where: { id: item.productId, shopId: shop.id, isActive: true } });
+        const product = await tx.product.findFirst({ where: { id: item.productId, shopId: shop.id, isActive: true, isInternalUse: false } });
         if (!product) throw Object.assign(new Error(`Product not found: ${item.productId}`), { status: 404 });
         if (product.currentStock < item.quantity) {
           throw Object.assign(
@@ -106,7 +106,7 @@ const updateStatus = asyncHandler(async (req, res) => {
           );
         }
         const updated = await tx.product.updateMany({
-          where: { id: item.productId, shopId: shop.id, isActive: true, currentStock: { gte: item.quantity } },
+          where: { id: item.productId, shopId: shop.id, isActive: true, isInternalUse: false, currentStock: { gte: item.quantity } },
           data: { currentStock: { decrement: item.quantity } },
         });
         if (updated.count !== 1) {

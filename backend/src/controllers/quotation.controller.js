@@ -264,7 +264,7 @@ async function buildLines(tx, shopId, rawItems, rawSections, defaults) {
   const serviceIds = [...new Set(rawItems.map((item) => item.serviceId).filter(Boolean).map(String))];
   const supplierIds = [...new Set(rawItems.map((item) => item.supplierId).filter(Boolean).map(String))];
   const [products, services, suppliers] = await Promise.all([
-    productIds.length ? tx.product.findMany({ where: { id: { in: productIds }, shopId, isActive: true } }) : [],
+    productIds.length ? tx.product.findMany({ where: { id: { in: productIds }, shopId, isActive: true, isInternalUse: false } }) : [],
     serviceIds.length ? tx.service.findMany({ where: { id: { in: serviceIds }, shopId, isActive: true } }) : [],
     supplierIds.length ? tx.supplier.findMany({ where: { id: { in: supplierIds }, OR: [{ createdByShopId: shopId }, { createdByShopId: null }] } }) : [],
   ]);
@@ -356,7 +356,7 @@ async function fetchQuotation(tx, id, shopId) {
     include: {
       customer: true,
       sections: { orderBy: { position: "asc" } },
-      items: { include: { product: { select: { id: true, name: true, unit: true, currentStock: true } }, supplier: { select: { id: true, name: true } } }, orderBy: { position: "asc" } },
+      items: { include: { product: { select: { id: true, name: true, unit: true, currentStock: true, isInternalUse: true } }, supplier: { select: { id: true, name: true } } }, orderBy: { position: "asc" } },
       payments: { orderBy: { paidAt: "desc" } },
       convertedSale: { select: { id: true, receiptNumber: true, totalAmount: true } },
     },
@@ -840,6 +840,7 @@ const convert = asyncHandler(async (req, res) => {
     for (const item of linkedItems) {
       if (item.quantityMilli % 1000 !== 0) throw Object.assign(new Error(`${item.name} uses a fractional inventory quantity. Adjust it to a whole stock unit before conversion.`), { status: 400 });
       const product = item.product;
+      if (product?.isInternalUse) throw Object.assign(new Error(`${item.name} is now for internal use and cannot be sold`), { status: 409 });
       const quantity = item.quantityMilli / 1000;
       if (!product || product.currentStock < quantity) throw Object.assign(new Error(`Insufficient stock for ${item.name}`), { status: 400 });
     }
@@ -881,7 +882,7 @@ const convert = asyncHandler(async (req, res) => {
     });
     for (const item of linkedItems) {
       const quantity = item.quantityMilli / 1000;
-      const updated = await tx.product.updateMany({ where: { id: item.productId, shopId, isActive: true, currentStock: { gte: quantity } }, data: { currentStock: { decrement: quantity } } });
+      const updated = await tx.product.updateMany({ where: { id: item.productId, shopId, isActive: true, isInternalUse: false, currentStock: { gte: quantity } }, data: { currentStock: { decrement: quantity } } });
       if (updated.count !== 1) throw Object.assign(new Error(`Stock changed before ${item.name} could be converted`), { status: 409 });
       await tx.stockMovement.create({ data: { type: "OUT", quantity, note: `Quotation ${quotation.quotationNumber} converted to receipt #${String(receiptNumber).padStart(6, "0")}`, productId: item.productId } });
     }

@@ -220,7 +220,7 @@ const listProducts = asyncHandler(async (req, res) => {
   const take = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(requestedLimit, 100)) : 100;
   const products = await prisma.product.findMany({
     where: { shopId, isActive: true },
-    select: { id: true, name: true, unit: true, currentStock: true },
+    select: { id: true, name: true, unit: true, currentStock: true, isInternalUse: true },
     orderBy: [{ name: "asc" }],
     take,
   });
@@ -502,9 +502,9 @@ const createStarterProducts = asyncHandler(async (req, res) => {
   if (requestedCycleId && !cycle) return res.status(404).json({ error: "Crop cycle not found" });
 
   const templates = [
-    { name: "Mbegu", unit: "kg", minimumStock: 1 },
-    { name: "NPK Mbolea", unit: "kg", minimumStock: 1 },
-    { name: "Dawa ya mimea", unit: "litre", minimumStock: 1 },
+    { name: "Mbegu", unit: "kg", minimumStock: 1, isInternalUse: true },
+    { name: "NPK Mbolea", unit: "kg", minimumStock: 1, isInternalUse: true },
+    { name: "Dawa ya mimea", unit: "litre", minimumStock: 1, isInternalUse: true },
     ...(cycle ? [{ name: `${cycle.cropName} - ${cycle.plot.name}`, unit: cycle.yieldUnit || "kg", minimumStock: 0 }] : []),
   ];
   const created = await prisma.$transaction(async (tx) => {
@@ -516,7 +516,7 @@ const createStarterProducts = asyncHandler(async (req, res) => {
         continue;
       }
       const product = await tx.product.create({
-        data: { shopId, name: template.name, unit: template.unit, buyingPrice: 0, sellingPrice: 0, currentStock: 0, minimumStock: template.minimumStock },
+        data: { shopId, name: template.name, unit: template.unit, buyingPrice: 0, sellingPrice: 0, currentStock: 0, minimumStock: template.minimumStock, isInternalUse: template.isInternalUse === true, isCatalogVisible: template.isInternalUse !== true },
         select: { id: true, name: true, unit: true },
       });
       result.push({ ...product, created: true });

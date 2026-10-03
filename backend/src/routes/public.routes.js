@@ -73,7 +73,7 @@ router.get("/shops", async (req, res, next) => {
     const search = String(req.query.search || "").trim().slice(0, 80);
     const take = Math.min(Math.max(Number(req.query.limit) || 60, 1), 100);
     const skip = Math.max(Number(req.query.offset) || 0, 0);
-    const where = { ...activeShopWhere(now), products: { some: { isActive: true, isCatalogVisible: true, currentStock: { gt: 0 } } } };
+    const where = { ...activeShopWhere(now), products: { some: { isActive: true, isCatalogVisible: true, isInternalUse: false, currentStock: { gt: 0 } } } };
     if (search) {
       where.AND = [{
         OR: [
@@ -91,7 +91,7 @@ router.get("/shops", async (req, res, next) => {
         location: true,
         district: true,
         category: true,
-        _count: { select: { products: { where: { isActive: true, isCatalogVisible: true, currentStock: { gt: 0 } } } } },
+        _count: { select: { products: { where: { isActive: true, isCatalogVisible: true, isInternalUse: false, currentStock: { gt: 0 } } } } },
       },
       orderBy: { name: "asc" },
       take,
@@ -119,7 +119,7 @@ router.get("/products", async (req, res, next) => {
   try {
     const { shopId, limit = 60, offset = 0 } = req.query;
     const search = String(req.query.search || "").trim().slice(0, 80);
-    const where = { isActive: true, isCatalogVisible: true, currentStock: { gt: 0 }, shop: activeShopWhere() };
+    const where = { isActive: true, isCatalogVisible: true, isInternalUse: false, currentStock: { gt: 0 }, shop: activeShopWhere() };
     if (shopId) where.shopId = String(shopId);
     if (search) where.OR = [
       { name: { contains: search, mode: "insensitive" } },
@@ -171,7 +171,7 @@ router.get("/shops/:id", async (req, res, next) => {
         isDemo: true,
         user: { select: { phone: true } },
         parentShop: { select: { user: { select: { phone: true } } } },
-        _count: { select: { products: { where: { isActive: true, isCatalogVisible: true, currentStock: { gt: 0 } } } } },
+        _count: { select: { products: { where: { isActive: true, isCatalogVisible: true, isInternalUse: false, currentStock: { gt: 0 } } } } },
       },
     });
     if (!shop) return res.status(404).json({ error: "Shop not found" });
@@ -180,7 +180,7 @@ router.get("/shops/:id", async (req, res, next) => {
     const search = String(req.query.search || "").trim().slice(0, 80);
     const take = Math.min(Math.max(Number(req.query.limit) || 60, 1), 100);
     const skip = Math.max(Number(req.query.offset) || 0, 0);
-    const productWhere = { shopId: req.params.id, isActive: true, isCatalogVisible: true, currentStock: { gt: 0 } };
+    const productWhere = { shopId: req.params.id, isActive: true, isCatalogVisible: true, isInternalUse: false, currentStock: { gt: 0 } };
     if (search) productWhere.OR = [
       { name: { contains: search, mode: "insensitive" } },
       { sku: { contains: search, mode: "insensitive" } },
@@ -255,7 +255,7 @@ router.post("/orders", publicOrderRateLimiter, async (req, res, next) => {
       return res.status(400).json({ error: "Each product can appear only once in an order" });
     }
     const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, shopId, isActive: true, isCatalogVisible: true, currentStock: { gt: 0 } },
+      where: { id: { in: productIds }, shopId, isActive: true, isCatalogVisible: true, isInternalUse: false, currentStock: { gt: 0 } },
     });
     if (products.length !== productIds.length) {
       return res.status(400).json({ error: "One or more products not available" });

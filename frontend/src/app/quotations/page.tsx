@@ -51,7 +51,7 @@ export default function QuotationsPage() {
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) }); if (filter !== "ALL") params.set("status", filter);
-    const [quoteData, productData, serviceData, settingData, metricData] = await Promise.all([api.get<{ quotations: Quote[]; total: number }>(`/quotations?${params.toString()}`, lang), api.get<{ products: Product[] }>("/products", lang), api.get<{ services: SavedService[] }>("/quotations/services", lang), api.get<{ settings: Settings }>("/quotations/settings", lang), api.get<{ metrics: Metrics }>("/quotations/metrics", lang)]);
+    const [quoteData, productData, serviceData, settingData, metricData] = await Promise.all([api.get<{ quotations: Quote[]; total: number }>(`/quotations?${params.toString()}`, lang), api.get<{ products: Product[] }>("/products?usage=FOR_SALE", lang), api.get<{ services: SavedService[] }>("/quotations/services", lang), api.get<{ settings: Settings }>("/quotations/settings", lang), api.get<{ metrics: Metrics }>("/quotations/metrics", lang)]);
     setQuotes(quoteData.quotations); setTotal(quoteData.total || 0); setProducts(productData.products || []); setServices(serviceData.services || []); setSettings(settingData.settings); setMetrics(metricData.metrics); setForm((current) => current.projectTitle ? current : emptyForm(settingData.settings));
   }, [filter, lang, page]);
   useEffect(() => { load().catch((error: Error) => toast(error.message, "error")); }, [load, toast]);

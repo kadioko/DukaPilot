@@ -163,6 +163,20 @@ test("sale create rejects insufficient stock", async () => {
   assert.match(res.payload.error, /Insufficient stock for Rice/);
 });
 
+test("sale create rejects an internal-use feed even when stock is available", async () => {
+  let transactionStarted = false;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1", allowVariableSalePrices: true }) },
+    product: { findMany: async () => [{ id: "feed-1", name: "Layers feed", unit: "bag", currentStock: 8, sellingPrice: 0, buyingPrice: 85000, isInternalUse: true }] },
+    $transaction: async () => { transactionStarted = true; },
+  });
+  const res = createRes();
+  await ctrl.create({ user: { userId: "owner-1" }, body: { items: [{ productId: "feed-1", quantity: 1 }] } }, res);
+  assert.equal(res.statusCode, 400);
+  assert.match(res.payload.error, /internal use/);
+  assert.equal(transactionStarted, false);
+});
+
 test("sale create calculates total and profit before persisting transaction", async () => {
   let capturedSaleCreate;
   let stockUpdates = 0;

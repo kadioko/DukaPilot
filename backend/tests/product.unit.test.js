@@ -254,6 +254,24 @@ test("product creation can start hidden from the public catalog", async () => {
   assert.equal(res.payload.product.isCatalogVisible, false);
 });
 
+test("internal-use feed is kept in stock without a selling price or catalog listing", async () => {
+  let createdData;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (work) => work({
+      product: { create: async ({ data }) => { createdData = data; return { id: "feed-1", ...data }; } },
+      stockMovement: { create: async () => {} },
+    }),
+  });
+  const res = createRes();
+  await ctrl.create({ user: { userId: "owner-1" }, body: { name: "Layers feed", buyingPrice: 85000, currentStock: 3, isInternalUse: true } }, res);
+  assert.equal(res.statusCode, 201);
+  assert.equal(createdData.sellingPrice, 0);
+  assert.equal(createdData.isInternalUse, true);
+  assert.equal(createdData.isCatalogVisible, false);
+  assert.equal(createdData.currentStock, 3);
+});
+
 test("product creation cannot attach a supplier private to another shop", async () => {
   let transactionStarted = false;
   const prismaMock = {
@@ -346,6 +364,37 @@ test("product update persists catalog visibility changes", async () => {
   assert.equal(res.payload.product.isCatalogVisible, false);
 });
 
+test("marking a product internal always unpublishes it and prevents accidental republishing", async () => {
+  let updated;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findFirst: async () => ({ id: "prod-1", shopId: "shop-1", currentStock: 5, sellingPrice: 3000, isInternalUse: false, isCatalogVisible: true }),
+      update: async ({ data }) => { updated = data; return { id: "prod-1", ...data }; },
+    },
+  });
+  const res = createRes();
+  await ctrl.update({ user: { userId: "owner-1" }, params: { id: "prod-1" }, body: { isInternalUse: true } }, res);
+  assert.equal(updated.isInternalUse, true);
+  assert.equal(updated.isCatalogVisible, false);
+  const invalid = createRes();
+  await ctrl.update({ user: { userId: "owner-1" }, params: { id: "prod-1" }, body: { isInternalUse: true, isCatalogVisible: true } }, invalid);
+  assert.equal(invalid.statusCode, 400);
+});
+
+test("saleable product lookup excludes internal-use products before pagination", async () => {
+  let where;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findMany: async (args) => { where = args.where; return []; },
+      count: async () => 0,
+    },
+  });
+  await ctrl.list({ user: { userId: "owner-1" }, query: { usage: "FOR_SALE" } }, createRes());
+  assert.equal(where.isInternalUse, false);
+});
+
 test("staff cannot change a product's public catalog visibility", async () => {
   let updateCalled = false;
   const prismaMock = {
@@ -392,6 +441,24 @@ test("CSV import creates products and an opening stock movement for each stocked
   assert.equal(res.payload.count, 2);
   assert.equal(created[0].currentStock, 8);
   assert.deepEqual(movements, [{ type: "IN", quantity: 8, note: "Opening stock from CSV import", productId: "prod-1" }]);
+});
+
+test("owner CSV import accepts internal feed without a selling price", async () => {
+  const created = [];
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findMany: async () => [] },
+    $transaction: async (work) => work({
+      product: { create: async ({ data }) => { created.push(data); return { id: "feed-1", ...data }; } },
+      stockMovement: { create: async () => {} },
+    }),
+  });
+  const res = createRes();
+  await ctrl.importCsv({ user: { userId: "owner-1" }, body: { csv: "name,buyingPrice,sellingPrice,currentStock,isInternalUse\nLayers feed,85000,,3,true" } }, res);
+  assert.equal(res.statusCode, 201);
+  assert.equal(created[0].sellingPrice, 0);
+  assert.equal(created[0].isInternalUse, true);
+  assert.equal(created[0].isCatalogVisible, false);
 });
 
 test("CSV import keeps wholesale off by default and enables it only when explicitly requested", async () => {
