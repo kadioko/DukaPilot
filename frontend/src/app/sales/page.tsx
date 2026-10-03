@@ -43,8 +43,17 @@ interface SaleRecord {
   voidReason?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
+  debt?: { amountPaid: number } | null;
   shop?: { name: string };
-  items: Array<{ quantity: number; unitPrice: number; listedUnitPrice?: number | null; totalPrice: number; name?: string | null; unit?: string | null; product?: { id: string; name: string; unit: string } | null }>;
+  items: Array<{ id: string; productId?: string | null; quantity: number; returnedQuantity: number; unitPrice: number; listedUnitPrice?: number | null; totalPrice: number; name?: string | null; unit?: string | null; product?: { id: string; name: string; unit: string } | null }>;
+  returns?: Array<{ id: string; reason: string; totalAmount: number; debtReduction: number; refundAmount: number; refundMethod?: string | null; paymentRef?: string | null; createdAt: string; items: Array<{ saleItemId: string; quantity: number; restockQuantity: number; damagedQuantity: number; totalAmount: number }> }>;
+}
+
+interface ReturnLineDraft {
+  saleItemId: string;
+  quantity: string;
+  restockQuantity: string;
+  damagedQuantity: string;
 }
 
 interface PendingSale {
@@ -54,8 +63,8 @@ interface PendingSale {
   total: number;
   attempts?: number;
   lastError?: string;
-  payload: {
-    items: Array<{ productId: string; quantity: number; unitPrice: number }>;
+  payload?: {
+    items?: Array<{ productId: string; quantity: number; unitPrice: number }>;
     saleMode: "RETAIL" | "WHOLESALE";
     paymentMethod: string;
     paymentRef?: string;
@@ -94,7 +103,26 @@ const SYNC_DEVICE_LABEL_KEY = "dukapilot_sync_device_label";
 function readPendingSales(scope: string | null): PendingSale[] {
   if (typeof window === "undefined" || !scope) return [];
   try {
-    return JSON.parse(window.localStorage.getItem(scopedOfflineKey("pending", scope)) || "[]");
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(scopedOfflineKey("pending", scope)) || "[]");
+    const entries = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : [];
+    return entries.map((entry, index) => {
+      const value = entry && typeof entry === "object" && !Array.isArray(entry)
+        ? entry as Record<string, unknown>
+        : {};
+      const payload = value.payload && typeof value.payload === "object" && !Array.isArray(value.payload)
+        ? value.payload as PendingSale["payload"]
+        : undefined;
+      return {
+        ...value,
+        id: typeof value.id === "string" && value.id ? value.id : `invalid-offline-sale-${index}`,
+        branchId: typeof value.branchId === "string" ? value.branchId : "",
+        createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
+        total: typeof value.total === "number" && Number.isFinite(value.total) ? value.total : 0,
+        attempts: typeof value.attempts === "number" && Number.isFinite(value.attempts) ? value.attempts : 0,
+        lastError: typeof value.lastError === "string" ? value.lastError : undefined,
+        payload,
+      } as PendingSale;
+    });
   } catch {
     return [];
   }
@@ -122,6 +150,11 @@ function newLocalId() {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function newReturnRequestKey() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
 }
 
 function getSyncDeviceId() {
@@ -215,6 +248,13 @@ export default function SalesPage() {
   const [restockQuantity, setRestockQuantity] = useState("");
   const [restocking, setRestocking] = useState(false);
   const [voidingSaleId, setVoidingSaleId] = useState<string | null>(null);
+  const [returnTarget, setReturnTarget] = useState<SaleRecord | null>(null);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnLines, setReturnLines] = useState<ReturnLineDraft[]>([]);
+  const [returnMethod, setReturnMethod] = useState("");
+  const [returnPaymentRef, setReturnPaymentRef] = useState("");
+  const [returnRequestKey, setReturnRequestKey] = useState("");
+  const [savingReturn, setSavingReturn] = useState(false);
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const [shopName, setShopName] = useState("DukaPilot");
   const [variablePricesEnabled, setVariablePricesEnabled] = useState(false);
@@ -300,6 +340,16 @@ export default function SalesPage() {
       const remaining: PendingSale[] = [];
       const events: SyncEvent[] = [];
       for (const sale of pending) {
+        if (!sale.payload || !Array.isArray(sale.payload.items) || sale.payload.items.length === 0) {
+          const message = lang === "sw"
+            ? "Mauzo yaliyohifadhiwa hayajakamilika. Kagua au yaondoe kabla ya kusawazisha."
+            : "This saved sale is incomplete. Review or remove it before syncing.";
+          const nextSale = { ...sale, attempts: (sale.attempts || 0) + 1, lastError: message };
+          remaining.push(nextSale);
+          events.push({ id: newLocalId(), at: new Date().toISOString(), status: "failed", total: sale.total, message });
+          reportSyncEvent({ status: "FAILED", total: sale.total, message, attempts: nextSale.attempts, localId: sale.id });
+          continue;
+        }
         if ((sale.branchId || "") !== selectedBranchId()) {
           remaining.push(sale);
           continue;
@@ -630,10 +680,12 @@ export default function SalesPage() {
   async function voidSale(sale: SaleRecord) {
     const reason = window.prompt(lang === "sw" ? "Sababu ya kufuta mauzo haya (itahifadhiwa kwenye rekodi ya ukaguzi):" : "Reason for voiding this sale (saved in the audit trail):");
     if (!reason?.trim()) return;
-    if (!window.confirm(lang === "sw" ? "Thibitisha: stock itarudishwa na mauzo yataondolewa kwenye ripoti." : "Confirm: stock will be restored and the sale removed from reports.")) return;
+    if (!window.confirm(lang === "sw"
+      ? "Thibitisha kuwa hakuna malipo yaliyopokelewa. Mauzo yataondolewa kwenye ripoti na stock itarudi; deni lisilolipwa litafutwa. Ikiwa mteja alilipa, ghairi hapa na tumia Rekodi rejesho."
+      : "Confirm no payment was received. The sale will be removed from reports and stock restored; any unpaid debt will be cancelled. If the customer paid, cancel this and use Record return.")) return;
     setVoidingSaleId(sale.id);
     try {
-      await api.patch(`/sales/${sale.id}/void`, { reason: reason.trim() }, lang);
+      await api.patch(`/sales/${sale.id}/void`, { reason: reason.trim(), paymentNotReceived: true }, lang);
       toast(lang === "sw" ? `Mauzo ${receiptLabel(sale)} yamefutwa na stock imerudishwa.` : `Sale ${receiptLabel(sale)} was voided and stock restored.`, "success");
       await fetchHistory();
       refreshProducts();
@@ -641,6 +693,57 @@ export default function SalesPage() {
       toast(error instanceof Error ? error.message : t("common.error", lang), "error");
     } finally {
       setVoidingSaleId(null);
+    }
+  }
+
+  function beginReturn(sale: SaleRecord) {
+    setReturnTarget(sale);
+    setReturnReason("");
+    setReturnMethod("");
+    setReturnPaymentRef("");
+    setReturnRequestKey(newReturnRequestKey());
+    setReturnLines(sale.items.map((item) => ({ saleItemId: item.id, quantity: "", restockQuantity: "", damagedQuantity: "" })));
+  }
+
+  async function submitReturn() {
+    if (!returnTarget || savingReturn) return;
+    const items = returnLines.filter((line) => Number(line.quantity) > 0).map((line) => ({
+      saleItemId: line.saleItemId,
+      quantity: Number(line.quantity),
+      restockQuantity: Number(line.restockQuantity || 0),
+      damagedQuantity: Number(line.damagedQuantity || 0),
+    }));
+    if (!returnReason.trim() || !items.length) {
+      toast(lang === "sw" ? "Weka sababu na bidhaa angalau moja iliyorejeshwa." : "Enter a reason and at least one returned item.", "error");
+      return;
+    }
+    const invalid = items.some((line) => {
+      const item = returnTarget.items.find((candidate) => candidate.id === line.saleItemId);
+      return !Number.isSafeInteger(line.quantity) || line.quantity < 1 || line.quantity > (item?.quantity || 0) - (item?.returnedQuantity || 0)
+        || !Number.isSafeInteger(line.restockQuantity) || line.restockQuantity < 0
+        || !Number.isSafeInteger(line.damagedQuantity) || line.damagedQuantity < 0
+        || (item?.productId ? line.restockQuantity + line.damagedQuantity !== line.quantity : line.restockQuantity + line.damagedQuantity !== 0);
+    });
+    if (invalid) {
+      toast(lang === "sw" ? "Kagua idadi ya kurejesha, kuingiza stock na zilizoharibika." : "Check the returned, restocked, and damaged quantities.", "error");
+      return;
+    }
+    setSavingReturn(true);
+    try {
+      const result = await api.post<{ saleReturn: { totalAmount: number; debtReduction: number; refundAmount: number }; reused?: boolean }>(`/sales/${returnTarget.id}/returns`, {
+        reason: returnReason.trim(), items, refundMethod: returnMethod || undefined,
+        paymentRef: returnPaymentRef.trim() || undefined, requestKey: returnRequestKey,
+      }, lang);
+      toast(result.saleReturn.refundAmount > 0
+        ? (lang === "sw" ? `Rejesho limehifadhiwa. Rejesha ${formatTZS(result.saleReturn.refundAmount)} kupitia ${returnMethod}.` : `Return saved. Refund ${formatTZS(result.saleReturn.refundAmount)} via ${returnMethod}.`)
+        : (lang === "sw" ? `Rejesho limehifadhiwa; deni limepunguzwa kwa ${formatTZS(result.saleReturn.debtReduction)}.` : `Return saved; outstanding debt reduced by ${formatTZS(result.saleReturn.debtReduction)}.`), "success");
+      setReturnTarget(null);
+      setReturnRequestKey("");
+      await fetchHistory();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Rejesho halijahifadhiwa. Jaribu tena." : "Return was not saved. Please retry."), "error");
+    } finally {
+      setSavingReturn(false);
     }
   }
 
@@ -879,12 +982,15 @@ export default function SalesPage() {
             </div>
             {pendingSales.length > 0 && (
               <div className="mt-3 grid gap-2">
-                {pendingSales.map((sale) => (
-                  <div key={sale.id} className="rounded-lg bg-white/80 px-3 py-2 text-xs">
+                {pendingSales.map((sale) => {
+                  const itemCount = Array.isArray(sale.payload?.items) && sale.payload.items.length > 0 ? sale.payload.items.length : null;
+                  return <div key={sale.id} className="rounded-lg bg-white/80 px-3 py-2 text-xs">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="font-semibold text-amber-950">
-                          {formatTZS(sale.total)} - {sale.payload.items.length} {lang === "sw" ? "bidhaa" : "item(s)"}
+                          {formatTZS(sale.total)} - {itemCount === null
+                            ? (lang === "sw" ? "Kagua mauzo" : "Needs review")
+                            : `${itemCount} ${lang === "sw" ? "bidhaa" : "item(s)"}`}
                         </p>
                         <p className="mt-0.5 text-gray-500">
                           {new Date(sale.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -903,8 +1009,8 @@ export default function SalesPage() {
                         </button>
                       )}
                     </div>
-                  </div>
-                ))}
+                  </div>;
+                })}
               </div>
             )}
             {syncHistory.length > 0 && (
@@ -1205,18 +1311,21 @@ export default function SalesPage() {
                     </div>
                     <div className="divide-y divide-gray-50">
                       {sale.items.map((item, i) => (
-                        <p key={i} className="text-xs text-gray-500 py-0.5">
+                        <p key={item.id || i} className="text-xs text-gray-500 py-0.5">
                           {item.product?.name || item.name || "Custom service"} x {item.quantity} @ {formatTZS(item.unitPrice)}
                           {item.listedUnitPrice != null && item.listedUnitPrice !== item.unitPrice && <span className="ml-1 text-amber-700">({lang === "sw" ? "bei ya kawaida" : "listed"}: {formatTZS(item.listedUnitPrice)})</span>}
+                          {item.returnedQuantity > 0 && <span className="ml-2 font-semibold text-amber-800">{lang === "sw" ? `Imerejeshwa ${item.returnedQuantity}; imebaki ${item.quantity - item.returnedQuantity}` : `Returned ${item.returnedQuantity}; ${item.quantity - item.returnedQuantity} remaining`}</span>}
                         </p>
                       ))}
                     </div>
                     {sale.voidReason && <p className="mt-2 text-xs font-medium text-red-700">{lang === "sw" ? "Sababu" : "Reason"}: {sale.voidReason}</p>}
+                    {sale.returns?.map((entry) => <div key={entry.id} className="mt-2 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-950"><p className="font-semibold">{lang === "sw" ? "Rejesho" : "Return"} · {new Date(entry.createdAt).toLocaleString(lang === "sw" ? "sw-TZ" : "en-US", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {formatTZS(entry.totalAmount)}</p><p>{entry.reason}{entry.debtReduction > 0 ? ` · ${lang === "sw" ? "Deni limepunguzwa" : "Debt reduced"}: ${formatTZS(entry.debtReduction)}` : ""}{entry.refundAmount > 0 ? ` · ${lang === "sw" ? "Imerejeshwa" : "Refunded"}: ${formatTZS(entry.refundAmount)} (${entry.refundMethod})` : ""}</p></div>)}
                     {sale.status !== "VOIDED" && (
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
                         <button onClick={() => shareReceipt(sale)} className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"><MessageCircle className="h-4 w-4" />{lang === "sw" ? "Tuma risiti" : "Share receipt"}</button>
                         <ReceiptActions sale={sale} shopName={shopName} lang={lang} compact />
-                        {canViewFinancials && <button onClick={() => voidSale(sale)} disabled={voidingSaleId === sale.id} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />{voidingSaleId === sale.id ? (lang === "sw" ? "Inafuta..." : "Voiding...") : (lang === "sw" ? "Futa mauzo" : "Void sale")}</button>}
+                        {canViewFinancials && sale.items.some((item) => item.quantity > item.returnedQuantity) && <button onClick={() => beginReturn(sale)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900"><RotateCcw className="h-4 w-4" />{lang === "sw" ? "Rekodi rejesho" : "Record return"}</button>}
+                        {canViewFinancials && !sale.items.some((item) => item.returnedQuantity > 0) && <button onClick={() => voidSale(sale)} disabled={voidingSaleId === sale.id} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />{voidingSaleId === sale.id ? (lang === "sw" ? "Inafuta..." : "Voiding...") : (lang === "sw" ? "Futa mauzo yote" : "Void entire sale")}</button>}
                       </div>
                     )}
                   </div>
@@ -1275,6 +1384,44 @@ export default function SalesPage() {
             <label className="mt-4 grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Idadi inayoingia" : "Quantity received"}</span><input autoFocus type="number" min="1" step="1" inputMode="numeric" value={restockQuantity} onChange={(event) => setRestockQuantity(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
             <button disabled={restocking || !restockQuantity} onClick={restockFromPos} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-3 font-semibold text-white disabled:opacity-50"><PackagePlus className="h-5 w-5" />{restocking ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi stock" : "Save stock")}</button>
           </div>
+        </div>
+      )}
+      {returnTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="sale-return-title" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-4 shadow-2xl sm:p-6">
+            <header className="flex items-start justify-between gap-3 border-b border-gray-200 pb-3">
+              <div><h2 id="sale-return-title" className="text-lg font-bold text-gray-950">{lang === "sw" ? "Rejesha bidhaa" : "Record a product return"}</h2><p className="mt-1 text-sm text-gray-600">{receiptLabel(returnTarget)} · {lang === "sw" ? "Rejesho linahifadhiwa kama tukio tofauti." : "The return is recorded as a separate dated event."}</p></div>
+              <button type="button" aria-label={lang === "sw" ? "Funga" : "Close"} onClick={() => { setReturnTarget(null); setReturnRequestKey(""); }} disabled={savingReturn} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+            </header>
+            <div className="mt-4 space-y-3">
+              {returnTarget.items.map((item) => {
+                const draft = returnLines.find((line) => line.saleItemId === item.id);
+                if (!draft) return null;
+                const remaining = item.quantity - item.returnedQuantity;
+                if (remaining <= 0) return null;
+                return <div key={item.id} className="rounded-lg border border-gray-200 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2"><p className="font-semibold text-gray-900">{item.product?.name || item.name || (lang === "sw" ? "Huduma" : "Service")}</p><p className="text-xs text-gray-500">{lang === "sw" ? `Zimerudishwa ${item.returnedQuantity}/${item.quantity}` : `Returned ${item.returnedQuantity}/${item.quantity}`} · {formatTZS(Math.round(item.totalPrice / item.quantity))} {lang === "sw" ? "kwa kipande (wastani)" : "per unit (average)"}</p></div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Idadi inayorejeshwa" : "Quantity returned"}</span><input type="number" min="0" max={remaining} step="1" inputMode="numeric" value={draft.quantity} onChange={(event) => setReturnLines((lines) => lines.map((line) => line.saleItemId === item.id ? { ...line, quantity: event.target.value, ...(item.productId ? { restockQuantity: event.target.value, damagedQuantity: "0" } : {}) } : line))} className="h-10 rounded-lg border border-gray-300 px-2 text-base text-gray-900" /></label>
+                    {item.productId ? <>
+                      <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Inauzika, rudisha stock" : "Sellable, restock"}</span><input type="number" min="0" max={Number(draft.quantity || 0)} step="1" inputMode="numeric" value={draft.restockQuantity} onChange={(event) => setReturnLines((lines) => lines.map((line) => line.saleItemId === item.id ? { ...line, restockQuantity: event.target.value } : line))} className="h-10 rounded-lg border border-gray-300 px-2 text-base text-gray-900" /></label>
+                      <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Imeharibika" : "Damaged / write-off"}</span><input type="number" min="0" max={Number(draft.quantity || 0)} step="1" inputMode="numeric" value={draft.damagedQuantity} onChange={(event) => setReturnLines((lines) => lines.map((line) => line.saleItemId === item.id ? { ...line, damagedQuantity: event.target.value } : line))} className="h-10 rounded-lg border border-gray-300 px-2 text-base text-gray-900" /></label>
+                    </> : <p className="col-span-1 self-end pb-2 text-xs text-gray-500">{lang === "sw" ? "Huduma hii haiathiri stock." : "Service line; inventory is not affected."}</p>}
+                  </div>
+                </div>;
+              })}
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm font-medium text-gray-700 sm:col-span-2"><span>{lang === "sw" ? "Sababu ya kurejesha" : "Return reason"}</span><textarea value={returnReason} onChange={(event) => setReturnReason(event.target.value)} maxLength={500} rows={2} className="rounded-lg border border-gray-300 px-3 py-2" /></label>
+              <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Njia ya kurejesha pesa (ikiwa inalipwa)" : "Refund method (if money is paid back)"}</span><select value={returnMethod} onChange={(event) => setReturnMethod(event.target.value)} className="h-11 rounded-lg border border-gray-300 bg-white px-3"><option value="">{lang === "sw" ? "Haijachaguliwa / deni pekee" : "Not selected / debt reduction only"}</option>{PAYMENT_METHODS.filter((method) => method.value !== "CREDIT").map((method) => <option key={method.value} value={method.value}>{t(method.labelKey, lang)}</option>)}</select></label>
+              <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Namba ya kumbukumbu ya malipo" : "Refund payment reference"}</span><input value={returnPaymentRef} onChange={(event) => setReturnPaymentRef(event.target.value)} maxLength={120} className="h-11 rounded-lg border border-gray-300 px-3" /></label>
+            </div>
+            <p className="mt-3 rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-950">{lang === "sw" ? "Bidhaa zinazouzeka zitarudi kwenye stock; zilizoharibika hazitarudi. Kwa mauzo ya mkopo, kiasi kisicholipwa kitapunguzwa kwanza na salio lililolipwa litarejeshwa kwa njia uliyochagua. Ukipoteza mtandao baada ya kuhifadhi, tuma ombi lilelile tena bila kubadilisha taarifa." : "Sellable items return to stock; damaged items do not. For credit sales, the unpaid balance is reduced first and any already-collected balance is refunded using the method selected. If the connection drops after saving, retry the same details unchanged."}</p>
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" disabled={savingReturn} onClick={() => { setReturnTarget(null); setReturnRequestKey(""); }} className="min-h-11 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Ghairi" : "Cancel"}</button>
+              <button type="button" disabled={savingReturn} onClick={() => void submitReturn()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white disabled:opacity-50"><Check className="h-4 w-4" />{savingReturn ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi rejesho" : "Save return")}</button>
+            </div>
+          </section>
         </div>
       )}
       {unknownBarcode && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"><h2 className="font-bold text-gray-900">{lang === "sw" ? "Barcode haijapatikana" : "This barcode was not found."}</h2><p className="mt-2 text-sm text-gray-600">{unknownBarcode}</p><div className="mt-4 flex gap-2"><button onClick={() => { setSearch(unknownBarcode); setProductPage(1); setUnknownBarcode(null); }} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-semibold">{lang === "sw" ? "Tafuta" : "Search manually"}</button><button onClick={() => { window.location.href = `/inventory?barcode=${encodeURIComponent(unknownBarcode)}&action=add`; }} className="flex-1 rounded-lg bg-brand-600 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Ongeza bidhaa" : "Add new product"}</button></div><button onClick={() => setUnknownBarcode(null)} className="mt-3 w-full text-sm text-gray-500">{t("common.cancel", lang)}</button></div></div>}

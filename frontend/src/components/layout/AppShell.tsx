@@ -96,7 +96,7 @@ const merchantNav: NavItem[] = [
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
   { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },
   { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canRecordExpenses", group: "money" },
-  { href: "/profit", labelKey: "nav.profit", icon: ChartNoAxesCombined, permission: "canViewReports", group: "money" },
+  { href: "/analytics", labelKey: "nav.profit", icon: ChartNoAxesCombined, permission: "canViewReports", group: "money" },
   { href: "/wallet", labelKey: "nav.wallet", icon: Landmark, ownerOnly: true, group: "money" },
   { href: "/billing", labelKey: "nav.billing", icon: CreditCard, permission: "canManageStaff", group: "money" },
   { href: "/staff", labelKey: "nav.staff", icon: Users, permission: "canManageStaff", feature: "staff", group: "manage" },
@@ -142,7 +142,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   function staffCanUseCurrentPage() {
     const permissions = user?.staff?.permissions;
     if (!permissions) return true;
-    if (pathname === "/dashboard" || pathname.startsWith("/profit")) return permissions.canViewReports;
+    if (pathname === "/dashboard" || pathname.startsWith("/profit") || pathname.startsWith("/analytics")) return permissions.canViewReports;
     if (pathname === "/daily-close" || pathname.startsWith("/daily-close/")) return permissions.canSell || permissions.canManageCashSessions;
     if (["/sales", "/debts", "/orders/customers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canSell;
     if (["/inventory", "/receiving", "/barcodes", "/suppliers", "/orders"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canManageStock;

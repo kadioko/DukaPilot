@@ -39,6 +39,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm test
+      - run: node --test tests/saleReturn.unit.test.js tests/productPerformance.unit.test.js
 
   postgres-integrity:
     runs-on: ubuntu-latest

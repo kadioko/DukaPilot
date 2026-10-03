@@ -29,6 +29,8 @@ interface DashboardData {
   features?: { staff: boolean; assistant: boolean; exports: boolean };
   summary: {
     totalSales: number;
+    returnedSales: number;
+    netSales: number;
     cashCollected: number;
     creditSales: number;
     missingCostSalesRevenue: number;
@@ -46,6 +48,7 @@ interface DashboardData {
   comparison: Record<string, { current: number; previous: number; change: number; changePercent: number | null }> | null;
   allTimeSummary: {
     totalSales: number;
+    returnedSales: number;
     totalProfit: number;
     totalExpenses: number;
     netProfit: number;
@@ -148,11 +151,11 @@ export default function DashboardPage() {
                   {t("sales.startSale", lang)}
                 </Link>
                 <Link
-                  href="/profit"
+                  href="/analytics"
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   <BarChart2 className="h-4 w-4" />
-                  {lang === "sw" ? "Uchambuzi wa faida" : "Profit analytics"}
+                  {lang === "sw" ? "Uchambuzi" : "Analytics"}
                 </Link>
               </div>
 
@@ -188,8 +191,8 @@ export default function DashboardPage() {
                   </div>
                 )}
                 <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 xl:grid-cols-4">
-                  <PeriodStat label={t("dashboard.sales", lang)} value={formatTZS(s?.totalSales || 0)} comparison={data?.comparison?.sales} sw={lang === "sw"} />
-                  <PeriodStat label={lang === "sw" ? "Pesa zilizokusanywa" : "Cash collected"} value={formatTZS(s?.cashCollected || 0)} sub={lang === "sw" ? "Mauzo yasiyo ya mkopo + malipo ya madeni" : "Non-credit sales + debt payments"} />
+                  <PeriodStat label={lang === "sw" ? "Mauzo baada ya marejesho" : "Sales after returns"} value={formatTZS(s?.netSales || 0)} sub={lang === "sw" ? `Mauzo ${formatTZS(s?.totalSales || 0)} · marejesho ${formatTZS(s?.returnedSales || 0)}` : `Gross ${formatTZS(s?.totalSales || 0)} · returns ${formatTZS(s?.returnedSales || 0)}`} />
+                  <PeriodStat label={lang === "sw" ? "Pesa zilizokusanywa baada ya refund" : "Cash after refunds"} value={formatTZS(s?.cashCollected || 0)} sub={lang === "sw" ? "Mauzo yasiyo ya mkopo + malipo ya madeni - refunds" : "Non-credit sales + debt payments - refunds"} />
                   <PeriodStat label={lang === "sw" ? "Mauzo ya mkopo" : "Credit sales"} value={formatTZS(s?.creditSales || 0)} />
                   <PeriodStat label={period === "today" ? (lang === "sw" ? "Faida ghafi ya leo" : "Today's gross profit") : (lang === "sw" ? "Faida ghafi" : "Gross profit")} value={formatTZS(s?.totalProfit || 0)} danger={(s?.totalProfit || 0) < 0} sub={s && s.totalSales > 0 ? `${((s.totalProfit / s.totalSales) * 100).toFixed(0)}% ${t("dashboard.margin", lang)}` : undefined} comparison={data?.comparison?.grossProfit} sw={lang === "sw"} />
                   <PeriodStat label={lang === "sw" ? "Matumizi" : "Expenses"} value={formatTZS(s?.totalExpenses || 0)} />
@@ -242,9 +245,10 @@ export default function DashboardPage() {
         <div className="mb-6 grid gap-3 lg:grid-cols-5">
           <KpiCard
             label={t("dashboard.allTime", lang)}
-            value={formatTZS(allTime?.totalSales || 0)}
+            value={formatTZS((allTime?.totalSales || 0) - (allTime?.returnedSales || 0))}
             icon={<ShoppingCart className="w-5 h-5 text-sky-600" />}
             color="blue"
+            sub={`${formatTZS(allTime?.returnedSales || 0)} ${lang === "sw" ? "marejesho" : "returns"}`}
           />
           <KpiCard
             label={lang === "sw" ? "Faida kabla ya matumizi" : "Gross profit"}

@@ -75,7 +75,7 @@ test("voiding a sale restores stock, cancels unpaid debt, and records the reason
   delete require.cache[saleControllerPath];
   const controller = require(saleControllerPath);
   const res = response();
-  const req = { user: { userId: "owner-1" }, params: { id: "sale-1" }, body: { reason: "Entered twice" } };
+  const req = { user: { userId: "owner-1" }, params: { id: "sale-1" }, body: { reason: "Entered twice", paymentNotReceived: true } };
 
   await controller.voidSale(req, res);
 

@@ -1,6 +1,8 @@
 const prisma = require("../lib/prisma");
+const crypto = require("crypto");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -72,7 +74,7 @@ function allocateEstimatedGroceryCost(items, totalGroceryBill, transportCost, ot
 }
 
 function normalizeItems(rawItems, requireUnitCost = true) {
-  if (!Array.isArray(rawItems) || rawItems.length === 0) return null;
+  if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.some((item) => !item || typeof item !== "object" || Array.isArray(item))) return null;
   const seen = new Set();
   const items = rawItems.map((item) => ({
     productId: String(item.productId || "").trim(),
@@ -82,6 +84,12 @@ function normalizeItems(rawItems, requireUnitCost = true) {
   if (items.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0 || (requireUnitCost && (!Number.isInteger(item.unitCost) || item.unitCost < 0)))) return null;
   if (items.some((item) => seen.has(item.productId) || !seen.add(item.productId))) return null;
   return items;
+}
+
+function publicReceipt(receipt) {
+  if (!receipt) return receipt;
+  const { requestKey, requestHash, ...safe } = receipt;
+  return safe;
 }
 
 const list = asyncHandler(async (req, res) => {
@@ -95,11 +103,12 @@ const list = asyncHandler(async (req, res) => {
     orderBy: { receivedAt: "desc" },
     take: 50,
   });
-  res.json({ receipts });
+  res.json({ receipts: receipts.map(publicReceipt) });
 });
 
 const receive = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const requestKey = String(req.body.requestKey || "").trim() || crypto.randomUUID();
   const allocationMode = String(req.body.allocationMode || "DIRECT").toUpperCase();
   const estimatedTotalMode = allocationMode === "TOTAL_ESTIMATE";
   const items = normalizeItems(req.body.items, !estimatedTotalMode);
@@ -121,8 +130,29 @@ const receive = asyncHandler(async (req, res) => {
   }
   if (!PAYMENT_METHODS.has(paymentMethod)) return res.status(400).json({ error: "Choose a valid payment method" });
   if (!receivedAt) return res.status(400).json({ error: "Received date is invalid" });
+  if (!/^[a-f0-9-]{16,80}$/i.test(requestKey)) return res.status(400).json({ error: "A valid receipt retry key is required" });
 
-  const receipt = await prisma.$transaction(async (tx) => {
+  const requestHash = crypto.createHash("sha256").update(JSON.stringify({
+    allocationMode, totalGroceryBill: estimatedTotalMode ? totalGroceryBill : null,
+    supplierId, sourceOrderId, invoiceNumber, note, transportCost, otherCost,
+    paymentMethod, receivedAt: receivedAt.toISOString(),
+    items: [...items].sort((a, b) => a.productId.localeCompare(b.productId)),
+  })).digest("hex");
+
+  let receipt;
+  let reused = false;
+  try {
+    receipt = await prisma.$transaction(async (tx) => {
+    const replay = await tx.stockReceipt.findFirst({
+      where: { shopId, requestKey },
+      include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+    });
+    if (replay) {
+      if (replay.requestHash !== requestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
+      reused = true;
+      return replay;
+    }
+
     let receiptSupplierId = supplierId;
     if (supplierId) {
       const supplier = await tx.supplier.findFirst({ where: { id: supplierId, shopId }, select: { id: true } });
@@ -150,9 +180,14 @@ const receive = asyncHandler(async (req, res) => {
     const totalProductCost = allocatedItems.reduce((sum, item) => sum + item.productCost, 0);
     const totalLandedCost = totalProductCost + transportCost + otherCost;
     const cashSession = paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
+    if (paymentMethod === "CASH" && !cashSession) {
+      throw Object.assign(new Error("Open your cash shift before recording a cash stock purchase so it appears in Daily Close"), { status: 409 });
+    }
     const created = await tx.stockReceipt.create({
       data: {
         shopId,
+        requestKey,
+        requestHash,
         supplierId: receiptSupplierId,
         sourceOrderId,
         invoiceNumber,
@@ -190,10 +225,27 @@ const receive = asyncHandler(async (req, res) => {
       where: { id: created.id },
       include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
     });
-  });
+    });
+  } catch (error) {
+    if (error.code !== "P2002") throw error;
+    const replay = await prisma.stockReceipt.findFirst({
+      where: { shopId, requestKey },
+      include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+    });
+    if (!replay) {
+      if (sourceOrderId) throw Object.assign(new Error("This supplier order has already been received. Refresh stock receipt history."), { status: 409 });
+      throw error;
+    }
+    if (replay.requestHash !== requestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
+    reused = true;
+    receipt = replay;
+  }
 
-  req.audit = { action: "stock_receipt.create", resourceType: "stock_receipt", resourceId: receipt.id, metadata: { supplierId: receipt.supplierId, sourceOrderId, paymentMethod, cashSessionId: receipt.cashSessionId || null, totalLandedCost: receipt.totalLandedCost, itemCount: receipt.items.length } };
-  res.status(201).json({ receipt });
+  if (!reused) {
+    await invalidateDashboardHistory(shopId);
+    req.audit = { action: "stock_receipt.create", resourceType: "stock_receipt", resourceId: receipt.id, metadata: { supplierId: receipt.supplierId, sourceOrderId, paymentMethod, cashSessionId: receipt.cashSessionId || null, totalLandedCost: receipt.totalLandedCost, itemCount: receipt.items.length } };
+  }
+  res.status(reused ? 200 : 201).json({ receipt: publicReceipt(receipt), reused });
 });
 
 module.exports = { list, receive, distributeLandedCost, allocateEstimatedGroceryCost };

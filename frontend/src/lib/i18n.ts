@@ -23,7 +23,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "nav.staff": { sw: "Wafanyakazi", en: "Staff" },
   "nav.assistant": { sw: "Msaidizi wa AI", en: "AI Assistant" },
   "nav.barcodes": { sw: "Barkodi", en: "Barcodes" },
-  "nav.profit": { sw: "Uchambuzi wa Faida", en: "Profit Analytics" },
+  "nav.profit": { sw: "Uchambuzi", en: "Analytics" },
   "nav.dailyClose": { sw: "Funga Siku", en: "Daily Close" },
   "nav.receiving": { sw: "Pokea Bidhaa", en: "Receive Stock" },
   "nav.foodPreparation": { sw: "Andaa Chakula", en: "Prepare Food" },

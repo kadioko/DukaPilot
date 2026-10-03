@@ -12,9 +12,12 @@ function asyncHandler(fn) {
 function costQualityQuery(shopId, from, to) {
   return prisma.$queryRawUnsafe(
     `SELECT
-       COALESCE((SELECT SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)::bigint AS \"knownCostGrossProfit\",
+       COALESCE((SELECT SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)
+         - COALESCE((SELECT SUM(sri.\"totalAmount\" - sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)::bigint AS \"knownCostGrossProfit\",
        COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" <= 0 AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)
-         + COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND NOT EXISTS (SELECT 1 FROM sale_items si WHERE si.\"saleId\" = s.id) AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)::bigint AS \"missingCostSalesRevenue\"`,
+         + COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND NOT EXISTS (SELECT 1 FROM sale_items si WHERE si.\"saleId\" = s.id) AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)
+         - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" <= 0 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)::bigint AS \"missingCostSalesRevenue\",
+       COALESCE((SELECT SUM(sr.\"totalAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)::bigint AS \"returnedRevenue\"`,
     shopId, from, to,
   );
 }
@@ -152,9 +155,23 @@ const overview = asyncHandler(async (req, res) => {
               COALESCE(SUM(si."totalPrice" - si."buyingPrice" * si.quantity) FILTER (WHERE si."buyingPrice" > 0), 0)::bigint AS profit
        FROM sales s JOIN sale_items si ON si."saleId" = s.id
        WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."createdAt" >= $2 GROUP BY 1
+     ), daily_returns AS (
+       SELECT to_char(sr."createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam', 'YYYY-MM-DD') AS date,
+              COALESCE(SUM(sr."totalAmount"), 0)::bigint AS returns
+       FROM sale_returns sr
+       WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 GROUP BY 1
+     ), daily_return_cost AS (
+       SELECT to_char(sr."createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam', 'YYYY-MM-DD') AS date,
+              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS profitReduction
+       FROM sale_returns sr JOIN sale_return_items sri ON sri."saleReturnId" = sr.id
+       WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 GROUP BY 1
      )
-     SELECT daily_sales.date, daily_sales.sales, COALESCE(daily_profit.profit, 0)::bigint AS profit
-     FROM daily_sales LEFT JOIN daily_profit USING (date)`,
+     SELECT COALESCE(daily_sales.date, daily_profit.date, daily_returns.date, daily_return_cost.date) AS date,
+            COALESCE(daily_sales.sales, 0) - COALESCE(daily_returns.returns, 0)::bigint AS sales,
+            (COALESCE(daily_profit.profit, 0) - COALESCE(daily_return_cost.profitReduction, 0))::bigint AS profit
+     FROM daily_sales FULL OUTER JOIN daily_profit USING (date)
+       FULL OUTER JOIN daily_returns USING (date)
+       FULL OUTER JOIN daily_return_cost USING (date)`,
     shopId,
     chartDays[0],
   );
@@ -229,7 +246,7 @@ const overview = asyncHandler(async (req, res) => {
   const allTimeExpenses = allExpenseAgg._sum.amount || 0;
   const currentRange = from ? { from, to: new Date(now.getTime() + 1) } : null;
   const previousRange = currentRange && period !== "all" ? previousComparableRange(period, currentRange) : null;
-  const [previousSales, previousExpenses, cashCollections, currentCostRows, allTimeCostRows, previousCostRows] = await Promise.all([
+  const [previousSales, previousExpenses, cashCollections, returnSummaryRows, previousReturnSummaryRows, currentCostRows, allTimeCostRows, previousCostRows] = await Promise.all([
     previousRange ? prisma.sale.aggregate({
       where: { shopId, status: "COMPLETED", createdAt: { gte: previousRange.from, lt: previousRange.to } },
       _sum: { totalAmount: true, profit: true },
@@ -243,9 +260,16 @@ const overview = asyncHandler(async (req, res) => {
       `SELECT
          COALESCE((SELECT SUM(s."totalAmount") FROM sales s WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."paymentMethod" <> 'CREDIT' AND s."quotationId" IS NULL AND ($2::timestamptz IS NULL OR s."createdAt" >= $2) AND s."createdAt" < $3), 0)
          + COALESCE((SELECT SUM(CASE WHEN qp.kind = 'PAYMENT' THEN qp.amount ELSE -qp.amount END) FROM quotation_payments qp JOIN quotations q ON q.id = qp."quotationId" WHERE q."shopId" = $1 AND qp."paidAt" >= COALESCE($2, '-infinity'::timestamptz) AND qp."paidAt" < $3), 0)
-         + COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp JOIN debts d ON d.id = dp."debtId" WHERE d."shopId" = $1 AND ($2::timestamptz IS NULL OR dp."createdAt" >= $2) AND dp."createdAt" < $3 AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.id = d."saleId" AND s."quotationId" IS NOT NULL)), 0)::bigint AS amount`,
+         + COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp JOIN debts d ON d.id = dp."debtId" WHERE d."shopId" = $1 AND ($2::timestamptz IS NULL OR dp."createdAt" >= $2) AND dp."createdAt" < $3 AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.id = d."saleId" AND s."quotationId" IS NOT NULL)), 0)
+         - COALESCE((SELECT SUM(sr."refundAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)::bigint AS amount`,
       shopId, from, new Date(now.getTime() + 1),
     ),
+    prisma.$queryRawUnsafe(
+      `SELECT COALESCE(SUM(sr."totalAmount"), 0)::bigint AS amount, COUNT(*)::int AS count
+       FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3`,
+      shopId, from, new Date(now.getTime() + 1),
+    ),
+    previousRange ? prisma.saleReturn.aggregate({ where: { shopId, createdAt: { gte: previousRange.from, lt: previousRange.to } }, _sum: { totalAmount: true } }) : Promise.resolve(null),
     costQualityQuery(shopId, from, new Date(now.getTime() + 1)),
     costQualityQuery(shopId, null, null),
     previousRange ? costQualityQuery(shopId, previousRange.from, previousRange.to) : Promise.resolve([]),
@@ -255,9 +279,10 @@ const overview = asyncHandler(async (req, res) => {
   const allTimeProfit = Number(allTimeCostRows[0]?.knownCostGrossProfit || 0);
   const allTimeMissingCostSalesRevenue = Number(allTimeCostRows[0]?.missingCostSalesRevenue || 0);
   const previousGrossProfit = Number(previousCostRows[0]?.knownCostGrossProfit || 0);
-  const comparisonCurrent = { sales: Number(salesAgg._sum.totalAmount || 0), grossProfit: Number(grossProfit), expenses: Number(totalExpenses), netProfit: Number(grossProfit - totalExpenses), salesCount: Number(salesCount) };
+  const returnedRevenue = Number(returnSummaryRows[0]?.amount || 0);
+  const comparisonCurrent = { sales: Number(salesAgg._sum.totalAmount || 0) - returnedRevenue, grossProfit: Number(grossProfit), expenses: Number(totalExpenses), netProfit: Number(grossProfit - totalExpenses), salesCount: Number(salesCount) };
   const comparisonPrevious = previousSales ? {
-    sales: Number(previousSales._sum.totalAmount || 0),
+    sales: Number(previousSales._sum.totalAmount || 0) - Number(previousReturnSummaryRows?._sum.totalAmount || 0),
     grossProfit: previousGrossProfit,
     expenses: Number(previousExpenses?._sum.amount || 0),
     netProfit: previousGrossProfit - Number(previousExpenses?._sum.amount || 0),
@@ -273,6 +298,8 @@ const overview = asyncHandler(async (req, res) => {
     features: featureSnapshot(shopPlan),
     summary: {
       totalSales: salesAgg._sum.totalAmount || 0,
+      returnedSales: returnedRevenue,
+      netSales: Number(salesAgg._sum.totalAmount || 0) - returnedRevenue,
       cashCollected: Number(cashCollections[0]?.amount || 0),
       creditSales: paymentBreakdownRaw.find((item) => item.paymentMethod === "CREDIT")?._sum.totalAmount || 0,
       totalProfit: grossProfit,
@@ -289,6 +316,7 @@ const overview = asyncHandler(async (req, res) => {
     },
     allTimeSummary: {
       totalSales: allTimeSales,
+      returnedSales: Number(allTimeCostRows[0]?.returnedRevenue || 0),
       totalProfit: allTimeProfit,
       missingCostSalesRevenue: allTimeMissingCostSalesRevenue,
       costComplete: allTimeMissingCostSalesRevenue === 0,
@@ -353,20 +381,26 @@ const profitAnalytics = asyncHandler(async (req, res) => {
 
   const summaryQuery = `SELECT
        COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"salesRevenue\",
+       COALESCE((SELECT SUM(sr.\"totalAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"salesReturns\",
+       COALESCE((SELECT SUM(sr.\"debtReduction\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"debtReductions\",
+       COALESCE((SELECT SUM(sr.\"refundAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS refunds,
        COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"paymentMethod\" <> 'CREDIT' AND s.\"quotationId\" IS NULL AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)
          + COALESCE((SELECT SUM(CASE WHEN qp.kind = 'PAYMENT' THEN qp.amount ELSE -qp.amount END) FROM quotation_payments qp JOIN quotations q ON q.id = qp.\"quotationId\" WHERE q.\"shopId\" = $1 AND qp.\"paidAt\" >= $2 AND qp.\"paidAt\" < $3), 0)
-         + COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp JOIN debts d ON d.id = dp.\"debtId\" WHERE d.\"shopId\" = $1 AND dp.\"createdAt\" >= $2 AND dp.\"createdAt\" < $3 AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.id = d.\"saleId\" AND s.\"quotationId\" IS NOT NULL)), 0)::bigint AS \"cashCollected\",
+         + COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp JOIN debts d ON d.id = dp.\"debtId\" WHERE d.\"shopId\" = $1 AND dp.\"createdAt\" >= $2 AND dp.\"createdAt\" < $3 AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.id = d.\"saleId\" AND s.\"quotationId\" IS NOT NULL)), 0)
+         - COALESCE((SELECT SUM(sr.\"refundAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"cashCollected\",
        COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"paymentMethod\" = 'CREDIT' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"creditSales\",
-       COALESCE((SELECT SUM(si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"costOfGoodsSold\",
-       COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"knownCostRevenue\",
-       COALESCE((SELECT SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"knownCostGrossProfit\",
+       (COALESCE((SELECT SUM(si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0) - COALESCE((SELECT SUM(sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0))::bigint AS \"costOfGoodsSold\",
+       (COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0) - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0))::bigint AS \"knownCostRevenue\",
+       COALESCE((SELECT SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)
+         - COALESCE((SELECT SUM(sri.\"totalAmount\" - sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"knownCostGrossProfit\",
        (COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" <= 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)
+         - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" <= 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)
          + COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND NOT EXISTS (SELECT 1 FROM sale_items si WHERE si.\"saleId\" = s.id) AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0))::bigint AS \"missingCostSalesRevenue\",
        (SELECT COUNT(*)::int FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3) AS \"salesCount\",
-       COALESCE((SELECT SUM(si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"unitsSold\",
+       COALESCE((SELECT SUM(si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint - COALESCE((SELECT SUM(sri.quantity) FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"unitsSold\",
        COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $2 AND e.\"spentAt\" < $3), 0)::bigint AS expenses`;
 
-  const [totalsRows, previousRows, chartRows, expenseChartRows, slowProductRows, productRows, debtAgingRows, collectionRows, productionAggregate, productionInputRows] = await Promise.all([
+  const [totalsRows, previousRows, chartRows, returnChartRows, expenseChartRows, salesChartRows, slowProductRows, productRows, productReturnRows, debtAgingRows, collectionRows, salesPaymentRows, topSupplierRows, topCustomerRows, salesByStaffRows, productionAggregate, productionInputRows] = await Promise.all([
     prisma.$queryRawUnsafe(summaryQuery, shopId, range.from, range.to),
     previousRange ? prisma.$queryRawUnsafe(summaryQuery, shopId, previousRange.from, previousRange.to) : Promise.resolve([]),
     prisma.$queryRawUnsafe(
@@ -374,6 +408,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
               to_char(${bucket}, 'YYYY-MM-DD HH24:MI') AS \"sortKey\",
               COALESCE(SUM(si.\"totalPrice\"), 0)::bigint AS revenue,
               COALESCE(SUM(CASE WHEN si.\"buyingPrice\" > 0 THEN si.\"buyingPrice\" * si.quantity ELSE 0 END), 0)::bigint AS cogs,
+              COALESCE(SUM(CASE WHEN si.\"buyingPrice\" > 0 THEN si.\"totalPrice\" ELSE 0 END), 0)::bigint AS \"knownRevenue\",
               COALESCE(SUM(CASE WHEN si.\"buyingPrice\" > 0 THEN si.\"totalPrice\" - (si.\"buyingPrice\" * si.quantity) ELSE 0 END), 0)::bigint AS profit
        FROM sales s
        JOIN sale_items si ON si.\"saleId\" = s.id
@@ -383,9 +418,38 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       shopId, range.from, range.to,
     ),
     prisma.$queryRawUnsafe(
+      `SELECT to_char(${bucket.replaceAll('s."createdAt"', 'sr."createdAt"')}, '${label}') AS label,
+              to_char(${bucket.replaceAll('s."createdAt"', 'sr."createdAt"')}, 'YYYY-MM-DD HH24:MI') AS "sortKey",
+              COALESCE(SUM(sri."totalAmount"), 0)::bigint AS revenue,
+              COALESCE(SUM(sri.quantity), 0)::bigint AS units,
+              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS cogs,
+              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" ELSE 0 END), 0)::bigint AS "knownRevenue",
+              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS profit
+       FROM sale_returns sr JOIN sale_return_items sri ON sri."saleReturnId" = sr.id
+       WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+       GROUP BY 1, 2 ORDER BY 2 ASC`,
+      shopId, range.from, range.to,
+    ),
+    prisma.$queryRawUnsafe(
       `SELECT to_char(${expenseBucket}, '${label}') AS label, to_char(${expenseBucket}, 'YYYY-MM-DD HH24:MI') AS \"sortKey\", COALESCE(SUM(e.amount), 0)::bigint AS expenses
        FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $2 AND e.\"spentAt\" < $3
        GROUP BY ${expenseBucket} ORDER BY ${expenseBucket} ASC`,
+      shopId, range.from, range.to,
+    ),
+    prisma.$queryRawUnsafe(
+      `WITH sales_by_bucket AS (
+         SELECT ${bucket} AS bucket, COUNT(*)::int AS \"salesCount\", SUM(s.\"totalAmount\")::bigint AS revenue
+         FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3
+         GROUP BY 1
+       ), units_by_bucket AS (
+         SELECT ${bucket} AS bucket, COALESCE(SUM(si.quantity), 0)::bigint AS \"unitsSold\"
+         FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id
+         WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3
+         GROUP BY 1
+       )
+       SELECT to_char(sb.bucket, '${label}') AS label, to_char(sb.bucket, 'YYYY-MM-DD HH24:MI') AS \"sortKey\",
+              sb.revenue, sb.\"salesCount\", COALESCE(ub.\"unitsSold\", 0)::bigint AS \"unitsSold\"
+       FROM sales_by_bucket sb LEFT JOIN units_by_bucket ub ON ub.bucket = sb.bucket ORDER BY sb.bucket ASC`,
       shopId, range.from, range.to,
     ),
     prisma.$queryRawUnsafe(
@@ -400,22 +464,49 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       shopId,
     ),
     prisma.$queryRawUnsafe(
-      `SELECT COALESCE(p.id, 'unlinked:' || MAX(COALESCE(si.name, si.description, 'Item')) || '|' || MAX(COALESCE(si.unit, ''))) AS id,
-              COALESCE(p.name, MAX(COALESCE(si.name, si.description, 'Item'))) AS name,
-              COALESCE(p.unit, MAX(COALESCE(si.unit, ''))) AS unit,
-              COALESCE(p.\"currentStock\", 0)::double precision AS \"currentStock\",
-              COALESCE(SUM(si.quantity), 0)::bigint AS quantity,
-              COALESCE(SUM(si.\"totalPrice\"), 0)::bigint AS revenue,
-              COALESCE(SUM(CASE WHEN si.\"buyingPrice\" > 0 THEN si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity ELSE 0 END), 0)::bigint AS \"knownCostGrossProfit\",
-              COALESCE(SUM(CASE WHEN si.\"buyingPrice\" <= 0 THEN si.\"totalPrice\" ELSE 0 END), 0)::bigint AS \"missingCostSalesRevenue\",
-              MAX(s.\"createdAt\") AS \"lastSoldAt\"
-       FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id
-       LEFT JOIN products p ON p.id = si.\"productId\"
-       WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3
-       GROUP BY p.id, p.name, p.unit, p.\"currentStock\",
-                CASE WHEN p.id IS NULL THEN COALESCE(si.name, si.description, 'Item') END,
-                CASE WHEN p.id IS NULL THEN si.unit END
-       ORDER BY \"knownCostGrossProfit\" DESC, revenue DESC LIMIT 10`,
+      `WITH linked_product_sales AS (
+         SELECT p.id::text AS id, p.name, p.unit, p.\"currentStock\"::double precision AS \"currentStock\",
+                COALESCE(SUM(si.quantity), 0)::bigint AS quantity,
+                COALESCE(SUM(si.\"totalPrice\"), 0)::bigint AS revenue,
+                COALESCE(SUM(CASE WHEN si.\"buyingPrice\" > 0 THEN si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity ELSE 0 END), 0)::bigint AS \"knownCostGrossProfit\",
+                COALESCE(SUM(CASE WHEN si.\"buyingPrice\" <= 0 THEN si.\"totalPrice\" ELSE 0 END), 0)::bigint AS \"missingCostSalesRevenue\",
+                MAX(s.\"createdAt\") AS \"lastSoldAt\"
+         FROM sales s
+         JOIN sale_items si ON si.\"saleId\" = s.id
+         JOIN products p ON p.id = si.\"productId\" AND p.\"shopId\" = s.\"shopId\"
+         WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3
+         GROUP BY p.id, p.name, p.unit, p.\"currentStock\"
+       ), unlinked_item_sales AS (
+         SELECT 'unlinked:' || COALESCE(si.name, si.description, 'Item') || '|' || COALESCE(si.unit, '') AS id,
+                COALESCE(si.name, si.description, 'Item') AS name,
+                COALESCE(si.unit, '') AS unit,
+                0::double precision AS \"currentStock\",
+                COALESCE(SUM(si.quantity), 0)::bigint AS quantity,
+                COALESCE(SUM(si.\"totalPrice\"), 0)::bigint AS revenue,
+                COALESCE(SUM(CASE WHEN si.\"buyingPrice\" > 0 THEN si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity ELSE 0 END), 0)::bigint AS \"knownCostGrossProfit\",
+                COALESCE(SUM(CASE WHEN si.\"buyingPrice\" <= 0 THEN si.\"totalPrice\" ELSE 0 END), 0)::bigint AS \"missingCostSalesRevenue\",
+                MAX(s.\"createdAt\") AS \"lastSoldAt\"
+         FROM sales s
+         JOIN sale_items si ON si.\"saleId\" = s.id
+         LEFT JOIN products p ON p.id = si.\"productId\" AND p.\"shopId\" = s.\"shopId\"
+         WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3 AND p.id IS NULL
+         GROUP BY COALESCE(si.name, si.description, 'Item'), COALESCE(si.unit, '')
+       )
+       SELECT * FROM linked_product_sales
+       UNION ALL
+       SELECT * FROM unlinked_item_sales
+       ORDER BY revenue DESC, \"knownCostGrossProfit\" DESC LIMIT 10`,
+      shopId, range.from, range.to,
+    ),
+    prisma.$queryRawUnsafe(
+      `SELECT CASE WHEN si."productId" IS NOT NULL THEN si."productId"::text ELSE 'unlinked:' || COALESCE(si.name, si.description, 'Item') || '|' || COALESCE(si.unit, '') END AS id,
+              COALESCE(SUM(sri.quantity), 0)::bigint AS units,
+              COALESCE(SUM(sri."totalAmount"), 0)::bigint AS revenue,
+              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS profitReduction,
+              COALESCE(SUM(CASE WHEN sri."buyingPrice" <= 0 THEN sri."totalAmount" ELSE 0 END), 0)::bigint AS missingCostRevenue
+       FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri."saleReturnId" JOIN sale_items si ON si.id = sri."saleItemId"
+       WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+       GROUP BY 1`,
       shopId, range.from, range.to,
     ),
     prisma.$queryRawUnsafe(
@@ -438,7 +529,45 @@ const profitAnalytics = asyncHandler(async (req, res) => {
          SELECT qp.\"paymentMethod\" AS method, CASE WHEN qp.kind = 'PAYMENT' THEN qp.amount ELSE -qp.amount END AS amount
          FROM quotation_payments qp JOIN quotations q ON q.id = qp.\"quotationId\"
          WHERE q.\"shopId\" = $1 AND qp.\"paidAt\" >= $2 AND qp.\"paidAt\" < $3
+         UNION ALL
+         SELECT sr.\"refundMethod\" AS method, -sr.\"refundAmount\" AS amount FROM sale_returns sr
+         WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3 AND sr.\"refundAmount\" > 0
        ) collections GROUP BY method ORDER BY amount DESC`,
+      shopId, range.from, range.to,
+    ),
+    prisma.$queryRawUnsafe(
+      `SELECT s."paymentMethod", COUNT(*)::int AS "salesCount", COALESCE(SUM(s."totalAmount"), 0)::bigint AS amount
+       FROM sales s WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."createdAt" >= $2 AND s."createdAt" < $3
+       GROUP BY s."paymentMethod" ORDER BY amount DESC`,
+      shopId, range.from, range.to,
+    ),
+    prisma.$queryRawUnsafe(
+      `SELECT sp.id, sp.name, COUNT(sr.id)::int AS "receiptCount", COALESCE(SUM(sr."totalLandedCost"), 0)::bigint AS amount
+       FROM stock_receipts sr JOIN suppliers sp ON sp.id = sr."supplierId"
+       WHERE sr."shopId" = $1 AND sr."receivedAt" >= $2 AND sr."receivedAt" < $3
+       GROUP BY sp.id, sp.name ORDER BY amount DESC, sp.name ASC LIMIT 10`,
+      shopId, range.from, range.to,
+    ),
+    prisma.$queryRawUnsafe(
+      `SELECT COALESCE(MAX(NULLIF(BTRIM(s."customerName"), '')), 'Customer') AS name,
+              RIGHT(MAX(NULLIF(BTRIM(s."customerPhone"), '')), 4) AS "phoneLast4",
+              COUNT(*)::int AS "salesCount",
+              (COALESCE(SUM(s."totalAmount"), 0) - COALESCE(SUM(ret.amount), 0))::bigint AS amount
+       FROM sales s
+       LEFT JOIN (SELECT "saleId", SUM("totalAmount")::bigint AS amount FROM sale_returns WHERE "shopId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 GROUP BY "saleId") ret ON ret."saleId" = s.id
+       WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."createdAt" >= $2 AND s."createdAt" < $3
+         AND (NULLIF(BTRIM(s."customerPhone"), '') IS NOT NULL OR NULLIF(BTRIM(s."customerName"), '') IS NOT NULL)
+       GROUP BY COALESCE(s."customerId"::text, NULLIF(BTRIM(s."customerPhone"), ''), 'name:' || LOWER(NULLIF(BTRIM(s."customerName"), '')))
+       ORDER BY amount DESC, name ASC LIMIT 10`,
+      shopId, range.from, range.to,
+    ),
+    prisma.$queryRawUnsafe(
+      `SELECT s."createdByStaffId" AS id, COALESCE(MAX(st.name), 'Owner / other') AS name,
+              COUNT(*)::int AS "salesCount", COALESCE(SUM(s."totalAmount"), 0)::bigint AS amount,
+              COALESCE(SUM((SELECT SUM(si.quantity) FROM sale_items si WHERE si."saleId" = s.id)), 0)::bigint AS "unitsSold"
+       FROM sales s LEFT JOIN staff_members st ON st.id = s."createdByStaffId" AND st."shopId" = s."shopId"
+       WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."createdAt" >= $2 AND s."createdAt" < $3
+       GROUP BY s."createdByStaffId" ORDER BY amount DESC, name ASC LIMIT 20`,
       shopId, range.from, range.to,
     ),
     prisma.farmProductionBatch.aggregate({
@@ -479,10 +608,17 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       cost: Number(row._sum?.totalCost || 0),
     })).sort((a, b) => b.cost - a.cost),
   };
+  const productReturnsById = new Map(productReturnRows.map((row) => [row.id, row]));
   const currentSummary = {
     salesRevenue: revenue,
+    salesReturns: Number(totals.salesReturns || 0),
+    netSalesRevenue: revenue - Number(totals.salesReturns || 0),
     cashCollected: Number(totals.cashCollected || 0),
+    refunds: Number(totals.refunds || 0),
+    netCashCollected: Number(totals.cashCollected || 0),
     creditSales: Number(totals.creditSales || 0),
+    debtReductions: Number(totals.debtReductions || 0),
+    netCreditSales: Number(totals.creditSales || 0) - Number(totals.debtReductions || 0),
     costOfGoodsSold,
     grossProfit,
     grossProfitMargin: Number(totals.knownCostRevenue || 0) > 0 ? Number(((grossProfit / Number(totals.knownCostRevenue)) * 100).toFixed(1)) : 0,
@@ -490,7 +626,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
     netProfit: grossProfit - expenses,
     salesCount: Number(totals.salesCount || 0),
     unitsSold: Number(totals.unitsSold || 0),
-    missingCostSalesRevenue: Number(totals.missingCostSalesRevenue || 0),
+    missingCostSalesRevenue: Math.max(0, Number(totals.missingCostSalesRevenue || 0)),
     knownCostRevenue: Number(totals.knownCostRevenue || 0),
   };
   currentSummary.costComplete = currentSummary.missingCostSalesRevenue === 0;
@@ -499,21 +635,48 @@ const profitAnalytics = asyncHandler(async (req, res) => {
   for (const row of chartRows) chartByBucket.set(row.sortKey || row.label, {
     label: row.label,
     sortKey: row.sortKey || row.label,
-    revenue: Number(row.revenue || 0),
+    revenue: 0,
     costOfGoodsSold: Number(row.cogs || 0),
     grossProfit: Number(row.profit || 0),
+    knownRevenue: Number(row.knownRevenue || 0),
+    salesCount: 0,
+    unitsSold: 0,
     expenses: 0,
   });
+  for (const row of salesChartRows) {
+    const key = row.sortKey || row.label;
+    const bucketRow = chartByBucket.get(key) || { label: row.label, sortKey: key, revenue: 0, costOfGoodsSold: 0, grossProfit: 0, knownRevenue: 0, salesCount: 0, unitsSold: 0, expenses: 0 };
+    bucketRow.revenue = Number(row.revenue || 0);
+    bucketRow.salesCount = Number(row.salesCount || 0);
+    bucketRow.unitsSold = Number(row.unitsSold || 0);
+    chartByBucket.set(key, bucketRow);
+  }
   for (const row of expenseChartRows) {
     const key = row.sortKey || row.label;
-    const bucketRow = chartByBucket.get(key) || { label: row.label, sortKey: key, revenue: 0, costOfGoodsSold: 0, grossProfit: 0, expenses: 0 };
+    const bucketRow = chartByBucket.get(key) || { label: row.label, sortKey: key, revenue: 0, costOfGoodsSold: 0, grossProfit: 0, knownRevenue: 0, salesCount: 0, unitsSold: 0, expenses: 0 };
     bucketRow.expenses = Number(row.expenses || 0);
+    chartByBucket.set(key, bucketRow);
+  }
+  for (const row of returnChartRows) {
+    const key = row.sortKey || row.label;
+    const bucketRow = chartByBucket.get(key) || { label: row.label, sortKey: key, revenue: 0, costOfGoodsSold: 0, grossProfit: 0, knownRevenue: 0, salesCount: 0, unitsSold: 0, expenses: 0 };
+    bucketRow.revenue -= Number(row.revenue || 0);
+    bucketRow.costOfGoodsSold -= Number(row.cogs || 0);
+    bucketRow.grossProfit -= Number(row.profit || 0);
+    bucketRow.knownRevenue -= Number(row.knownRevenue || 0);
+    bucketRow.unitsSold -= Number(row.units || 0);
     chartByBucket.set(key, bucketRow);
   }
   const previousSummary = previous ? {
     salesRevenue: Number(previous.salesRevenue || 0),
+    salesReturns: Number(previous.salesReturns || 0),
+    netSalesRevenue: Number(previous.salesRevenue || 0) - Number(previous.salesReturns || 0),
     cashCollected: Number(previous.cashCollected || 0),
+    refunds: Number(previous.refunds || 0),
+    netCashCollected: Number(previous.cashCollected || 0),
     creditSales: Number(previous.creditSales || 0),
+    debtReductions: Number(previous.debtReductions || 0),
+    netCreditSales: Number(previous.creditSales || 0) - Number(previous.debtReductions || 0),
     costOfGoodsSold: Number(previous.costOfGoodsSold || 0),
     grossProfit: Number(previous.knownCostGrossProfit || 0),
     grossProfitMargin: Number(previous.knownCostRevenue || 0) > 0 ? Number(((Number(previous.knownCostGrossProfit || 0) / Number(previous.knownCostRevenue)) * 100).toFixed(1)) : 0,
@@ -522,7 +685,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
     salesCount: Number(previous.salesCount || 0),
   } : null;
   const comparison = previousSummary ? Object.fromEntries(
-    ["salesRevenue", "cashCollected", "creditSales", "costOfGoodsSold", "grossProfit", "grossProfitMargin", "expenses", "netProfit", "salesCount"].map((key) => {
+    ["salesRevenue", "salesReturns", "netSalesRevenue", "cashCollected", "refunds", "netCashCollected", "creditSales", "debtReductions", "netCreditSales", "costOfGoodsSold", "grossProfit", "grossProfitMargin", "expenses", "netProfit", "salesCount"].map((key) => {
       const current = currentSummary[key];
       const prior = previousSummary[key];
       return [key, { current, previous: prior, change: current - prior, changePercent: prior === 0 ? null : Number((((current - prior) / Math.abs(prior)) * 100).toFixed(1)) }];
@@ -546,27 +709,40 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       outstanding: Number(debtAgingRows[0]?.outstanding || 0),
     },
     collectionBreakdown: collectionRows.map((row) => ({ paymentMethod: row.paymentMethod, amount: Number(row.amount || 0) })),
-    products: productRows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      unit: row.unit,
-      currentStock: Number(row.currentStock || 0),
-      quantity: Number(row.quantity || 0),
-      revenue: Number(row.revenue || 0),
-      grossProfit: Number(row.knownCostGrossProfit || 0),
-      missingCostSalesRevenue: Number(row.missingCostSalesRevenue || 0),
-      lastSoldAt: row.lastSoldAt,
-    })),
+    salesPaymentBreakdown: salesPaymentRows.map((row) => ({ paymentMethod: row.paymentMethod, salesCount: Number(row.salesCount || 0), amount: Number(row.amount || 0) })),
+    topSuppliers: topSupplierRows.map((row) => ({ id: row.id, name: row.name, receiptCount: Number(row.receiptCount || 0), amount: Number(row.amount || 0) })),
+    topCustomers: topCustomerRows.map((row) => ({ name: row.name, phoneLast4: row.phoneLast4 || null, salesCount: Number(row.salesCount || 0), amount: Number(row.amount || 0) })),
+    salesByStaff: salesByStaffRows.map((row) => ({ id: row.id, name: row.name, salesCount: Number(row.salesCount || 0), amount: Number(row.amount || 0), unitsSold: Number(row.unitsSold || 0) })),
+    products: productRows.map((row) => {
+      const returned = productReturnsById.get(row.id);
+      return {
+        id: row.id,
+        name: row.name,
+        unit: row.unit,
+        currentStock: Number(row.currentStock || 0),
+        quantity: Number(row.quantity || 0) - Number(returned?.units || 0),
+        revenue: Number(row.revenue || 0) - Number(returned?.revenue || 0),
+        grossProfit: Number(row.knownCostGrossProfit || 0) - Number(returned?.profitReduction || 0),
+        missingCostSalesRevenue: Math.max(0, Number(row.missingCostSalesRevenue || 0) - Number(returned?.missingCostRevenue || 0)),
+        returnedUnits: Number(returned?.units || 0),
+        returnedRevenue: Number(returned?.revenue || 0),
+        lastSoldAt: row.lastSoldAt,
+      };
+    }),
     slowMovingProducts: slowProductRows.map((row) => ({ id: row.id, name: row.name, unit: row.unit, currentStock: Number(row.currentStock || 0) })),
     chart: [...chartByBucket.values()].sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map((row) => ({
       label: row.label,
       revenue: row.revenue,
       costOfGoodsSold: row.costOfGoodsSold,
       grossProfit: row.grossProfit,
+      knownCostRevenue: row.knownRevenue,
+      salesCount: row.salesCount,
+      unitsSold: row.unitsSold,
+      grossProfitMargin: row.knownRevenue > 0 ? Number((row.grossProfit / row.knownRevenue * 100).toFixed(1)) : null,
       expenses: row.expenses,
       netProfit: row.grossProfit - row.expenses,
     })),
   });
 });
 
-module.exports = { overview, profitAnalytics, startOf, profitRange };
+module.exports = { overview, profitAnalytics, startOf, profitRange, previousComparableRange };

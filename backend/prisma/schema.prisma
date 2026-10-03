@@ -243,6 +243,7 @@ model Shop {
   branchArchived           Boolean                 @default(false)
   products                 Product[]
   sales                    Sale[]
+  saleReturns              SaleReturn[]
   orders                   Order[]
   customerOrders           CustomerOrder[]
   debts                    Debt[]
@@ -1186,6 +1187,8 @@ model StockMovement {
   foodPreparationBatch   FoodPreparationBatch? @relation(fields: [foodPreparationBatchId], references: [id], onDelete: SetNull)
   cropHarvestBatchId     String?
   cropHarvestBatch       CropHarvestBatch?     @relation(fields: [cropHarvestBatchId], references: [id], onDelete: SetNull)
+  saleReturnItemId       String?               @unique
+  saleReturnItem         SaleReturnItem?       @relation(fields: [saleReturnItemId], references: [id], onDelete: SetNull)
   createdAt              DateTime              @default(now())
 
   @@index([productId, createdAt])
@@ -1222,6 +1225,7 @@ model Sale {
   shop            Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   items           SaleItem[]
   debt            Debt?
+  returns         SaleReturn[]
   createdAt       DateTime       @default(now())
 
   @@unique([shopId, clientReference])
@@ -1358,6 +1362,7 @@ model StaffMember {
 model SaleItem {
   id                     String                  @id @default(cuid())
   quantity               Int
+  returnedQuantity       Int                     @default(0)
   unitPrice              Int
   listedUnitPrice         Int?
   buyingPrice            Int
@@ -1371,11 +1376,59 @@ model SaleItem {
   unit                   String?
   quotedQuantityMilli    Int?
   cropHarvestAllocations CropHarvestAllocation[]
+  returns                SaleReturnItem[]
   farmAnimalEvent        FarmAnimalEvent?
 
   @@index([saleId])
   @@index([productId])
   @@map("sale_items")
+}
+
+model SaleReturn {
+  id             String           @id @default(cuid())
+  shopId         String
+  shop           Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  saleId         String
+  sale           Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  reason         String
+  totalAmount    Int
+  debtReduction  Int              @default(0)
+  refundAmount   Int              @default(0)
+  refundMethod   PaymentMethod?
+  paymentRef     String?
+  requestKey     String
+  requestHash    String
+  recordedBy     String?
+  cashSessionId  String?
+  cashSession    CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  items          SaleReturnItem[]
+  createdAt      DateTime         @default(now())
+
+  @@unique([shopId, requestKey])
+  @@index([shopId, createdAt])
+  @@index([saleId, createdAt])
+  @@index([cashSessionId, refundMethod])
+  @@map("sale_returns")
+}
+
+model SaleReturnItem {
+  id               String    @id @default(cuid())
+  saleReturnId     String
+  saleReturn       SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+  saleItemId       String
+  saleItem         SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  quantity         Int
+  restockQuantity  Int        @default(0)
+  damagedQuantity  Int        @default(0)
+  unitPrice        Int
+  buyingPrice      Int
+  totalAmount      Int
+  stockMovement    StockMovement?
+  createdAt        DateTime   @default(now())
+
+  @@unique([saleReturnId, saleItemId])
+  @@index([saleItemId, createdAt])
+  @@map("sale_return_items")
 }
 
 model Order {
@@ -1419,6 +1472,7 @@ model CashSession {
   foodPreparationBatches FoodPreparationBatch[]
   farmProductionBatches  FarmProductionBatch[]
   cropInputUsages        CropInputUsage[]
+  saleReturns            SaleReturn[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])
@@ -1427,6 +1481,8 @@ model CashSession {
 
 model StockReceipt {
   id                  String             @id @default(cuid())
+  requestKey          String?
+  requestHash         String?
   invoiceNumber       String?
   paymentMethod       PaymentMethod      @default(CASH)
   transportCost       Int                @default(0)
@@ -1453,6 +1509,7 @@ model StockReceipt {
   @@index([shopId, receivedAt])
   @@index([supplierId, receivedAt])
   @@index([cashSessionId, paymentMethod])
+  @@unique([shopId, requestKey])
   @@map("stock_receipts")
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Calculator, PackageCheck, Plus, ReceiptText, RefreshCw, Trash2, Truck } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
@@ -16,6 +16,10 @@ interface Order { id: string; supplier: Supplier; items: Array<{ productId: stri
 interface StockReceipt { id: string; invoiceNumber?: string | null; totalLandedCost: number; transportCost: number; otherCost: number; estimatedAllocation?: boolean; receivedAt: string; supplier?: Supplier | null; items: Array<{ id: string; quantity: number; landedUnitCost: number; product: { name: string; unit: string } }> }
 
 function today() { return new Date().toISOString().slice(0, 10); }
+function newReceiptRequestKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+}
 
 function ReceivingContent() {
   const lang = useLang();
@@ -38,6 +42,7 @@ function ReceivingContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sourceOrder, setSourceOrder] = useState<Order | null>(null);
+  const receiveAttempt = useRef<{ fingerprint: string; requestKey: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,21 +101,30 @@ function ReceivingContent() {
     }
     if (!Number.isInteger(transport) || transport < 0 || !Number.isInteger(other) || other < 0) { toast(lang === "sw" ? "Gharama za ziada ziwe namba kamili." : "Extra costs must be whole amounts.", "error"); return; }
     if (!receivedAt) { toast(lang === "sw" ? "Chagua tarehe ya kupokea." : "Choose a received date.", "error"); return; }
+    const request = {
+      supplierId: supplierId || undefined,
+      sourceOrderId: sourceOrder?.id || undefined,
+      invoiceNumber: invoiceNumber.trim() || undefined,
+      transportCost: transport,
+      otherCost: other,
+      paymentMethod,
+      receivedAt,
+      note: note.trim() || undefined,
+      allocationMode: estimatedTotalMode ? "TOTAL_ESTIMATE" : "DIRECT",
+      totalGroceryBill: estimatedTotalMode ? Number(totalGroceryBill) : undefined,
+      items: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unitCost: estimatedTotalMode ? undefined : Number(line.unitCost) })),
+    };
+    const fingerprint = JSON.stringify(request);
+    if (!receiveAttempt.current || receiveAttempt.current.fingerprint !== fingerprint) {
+      receiveAttempt.current = { fingerprint, requestKey: newReceiptRequestKey() };
+    }
     setSaving(true);
     try {
       const result = await api.post<{ receipt: StockReceipt }>("/stock-receipts", {
-        supplierId: supplierId || undefined,
-        sourceOrderId: sourceOrder?.id || undefined,
-        invoiceNumber: invoiceNumber.trim() || undefined,
-        transportCost: transport,
-        otherCost: other,
-        paymentMethod,
-        receivedAt,
-        note: note.trim() || undefined,
-        allocationMode: estimatedTotalMode ? "TOTAL_ESTIMATE" : "DIRECT",
-        totalGroceryBill: estimatedTotalMode ? Number(totalGroceryBill) : undefined,
-        items: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unitCost: estimatedTotalMode ? undefined : Number(line.unitCost) })),
+        ...request,
+        requestKey: receiveAttempt.current.requestKey,
       }, lang);
+      receiveAttempt.current = null;
       toast(lang === "sw" ? `Stock imepokelewa. Jumla ${formatTZS(result.receipt.totalLandedCost)}.` : `Stock received. Total ${formatTZS(result.receipt.totalLandedCost)}.`, "success");
       setLines([]); setSupplierId(""); setInvoiceNumber(""); setTransportCost("0"); setOtherCost("0"); setEstimatedTotalMode(false); setTotalGroceryBill(""); setPaymentMethod("CASH"); setReceivedAt(today()); setNote(""); setSourceOrder(null);
       await load();

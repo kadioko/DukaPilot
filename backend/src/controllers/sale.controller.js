@@ -24,6 +24,8 @@ function redactSale(sale, req) {
   delete safe.createdByStaffId;
   if (canViewFinancials(req)) return safe;
   delete safe.profit;
+  delete safe.returns;
+  delete safe.debt;
   if (safe.items) safe.items = safe.items.map((item) => {
     const next = { ...item };
     delete next.buyingPrice;
@@ -80,9 +82,11 @@ const list = asyncHandler(async (req, res) => {
     prisma.sale.findMany({
       where,
       include: {
+        debt: { select: { amountPaid: true } },
         items: {
           include: { product: { select: { id: true, name: true, unit: true } } },
         },
+        returns: { include: { items: true }, orderBy: { createdAt: "desc" } },
       },
       orderBy: { createdAt: "desc" },
       take: pageSize,
@@ -307,17 +311,34 @@ const voidSale = asyncHandler(async (req, res) => {
   const reason = String(req.body.reason || "").trim();
 
   const sale = await prisma.$transaction(async (tx) => {
+    if (typeof tx.$queryRawUnsafe === "function") {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "sales" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shopId);
+    }
     const existing = await tx.sale.findFirst({
       where: { id: req.params.id, shopId },
       include: {
         debt: { include: { payments: { select: { id: true }, take: 1 } } },
         items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+        returns: { select: { id: true }, take: 1 },
+        cashSession: { select: { status: true } },
       },
     });
     if (!existing) throw Object.assign(new Error("Sale not found"), { status: 404 });
     if (existing.status === "VOIDED") throw Object.assign(new Error("This sale is already voided"), { status: 409 });
+    if (existing.items.some((item) => item.returnedQuantity > 0) || (existing.returns || []).length > 0) {
+      throw Object.assign(new Error("This sale already has a recorded return. Continue with the return ledger instead of voiding the entire sale."), { status: 409 });
+    }
+    if (existing.totalAmount > 0 && req.body.paymentNotReceived !== true) {
+      throw Object.assign(new Error("Confirm that no payment was received before voiding this sale. If the customer paid, record a return/refund instead."), { status: 409 });
+    }
     if (existing.debt && (existing.debt.amountPaid > 0 || existing.debt.payments.length > 0)) {
       throw Object.assign(new Error("This credit sale has a recorded payment. Reverse the payment before voiding the sale."), { status: 409 });
+    }
+    if (existing.cashSessionId && typeof tx.$queryRawUnsafe === "function") {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "cash_sessions" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', existing.cashSessionId, shopId);
+    }
+    if (existing.cashSession?.status === "CLOSED") {
+      throw Object.assign(new Error("This sale belongs to a closed cash shift and cannot be voided. Use the return flow for a completed customer return, or ask the owner to reconcile the closed shift."), { status: 409 });
     }
 
     const guarded = await tx.sale.updateMany({
@@ -351,6 +372,7 @@ const voidSale = asyncHandler(async (req, res) => {
       include: {
         shop: { select: { name: true } },
         items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+        returns: { include: { items: true }, orderBy: { createdAt: "desc" } },
       },
     });
   });
@@ -360,7 +382,7 @@ const voidSale = asyncHandler(async (req, res) => {
     action: "sale.void",
     resourceType: "sale",
     resourceId: sale.id,
-    metadata: { reason, receiptNumber: sale.receiptNumber, restoredItems: sale.items.length },
+    metadata: { reason, receiptNumber: sale.receiptNumber, restoredItems: sale.items.length, paymentNotReceived: req.body.paymentNotReceived === true },
   };
   res.json({ sale: redactSale(sale, req) });
 });
@@ -373,6 +395,7 @@ const get = asyncHandler(async (req, res) => {
       items: {
         include: { product: { select: { id: true, name: true, unit: true, sellingPrice: true } } },
       },
+      returns: { include: { items: true }, orderBy: { createdAt: "desc" } },
     },
   });
   if (!sale) return res.status(404).json({ error: "Sale not found" });

@@ -55,7 +55,7 @@ async function actorName(user) {
 }
 
 async function summarizeSession(tx, session) {
-  const [sales, debtPayments, quotationPayments, quotationRefunds, expenses, stockReceipts, foodPreparation, farmProduction, cropInputs] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, quotationRefunds, saleRefunds, expenses, stockReceipts, foodPreparation, farmProduction, cropInputs] = await Promise.all([
     tx.sale.aggregate({ where: cashSaleWhere(session.id), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment?.aggregate
@@ -64,6 +64,9 @@ async function summarizeSession(tx, session) {
     tx.quotationPayment?.aggregate
       ? tx.quotationPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", debtPaymentId: null, kind: "REFUND" }, _sum: { amount: true }, _count: { id: true } })
       : Promise.resolve({ _sum: { amount: 0 }, _count: { id: 0 } }),
+    tx.saleReturn?.aggregate
+      ? tx.saleReturn.aggregate({ where: { cashSessionId: session.id, refundMethod: "CASH" }, _sum: { refundAmount: true }, _count: { id: true } })
+      : Promise.resolve({ _sum: { refundAmount: 0 }, _count: { id: 0 } }),
     tx.expense.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.stockReceipt?.aggregate
       ? tx.stockReceipt.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { totalLandedCost: true }, _count: { id: true } })
@@ -82,6 +85,7 @@ async function summarizeSession(tx, session) {
   const debtCollections = debtPayments._sum.amount || 0;
   const quotationCash = (quotationPayments._sum.amount || 0) - (quotationRefunds._sum.amount || 0);
   const quotationPaymentCount = (quotationPayments._count.id || 0) + (quotationRefunds._count.id || 0);
+  const cashRefunds = saleRefunds._sum.refundAmount || 0;
   const cashExpenses = expenses._sum.amount || 0;
   const inventoryCashOut = stockReceipts._sum.totalLandedCost || 0;
   const cookingCashOut = foodPreparation._sum.additionalCost || 0;
@@ -91,6 +95,8 @@ async function summarizeSession(tx, session) {
     cashSales,
     debtCollections,
     quotationCash,
+    cashRefunds,
+    cashRefundCount: saleRefunds._count.id,
     cashExpenses,
     inventoryCashOut,
     cookingCashOut,
@@ -104,7 +110,7 @@ async function summarizeSession(tx, session) {
     cookingCostCount: foodPreparation._count.id,
     farmProductionCostCount: farmProduction._count.id,
     cropInputCostCount: cropInputs._count.id,
-    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashExpenses - inventoryCashOut - cookingCashOut - farmCashOut - cropCashOut,
+    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashRefunds - cashExpenses - inventoryCashOut - cookingCashOut - farmCashOut - cropCashOut,
   };
 }
 
@@ -114,10 +120,13 @@ async function decorateSessions(tx, sessions) {
 
   // The daily-close history used to run five aggregates for every session.
   // Group the same facts once per table, then attach them to the sessions.
-  const [sales, debtPayments, quotationPayments, expenses, stockReceipts, foodPreparation, farmProduction, cropInputs] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, saleRefunds, expenses, stockReceipts, foodPreparation, farmProduction, cropInputs] = await Promise.all([
     tx.sale.groupBy({ by: ["cashSessionId"], where: cashSaleWhere({ in: sessionIds }), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment.groupBy({ by: ["cashSessionId", "kind"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", debtPaymentId: null, kind: { in: ["PAYMENT", "REFUND"] } }, _sum: { amount: true }, _count: { id: true } }),
+    tx.saleReturn?.groupBy
+      ? tx.saleReturn.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, refundMethod: "CASH" }, _sum: { refundAmount: true }, _count: { id: true } })
+      : Promise.resolve([]),
     tx.expense.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.stockReceipt?.groupBy
       ? tx.stockReceipt.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { totalLandedCost: true }, _count: { id: true } })
@@ -132,7 +141,7 @@ async function decorateSessions(tx, sessions) {
       ? tx.cropInputUsage.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { totalCost: true }, _count: { id: true } })
       : Promise.resolve([]),
   ]);
-  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashExpenses: 0, inventoryCashOut: 0, cookingCashOut: 0, farmCashOut: 0, cropCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, cookingCostCount: 0, farmProductionCostCount: 0, cropInputCostCount: 0 }]));
+  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashRefunds: 0, cashRefundCount: 0, cashExpenses: 0, inventoryCashOut: 0, cookingCashOut: 0, farmCashOut: 0, cropCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, cookingCostCount: 0, farmProductionCostCount: 0, cropInputCostCount: 0 }]));
   for (const row of sales) {
     const summary = bySession.get(row.cashSessionId);
     if (summary) { summary.cashSales = row._sum.totalAmount || 0; summary.saleCount = row._count.id; }
@@ -147,6 +156,10 @@ async function decorateSessions(tx, sessions) {
       summary.quotationCash += (row.kind === "REFUND" ? -1 : 1) * (row._sum.amount || 0);
       summary.quotationPaymentCount += row._count.id;
     }
+  }
+  for (const row of saleRefunds) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.cashRefunds = row._sum.refundAmount || 0; summary.cashRefundCount = row._count.id; }
   }
   for (const row of expenses) {
     const summary = bySession.get(row.cashSessionId);
@@ -170,7 +183,7 @@ async function decorateSessions(tx, sessions) {
   }
   return sessions.map((session) => {
     const summary = bySession.get(session.id);
-    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashExpenses - summary.inventoryCashOut - summary.cookingCashOut - summary.farmCashOut - summary.cropCashOut } };
+    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashRefunds - summary.cashExpenses - summary.inventoryCashOut - summary.cookingCashOut - summary.farmCashOut - summary.cropCashOut } };
   });
 }
 
@@ -248,17 +261,21 @@ const close = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Cash counted must be a whole TZS amount of 0 or more" });
   }
 
-  const session = await prisma.cashSession.findFirst({ where: { id: req.params.id, shopId } });
-  if (!session) return res.status(404).json({ error: "Cash session not found" });
-  if (session.status !== "OPEN") return res.status(409).json({ error: "This cash session is already closed" });
-  if (!canManageAllSessions(req) && session.openedById !== cashSessionActorId(req.user)) {
-    return res.status(403).json({ error: "You can close only your own cash session" });
-  }
+  const { updated, summary } = await prisma.$transaction(async (tx) => {
+    await tx.$queryRawUnsafe('SELECT "id" FROM "cash_sessions" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shopId);
+    const session = await tx.cashSession.findFirst({ where: { id: req.params.id, shopId } });
+    if (!session) throw Object.assign(new Error("Cash session not found"), { status: 404 });
+    if (session.status !== "OPEN") throw Object.assign(new Error("This cash session is already closed"), { status: 409 });
+    if (!canManageAllSessions(req) && session.openedById !== cashSessionActorId(req.user)) {
+      throw Object.assign(new Error("You can close only your own cash session"), { status: 403 });
+    }
 
-  const summary = await summarizeSession(prisma, session);
-  const updated = await prisma.cashSession.update({
-    where: { id: session.id },
-    data: { status: "CLOSED", expectedCash: summary.expectedCash, countedCash, variance: countedCash - summary.expectedCash, note: note || session.note, closedAt: new Date() },
+    const summary = await summarizeSession(tx, session);
+    const updated = await tx.cashSession.update({
+      where: { id: session.id },
+      data: { status: "CLOSED", expectedCash: summary.expectedCash, countedCash, variance: countedCash - summary.expectedCash, note: note || session.note, closedAt: new Date() },
+    });
+    return { updated, summary };
   });
   req.audit = { action: "cash_session.close", resourceType: "cash_session", resourceId: updated.id, metadata: { expectedCash: summary.expectedCash, countedCash, variance: updated.variance } };
   res.json({ session: { ...updated, summary } });

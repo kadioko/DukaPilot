@@ -47,7 +47,7 @@ const OPTIONAL_MENU_ITEMS = [
   ["/food-preparation", "Maandalizi ya chakula", "Food preparation"], ["/farm", "Ufugaji", "Livestock"],
   ["/crops", "Mazao", "Crops"], ["/barcodes", "Barcode na lebo", "Barcodes and labels"],
   ["/suppliers", "Wasambazaji", "Suppliers"], ["/orders", "Manunuzi", "Purchases"],
-  ["/expenses", "Matumizi", "Expenses"], ["/profit", "Uchambuzi wa faida", "Profit analytics"],
+  ["/expenses", "Matumizi", "Expenses"], ["/analytics", "Uchambuzi", "Analytics"],
   ["/wallet", "Wallet ya biashara", "Business wallet"], ["/billing", "Usajili na malipo", "Subscription and billing"],
   ["/staff", "Wafanyakazi", "Staff"], ["/branches", "Matawi", "Branches"], ["/referrals", "Rufaa", "Referrals"],
 ] as const;
