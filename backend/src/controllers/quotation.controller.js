@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone } = require("../lib/phone");
+const { resolveShopContactPhone } = require("../lib/shopContact");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 const { recordLiveAnimalSale } = require("../lib/farmLivestockSales");
@@ -213,8 +214,8 @@ async function quotationSettings(tx, shopId) {
     create: { shopId },
     update: {},
   });
-  const shop = await tx.shop.findUnique({ where: { id: shopId }, select: { name: true, location: true, district: true, user: { select: { phone: true } }, parentShop: { select: { user: { select: { phone: true } } } } } });
-  return { ...settings, business: { name: shop.name, location: shop.location, district: shop.district, phone: shop.user?.phone || shop.parentShop?.user?.phone || null } };
+  const shop = await tx.shop.findUnique({ where: { id: shopId }, select: { name: true, location: true, district: true, contactPhone: true, user: { select: { phone: true } }, parentShop: { select: { contactPhone: true, user: { select: { phone: true } } } } } });
+  return { ...settings, business: { name: shop.name, location: shop.location, district: shop.district, phone: resolveShopContactPhone(shop) } };
 }
 
 function formatQuotationNumber(settings, sequence) {

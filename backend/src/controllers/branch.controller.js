@@ -2,9 +2,10 @@ const crypto = require("node:crypto");
 const prisma = require("../lib/prisma");
 const { getBillingShopIdForUser, getShopIdForUser } = require("../lib/shopAccess");
 const { activePlan, branchLimit } = require("../lib/entitlements");
+const { resolveShopContactPhone, normalizeShopContactPhone } = require("../lib/shopContact");
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
-const select = { id: true, name: true, location: true, district: true, parentShopId: true, branchArchived: true, isActive: true, createdAt: true };
+const select = { id: true, name: true, location: true, contactPhone: true, district: true, parentShopId: true, branchArchived: true, isActive: true, createdAt: true };
 
 function parseTanzaniaDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -31,15 +32,17 @@ function ownerOnly(req, res, next) {
 
 const list = wrap(async (req, res) => {
   const rootId = await getBillingShopIdForUser(req.user);
-  const root = await prisma.shop.findUnique({ where: { id: rootId } });
+  const root = await prisma.shop.findUnique({ where: { id: rootId }, include: { user: { select: { phone: true } } } });
   const branches = await prisma.shop.findMany({ where: { OR: [{ id: rootId }, { parentShopId: rootId }] }, select, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
-  res.json({ branches, selectedId: await getShopIdForUser(req.user), mainId: rootId, pro: activePlan(root) === "PRO", limit: branchLimit(root), extraBranches: root.additionalBranchSlots, monthlyAmount: root.plan === "PRO" ? 35000 + 10000 * root.additionalBranchSlots : 15000 });
+  const locations = branches.map((branch) => ({ ...branch, effectiveContactPhone: resolveShopContactPhone({ ...branch, user: branch.id === rootId ? root.user : null, parentShop: branch.id === rootId ? null : root }) }));
+  res.json({ branches: locations, selectedId: await getShopIdForUser(req.user), mainId: rootId, pro: activePlan(root) === "PRO", limit: branchLimit(root), extraBranches: root.additionalBranchSlots, monthlyAmount: root.plan === "PRO" ? 35000 + 10000 * root.additionalBranchSlots : 15000 });
 });
 
 const create = wrap(async (req, res) => {
   const rootId = await getBillingShopIdForUser(req.user);
   const name = String(req.body.name || "").trim();
   const location = String(req.body.location || "").trim();
+  const contactPhone = normalizeShopContactPhone(req.body.contactPhone);
   if (!name || name.length > 100 || !location || location.length > 200) fail("Enter a branch name and location (maximum 100 and 200 characters).");
   const branch = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM shops WHERE id = ${rootId} FOR UPDATE`;
@@ -48,7 +51,7 @@ const create = wrap(async (req, res) => {
     const count = await tx.shop.count({ where: { parentShopId: rootId, branchArchived: false } });
     if (count + 1 >= branchLimit(root)) fail("Branch limit reached. Pay for another branch in Billing first.", 403);
     if (await tx.shop.findFirst({ where: { OR: [{ id: rootId }, { parentShopId: rootId }], name: { equals: name, mode: "insensitive" } } })) fail("A branch with this name already exists", 409);
-    return tx.shop.create({ data: { parentShopId: rootId, name, location, category: root.category, plan: root.plan, subscriptionEndsAt: root.subscriptionEndsAt, isActive: root.isActive, isCatalogPublished: false, referralCode: crypto.randomBytes(16).toString("hex") }, select });
+    return tx.shop.create({ data: { parentShopId: rootId, name, location, contactPhone, category: root.category, plan: root.plan, subscriptionEndsAt: root.subscriptionEndsAt, isActive: root.isActive, isCatalogPublished: false, referralCode: crypto.randomBytes(16).toString("hex") }, select });
   });
   req.audit = { action: "branch.create", resourceType: "shop", resourceId: branch.id };
   res.status(201).json({ branch });
@@ -58,16 +61,19 @@ const update = wrap(async (req, res) => {
   const rootId = await getBillingShopIdForUser(req.user);
   const branch = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM shops WHERE id = ${rootId} FOR UPDATE`;
-    const current = await tx.shop.findFirst({ where: { id: req.params.id, parentShopId: rootId } });
-    if (!current) fail("Additional branch not found", 404);
+    const current = await tx.shop.findFirst({ where: { id: req.params.id, OR: [{ id: rootId }, { parentShopId: rootId }] } });
+    if (!current) fail("Business location not found", 404);
+    const isMain = current.id === rootId;
     const data = {};
     if (req.body.name !== undefined) {
+      if (isMain) fail("Update the main business name in Settings");
       const name = String(req.body.name).trim();
       if (!name || name.length > 100) fail("Invalid branch name");
       if (await tx.shop.findFirst({ where: { id: { not: current.id }, OR: [{ id: rootId }, { parentShopId: rootId }], name: { equals: name, mode: "insensitive" } } })) fail("A branch with this name already exists", 409);
       data.name = name;
     }
     if (req.body.branchArchived !== undefined) {
+      if (isMain) fail("The main shop cannot be archived");
       if (typeof req.body.branchArchived !== "boolean") fail("Invalid archive option");
       const root = await tx.shop.findUnique({ where: { id: rootId } });
       if (!req.body.branchArchived && current.branchArchived) {
@@ -80,6 +86,7 @@ const update = wrap(async (req, res) => {
       data.isActive = !data.branchArchived && activePlan(root) === "PRO";
       if (data.branchArchived) data.isCatalogPublished = false;
     }
+    if (req.body.contactPhone !== undefined) data.contactPhone = normalizeShopContactPhone(req.body.contactPhone);
     if (!Object.keys(data).length) fail("No changes supplied");
     return tx.shop.update({ where: { id: current.id }, data, select });
   });

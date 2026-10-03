@@ -226,6 +226,7 @@ model Shop {
   id                       String                  @id @default(cuid())
   name                     String
   location                 String
+  contactPhone             String?
   district                 String?
   category                 String                  @default("general") // grocery, pharmacy, beauty, bar, restaurant, general
   userId                   String?                 @unique

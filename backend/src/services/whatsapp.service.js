@@ -172,7 +172,7 @@ function buildCustomerOrderMessage(order, shop) {
     .filter((line) => line !== null)
     .join("\n");
 
-  const shopPhone = shop.user?.phone?.replace(/\D/g, "") || shop.phone?.replace(/\D/g, "");
+  const shopPhone = shop.phone?.replace(/\D/g, "") || shop.user?.phone?.replace(/\D/g, "");
   const whatsappUrl = shopPhone ? `https://wa.me/${shopPhone}?text=${encodeURIComponent(message)}` : null;
 
   return { message, whatsappUrl };

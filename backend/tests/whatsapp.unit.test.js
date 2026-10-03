@@ -4,6 +4,24 @@ const path = require("node:path");
 
 const servicePath = path.resolve(__dirname, "../src/services/whatsapp.service.js");
 
+test("customer order WhatsApp link prefers the location's public number over the owner login", () => {
+  delete require.cache[servicePath];
+  const { buildCustomerOrderMessage } = require(servicePath);
+  const { whatsappUrl } = buildCustomerOrderMessage({
+    id: "order-12345678",
+    createdAt: new Date("2026-10-03T10:00:00Z"),
+    customerName: "Customer",
+    customerPhone: "+255700000002",
+    totalAmount: 1000,
+    items: [],
+  }, {
+    name: "Branch",
+    phone: "+255713712057",
+    user: { phone: "+255743910580" },
+  });
+  assert.match(whatsappUrl, /^https:\/\/wa\.me\/255713712057\?/);
+});
+
 function restoreEnvironment(previous) {
   Object.entries(previous).forEach(([name, value]) => {
     if (value === undefined) delete process.env[name];

@@ -13,6 +13,13 @@ debts, quotations, orders, recipes, farm production and Daily Close records.
 The owner can view a combined monthly sales/profit/expense summary in Branches.
 Receivables there are current balances, not period cash collection.
 
+The owner uses one account and one login phone to switch among locations. Customer
+contact numbers are separate from login identities. Each location may set an optional
+contact phone in Branches; a blank main-shop value falls back to the owner's account
+phone, while a blank branch value inherits the main shop's contact. The resolved
+number appears on that location's public catalog, WhatsApp order links/notifications,
+and customer-facing quotations. Updating it never changes the owner or staff login.
+
 Transfers require existing source and destination products with matching units and
 expiry treatment. They atomically move stock, preserve a cost snapshot and create
 both stock-history entries. Destination cost is quantity-weighted and rounded to
@@ -44,10 +51,10 @@ Owner requests use X-DukaPilot-Branch, checked server-side against ownership.
 Staff access is fixed to StaffMember.shopId. Billing always resolves the root.
 Product barcodes are unique within a location so branches can stock the same item.
 
-Apply 20260906120000_subscription_checkout, then
-20260907090000_business_branches and
-20260908090000_integrity_and_delivery_hardening using backend `npm run db:deploy`.
-Deploy backend before frontend. Back up first and test the migrations on a restored staging DB.
+Apply the ordered Prisma migration history with backend `npm run db:deploy`.
+The branch contact number is added by `20261003001000_branch_contact_phone`.
+Deploy the backend migration before serving the updated frontend. Back up first
+and test migrations on a restored staging DB.
 Do not reverse the nullable owner field after creating branches; roll forward.
 No new branch environment variables are required.
 

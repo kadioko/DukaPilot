@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Archive, ArrowRightLeft, Download, Plus, RotateCcw } from "lucide-react";
+import { Archive, ArrowRightLeft, Download, Phone, Plus, RotateCcw, Save } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import BranchTransferForm from "@/components/BranchTransferForm";
 import { api, formatTZS, switchBranch } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
-interface Branch { id: string; name: string; location: string; branchArchived: boolean }
+interface Branch { id: string; name: string; location: string; contactPhone: string | null; effectiveContactPhone: string | null; branchArchived: boolean }
 interface Listing { branches: Branch[]; mainId: string; selectedId: string; pro: boolean; limit: number; monthlyAmount: number }
 interface Metric extends Branch { sales: number; saleCount: number; grossProfit: number; missingCostSalesRevenue: number; expenses: number; netProfit: number; receivables: number; previousSales: number; previousSaleCount: number; previousGrossProfit: number; previousExpenses: number; previousNetProfit: number }
 type Comparison = Record<string, { current: number; previous: number; change: number; changePercent: number | null }>;
@@ -42,6 +42,8 @@ export default function BranchesPage() {
   const [range, setRange] = useState({ from: `${today.slice(0, 7)}-01`, to: today });
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [contactDrafts, setContactDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -51,6 +53,7 @@ export default function BranchesPage() {
   async function load() {
     const result = await api.get<Listing>("/branches", lang);
     setData(result);
+    setContactDrafts(Object.fromEntries(result.branches.map((branch) => [branch.id, branch.contactPhone || ""])));
     if (result.pro) {
       const report = await api.get<{ branches: Metric[]; comparison: Comparison; compareFrom: string; compareTo: string }>(`/branches/overview?from=${range.from}&to=${range.to}`, lang);
       setMetrics(report.branches);
@@ -68,7 +71,7 @@ export default function BranchesPage() {
     finally { setBusy(false); }
   }
 
-  const filtered = data?.branches.filter((b) => `${b.name} ${b.location}`.toLowerCase().includes(search.toLowerCase())) || [];
+  const filtered = data?.branches.filter((b) => `${b.name} ${b.location} ${b.effectiveContactPhone || ""}`.toLowerCase().includes(search.toLowerCase())) || [];
   const filteredMetrics = metrics.filter((b) => `${b.name} ${b.location}`.toLowerCase().includes(search.toLowerCase()));
   const pages = Math.max(1, Math.ceil(filtered.length / 10));
   const currentPage = Math.min(page, pages);
@@ -99,6 +102,7 @@ export default function BranchesPage() {
   return <AppShell><main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
     <header className="border-b pb-4"><h1 className="text-2xl font-bold">{sw ? "Matawi" : "Branches"}</h1>
       <p className="mt-2 text-sm text-gray-600">{sw ? "Pro inajumuisha maeneo 4, pamoja na duka kuu. Kila eneo la ziada ni TZS 10,000 kwa mwezi." : "Pro includes 4 locations, including your main shop. Each extra location is TZS 10,000 per month."}</p>
+      <p className="mt-2 text-sm text-gray-600">{sw ? "Tumia namba moja ya akaunti kubadilisha matawi. Namba ya mawasiliano ya wateja ni tofauti na namba ya kuingia; kila tawi linaweza kurithi au kuweka namba yake." : "Use the same owner login to switch locations. Customer contact is separate from your sign-in number; each location can inherit the main number or set its own."}</p>
       <Link href="/billing" className="mt-2 inline-block font-medium text-brand-700">{sw ? "Usajili na malipo" : "Subscription and payments"}</Link>
     </header>
     {error && <p role="alert" className="text-red-700">{error}</p>}
@@ -106,14 +110,20 @@ export default function BranchesPage() {
     {!data && !error && <p>{sw ? "Inapakia..." : "Loading..."}</p>}
     {data && <>
       <p className="text-sm">{sw ? "Maeneo yanayotumika" : "Active locations"}: {data.branches.filter((b) => !b.branchArchived).length} / {data.limit}</p>
-      {data.pro && <form className="grid items-end gap-3 border-b pb-5 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(e) => { e.preventDefault(); void save(async () => { await api.post("/branches", { name, location }, lang); setName(""); setLocation(""); }); }}>
+      {data.pro && <form className="grid items-end gap-3 border-b pb-5 sm:grid-cols-[1fr_1fr_1fr_auto]" onSubmit={(e) => { e.preventDefault(); void save(async () => { await api.post("/branches", { name, location, contactPhone: newContactPhone.trim() || null }, lang); setName(""); setLocation(""); setNewContactPhone(""); }); }}>
         <label className="grid gap-1 text-sm">{sw ? "Jina la tawi" : "Branch name"}<input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} className="min-w-0 rounded-lg border p-3" /></label>
         <label className="grid gap-1 text-sm">{sw ? "Eneo" : "Location"}<input required maxLength={200} value={location} onChange={(e) => setLocation(e.target.value)} className="min-w-0 rounded-lg border p-3" /></label>
+        <label className="grid gap-1 text-sm">{sw ? "Simu ya wateja (hiari)" : "Customer contact (optional)"}<input type="tel" maxLength={30} value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} placeholder={sw ? "Tupu = namba kuu" : "Blank = main number"} className="min-w-0 rounded-lg border p-3" /></label>
         <button disabled={busy} className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-white disabled:opacity-50"><Plus size={18} />{sw ? "Ongeza tawi" : "Add branch"}</button>
       </form>}
       <label className="grid max-w-md gap-1 text-sm">{sw ? "Tafuta tawi" : "Search branches"}<input type="search" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="rounded-lg border p-3" /></label>
       <ul className="divide-y">{visibleBranches.map((b) => <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-        <div className="min-w-0 break-words"><h2 className="font-semibold">{b.name}</h2><p className="text-sm text-gray-600">{b.location} {b.id === data.mainId ? (sw ? "(Duka kuu)" : "(Main shop)") : ""}</p>{b.branchArchived && <p className="text-sm">{sw ? "Limehifadhiwa" : "Archived"}</p>}</div>
+        <div className="min-w-0 flex-1 break-words"><h2 className="font-semibold">{b.name}</h2><p className="text-sm text-gray-600">{b.location} {b.id === data.mainId ? (sw ? "(Duka kuu)" : "(Main shop)") : ""}</p>{b.branchArchived && <p className="text-sm">{sw ? "Limehifadhiwa" : "Archived"}</p>}
+          <form className="mt-3 grid gap-2 sm:max-w-2xl sm:grid-cols-[minmax(180px,1fr)_auto] sm:items-end" onSubmit={(event) => { event.preventDefault(); void save(() => api.patch(`/branches/${b.id}`, { contactPhone: contactDrafts[b.id]?.trim() || null }, lang)); }}>
+            <label className="grid gap-1 text-xs font-medium text-gray-700"><span className="flex items-center gap-1"><Phone size={14} />{sw ? "Namba ya kuwasiliana na wateja" : "Customer contact number"}</span><input type="tel" maxLength={30} value={contactDrafts[b.id] ?? ""} onChange={(event) => setContactDrafts((current) => ({ ...current, [b.id]: event.target.value }))} placeholder={sw ? "Tupu = tumia namba ya akaunti/duka kuu" : "Blank = use account/main shop number"} className="min-w-0 rounded-lg border p-2.5 text-sm" /><span className="font-normal text-gray-500">{contactDrafts[b.id]?.trim() ? (sw ? "Namba hii itaonekana kwenye catalog na ujumbe wa oda wa tawi hili." : "Shown on this location's catalog and WhatsApp orders.") : `${sw ? "Inatumika sasa" : "Currently using"}: ${b.effectiveContactPhone || (sw ? "Hakuna namba" : "No number set")} · ${sw ? "Kuacha tupu hurithi namba kuu." : "Blank inherits the main business number."}`}</span></label>
+            <button disabled={busy || (contactDrafts[b.id] || "").trim() === (b.contactPhone || "")} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 text-sm font-semibold disabled:opacity-40"><Save size={16} />{sw ? "Hifadhi namba" : "Save number"}</button>
+          </form>
+        </div>
         <div className="flex flex-wrap gap-2">{!b.branchArchived && <button disabled={b.id === data.selectedId || busy} onClick={() => { try { switchBranch(b.id); } catch (e) { setError((e as Error).message); } }} className="flex min-h-11 items-center gap-2 rounded-lg border px-3 disabled:opacity-50"><ArrowRightLeft size={16} />{b.id === data.selectedId ? (sw ? "Tawi la sasa" : "Current location") : (sw ? "Fungua" : "Open")}</button>}
         {b.id !== data.mainId && <button disabled={busy || b.id === data.selectedId} onClick={() => { if (window.confirm(sw ? "Badilisha hali ya tawi hili? Rekodi zitahifadhiwa." : "Change this branch's status? Records will be retained.")) void save(() => api.patch(`/branches/${b.id}`, { branchArchived: !b.branchArchived }, lang)); }} className="flex min-h-11 items-center gap-2 rounded-lg border px-3 disabled:opacity-50">{b.branchArchived ? <RotateCcw size={16} /> : <Archive size={16} />}{b.branchArchived ? (sw ? "Rejesha" : "Restore") : (sw ? "Hifadhi" : "Archive")}</button>}</div>
       </li>)}</ul>
