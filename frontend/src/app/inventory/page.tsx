@@ -28,7 +28,9 @@ import {
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
 import { LabelComposer } from "@/components/labels/LabelComposer";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import type { BarcodeType } from "@/components/labels/types";
+import { activePromotionPrice, toLocalDateTimeInput } from "@/lib/productPricing";
 
 interface Product {
   id: string;
@@ -38,6 +40,9 @@ interface Product {
   unit: string;
   buyingPrice: number;
   sellingPrice: number;
+  promotionPrice?: number | null;
+  promotionStartsAt?: string | null;
+  promotionEndsAt?: string | null;
   wholesalePrice?: number | null;
   wholesaleMinQty?: number | null;
   currentStock: number;
@@ -154,6 +159,7 @@ export default function InventoryPage() {
   const [actionMenuProductId, setActionMenuProductId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "",
+    promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "",
     wholesalePrice: "", wholesaleMinQty: "",
     currentStock: "0", minimumStock: "5", supplierId: "",
     expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false,
@@ -259,7 +265,7 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditProduct(null);
-    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false });
+    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false });
     setError("");
     setShowForm(true);
   }
@@ -269,6 +275,9 @@ export default function InventoryPage() {
     setForm({
       name: p.name, labelName: p.labelName || "", sku: p.sku || "", generateSku: false, unit: p.unit,
       buyingPrice: p.buyingPrice == null ? "" : String(p.buyingPrice), sellingPrice: String(p.sellingPrice),
+      promotionPrice: p.promotionPrice != null ? String(p.promotionPrice) : "",
+      promotionStartsAt: toLocalDateTimeInput(p.promotionStartsAt),
+      promotionEndsAt: toLocalDateTimeInput(p.promotionEndsAt),
       wholesalePrice: p.wholesalePrice != null ? String(p.wholesalePrice) : "",
       wholesaleMinQty: p.wholesaleMinQty != null ? String(p.wholesaleMinQty) : "",
       currentStock: String(p.currentStock), minimumStock: String(p.minimumStock),
@@ -299,6 +308,19 @@ export default function InventoryPage() {
       setError(lang === "sw" ? "Bei ya jumla iwe namba kamili isiyo hasi." : "Wholesale price must be a whole, non-negative number.");
       return;
     }
+    const promotionValues = [form.promotionPrice, form.promotionStartsAt, form.promotionEndsAt];
+    if (promotionValues.some(Boolean) && promotionValues.some((value) => !value)) {
+      setError(lang === "sw" ? "Jaza bei ya ofa, muda wa kuanza na muda wa kumaliza." : "Enter the promotion price, start time, and end time together.");
+      return;
+    }
+    if (form.promotionPrice && (!Number.isInteger(Number(form.promotionPrice)) || Number(form.promotionPrice) < 0 || Number(form.promotionPrice) >= Number(form.sellingPrice))) {
+      setError(lang === "sw" ? "Bei ya ofa iwe namba kamili na iwe chini ya bei ya kawaida." : "Promotion price must be a whole amount below the regular selling price.");
+      return;
+    }
+    if (form.promotionStartsAt && new Date(form.promotionStartsAt) >= new Date(form.promotionEndsAt)) {
+      setError(lang === "sw" ? "Muda wa kumaliza ofa uwe baada ya muda wa kuanza." : "Promotion end time must be after its start time.");
+      return;
+    }
     mutationInFlight.current = true;
     setSaving(true);
     try {
@@ -307,6 +329,11 @@ export default function InventoryPage() {
         ...(canViewFinancials ? { buyingPrice: Number(form.buyingPrice) } : {}), sellingPrice: Number(form.sellingPrice || 0),
         wholesalePrice: form.wholesalePrice === "" ? null : Number(form.wholesalePrice),
         wholesaleMinQty: form.wholesaleMinQty === "" ? null : Number(form.wholesaleMinQty),
+        ...(canManageCatalog ? {
+          promotionPrice: form.promotionPrice === "" ? null : Number(form.promotionPrice),
+          promotionStartsAt: form.promotionStartsAt ? new Date(form.promotionStartsAt).toISOString() : null,
+          promotionEndsAt: form.promotionEndsAt ? new Date(form.promotionEndsAt).toISOString() : null,
+        } : {}),
         minimumStock: Number(form.minimumStock),
         supplierId: form.supplierId || undefined,
         doesNotExpire: form.doesNotExpire,
@@ -678,7 +705,8 @@ export default function InventoryPage() {
                         </div>}
                         {!p.isInternalUse && <div>
                           <p className="text-xs text-gray-400">{t("inventory.sellingPrice", lang)}</p>
-                          <p className="text-sm font-medium text-brand-700">{formatTZS(p.sellingPrice)}</p>
+                          <p className="text-sm font-medium text-brand-700">{formatTZS(activePromotionPrice(p))}</p>
+                          {activePromotionPrice(p) !== p.sellingPrice && <p className="text-xs text-gray-500"><span className="line-through">{formatTZS(p.sellingPrice)}</span> <span className="font-semibold text-emerald-700">{lang === "sw" ? "OFA" : "SALE"}</span></p>}
                         </div>}
                         {canViewFinancials && !p.isInternalUse && <div>
                           <p className="text-xs text-gray-400">{t("inventory.marginLabel", lang)}</p>
@@ -764,7 +792,7 @@ export default function InventoryPage() {
                 className={INPUT} placeholder={t("inventory.namePlaceholder", lang)} />
             </Field>
             {canManageCatalog && <label className="flex items-start gap-3 border border-blue-200 bg-blue-50 p-3">
-              <input type="checkbox" checked={form.isInternalUse} onChange={(event) => setForm((current) => ({ ...current, isInternalUse: event.target.checked, isCatalogVisible: event.target.checked ? false : current.isCatalogVisible }))} className="mt-0.5 h-5 w-5 border-blue-300 text-brand-600" />
+              <input type="checkbox" checked={form.isInternalUse} onChange={(event) => setForm((current) => ({ ...current, isInternalUse: event.target.checked, isCatalogVisible: event.target.checked ? false : current.isCatalogVisible, ...(event.target.checked ? { promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "" } : {}) }))} className="mt-0.5 h-5 w-5 border-blue-300 text-brand-600" />
               <span><span className="block text-sm font-semibold text-blue-950">{lang === "sw" ? "Matumizi ya ndani - haiuzwi" : "Internal use - not for sale"}</span><span className="mt-0.5 block text-xs leading-5 text-blue-900">{lang === "sw" ? "Kwa chakula cha mifugo, mbegu, mbolea au viungo vya jikoni. Bado itafuatiliwa kwenye stock na gharama zake zitahesabiwa ikitumika kwenye uzalishaji. Haitapatikana kwenye mauzo au katalogi." : "For feed, seed, fertilizer or kitchen ingredients. Stock remains tracked and its cost moves into production when used. It will not appear in sales or the public catalog."}</span></span>
             </label>}
             {canManageCatalog && <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -794,14 +822,32 @@ export default function InventoryPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               {canViewFinancials && <Field label={t("inventory.buyingPriceLabel", lang)}>
-                <input aria-label={t("inventory.buyingPriceLabel", lang)} type="number" min="0" step="1" value={form.buyingPrice} onChange={(e) => setForm({ ...form, buyingPrice: e.target.value })}
+                <CurrencyInput aria-label={t("inventory.buyingPriceLabel", lang)} value={form.buyingPrice} onChange={(value) => setForm({ ...form, buyingPrice: value })}
                   className={INPUT} placeholder="2800" />
               </Field>}
               {!form.isInternalUse && <Field label={t("inventory.sellingPriceLabel", lang)}>
-                <input aria-label={t("inventory.sellingPriceLabel", lang)} type="number" min="0" step="1" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
+                <CurrencyInput aria-label={t("inventory.sellingPriceLabel", lang)} value={form.sellingPrice} onChange={(value) => setForm({ ...form, sellingPrice: value })}
                   className={INPUT} placeholder="3200" />
               </Field>}
             </div>
+            {canManageCatalog && !form.isInternalUse && <section className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">{lang === "sw" ? "Ofa ya muda" : "Scheduled sale price"}</h3>
+                <p className="mt-1 text-xs leading-5 text-gray-600">{lang === "sw" ? "Bei ya kawaida haitabadilika. Ofa itatumika kiotomatiki ndani ya muda uliochagua; muda hutumia saa ya simu yako." : "Your regular price stays unchanged. The offer applies automatically during the selected window; times use your device's local time."}</p>
+              </div>
+              <Field label={lang === "sw" ? "Bei ya ofa (TZS)" : "Promotion price (TZS)"}>
+                <CurrencyInput aria-label={lang === "sw" ? "Bei ya ofa" : "Promotion price"} value={form.promotionPrice} onChange={(value) => setForm({ ...form, promotionPrice: value })} className={INPUT} placeholder={lang === "sw" ? "Acha wazi bila ofa" : "Leave blank for no offer"} />
+              </Field>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label={lang === "sw" ? "Ofa inaanza" : "Starts"}>
+                  <input aria-label={lang === "sw" ? "Ofa inaanza" : "Promotion starts"} type="datetime-local" value={form.promotionStartsAt} onChange={(event) => setForm({ ...form, promotionStartsAt: event.target.value })} className={INPUT} />
+                </Field>
+                <Field label={lang === "sw" ? "Ofa inaisha" : "Ends"}>
+                  <input aria-label={lang === "sw" ? "Ofa inaisha" : "Promotion ends"} type="datetime-local" value={form.promotionEndsAt} onChange={(event) => setForm({ ...form, promotionEndsAt: event.target.value })} className={INPUT} />
+                </Field>
+              </div>
+              {form.promotionPrice && <button type="button" onClick={() => setForm({ ...form, promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "" })} className="text-xs font-semibold text-red-700 hover:text-red-900">{lang === "sw" ? "Ondoa ofa" : "Clear scheduled offer"}</button>}
+            </section>}
             <div className="grid grid-cols-2 gap-3">
               {editProduct ? (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -823,8 +869,8 @@ export default function InventoryPage() {
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t("inventory.wholesaleSection", lang)}</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t("inventory.wholesalePriceLabel", lang)}>
-                  <input aria-label={t("inventory.wholesalePriceLabel", lang)} type="number" min="0" step="1" value={form.wholesalePrice}
-                    onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })}
+                  <CurrencyInput aria-label={t("inventory.wholesalePriceLabel", lang)} value={form.wholesalePrice}
+                    onChange={(value) => setForm({ ...form, wholesalePrice: value })}
                     className={INPUT} placeholder="2900" />
                 </Field>
                 <Field label={t("inventory.wholesaleMinQtyLabel", lang)}>

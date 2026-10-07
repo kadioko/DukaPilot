@@ -15,9 +15,14 @@ When an owner adds a staff member, they enter the staff member's phone number. T
 | Owner | Sales, stock, staff, reports, expenses | A trusted senior person running the whole shop |
 | Manager | Sales, stock, staff, reports, expenses, and team-shift review/close | Day-to-day shop manager |
 | Cashier | Sales, POS, their own Daily Close session when Sell is enabled | Counter cashier |
-| Stock Clerk | Inventory, Receive Stock, barcode labels, stock count | Storekeeper or stock assistant |
+| Stock Clerk | Inventory, stock adjustments, barcode labels, stock count | Storekeeper or stock assistant |
 
 The owner can fine-tune permissions per individual after creating them. Deactivating a staff member immediately blocks their next authenticated request and future login.
+
+To remove a staff login, deactivate the member first, then choose **Delete
+login** and confirm. This removes the login credentials and frees the phone
+number for reuse; it does not erase sales, shift, or audit history. See
+[Product Promotions and Staff Login Removal](./PRODUCT_PROMOTIONS_AND_STAFF_REMOVAL.md).
 
 ## Cashier Daily Close
 
@@ -30,6 +35,13 @@ Sales History can be searched by receipt number, customer name, or phone, and fi
 Each cashier's shift is a separate drawer. If an owner also sells, the owner opens a separate shift; the two cash totals never mix. Owners can always view and close every active team shift. An owner may also tick **Manage team shifts** for a trusted manager; that permission reveals all team shifts and permits review/close after the manager physically counts that staff drawer. It can work without **Sell**, but that supervisor cannot open a personal sales drawer unless **Sell** is also enabled. It does not grant business reports, stock, staff administration, or other permissions by itself.
 
 Cashiers without **Reports** still do not receive buying cost, profit, margin, or shop-wide financial analytics.
+The detailed **Analytics > Purchases** report is also report-protected; do not
+grant it to a cashier who should not see business financial data.
+Recording stock receipts exposes supplier purchase costs and landed unit costs,
+and supplier orders include unit prices and order totals, so both workflows
+require **Stock** and **Reports**. Stock staff without Reports can still use
+inventory stock adjustments to record quantities received without accessing
+purchase amounts.
 
 ## AI Assistant (Pro)
 

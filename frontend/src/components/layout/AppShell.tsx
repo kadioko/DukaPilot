@@ -31,6 +31,7 @@ import {
   FileText,
   Building2,
   Landmark,
+  History,
 } from "lucide-react";
 import { clearToken, api, getCurrentSession, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
@@ -73,6 +74,7 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   permission?: "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations";
   anyPermissions?: Array<NonNullable<NavItem["permission"]>>;
+  allPermissions?: Array<NonNullable<NavItem["permission"]>>;
   feature?: "staff" | "assistant" | "exports";
   ownerOnly?: boolean;
   shopCategories?: string[];
@@ -88,13 +90,14 @@ const merchantNav: NavItem[] = [
   { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell", group: "sell" },
   { href: "/quotations", labelKey: "nav.quotations", icon: FileText, permission: "canViewQuotations", group: "sell" },
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
-  { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", group: "stock" },
+  { href: "/stock-history", labelKey: "nav.stockHistory", icon: History, permission: "canManageStock", group: "stock" },
+  { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", allPermissions: ["canViewReports"], group: "stock" },
   { href: "/food-preparation", labelKey: "nav.foodPreparation", icon: ChefHat, permission: "canManageStock", shopCategories: ["bar", "restaurant"], group: "stock" },
   { href: "/farm", labelKey: "nav.farm", icon: Tractor, permission: "canManageFarm", shopCategories: ["livestock", "farm"], group: "stock" },
   { href: "/crops", labelKey: "nav.crops", icon: Sprout, permission: "canManageFarm", shopCategories: ["farm"], group: "stock" },
   { href: "/barcodes", labelKey: "nav.barcodes", icon: ScanLine, permission: "canManageStock", group: "stock" },
   { href: "/suppliers", labelKey: "nav.suppliers", icon: Truck, permission: "canManageStock", group: "stock" },
-  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", group: "stock" },
+  { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, permission: "canManageStock", allPermissions: ["canViewReports"], group: "stock" },
   { href: "/expenses", labelKey: "nav.expenses", icon: ReceiptText, permission: "canRecordExpenses", group: "money" },
   { href: "/analytics", labelKey: "nav.profit", icon: ChartNoAxesCombined, permission: "canViewReports", group: "money" },
   { href: "/wallet", labelKey: "nav.wallet", icon: Landmark, ownerOnly: true, group: "money" },
@@ -143,9 +146,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
     const permissions = user?.staff?.permissions;
     if (!permissions) return true;
     if (pathname === "/dashboard" || pathname.startsWith("/profit") || pathname.startsWith("/analytics")) return permissions.canViewReports;
+    if (pathname === "/receiving" || pathname.startsWith("/receiving/")) return permissions.canManageStock && permissions.canViewReports;
+    if (pathname === "/orders" || pathname.startsWith("/orders/")) return permissions.canManageStock && permissions.canViewReports;
     if (pathname === "/daily-close" || pathname.startsWith("/daily-close/")) return permissions.canSell || permissions.canManageCashSessions;
     if (["/sales", "/debts", "/orders/customers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canSell;
-    if (["/inventory", "/receiving", "/barcodes", "/suppliers", "/orders"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canManageStock;
+    if (["/inventory", "/stock-history", "/barcodes", "/suppliers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canManageStock;
     if (pathname === "/farm" || pathname.startsWith("/farm/") || pathname === "/crops" || pathname.startsWith("/crops/")) return permissions.canManageFarm;
     if (pathname === "/expenses" || pathname.startsWith("/expenses/")) return permissions.canRecordExpenses;
     if (pathname === "/assistant" || pathname.startsWith("/assistant/")) return permissions.canUseAssistant;
@@ -229,6 +234,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       ? supplierNav
       : merchantNav.filter((item) =>
           (!user?.staff || (!item.permission || user.staff.permissions[item.permission]) && (!item.anyPermissions || item.anyPermissions.some((permission) => user.staff?.permissions[permission]))) &&
+          (!user?.staff || !item.allPermissions || item.allPermissions.every((permission) => user.staff?.permissions[permission])) &&
           (!item.feature || user?.features?.[item.feature] !== false) &&
           !user?.shop?.hiddenMenuItems?.includes(item.href) &&
           (!item.ownerOnly || !user?.staff) &&

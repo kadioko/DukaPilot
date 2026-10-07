@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChefHat, ClipboardList, LoaderCircle, Search, Trash2, UtensilsCrossed, X } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import DateSelect from "@/components/ui/DateSelect";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { api, formatTZS } from "@/lib/api";
 import { useLang, type Lang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
@@ -138,7 +139,9 @@ export default function FoodPreparationPage() {
 }
 
 function NumberField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
-  return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} type="number" min="0" step="1" inputMode="numeric" className="rounded-lg border border-gray-300 px-3 py-3" placeholder={placeholder} /></label>;
+  const className = "rounded-lg border border-gray-300 px-3 py-3";
+  const isMoney = /TZS|cost|gharama/i.test(label);
+  return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span>{isMoney ? <CurrencyInput value={value} onChange={onChange} className={className} placeholder={placeholder} /> : <input value={value} onChange={(event) => onChange(event.target.value)} type="number" min="0" step="1" inputMode="numeric" className={className} placeholder={placeholder} />}</label>;
 }
 
 function paymentLabel(method: string, lang: string) {

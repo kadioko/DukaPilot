@@ -16,6 +16,7 @@ import {
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
+import { activePromotionPrice } from "@/lib/productPricing";
 
 interface ShopInfo {
   id: string;
@@ -32,6 +33,9 @@ interface Product {
   name: string;
   unit: string;
   sellingPrice: number;
+  promotionPrice?: number | null;
+  promotionStartsAt?: string | null;
+  promotionEndsAt?: string | null;
   wholesalePrice?: number | null;
   wholesaleMinQty?: number | null;
   currentStock: number;
@@ -119,7 +123,7 @@ export default function ShopPage() {
     const unitPrice =
       tier === "WHOLESALE" && product.wholesalePrice != null
         ? product.wholesalePrice
-        : product.sellingPrice;
+        : activePromotionPrice(product);
     setCart((prev) => {
       const existing = prev.find((i) => i.productId === product.id && i.pricingTier === tier);
       if (existing) {
@@ -280,7 +284,8 @@ export default function ShopPage() {
                   <div className="mt-2 space-y-0.5 flex-1">
                     <p className="text-sm">
                       <span className="text-gray-500">{t("catalog.retail", lang)}: </span>
-                      <span className="font-bold text-brand-700">{formatTZS(p.sellingPrice)}</span>
+                      <span className="font-bold text-brand-700">{formatTZS(activePromotionPrice(p))}</span>
+                      {activePromotionPrice(p) !== p.sellingPrice && <><span className="ml-2 text-xs text-gray-500 line-through">{formatTZS(p.sellingPrice)}</span><span className="ml-1 text-xs font-bold text-emerald-700">{lang === "sw" ? "OFA" : "SALE"}</span></>}
                       <span className="text-gray-400"> / {p.unit}</span>
                     </p>
                     {p.wholesalePrice != null && (

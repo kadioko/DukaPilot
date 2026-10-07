@@ -5,6 +5,7 @@ import { Search, ArrowLeft, Store, Package, Share2, MessageCircle, ExternalLink 
 import { api, formatTZS } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
+import { activePromotionPrice } from "@/lib/productPricing";
 
 interface Shop {
   id: string;
@@ -20,6 +21,9 @@ interface CatalogProduct {
   name: string;
   unit: string;
   sellingPrice: number;
+  promotionPrice?: number | null;
+  promotionStartsAt?: string | null;
+  promotionEndsAt?: string | null;
   wholesalePrice?: number | null;
   wholesaleMinQty?: number | null;
   currentStock: number;
@@ -263,7 +267,8 @@ export default function CatalogPage() {
                       <div className="mt-3 space-y-0.5">
                         <p className="text-sm">
                           <span className="text-gray-500">{t("catalog.retail", lang)}: </span>
-                          <span className="font-bold text-brand-700">{formatTZS(p.sellingPrice)}</span>
+                          <span className="font-bold text-brand-700">{formatTZS(activePromotionPrice(p))}</span>
+                          {activePromotionPrice(p) !== p.sellingPrice && <><span className="ml-2 text-xs text-gray-500 line-through">{formatTZS(p.sellingPrice)}</span><span className="ml-1 text-xs font-bold text-emerald-700">{lang === "sw" ? "OFA" : "SALE"}</span></>}
                           <span className="text-gray-400"> / {p.unit}</span>
                         </p>
                         {p.wholesalePrice != null && (

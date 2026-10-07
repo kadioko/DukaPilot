@@ -25,6 +25,7 @@ test("owner enables sale-specific prices and checkout uses the chosen wholesale 
     if (path === "/products/low-stock") return json({ products: [], total: 0 });
     if (path === "/subscription/status") return json({ status: "active", isActive: true, daysLeft: 30 });
     if (path === "/notifications") return json({ unreadCount: 0, notifications: [] });
+    if (path === "/push/preferences") return json({ preferences: { lowStock: false, debtDue: false, subscriptionExpiry: false, dailyAssistant: false, privatePreview: true }, subscriptions: [], pushConfigured: false });
     if (path === "/debts/customers") return json({ customers: [] });
     if (path === "/barcodes/settings") return json({ settings: { barcodeScanningEnabled: false } });
     return json({});
@@ -32,7 +33,7 @@ test("owner enables sale-specific prices and checkout uses the chosen wholesale 
 
   await page.goto("/sales");
   await page.locator("button").filter({ hasText: product.name }).click();
-  await expect(page.getByRole("spinbutton", { name: `Unit price for ${product.name}` })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: `Unit price for ${product.name}` })).toHaveCount(0);
 
   await page.goto("/settings");
   const setting = page.getByRole("checkbox", { name: /Allow price changes at checkout/ });
@@ -44,8 +45,8 @@ test("owner enables sale-specific prices and checkout uses the chosen wholesale 
   await page.goto("/sales");
   await page.getByRole("button", { name: "Wholesale" }).click();
   await page.locator("button").filter({ hasText: product.name }).click();
-  const price = page.getByRole("spinbutton", { name: `Unit price for ${product.name}` });
-  await expect(price).toHaveValue("11000");
+  const price = page.getByRole("textbox", { name: `Unit price for ${product.name}` });
+  await expect(price).toHaveValue("11,000");
   await price.fill("10500");
   await expect(page.getByRole("button", { name: `Reset price for ${product.name}` })).toBeVisible();
   await page.getByRole("button", { name: /Complete sale/i }).click();
@@ -58,5 +59,5 @@ test("owner enables sale-specific prices and checkout uses the chosen wholesale 
   await expect(page.getByText("Sale pricing setting saved.")).toBeVisible();
   await page.goto("/sales");
   await page.locator("button").filter({ hasText: product.name }).click();
-  await expect(page.getByRole("spinbutton", { name: `Unit price for ${product.name}` })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: `Unit price for ${product.name}` })).toHaveCount(0);
 });

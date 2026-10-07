@@ -4,6 +4,7 @@ const path = require("node:path");
 
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const authPath = path.resolve(__dirname, "../src/controllers/auth.controller.js");
+const authMiddlewarePath = path.resolve(__dirname, "../src/middleware/auth.js");
 
 function response() {
   return {
@@ -35,4 +36,19 @@ test("login distinguishes an unregistered phone from an incorrect PIN", async ()
   assert.equal(res.statusCode, 404);
   assert.deepEqual(res.payload, { error: "No account found for this phone number", code: "ACCOUNT_NOT_FOUND" });
   assert.deepEqual(failures, [{ reason: "ACCOUNT_NOT_FOUND" }]);
+});
+
+test("malformed session cookies are ignored instead of throwing", () => {
+  require.cache[prismaPath] = {
+    id: prismaPath,
+    filename: prismaPath,
+    loaded: true,
+    exports: {},
+  };
+  delete require.cache[authMiddlewarePath];
+  const { readCookieToken } = require(authMiddlewarePath);
+
+  assert.doesNotThrow(() => readCookieToken({ headers: { cookie: "dukapilot_token=%E0%A4%A" } }));
+  assert.equal(readCookieToken({ headers: { cookie: "dukapilot_token=%E0%A4%A" } }), null);
+  assert.equal(readCookieToken({ headers: { cookie: "dukapilot_token=%E0%A4%A; dukaos_token=valid-token" } }), "valid-token");
 });

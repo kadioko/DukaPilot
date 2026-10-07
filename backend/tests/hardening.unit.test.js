@@ -88,6 +88,10 @@ test("staff of an admin-owned shop cannot inherit platform-admin access", async 
   const staffRes = response();
   requirePermission("canManageStaff")(req, staffRes, () => assert.fail("cashier managed staff"));
   assert.equal(staffRes.statusCode, 403);
+
+  const purchaseCostRes = response();
+  requirePermission("canViewReports")(req, purchaseCostRes, () => assert.fail("cashier accessed purchase costs"));
+  assert.equal(purchaseCostRes.statusCode, 403);
 });
 
 test("authenticate rejects a session issued before the account session version changed", async () => {

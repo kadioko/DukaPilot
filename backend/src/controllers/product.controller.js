@@ -5,6 +5,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { inferBarcodeType, validateBarcode, validateSku, nextInternalBarcode, nextInternalSku } = require("../lib/barcode");
 const { getRequestLanguage } = require("../lib/requestLanguage");
 const { findVisibleSupplier } = require("../lib/supplierAccess");
+const { hasPromotionInput, normalizePromotion } = require("../lib/productPricing");
 
 const PRODUCT_IMPORT_MAX_ROWS = 200;
 const PRODUCT_IMPORT_MAX_BYTES = 500_000;
@@ -392,8 +393,8 @@ const create = asyncHandler(async (req, res) => {
   if (!name || buyingPrice == null || (!isInternalUse && sellingPrice == null)) {
     return res.status(400).json({ error: "name, buyingPrice, and sellingPrice are required" });
   }
-  if ((isCatalogVisible !== undefined || isInternalUse) && !canManageCatalogVisibility(req)) {
-    return res.status(403).json({ error: "Only the shop owner can change public catalog visibility" });
+  if ((isCatalogVisible !== undefined || isInternalUse || hasPromotionInput(req.body)) && !canManageCatalogVisibility(req)) {
+    return res.status(403).json({ error: "Only the shop owner can change catalog visibility or scheduled promotions" });
   }
   const productUnit = normalizedUnit(unit);
   if (productUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
@@ -402,6 +403,8 @@ const create = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Current stock must be a whole number 0 or greater" });
   }
   const retailPrice = Number(sellingPrice ?? 0);
+  const promotion = normalizePromotion(req.body, { sellingPrice: retailPrice, isInternalUse });
+  if (promotion.error) return res.status(400).json({ error: promotion.error });
   const parsedWholesalePrice = wholesalePrice != null && wholesalePrice !== "" ? Number(wholesalePrice) : null;
   if (parsedWholesalePrice != null && parsedWholesalePrice > retailPrice) {
     return res.status(400).json({ error: "Wholesale price cannot be higher than the retail selling price" });
@@ -444,6 +447,7 @@ const create = asyncHandler(async (req, res) => {
       unit: productUnit,
       buyingPrice: Number(buyingPrice),
       sellingPrice: retailPrice,
+      ...promotion.data,
       wholesalePrice: parsedWholesalePrice,
       wholesaleMinQty: wholesaleMinQty != null && wholesaleMinQty !== "" ? Number(wholesaleMinQty) : null,
       currentStock: initialStock,
@@ -529,8 +533,9 @@ const update = asyncHandler(async (req, res) => {
   }
 
   const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, minimumStock, supplierId, isActive, isCatalogVisible, isInternalUse, expiryDate, doesNotExpire, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
-  if ((isCatalogVisible !== undefined || isInternalUse !== undefined) && !canManageCatalogVisibility(req)) {
-    return res.status(403).json({ error: "Only the shop owner can change public catalog visibility" });
+  const promotionInputProvided = hasPromotionInput(req.body);
+  if ((isCatalogVisible !== undefined || isInternalUse !== undefined || promotionInputProvided) && !canManageCatalogVisibility(req)) {
+    return res.status(403).json({ error: "Only the shop owner can change catalog visibility or scheduled promotions" });
   }
   const nextInternalUse = isInternalUse === undefined ? existing.isInternalUse : isInternalUse;
   if (nextInternalUse && isCatalogVisible === true) {
@@ -539,6 +544,15 @@ const update = asyncHandler(async (req, res) => {
   const nextUnit = unit === undefined ? normalizedUnit(existing.unit) : normalizedUnit(unit);
   if (nextUnit.length > 30) return res.status(400).json({ error: "Unit must be 30 characters or less" });
   const nextSellingPrice = sellingPrice === undefined ? existing.sellingPrice : Number(sellingPrice);
+  const promotion = normalizePromotion(nextInternalUse
+    ? {}
+    : promotionInputProvided
+      ? req.body
+      : { promotionPrice: existing.promotionPrice, promotionStartsAt: existing.promotionStartsAt, promotionEndsAt: existing.promotionEndsAt }, {
+    sellingPrice: nextSellingPrice,
+    isInternalUse: nextInternalUse,
+  });
+  if (promotion.error) return res.status(400).json({ error: promotion.error });
   const nextWholesalePrice = wholesalePrice === undefined
     ? existing.wholesalePrice
     : wholesalePrice === null || wholesalePrice === "" ? null : Number(wholesalePrice);
@@ -588,6 +602,7 @@ const update = asyncHandler(async (req, res) => {
       ...(unit !== undefined && { unit: nextUnit }),
       ...(buyingPrice !== undefined && { buyingPrice: Number(buyingPrice) }),
       ...(sellingPrice !== undefined && { sellingPrice: nextSellingPrice }),
+      ...promotion.data,
       ...(wholesalePrice !== undefined && { wholesalePrice: nextWholesalePrice }),
       ...(wholesaleMinQty !== undefined && { wholesaleMinQty: wholesaleMinQty === null || wholesaleMinQty === "" ? null : Number(wholesaleMinQty) }),
       ...(minimumStock !== undefined && { minimumStock: Number(minimumStock) }),

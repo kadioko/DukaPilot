@@ -39,6 +39,9 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Launch playbook:** [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md)
 - **Shop operations:** [docs/OPERATIONS_UPGRADE.md](./docs/OPERATIONS_UPGRADE.md) - Daily Close, Receive Stock, receipt sharing/printing, QR ordering, and branch operations
 - **Owner reports:** [docs/OWNER_REPORTS_GUIDE.md](./docs/OWNER_REPORTS_GUIDE.md) - Sales vs collections, cost coverage, profit definitions, date ranges, branch comparisons, and exports
+- **Purchase analytics:** [docs/PURCHASE_ANALYTICS.md](./docs/PURCHASE_ANALYTICS.md) - Received-stock totals, landed cost, supplier/payment filters, receipt history, CSV export, and accounting treatment
+- **Scheduled offers and staff removal:** [docs/PRODUCT_PROMOTIONS_AND_STAFF_REMOVAL.md](./docs/PRODUCT_PROMOTIONS_AND_STAFF_REMOVAL.md) - Product promotion windows and removing a staff login without erasing history
+- **Public catalog:** [docs/PUBLIC_CATALOG_GUIDE.md](./docs/PUBLIC_CATALOG_GUIDE.md) - Shop publishing, product visibility, scheduled offers, and troubleshooting
 - **Staff access:** [docs/STAFF_ACCESS_GUIDE.md](./docs/STAFF_ACCESS_GUIDE.md) - Staff roles, permissions, sales-history visibility, and Daily Close shifts
 - **Restaurant and bar guide:** [docs/RESTAURANT_AND_BAR_GUIDE.md](./docs/RESTAURANT_AND_BAR_GUIDE.md) - Ingredient receiving, food preparation batches, yield/waste, portion costing, and packaged-drink stock
 - **Farm Operations:** [docs/FARM_OPERATIONS.md](./docs/FARM_OPERATIONS.md) - Crop, livestock, and mixed-farm setup; plots, crop cycles, inputs, harvest-to-stock, livestock production, staff privacy, cash rules, and farm AI boundaries
@@ -59,6 +62,12 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 - **Marketing assets:** [marketing/README.md](./marketing/README.md)
 - **Official logo URLs:** [docs/BRAND_ASSETS.md](./docs/BRAND_ASSETS.md) - stable public PNG, SVG, and JPG links plus logo usage rules
 
+The production URLs above identify the live services; repository features and
+guides describe the checked-out code and are not deployment confirmation. For
+each release, verify the required Railway migrations/backend and Vercel frontend
+deployment using [TESTING.md](./TESTING.md) before telling merchants a change is
+live.
+
 ---
 
 ## What DukaPilot Does
@@ -67,8 +76,9 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 
 | Feature | Description |
 | --- | --- |
-| **Inventory tracking** | Add products, set buying/selling/wholesale prices, track stock levels |
+| **Inventory tracking** | Add products, set buying/selling/wholesale prices, search/filter inventory, and review paginated stock-movement history |
 | **Receive stock with true cost** | Record supplier, invoice, items, transport and other costs; DukaPilot allocates landed cost and preserves stock history |
+| **Scheduled product offers** | Set an owner-managed retail price for a start/end window; POS/catalog apply it during the offer without changing wholesale or historical transaction prices |
 | **Food preparation and recipe costing** | Turn ingredient stock into prepared portions with saved recipes, actual yield, waste, direct cooking costs, and an audited cost per plate or portion; packaged drinks stay normal barcode inventory |
 | **Farm operations** | For crop, livestock, and mixed farms: record fields and crop cycles; use seed, fertilizer, labour, transport, or irrigation against a crop; harvest into dedicated sellable stock; or manage flocks, pens, herds, production, and output packing; keep direct farm cash costs in Daily Close once |
 | **Low-stock alerts** | Instant badge + dashboard alert when any product hits minimum stock |
@@ -78,9 +88,9 @@ DukaPilot starts as **software + payments + procurement**, then layers working-c
 | **Staff roles** | Basic includes one active staff member; Pro includes unlimited staff. Live permissions and deactivation are enforced on every request, including sell, stock, expense-entry, and report visibility |
 | **Billing page** | Merchants can see plan status, pay through official Lipa numbers with manual reference review, use nTZS mobile-money checkout, or activate automatically from a sufficient Merchant Balance |
 | **Subscription controls** | Admin can extend trials, mark manual M-Pesa payments, activate plans, and suspend shops |
-| **Profit snapshot** | Real-time profit margin per sale and daily/weekly/monthly/all-time totals |
+| **Analytics** | Sales, collections, costs, gross/net profit, product/customer/staff performance, and received-stock purchases with date filters and exports |
 | **Business history** | All-time business history and monthly performance trends from the dashboard |
-| **Supplier ordering** | Browse supplier catalog products, import them into inventory with a chosen retail price, then order and restock them safely |
+| **Supplier ordering** | Browse shared supplier catalog products or add a shop-private supplier, import products with a chosen retail price, then order and receive stock safely |
 | **WhatsApp export** | Every order generates a ready-to-send WhatsApp message in Kiswahili |
 | **Daily Close / Z-report** | Cashiers open and close their own cash session; owners see every active drawer, and trusted managers can be granted team-shift review/close without access to reports or profit |
 | **Receipt files and printing** | Share a receipt as WhatsApp text, PNG, or PDF, or print via the device print dialog to a paired Bluetooth thermal printer |
@@ -327,6 +337,7 @@ User ──────── Shop ──────────── Product 
 - `StaffMember` — staff roster with optional PIN login and role permission flags
 - `StockMovement` — full audit trail of every stock change (IN / OUT / ADJUSTMENT)
 - `StockReceipt` + `StockReceiptItem` — landed-cost receiving with supplier, invoice, costs, items, and linked stock movements
+- Purchase Analytics is a read-only report over `StockReceipt` and `StockReceiptItem`; it does not count draft purchase orders as received stock or create duplicate expense entries
 - `CashSession` — per-cashier Daily Close opening cash, expected cash, counted cash, and variance
 - `Order` + `OrderItem` — merchant-to-supplier purchase orders with status lifecycle
 - `CustomerOrder` + `CustomerOrderItem` — customer-to-merchant orders from public catalog

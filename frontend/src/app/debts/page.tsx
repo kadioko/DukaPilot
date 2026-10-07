@@ -6,6 +6,7 @@ import { api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { MessageCircle, Trash2 } from "lucide-react";
 import DateSelect from "@/components/ui/DateSelect";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { useToast } from "@/components/ui/Toast";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
 
@@ -258,7 +259,7 @@ export default function DebtsPage() {
         {showForm && <form onSubmit={addDebt} className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-6">
           <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-2"><span>{lang === "sw" ? "Jina la mteja" : "Customer name"}</span><input className={INPUT} required autoComplete="name" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
           <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-2"><span>{lang === "sw" ? "Simu ya mteja" : "Customer phone"}</span><input className={INPUT} required type="tel" inputMode="tel" autoComplete="tel" value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} /></label>
-          <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><input className={INPUT} required type="number" min="1" inputMode="numeric" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
+          <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><CurrencyInput className={INPUT} required value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} /></label>
           <DateSelect className="md:col-span-2" lang={lang} label={lang === "sw" ? "Tarehe ya mwisho" : "Due date"} value={form.dueDate} onChange={(dueDate) => setForm({ ...form, dueDate })} />
           <label className="grid gap-1 text-sm font-medium text-gray-700 md:col-span-4"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><input className={INPUT} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
           <button disabled={creatingDebt} className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50 md:col-span-2">{creatingDebt ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi deni" : "Save debt")}</button>
@@ -336,13 +337,9 @@ export default function DebtsPage() {
                         <p className="text-gray-500">{formatTZS(debt.amountPaid)} {lang === "sw" ? "imelipwa" : "paid"} / {formatTZS(debt.amount)}</p>
                       </div>
                       {balance > 0 && debt.status !== "CANCELLED" && <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                    <input
+                    <CurrencyInput
                       value={paymentDrafts[debt.id] || ""}
-                      onChange={(e) => setPaymentDrafts((prev) => ({ ...prev, [debt.id]: e.target.value }))}
-                      type="number"
-                      min="1"
-                      max={balance}
-                      inputMode="numeric"
+                      onChange={(value) => setPaymentDrafts((prev) => ({ ...prev, [debt.id]: value }))}
                       placeholder={lang === "sw" ? "Kiasi kilicholipwa" : "Amount paid"}
                       aria-label={`${lang === "sw" ? "Kiasi kilicholipwa kwa deni la" : "Amount paid for debt of"} ${customerName}`}
                       disabled={paymentPending[debt.id]}

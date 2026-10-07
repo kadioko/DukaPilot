@@ -32,6 +32,30 @@ Receiving an existing supplier order from **Orders** opens a prefilled receipt a
 
 For an order-linked receipt, the supplier and products must match the selected order. The merchant may record the actual delivered quantity and actual cost, which can differ from what was originally ordered.
 
+## Suppliers And Purchase Reporting
+
+The supplier directory can contain shared suppliers and suppliers created by a
+shop for its own use. A shop-private supplier is visible to that shop, can be
+selected on its products, orders, and receipts, and can be edited only by the
+shop that created it (or a platform admin). Use a private entry for a local
+supplier who is not part of the shared directory. Creating the entry does not
+create a supplier login or charge the supplier a plan.
+
+After saving receipts, open **Analytics > Purchases** to total received stock
+for a month, all time, or a custom range. Filter by supplier/payment method,
+search receipts/products/suppliers, inspect receipt details, or export the
+filtered report. An order that has not been received is not included. See
+[Purchase Analytics](./PURCHASE_ANALYTICS.md) for definitions and limits.
+
+## Stock History
+
+Open **Stock > Stock history** to search by product, SKU, or movement note and
+filter by movement type and date. The paginated ledger lists stock in, stock
+out, and adjustments; receipt-linked entries show supplier/invoice context.
+Viewing history does not change stock. An adjustment records the new set-to
+quantity, not merely a delta, and the current-stock column is the product's
+present balance rather than its historical balance at the time of the entry.
+
 ## Receipt Sharing And Printing
 
 Completed and historic sales support:

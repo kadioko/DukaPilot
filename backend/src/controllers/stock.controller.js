@@ -1,6 +1,15 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 
+function tanzaniaDayStart(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const utcDay = Date.UTC(year, month - 1, day);
+  const date = new Date(utcDay);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return new Date(utcDay - 3 * 60 * 60 * 1000);
+}
+
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
@@ -69,4 +78,53 @@ const movements = asyncHandler(async (req, res) => {
   res.json({ product: { id: product.id, name: product.name }, movements: stockMovements });
 });
 
-module.exports = { adjust, movements };
+const history = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 50, 1), 100);
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  const type = String(req.query.type || "ALL").toUpperCase();
+  if (!["ALL", "IN", "OUT", "ADJUSTMENT"].includes(type)) {
+    return res.status(400).json({ error: "Invalid stock movement type" });
+  }
+
+  const where = { product: { is: { shopId } } };
+  if (type !== "ALL") where.type = type;
+  if (req.query.productId) where.productId = String(req.query.productId);
+  if (req.query.from || req.query.to) {
+    const from = req.query.from ? tanzaniaDayStart(String(req.query.from)) : null;
+    const toStart = req.query.to ? tanzaniaDayStart(String(req.query.to)) : null;
+    if ((req.query.from && !from) || (req.query.to && !toStart)) {
+      return res.status(400).json({ error: "Dates must be valid YYYY-MM-DD values" });
+    }
+    if (from && toStart && from > toStart) return res.status(400).json({ error: "Start date must be on or before end date" });
+    where.createdAt = {};
+    if (from) where.createdAt.gte = from;
+    if (toStart) where.createdAt.lt = new Date(toStart.getTime() + 24 * 60 * 60 * 1000);
+  }
+  if (search) {
+    where.AND = [{ OR: [
+      { note: { contains: search, mode: "insensitive" } },
+      { product: { is: { name: { contains: search, mode: "insensitive" } } } },
+      { product: { is: { sku: { contains: search, mode: "insensitive" } } } },
+    ] }];
+  }
+
+  const [movements, total] = await Promise.all([
+    prisma.stockMovement.findMany({
+      where,
+      include: {
+        product: { select: { id: true, name: true, sku: true, unit: true, currentStock: true } },
+        stockReceipt: { select: { id: true, invoiceNumber: true, supplier: { select: { id: true, name: true } } } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      skip: (page - 1) * limit,
+    }),
+    prisma.stockMovement.count({ where }),
+  ]);
+
+  res.json({ movements, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+});
+
+module.exports = { adjust, movements, history };

@@ -7,16 +7,21 @@ function readCookieToken(req) {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return null;
 
-  const cookies = Object.fromEntries(
-    cookieHeader
-      .split(";")
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const index = part.indexOf("=");
-        return index >= 0 ? [part.slice(0, index), decodeURIComponent(part.slice(index + 1))] : [part, ""];
-      })
-  );
+  const cookies = {};
+  for (const part of cookieHeader.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const index = trimmed.indexOf("=");
+    if (index < 0) {
+      cookies[trimmed] = "";
+      continue;
+    }
+    try {
+      cookies[trimmed.slice(0, index)] = decodeURIComponent(trimmed.slice(index + 1));
+    } catch {
+      // Ignore only the malformed cookie; another valid session cookie may exist.
+    }
+  }
 
   return cookies.dukapilot_token || cookies.dukaos_token || null;
 }

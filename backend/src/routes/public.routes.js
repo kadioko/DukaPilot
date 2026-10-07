@@ -3,6 +3,7 @@ const prisma = require("../lib/prisma");
 const { buildCustomerOrderMessage, sendWhatsAppMessage } = require("../services/whatsapp.service");
 const { resolveShopContactPhone } = require("../lib/shopContact");
 const { publicEventRateLimiter, publicOrderRateLimiter } = require("../middleware/rateLimit");
+const { activeRetailPrice } = require("../lib/productPricing");
 
 function activeShopWhere(now = new Date()) {
   return {
@@ -137,6 +138,9 @@ router.get("/products", async (req, res, next) => {
         name: true,
         unit: true,
         sellingPrice: true,
+        promotionPrice: true,
+        promotionStartsAt: true,
+        promotionEndsAt: true,
         wholesalePrice: true,
         wholesaleMinQty: true,
         currentStock: true,
@@ -195,6 +199,9 @@ router.get("/shops/:id", async (req, res, next) => {
         name: true,
         unit: true,
         sellingPrice: true,
+        promotionPrice: true,
+        promotionStartsAt: true,
+        promotionEndsAt: true,
         wholesalePrice: true,
         wholesaleMinQty: true,
         currentStock: true,
@@ -276,7 +283,7 @@ router.post("/orders", publicOrderRateLimiter, async (req, res, next) => {
       const tier = String(item.pricingTier || "RETAIL").toUpperCase() === "WHOLESALE" ? "WHOLESALE" : "RETAIL";
       const unitPrice = tier === "WHOLESALE" && product.wholesalePrice != null
         ? product.wholesalePrice
-        : product.sellingPrice;
+        : activeRetailPrice(product);
       totalAmount += unitPrice * item.quantity;
       return { quantity: item.quantity, unitPrice, buyingPrice: product.buyingPrice, pricingTier: tier, productId: item.productId };
     });

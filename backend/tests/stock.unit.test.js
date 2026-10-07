@@ -98,3 +98,46 @@ test("fractional stock adjustments preserve bag or weight quantities to three de
   assert.equal(invalid.statusCode, 400);
   assert.equal(movements.length, 1);
 });
+
+test("stock history is shop-scoped, searchable, filterable, paginated, and uses Tanzania day bounds", async () => {
+  let findArgs;
+  let countArgs;
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    stockMovement: {
+      findMany: async (args) => { findArgs = args; return [{ id: "movement-1" }]; },
+      count: async (args) => { countArgs = args; return 61; },
+    },
+  } };
+  require.cache[shopAccessPath] = { id: shopAccessPath, filename: shopAccessPath, loaded: true, exports: { getShopIdForUser: async () => "shop-1" } };
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const res = response();
+  await controller.history({ user: { userId: "owner-1" }, query: { page: "2", limit: "30", search: "rice", type: "IN", from: "2026-10-01", to: "2026-10-02" } }, res, assert.fail);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(findArgs.skip, 30);
+  assert.equal(findArgs.take, 30);
+  assert.equal(findArgs.where.product.is.shopId, "shop-1");
+  assert.equal(findArgs.where.type, "IN");
+  assert.equal(findArgs.where.createdAt.gte.toISOString(), "2026-09-30T21:00:00.000Z");
+  assert.equal(findArgs.where.createdAt.lt.toISOString(), "2026-10-02T21:00:00.000Z");
+  assert.equal(findArgs.where.AND[0].OR[0].note.contains, "rice");
+  assert.deepEqual(countArgs.where, findArgs.where);
+  assert.deepEqual(res.payload.pagination, { page: 2, limit: 30, total: 61, totalPages: 3 });
+});
+
+test("stock history rejects impossible dates and unsupported movement types without querying", async () => {
+  let queries = 0;
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    stockMovement: { findMany: async () => { queries += 1; return []; }, count: async () => { queries += 1; return 0; } },
+  } };
+  require.cache[shopAccessPath] = { id: shopAccessPath, filename: shopAccessPath, loaded: true, exports: { getShopIdForUser: async () => "shop-1" } };
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  for (const query of [{ from: "2026-02-30" }, { type: "DELETE" }]) {
+    const res = response();
+    await controller.history({ user: { userId: "owner-1" }, query }, res, assert.fail);
+    assert.equal(res.statusCode, 400);
+  }
+  assert.equal(queries, 0);
+});

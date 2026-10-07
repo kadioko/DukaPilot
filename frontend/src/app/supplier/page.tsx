@@ -5,6 +5,7 @@ import { api, clearToken, formatTZS, getCurrentSession } from "@/lib/api";
 import { LogOut, Check, X, Truck, ChevronDown, ChevronUp, Package, Plus, ArrowLeft, Edit2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import LogoMark from "@/components/brand/LogoMark";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { setLanguage, useLang, type Lang } from "@/lib/i18n";
 
 interface Order {
@@ -465,12 +466,9 @@ export default function SupplierPortal() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-gray-600">{copy.price[lang]}</label>
-                  <input
+                  <CurrencyInput
                     value={productForm.price}
-                    onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
+                    onChange={(value) => setProductForm({ ...productForm, price: value })}
                     placeholder="0"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />

@@ -7,7 +7,7 @@
     "postinstall": "prisma generate",
     "start": "node src/app.js",
     "start:prod": "npx prisma migrate deploy && node src/app.js",
-    "dev": "nodemon src/app.js",
+    "dev": "node --watch src/app.js",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "node prisma/seed.js",
@@ -18,7 +18,7 @@
     "db:push": "prisma db push",
     "smoke:prod": "node scripts/smoke-test.js",
     "monitor:prod": "node scripts/production-monitor.js",
-    "test": "node --test tests/adminSupport.unit.test.js tests/order.unit.test.js tests/product.unit.test.js tests/expense.unit.test.js tests/demoHistory.unit.test.js tests/sale.unit.test.js tests/saleReturn.unit.test.js tests/salePricing.unit.test.js tests/stock.unit.test.js tests/foodPreparation.unit.test.js tests/farm.unit.test.js tests/crop.unit.test.js tests/cropCosting.unit.test.js tests/hardening.unit.test.js tests/financialIntegrity.unit.test.js tests/profitAnalytics.unit.test.js tests/productPerformance.unit.test.js tests/branchDateRange.unit.test.js tests/marketing.unit.test.js tests/referral.unit.test.js tests/notifications.referral.unit.test.js tests/pushAnalytics.unit.test.js tests/barcode.unit.test.js tests/labelPrint.unit.test.js tests/labelPrint.controller.unit.test.js tests/phone.unit.test.js tests/shopContact.unit.test.js tests/staff.unit.test.js tests/authLogin.unit.test.js tests/otp.unit.test.js tests/nextsmsMonitor.unit.test.js tests/metaWhatsAppWebhook.unit.test.js tests/metaWhatsAppCoexistence.unit.test.js tests/whatsapp.unit.test.js tests/operations.unit.test.js tests/cashSession.unit.test.js tests/customerOrder.unit.test.js tests/dashboardCache.unit.test.js tests/assistant.unit.test.js tests/subscription.unit.test.js tests/quotation.unit.test.js tests/branches.unit.test.js tests/ntzs.unit.test.js tests/merchantWallet.unit.test.js tests/accountDeletion.unit.test.js",
+    "test": "node --test tests/adminSupport.unit.test.js tests/order.unit.test.js tests/product.unit.test.js tests/productPricing.unit.test.js tests/purchaseAccess.unit.test.js tests/expense.unit.test.js tests/demoHistory.unit.test.js tests/sale.unit.test.js tests/saleReturn.unit.test.js tests/salePricing.unit.test.js tests/stock.unit.test.js tests/foodPreparation.unit.test.js tests/farm.unit.test.js tests/crop.unit.test.js tests/cropCosting.unit.test.js tests/hardening.unit.test.js tests/financialIntegrity.unit.test.js tests/profitAnalytics.unit.test.js tests/purchaseAnalytics.unit.test.js tests/productPerformance.unit.test.js tests/branchDateRange.unit.test.js tests/marketing.unit.test.js tests/referral.unit.test.js tests/notifications.referral.unit.test.js tests/pushAnalytics.unit.test.js tests/barcode.unit.test.js tests/labelPrint.unit.test.js tests/labelPrint.controller.unit.test.js tests/phone.unit.test.js tests/shopContact.unit.test.js tests/staff.unit.test.js tests/authLogin.unit.test.js tests/otp.unit.test.js tests/nextsmsMonitor.unit.test.js tests/metaWhatsAppWebhook.unit.test.js tests/metaWhatsAppCoexistence.unit.test.js tests/whatsapp.unit.test.js tests/operations.unit.test.js tests/cashSession.unit.test.js tests/customerOrder.unit.test.js tests/dashboardCache.unit.test.js tests/assistant.unit.test.js tests/subscription.unit.test.js tests/quotation.unit.test.js tests/branches.unit.test.js tests/ntzs.unit.test.js tests/merchantWallet.unit.test.js tests/accountDeletion.unit.test.js",
     "test:payments": "node --test tests/ntzs.unit.test.js tests/subscription.unit.test.js",
     "test:postgres-integrity": "node --test tests/postgresIntegrity.test.js tests/debtCustomer.postgres.test.js",
     "test:prod-api": "node --test tests/api.test.js",
@@ -51,18 +51,17 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2",
     "prisma": "^7.9.1"
   },
   "overrides": {
     "hono": "4.12.25",
     "@hono/node-server": "1.19.13",
     "body-parser": "2.3.0",
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "deepmerge-ts": "8.0.2",
-    "fast-uri": "4.1.3",
+    "fast-uri": "4.2.1",
     "qs": "6.16.0",
-    "ip-address": "10.4.0",
+    "ip-address": "10.7.3",
     "mysql2": "3.24.3"
   },
   "engines": {

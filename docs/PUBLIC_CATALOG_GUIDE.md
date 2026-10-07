@@ -16,6 +16,15 @@ When adding or editing a product, leave **Show this product in the public catalo
 
 Visibility is separate from stock and product activation. Public listings still omit inactive and out-of-stock products. New products default to visible to preserve the previous catalog behavior; review visibility before sharing a newly prepared catalog.
 
+## Scheduled retail offers
+
+An owner can set a product's promotion price and local start/end date and time
+in Inventory. The offer is used for retail catalog and POS pricing only while
+active; wholesale pricing is unchanged. Editing or ending an offer does not
+rewrite existing orders or completed sales. Internal-use products cannot be
+published or promoted. For full rules, see
+[Product Promotions and Staff Login Removal](./PRODUCT_PROMOTIONS_AND_STAFF_REMOVAL.md).
+
 ## Troubleshooting
 
 - If the link says the shop is unavailable, confirm the shop is published, active, and on an active trial or subscription.

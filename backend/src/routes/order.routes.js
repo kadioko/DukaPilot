@@ -7,6 +7,7 @@ const { orderListValidation, orderCreateValidation } = require("../middleware/va
 router.use(authenticate);
 router.use(requireRole("MERCHANT", "ADMIN"));
 router.use(requirePermission("canManageStock"));
+router.use(requirePermission("canViewReports"));
 router.use(requireActiveSubscription);
 
 router.get("/", orderListValidation, ctrl.list);

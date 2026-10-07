@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser, getBillingShopIdForUser } = require("../lib/shopAccess");
+const { activeRetailPrice } = require("../lib/productPricing");
 const { startOfTanzaniaDay, startOfTanzaniaMonth } = require("../lib/businessTime");
 const { normalizePhone, isValidPhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
@@ -171,7 +172,7 @@ const create = asyncHandler(async (req, res) => {
     const product = productMap[item.productId];
     const defaultPrice = pricingTier === "WHOLESALE" && product.wholesalePrice != null
       ? product.wholesalePrice
-      : product.sellingPrice;
+      : activeRetailPrice(product);
     const unitPrice = item.unitPrice != null && item.unitPrice !== "" ? Number(item.unitPrice) : defaultPrice;
     if (!Number.isSafeInteger(unitPrice) || unitPrice < 0) {
       return res.status(400).json({ error: "Sale price must be a whole TZS amount" });

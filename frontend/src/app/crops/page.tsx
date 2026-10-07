@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BarChart3, CalendarDays, ClipboardList, LoaderCircle, MapPin, PackagePlus, Sprout, Tractor, WalletCards, Wheat } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
@@ -235,7 +236,7 @@ export default function CropsPage() {
   </main></AppShell>;
 }
 
-function TextField({ label, value, onChange, type = "text", placeholder, required, list }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string; required?: boolean; list?: string; }) { return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} type={type} placeholder={placeholder} required={required} list={list} className="min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" /></label>; }
+function TextField({ label, value, onChange, type = "text", placeholder, required, list, money = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string; required?: boolean; list?: string; money?: boolean }) { const className = "min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"; const useCurrency = money || (type === "number" && /TZS|cost|gharama/i.test(label)); return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span>{useCurrency ? <CurrencyInput value={value} onChange={onChange} placeholder={placeholder} required={required} className={className} /> : <input value={value} onChange={(event) => onChange(event.target.value)} type={type} placeholder={placeholder} required={required} list={list} className={className} />}</label>; }
 function SelectField({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode; }) { return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">{children}</select></label>; }
 function ProductSelect({ label, products, value, onChange, emptyLabel }: { label: string; products: Product[]; value: string; onChange: (value: string) => void; emptyLabel: string; }) { const lang = useLang(); return <SelectField label={label} value={value} onChange={onChange}><option value="">{emptyLabel}</option>{products.map((product) => <option key={product.id} value={product.id}>{product.isInternalUse ? (lang === "sw" ? "[Matumizi ya ndani] " : "[Internal use] ") : ""}{product.name} ({product.currentStock} {product.unit})</option>)}</SelectField>; }
 function Metric({ label, value }: { label: string; value: string; }) { return <div><p className="text-xs text-gray-500">{label}</p><p className="mt-1 font-bold text-gray-950">{value}</p></div>; }

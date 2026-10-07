@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { ApiError, api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
 import { Plus, MessageCircle, RotateCcw, Check, X, Truck, Clock, ChevronDown, ChevronUp, PackagePlus, Search, Pencil, Trash2, AlertTriangle } from "lucide-react";
@@ -562,7 +563,7 @@ export default function OrdersPage() {
             <div className="space-y-3 p-4">
               <label className="block text-sm font-medium text-gray-700">
                 {lang === "sw" ? "Bei yako ya kuuza (TZS)" : "Your retail price (TZS)"}
-                <input value={retailPriceDraft} onChange={(event) => setRetailPriceDraft(event.target.value)} type="number" min="0" step="1" inputMode="numeric" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                <CurrencyInput value={retailPriceDraft} onChange={setRetailPriceDraft} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
               </label>
               <label className="block text-sm font-medium text-gray-700">
                 {lang === "sw" ? "Kiwango cha tahadhari ya stock" : "Low-stock alert level"}

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bird, Boxes, ChevronLeft, ChevronRight, ClipboardList, Egg, LoaderCircle, Milk, PackageOpen, Plus, Search, Tractor, Trash2, Users, Wheat, type LucideIcon } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { api, formatTZS } from "@/lib/api";
 import { clearFarmRequestId, getFarmRequestId } from "@/lib/farmRequestId";
 import { useLang, type Lang } from "@/lib/i18n";
@@ -388,7 +389,9 @@ export default function FarmPage() {
 }
 
 function Field({ label, value, onChange, type = "text", placeholder, required = false, min, step }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string; required?: boolean; min?: string; step?: string }) {
-  return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} type={type} min={min ?? (type === "number" ? "0" : undefined)} step={step ?? (type === "number" ? "any" : undefined)} inputMode={type === "number" ? "decimal" : undefined} placeholder={placeholder} required={required} className="min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>;
+  const className = "min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500";
+  const isMoney = type === "number" && /TZS|cost|gharama/i.test(label);
+  return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span>{isMoney ? <CurrencyInput value={value} onChange={onChange} placeholder={placeholder} required={required} className={className} /> : <input value={value} onChange={(event) => onChange(event.target.value)} type={type} min={min ?? (type === "number" ? "0" : undefined)} step={step ?? (type === "number" ? "any" : undefined)} inputMode={type === "number" ? "decimal" : undefined} placeholder={placeholder} required={required} className={className} />}</label>;
 }
 
 function SelectField({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) {

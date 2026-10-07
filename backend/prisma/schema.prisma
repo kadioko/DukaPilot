@@ -965,6 +965,9 @@ model Product {
   unit                     String                  @default("pcs") // pcs, kg, litre, box, crate
   buyingPrice              Int
   sellingPrice             Int
+  promotionPrice           Int?
+  promotionStartsAt        DateTime?
+  promotionEndsAt          DateTime?
   wholesalePrice           Int?
   wholesaleMinQty          Int?
   currentStock             Float                   @default(0)

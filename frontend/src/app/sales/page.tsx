@@ -8,15 +8,20 @@ import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
 import DateSelect from "@/components/ui/DateSelect";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
 import ReceiptActions from "@/components/sales/ReceiptActions";
 import { legacyPendingOfflineSalesCount, offlineSalesScope, scopedOfflineKey, setActiveOfflineSalesScope } from "@/lib/offlineSalesStorage";
+import { activePromotionPrice } from "@/lib/productPricing";
 
 interface Product {
   id: string;
   name: string;
   unit: string;
   sellingPrice: number;
+  promotionPrice?: number | null;
+  promotionStartsAt?: string | null;
+  promotionEndsAt?: string | null;
   buyingPrice: number | null;
   wholesalePrice?: number | null;
   wholesaleMinQty?: number | null;
@@ -518,7 +523,7 @@ export default function SalesPage() {
     if (saleMode === "WHOLESALE" && product.wholesalePrice != null) {
       return product.wholesalePrice;
     }
-    return product.sellingPrice;
+    return activePromotionPrice(product);
   }
 
   function addToCart(product: Product) {
@@ -1075,7 +1080,8 @@ export default function SalesPage() {
                         <p className={`mt-1 text-xs font-semibold ${outOfStock || expired ? "text-red-600" : "text-gray-500"}`}>
                           {expired ? (lang === "sw" ? "Muda umeisha" : "Expired") : outOfStock ? (lang === "sw" ? "Stock imeisha" : "Out of stock") : `${p.currentStock} ${p.unit} ${t("dashboard.remaining", lang)}`}
                         </p>
-                        <p className={`mt-1 text-sm font-bold ${unavailable ? "text-gray-500" : "text-brand-700"}`}>{formatTZS(defaultPriceFor(p))}</p>
+                      <p className={`mt-1 text-sm font-bold ${unavailable ? "text-gray-500" : "text-brand-700"}`}>{formatTZS(defaultPriceFor(p))}</p>
+                      {!unavailable && saleMode !== "WHOLESALE" && defaultPriceFor(p) !== p.sellingPrice && <p className="text-xs text-gray-500"><span className="line-through">{formatTZS(p.sellingPrice)}</span> <span className="font-semibold text-emerald-700">{lang === "sw" ? "OFA" : "SALE"}</span></p>}
                         {!unavailable && saleMode === "WHOLESALE" && p.wholesalePrice == null && <p className="mt-0.5 text-[10px] text-amber-600">{t("sales.noWholesalePrice", lang)}</p>}
                         {!unavailable && p.wholesalePrice != null && p.wholesaleMinQty != null && <p className="mt-0.5 text-[10px] text-gray-400">{t("sales.wholesaleMinHint", lang).replace("{n}", String(p.wholesaleMinQty))}</p>}
                         {inCart && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-xs text-white">x{inCart.quantity}</span>}
@@ -1121,15 +1127,11 @@ export default function SalesPage() {
                             <p className="text-xs font-medium text-gray-800 truncate">{item.product.name}</p>
                             {variablePricesEnabled ? (
                               <div className="flex items-center gap-1">
-                                <input
-                                  type="number"
-                                  inputMode="numeric"
-                                  min={0}
-                                  step={1}
+                                <CurrencyInput
                                   title={lang === "sw" ? "Bei ya mauzo haya tu" : "Price for this sale only"}
                                   aria-label={`${lang === "sw" ? "Bei ya" : "Unit price for"} ${item.product.name}`}
                                   value={item.unitPrice}
-                                  onChange={(e) => updatePrice(item.product.id, Number(e.target.value))}
+                                  onChange={(value) => updatePrice(item.product.id, Number(value) || 0)}
                                   className="w-24 max-w-full border-b border-dashed border-gray-300 bg-transparent text-base font-bold text-brand-600 focus:outline-none sm:text-xs"
                                 />
                                 {item.unitPrice !== defaultPriceFor(item.product) && <button type="button" onClick={() => updatePrice(item.product.id, defaultPriceFor(item.product))} title={lang === "sw" ? "Rudisha bei ya kawaida" : "Reset listed price"} aria-label={`${lang === "sw" ? "Rudisha bei ya" : "Reset price for"} ${item.product.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center text-brand-700"><RotateCcw className="h-3.5 w-3.5" /></button>}
@@ -1203,7 +1205,7 @@ export default function SalesPage() {
                       <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
                         <label className="grid gap-1 text-sm font-medium text-gray-700">
                           <span>{lang === "sw" ? "Mteja ametoa (TZS)" : "Customer gave (TZS)"}</span>
-                          <input value={amountTendered} onChange={(e) => setAmountTendered(e.target.value)} type="number" min="0" inputMode="numeric" placeholder={lang === "sw" ? "Hiari" : "Optional"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                          <CurrencyInput value={amountTendered} onChange={setAmountTendered} placeholder={lang === "sw" ? "Hiari" : "Optional"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
                         </label>
                         {amountTendered && <p className={`rounded-lg px-3 py-2 text-sm font-bold ${cashShort ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{cashShort ? (lang === "sw" ? "Bado" : "Still needed") : (lang === "sw" ? "Chenji" : "Change")}: {formatTZS(Math.abs(changeDue))}</p>}
                       </div>

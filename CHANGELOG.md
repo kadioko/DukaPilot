@@ -26,8 +26,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added shop-scoped product SKU and barcode generation, EAN-13/UPC validation, label-only product names, camera scanning, and keyboard-wedge scanner controls for POS and stock counts.
 - Added a printer-independent product-label workflow: saved templates, 40 x 30 mm browser/PDF labels, multiple products/copies, print-job snapshots, and raw ZPL, TSPL, and ESC/POS output files for approved local transport.
 - Added label printing regression coverage for generated codes, raw-output sanitization, shop isolation, browser/PDF composition, and label selection on Inventory and Barcode management.
+- Added read-only Purchase Analytics over saved stock receipts, with timezone-aware periods, supplier/payment/search filters, paged receipt detail, landed-cost summaries, and contextual CSV export.
+- Added a stock history workspace with product/SKU/note search, movement/date filters, pagination, receipt context, and a clear distinction between adjustment set-to values and current on-hand stock.
+- Added owner-managed scheduled retail promotions that apply to POS/catalog during a configured local-time window without rewriting wholesale prices or historical transactions.
+- Added staff login removal after deactivation; credentials and phone assignment are removed while historical sales and shift records remain auditable.
+- Added shop-private supplier records alongside the shared supplier directory, with shop-scoped visibility and edit ownership.
 
 ### Changed
+
+- Updated merchant, owner-report, staff, catalog, operations, and regression-test documentation for purchase analytics, stock history, private suppliers, scheduled offers, staff-login removal, and grouped TZS input. These workspace changes remain unreleased until the matching code and required migration are deployed.
 
 - Fixed the production PostgreSQL wallet constraint so atomic Merchant Balance subscription payments can be recorded as `SUBSCRIPTION` transactions, and added database-level regression coverage.
 - Prepared Merchant Balance for all merchant owners by making an empty pilot allowlist the documented normal production setting while retaining the global emergency stop and optional incident allowlist.

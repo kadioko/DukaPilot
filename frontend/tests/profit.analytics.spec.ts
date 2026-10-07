@@ -1,12 +1,21 @@
 import { expect, test } from "@playwright/test";
 
 test("owner Analytics shows the requested clickable metrics and preserves the detailed owner report", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => window.localStorage.setItem("dukapilot_token", "test-owner-token"));
   await page.route("**/*api/auth/me", (route) => route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" }, features: { exports: true } } } }));
   await page.route("**/*api/subscription/status", (route) => route.fulfill({ json: { status: "active", daysLeft: 30 } }));
   await page.route("**/*api/products/low-stock*", (route) => route.fulfill({ json: { products: [] } }));
   await page.route("**/*api/notifications", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
+  await page.route("**/*api/push/preferences", (route) => route.fulfill({ json: { preferences: { lowStock: false, debtDue: false, subscriptionExpiry: false, dailyAssistant: false, privatePreview: true }, subscriptions: [], pushConfigured: false } }));
+  await page.route("**/*api/dashboard/purchases*", (route) => route.fulfill({ json: {
+    period: "today", from: "2026-10-02T00:00:00.000Z", to: "2026-10-02T08:00:00.000Z",
+    summary: { receiptCount: 2, productCost: 60000, transportCost: 3000, otherCost: 1000, landedCost: 64000, estimatedReceiptCount: 0 },
+    paymentBreakdown: [{ paymentMethod: "CASH", receiptCount: 2, amount: 64000 }],
+    suppliers: [{ id: "supplier-1", name: "Mkulima Supplies", receiptCount: 1, amount: 50000 }, { id: "__unassigned__", name: "No supplier", receiptCount: 1, amount: 14000 }],
+    supplierOptions: [{ id: "__unassigned__", name: "No supplier", receiptCount: 1 }], products: [], receipts: [{ id: "receipt-1", receivedAt: "2026-10-02T07:00:00.000Z", invoiceNumber: null, paymentMethod: "CASH", totalProductCost: 60000, transportCost: 3000, otherCost: 1000, totalLandedCost: 64000, estimatedAllocation: false, supplier: null, items: [{ id: "line-1", quantity: 4, landedUnitCost: 16000, product: { id: "feed", name: "Layer feed", unit: "kg" } }] }], pagination: { page: 1, pageSize: 25, total: 2, totalPages: 1 },
+  } }));
   await page.route("**/*api/dashboard/profit*", (route) => route.fulfill({ json: {
     period: "today", from: "2026-10-02T00:00:00.000Z", to: "2026-10-02T08:00:00.000Z", compareFrom: null, compareTo: null, group: "hour",
     summary: { salesRevenue: 100000, salesReturns: 0, netSalesRevenue: 100000, cashCollected: 80000, refunds: 0, netCashCollected: 80000, creditSales: 20000, debtReductions: 0, netCreditSales: 20000, costOfGoodsSold: 60000, grossProfit: 30000, grossProfitMargin: 50, expenses: 5000, netProfit: 25000, salesCount: 4, unitsSold: 12, missingCostSalesRevenue: 10000, knownCostRevenue: 90000, costComplete: false },
@@ -38,6 +47,17 @@ test("owner Analytics shows the requested clickable metrics and preserves the de
   await expect(page.getByText("Stock with no sale in 30 days")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Production costs and inputs" })).toBeVisible();
   await expect(page.getByText("37.5 kg", { exact: true })).toBeVisible();
+  const purchases = page.getByRole("link", { name: /Purchases:/ });
+  await expect(purchases).toContainText("64,000");
+  await purchases.click();
+  await expect(page.getByRole("heading", { name: "Purchases", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Today", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('select[aria-label="Supplier"] option[value="__unassigned__"]')).toHaveText("No supplier");
+  await expect(page.locator("details summary strong").first()).toHaveText("No supplier");
+  const purchasesDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "CSV" }).click();
+  expect((await purchasesDownload).suggestedFilename()).toContain("dukapilot-purchases-today");
+  await page.goto("/analytics");
   await page.getByRole("link", { name: /Top supplier:/ }).click();
   await expect(page).toHaveURL(/\/analytics\/top-suppliers/);
   await expect(page.getByRole("heading", { name: "Top suppliers" })).toBeVisible();

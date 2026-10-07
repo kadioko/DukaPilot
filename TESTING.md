@@ -33,9 +33,13 @@ npm run build
 
 ## Migration Gate
 
-Railway must apply every committed migration through
-`20260928001000_print_bridge_and_label_profiles` before the matching frontend
-is considered fully deployed. Verify:
+Railway must apply every migration required by the exact release commit before
+the matching frontend is considered fully deployed. The current workspace
+includes scheduled product promotions migration
+`20261006001000_scheduled_product_promotions`; it must be committed and applied
+before those fields are used in production. Purchase Analytics and Stock
+History read existing receipt and movement tables and need no schema migration.
+Verify:
 
 - staff phone identities are unique;
 - staff language is stored per staff member;
@@ -55,6 +59,12 @@ is considered fully deployed. Verify:
 - Label templates, active printer profiles, and print-job history are readable only by the same active shop with Stock permission. Inactive profiles cannot prepare a job.
 - Browser/PDF label jobs print from the immutable product/template snapshot; downloaded ZPL, TSPL, EPL, and ESC/POS files are never sent from Railway to merchant hardware. The loopback bridge may send validated raw commands only from the merchant computer.
 - A custom label has at most one barcode field. A stock-only staff session cannot view, create, print, or download a wholesale-price label.
+- Purchase Analytics is scoped to the active shop/branch and requires Reports permission; it counts saved receipts by received date (including receipts without a supplier), not draft orders. Verify month/custom ranges, supplier/payment/search filters, receipt pagination, CSV metadata, and the 10,000-row export cap.
+- Purchase receiving updates inventory and landed cost once. Confirm the same receipt is not also recorded as an operating expense; purchases become COGS as received goods sell.
+- Stock history search/date/type filters paginate movements and never mutate stock. Verify adjustments show a set-to quantity, current stock is labeled as current, and receipt context is shown only for linked movements.
+- Scheduled promotions are owner-only, require a price below retail plus both start and end times, affect retail POS/catalog only during the interval, do not alter wholesale or historical sale/order prices, and are unavailable to internal-use products.
+- Deleting a staff login requires prior deactivation and confirmation; verify the phone becomes reusable while historical sales and shift attribution remain intact.
+- Currency entry accepts grouped TZS such as `1,000` but submits whole-number amounts; test typing, editing, validation, and mobile layouts.
 
 ## High-Risk Regression Checks
 

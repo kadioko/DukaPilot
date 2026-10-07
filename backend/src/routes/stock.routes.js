@@ -10,6 +10,7 @@ router.use(requirePermission("canManageStock"));
 router.use(requireActiveSubscription);
 
 router.post("/adjust", stockAdjustValidation, ctrl.adjust);
+router.get("/movements", ctrl.history);
 router.get("/:productId/movements", stockMovementsValidation, ctrl.movements);
 
 module.exports = router;

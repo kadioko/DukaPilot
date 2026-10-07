@@ -13,6 +13,7 @@ Owner reports are available to the merchant owner and staff explicitly granted t
 - **Net profit (known costs)** is known-cost gross profit minus operating expenses for the selected period. It remains incomplete while uncosted sale revenue is present; it is not a cash-flow or tax statement.
 - **Receivables aging** is a current snapshot of open/partial debts grouped by overdue, due in the next seven days, or missing due date. It is not reconstructed as-of the selected report dates.
 - **Branch receivables** is also a current balance snapshot. Branch revenue, profit, and expenses use the selected range.
+- **Purchases** in Analytics is a separate receipt-based view of stock received in the selected range. It includes landed product, transport, and other costs, including receipts without a supplier; it is not sales revenue, cash paid, supplier-credit outstanding, or an operating expense. See [Purchase Analytics](./PURCHASE_ANALYTICS.md).
 
 ## Ranges and comparisons
 
@@ -27,6 +28,7 @@ The Branch performance view applies one date range to all branches, compares com
 3. Follow up overdue receivables; check un-dated debts and add due dates where appropriate.
 4. Review product profit and stock on hand, then investigate items with stock and no completed sale for 30 days.
 5. Use CSV exports for analysis only after checking the date range and metric definitions above.
+6. Use Analytics > Purchases to answer how much stock was received. Use Daily Close for cash entering or leaving a cash drawer; do not infer supplier balances from the purchase report.
 
 ## Demo data caution
 

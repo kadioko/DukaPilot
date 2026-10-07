@@ -272,6 +272,31 @@ test("internal-use feed is kept in stock without a selling price or catalog list
   assert.equal(createdData.currentStock, 3);
 });
 
+test("owner can create a scheduled promotion with the product while staff cannot set one", async () => {
+  let createdData;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    $transaction: async (work) => work({
+      product: { create: async ({ data }) => { createdData = data; return { id: "promo-product", ...data }; } },
+      stockMovement: { create: async () => {} },
+    }),
+  });
+  const offer = {
+    promotionPrice: 4200,
+    promotionStartsAt: "2026-10-06T10:00:00.000Z",
+    promotionEndsAt: "2026-10-07T10:00:00.000Z",
+  };
+  const ownerRes = createRes();
+  await ctrl.create({ user: { userId: "owner-1" }, body: { name: "Rice", buyingPrice: 2500, sellingPrice: 5000, ...offer } }, ownerRes);
+  assert.equal(ownerRes.statusCode, 201);
+  assert.equal(createdData.promotionPrice, 4200);
+  assert.ok(createdData.promotionStartsAt instanceof Date);
+
+  const staffRes = createRes();
+  await ctrl.create({ user: { userId: "staff-1", staffId: "staff-1", shopId: "shop-1", role: "MERCHANT" }, body: { name: "Rice", buyingPrice: 2500, sellingPrice: 5000, ...offer } }, staffRes);
+  assert.equal(staffRes.statusCode, 403);
+});
+
 test("product creation cannot attach a supplier private to another shop", async () => {
   let transactionStarted = false;
   const prismaMock = {

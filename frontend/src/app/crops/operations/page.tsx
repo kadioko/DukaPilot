@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarCheck2, CloudSun, Droplets, LoaderCircle, PackagePlus, Sprout, Target, Tractor, Wheat } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
@@ -193,7 +194,7 @@ export default function CropFieldPlanPage() {
 }
 
 function SectionTitle({ Icon, title, text }: { Icon: typeof Sprout; title: string; text: string }) { return <div className="flex items-start gap-3"><Icon className="mt-0.5 h-5 w-5 text-brand-700" /><div><h2 className="font-bold text-gray-950">{title}</h2><p className="mt-1 text-sm leading-6 text-gray-600">{text}</p></div></div>; }
-function Field({ label, value, onChange, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) { return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} type={type} required={required} className="min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" /></label>; }
+function Field({ label, value, onChange, type = "text", required }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) { const className = "min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"; const isMoney = type === "number" && /TZS|cost|revenue|bei|gharama|mapato/i.test(label); return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span>{isMoney ? <CurrencyInput value={value} onChange={onChange} required={required} className={className} /> : <input value={value} onChange={(event) => onChange(event.target.value)} type={type} required={required} className={className} />}</label>; }
 function Select({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) { return <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="min-h-11 border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500">{children}</select></label>; }
 function CycleSelect({ sw, cycles, value, onChange }: { sw: boolean; cycles: Cycle[]; value: string; onChange: (value: string) => void }) { return <Select label={sw ? "Msimu wa zao" : "Crop cycle"} value={value} onChange={onChange}><option value="">{sw ? "Chagua msimu" : "Choose cycle"}</option>{cycles.map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.cropName} - {cycle.plot.name}</option>)}</Select>; }
 function ListCard({ title, children }: { title: string; children: React.ReactNode }) { return <section className="border border-gray-200 bg-white p-5"><h2 className="font-bold text-gray-950">{title}</h2><div className="mt-3">{children}</div></section>; }

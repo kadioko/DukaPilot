@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import WhatsAppCoexistencePanel from "@/components/admin/WhatsAppCoexistencePanel";
 import AdminSupportWorkspace from "@/components/admin/AdminSupportWorkspace";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
@@ -2311,12 +2312,9 @@ export default function AdminPage() {
                           placeholder="Months"
                           className="rounded-lg border border-gray-300 px-2 py-2 text-xs sm:col-span-1"
                         />
-                        <input
+                        <CurrencyInput
                           value={draft.amount}
-                          onChange={(e) => updateBillingDraft(shop, { amount: e.target.value })}
-                          type="number"
-                          min="1"
-                          inputMode="numeric"
+                          onChange={(value) => updateBillingDraft(shop, { amount: value })}
                           placeholder="Amount"
                           className="rounded-lg border border-gray-300 px-2 py-2 text-xs sm:col-span-1"
                         />

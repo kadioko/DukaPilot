@@ -81,8 +81,8 @@ export default function StaffPage() {
 
   async function removeStaff(member: StaffMember) {
     const confirmed = window.confirm(lang === "sw"
-      ? `Ondoa akaunti ya kuingia ya ${member.name}? Hataweza kuingia tena, lakini historia ya mauzo na shift itabaki. Namba ya simu itapatikana kwa staff mwingine.`
-      : `Remove ${member.name}'s staff login? They will no longer be able to sign in. Their sales and shift history will remain, and their phone number can be assigned to another staff member.`);
+      ? `Futa akaunti ya kuingia ya ${member.name}? Hataweza kuingia tena. Historia ya mauzo na shift itahifadhiwa kwa kumbukumbu, na namba itapatikana kwa staff mwingine.`
+      : `Delete ${member.name}'s staff login? They will no longer be able to sign in. Sales and shift history will be retained for records, and their phone number will become available for another staff member.`);
     if (!confirmed) return;
     setActionError("");
     try {
@@ -173,7 +173,7 @@ export default function StaffPage() {
                   {!member.isActive && !member.phone ? <span className="rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600">{lang === "sw" ? "Akaunti imeondolewa" : "Login removed"}</span> : <button onClick={() => togglePermission(member, "isActive")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700">
                     {member.isActive ? (lang === "sw" ? "Hai" : "Active") : (lang === "sw" ? "Imezimwa" : "Inactive")}
                   </button>}
-                  {!member.isActive && member.phone && <button type="button" onClick={() => removeStaff(member)} className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">{lang === "sw" ? "Ondoa staff" : "Remove staff"}</button>}
+                  {!member.isActive && member.phone && <button type="button" onClick={() => removeStaff(member)} aria-label={lang === "sw" ? `Futa akaunti ya kuingia ya ${member.name}` : `Delete ${member.name}'s staff login`} className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">{lang === "sw" ? "Futa akaunti ya kuingia" : "Delete login"}</button>}
                 </div>
               </div>
               {member.isActive || member.phone ? <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">

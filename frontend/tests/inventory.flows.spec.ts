@@ -424,6 +424,36 @@ test("stock staff can load inventory without an admin-access warning", async ({ 
   await expect(page.getByText("Platform admin access is not available to staff sessions")).not.toBeVisible();
 });
 
+test("stock staff without Reports cannot open purchase receiving or supplier orders", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("dukapilot_token", "playwright-stock-staff-token");
+  });
+  await page.route("**/*api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        user: {
+          name: "Stock Clerk",
+          role: "MERCHANT",
+          language: "en",
+          shop: { name: "Test Shop" },
+          staff: { role: "STOCK_CLERK", permissions: { canSell: false, canManageStock: true, canManageFarm: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canManageCashSessions: false, canViewQuotations: false } },
+        },
+      }),
+    });
+  });
+
+  await page.goto("/receiving");
+
+  await expect(page).toHaveURL(/\/inventory$/);
+  await expect(page.getByRole("link", { name: "Receive stock" })).toHaveCount(0);
+
+  await page.goto("/orders");
+  await expect(page).toHaveURL(/\/inventory$/);
+  await expect(page.locator('a[href="/orders"]')).toHaveCount(0);
+});
+
 test("inventory filters stock status, supplier, and expiry without hiding other products", async ({ page }) => {
   const suppliers = [
     { id: "supplier-1", name: "Jumla Traders", phone: "+255700000001" },

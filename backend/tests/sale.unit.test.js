@@ -219,7 +219,7 @@ test("sale create calculates total and profit before persisting transaction", as
     },
     product: {
       findMany: async () => [
-        { id: "prod-1", name: "Soap", unit: "pcs", currentStock: 8, sellingPrice: 1500, buyingPrice: 1000 },
+        { id: "prod-1", name: "Soap", unit: "pcs", currentStock: 8, sellingPrice: 1500, promotionPrice: 1400, promotionStartsAt: new Date(Date.now() - 60_000), promotionEndsAt: new Date(Date.now() + 60_000), buyingPrice: 1000 },
         { id: "prod-2", name: "Sugar", unit: "kg", currentStock: 4, sellingPrice: 3200, buyingPrice: 2800 },
       ],
     },
@@ -242,11 +242,13 @@ test("sale create calculates total and profit before persisting transaction", as
   await ctrl.create(req, res);
 
   assert.equal(res.statusCode, 201);
-  assert.equal(capturedSaleCreate.totalAmount, 6500);
-  assert.equal(capturedSaleCreate.profit, 1700);
+  assert.equal(capturedSaleCreate.totalAmount, 6300);
+  assert.equal(capturedSaleCreate.profit, 1500);
   assert.equal(capturedSaleCreate.paymentMethod, "CASH");
   assert.equal(capturedSaleCreate.items.create[1].listedUnitPrice, 3200);
   assert.equal(capturedSaleCreate.items.create[1].unitPrice, 3500);
+  assert.equal(capturedSaleCreate.items.create[0].listedUnitPrice, 1400);
+  assert.equal(capturedSaleCreate.items.create[0].unitPrice, 1400);
   assert.equal(capturedSaleCreate.createdByStaffId, "cashier-1");
   assert.equal(capturedSaleCreate.receiptNumber, 41);
   assert.equal(stockUpdates, 2);

@@ -52,7 +52,7 @@ test("debt search stays focused through loading and a saved M-Pesa payment remai
   await expect(page.getByRole("button", { name: "Record" })).toBeVisible();
   await page.getByRole("combobox", { name: "Payment method" }).selectOption("MPESA");
   await page.getByRole("textbox", { name: "Payment reference" }).fill("M123");
-  await page.getByRole("spinbutton", { name: /amount paid for debt/i }).fill("3000");
+  await page.getByRole("textbox", { name: /amount paid for debt/i }).fill("3000");
   await page.getByRole("button", { name: "Record" }).click();
   await expect.poll(() => mock.submittedPayment()).toMatchObject({ amount: 3000, paymentMethod: "MPESA", paymentRef: "M123" });
   await expect(page.getByText("TZS 2,000").first()).toBeVisible();

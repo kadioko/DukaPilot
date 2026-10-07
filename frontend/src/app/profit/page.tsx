@@ -28,6 +28,7 @@ type Analytics = {
   salesByStaff?: Array<{ id: string | null; name: string; salesCount: number; amount: number; unitsSold: number }>;
   chart: Array<{ label: string; revenue: number; costOfGoodsSold: number; grossProfit: number; grossProfitMargin: number | null; knownCostRevenue: number; salesCount: number; unitsSold: number; expenses: number; netProfit: number }>;
 };
+type PurchaseSummary = { landedCost: number; receiptCount: number };
 
 const dateValue = (offset = 0) => {
   const date = new Date();
@@ -59,6 +60,7 @@ export default function ProfitPage() {
   const [from, setFrom] = useState(() => dateValue(-29));
   const [to, setTo] = useState(() => dateValue());
   const [data, setData] = useState<Analytics | null>(null);
+  const [purchaseSummary, setPurchaseSummary] = useState<PurchaseSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -71,12 +73,17 @@ export default function ProfitPage() {
   useEffect(() => {
     const params = new URLSearchParams({ period });
     if (period === "custom") { params.set("from", from); params.set("to", to); }
+    let active = true;
     setLoading(true);
     setError("");
     api.get<Analytics>(`/dashboard/profit?${params}`, lang)
-      .then(setData)
-      .catch((value: unknown) => setError(value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia uchambuzi." : "Could not load analytics.")))
-      .finally(() => setLoading(false));
+      .then((result) => { if (active) setData(result); })
+      .catch((value: unknown) => { if (active) setError(value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia uchambuzi." : "Could not load analytics.")); })
+      .finally(() => { if (active) setLoading(false); });
+    api.get<{ summary: { landedCost: number; receiptCount: number } }>(`/dashboard/purchases?${params}`, lang)
+      .then((result) => { if (active) setPurchaseSummary(result.summary); })
+      .catch(() => { if (active) setPurchaseSummary(null); });
+    return () => { active = false; };
   }, [period, from, to, lang]);
 
   const detailQuery = new URLSearchParams({ period });
@@ -99,6 +106,7 @@ export default function ProfitPage() {
     { key: "sales-by-staff", label: lang === "sw" ? "Mauzo kwa mfanyakazi" : "Sales by staff", value: topStaff?.name || "–", note: topStaff ? topStaff.salesCount + " · " + formatTZS(topStaff.amount) : (lang === "sw" ? "Hakuna mauzo" : "No sales") },
     { key: "gross-margin", label: lang === "sw" ? "Asilimia ya faida ghafi" : "Gross profit margin", value: data?.summary.knownCostRevenue ? String(data.summary.grossProfitMargin) + "%" : "–", note: lang === "sw" ? "Kwa mauzo yenye gharama" : "On costed sales" },
     { key: "units-sold", label: lang === "sw" ? "Vipande vilivyouzwa" : "Units sold", value: data ? String(data.summary.unitsSold) : "–", note: lang === "sw" ? "Ukiondoa vilivyorudishwa" : "Net of returned units" },
+    { key: "purchases", label: lang === "sw" ? "Manunuzi" : "Purchases", value: purchaseSummary ? formatTZS(purchaseSummary.landedCost) : "–", note: purchaseSummary ? `${purchaseSummary.receiptCount} ${lang === "sw" ? "risiti zilizopokelewa" : "receipts received"}` : (lang === "sw" ? "Fungua ripoti ya manunuzi" : "Open purchase report") },
   ];
 
   return <AppShell><div className="mx-auto max-w-6xl pb-20 lg:pb-6">
@@ -142,7 +150,7 @@ export default function ProfitPage() {
         const anchor = document.createElement("a"); anchor.href = url; anchor.download = `dukapilot-owner-report-${tanzaniaDate(data.from)}-to-${tanzaniaDate(data.to, true)}.csv`; anchor.click(); URL.revokeObjectURL(url);
       }} className="inline-flex min-h-10 items-center gap-2 border border-gray-300 bg-white px-3 font-semibold text-gray-700"><Download className="h-4 w-4" />{lang === "sw" ? "Pakua CSV" : "Export CSV"}</button></div>
       {data?.summary.missingCostSalesRevenue ? <p role="status" className="mb-3 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{lang === "sw" ? `Gharama haipo kwa mauzo halisi yenye thamani ya ${formatTZS(data.summary.missingCostSalesRevenue)}. Faida inayoonyeshwa inahusu bidhaa zenye gharama iliyorekodiwa pekee.` : `${formatTZS(data.summary.missingCostSalesRevenue)} in net sales has no recorded cost. Profit shown covers costed items only and is incomplete.`}</p> : null}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{keyMetrics.map((card) => <Link key={card.key} href={"/analytics/" + card.key + "?" + detailQuery.toString()} aria-label={card.label + ": " + card.value} className="group relative min-h-28 border border-gray-200 bg-white p-4 pr-10 transition-colors hover:border-brand-500 hover:bg-emerald-50/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"><span className="text-xs font-semibold text-gray-600">{card.label}</span><span className="mt-2 block break-words text-lg font-bold leading-tight text-gray-950">{card.value}</span><span className="mt-1 block text-xs text-gray-500">{card.note}</span><ArrowRight aria-hidden="true" className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-transform group-hover:translate-x-1" /></Link>)}</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{keyMetrics.map((card) => <Link key={card.key} href={card.key === "purchases" ? "/analytics/purchases?" + detailQuery.toString() : "/analytics/" + card.key + "?" + detailQuery.toString()} aria-label={card.label + ": " + card.value} className="group relative min-h-28 border border-gray-200 bg-white p-4 pr-10 transition-colors hover:border-brand-500 hover:bg-emerald-50/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"><span className="text-xs font-semibold text-gray-600">{card.label}</span><span className="mt-2 block break-words text-lg font-bold leading-tight text-gray-950">{card.value}</span><span className="mt-1 block text-xs text-gray-500">{card.note}</span><ArrowRight aria-hidden="true" className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-transform group-hover:translate-x-1" /></Link>)}</div>
       <section className="mt-5 border border-emerald-200 bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold text-gray-950">{lang === "sw" ? "Gharama na pembejeo za uzalishaji" : "Production costs and inputs"}</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-gray-600">{lang === "sw" ? "Hizi ni gharama za batches zilizorekodiwa kwenye kipindi hiki. Gharama inaingia kwenye gharama ya stock iliyozalishwa na hutambuliwa kama COGS bidhaa inapouzwa; haijapunguzwa tena hapa ili kuepuka kuhesabu mara mbili." : "These are costs from batches recorded in this period. They are capitalized into produced stock and recognized as COGS when the output sells; they are not subtracted again here, avoiding double counting."}</p></div><a href="/farm" className="text-sm font-semibold text-brand-700">{lang === "sw" ? "Fungua uzalishaji" : "Open production"}</a></div>
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
