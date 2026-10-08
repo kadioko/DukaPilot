@@ -952,6 +952,8 @@ model Product {
   outgoingTransfers        BranchTransfer[]        @relation("TransferSourceProduct")
   incomingTransfers        BranchTransfer[]        @relation("TransferTargetProduct")
   id                       String                  @id @default(cuid())
+  createRequestId          String?
+  createRequestHash        String?
   name                     String
   labelName                String?
   sku                      String?
@@ -1006,6 +1008,7 @@ model Product {
   updatedAt                DateTime                @updatedAt
 
   @@unique([shopId, supplierCatalogProductId])
+  @@unique([shopId, createRequestId])
   @@unique([shopId, barcode])
   @@unique([shopId, manufacturerBarcode])
   @@unique([shopId, internalBarcode])

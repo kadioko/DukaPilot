@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { Prisma } = require("@prisma/client");
+const crypto = require("node:crypto");
 const { parse } = require("csv-parse/sync");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { inferBarcodeType, validateBarcode, validateSku, nextInternalBarcode, nextInternalSku } = require("../lib/barcode");
@@ -9,6 +10,28 @@ const { hasPromotionInput, normalizePromotion } = require("../lib/productPricing
 
 const PRODUCT_IMPORT_MAX_ROWS = 200;
 const PRODUCT_IMPORT_MAX_BYTES = 500_000;
+
+function stableJson(value) {
+  if (Array.isArray(value)) return value.map(stableJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableJson(value[key])]));
+  }
+  return value;
+}
+
+function productCreateHash(body) {
+  const payload = { ...body };
+  delete payload.createRequestId;
+  return crypto.createHash("sha256").update(JSON.stringify(stableJson(payload))).digest("hex");
+}
+
+function validCreateRequestId(value) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function idempotencyConflict() {
+  return Object.assign(new Error("This product save key was already used with different details. Check the inventory before starting a new product save."), { status: 409, code: "PRODUCT_CREATE_KEY_CONFLICT" });
+}
 const PRODUCT_IMPORT_COLUMNS = {
   name: "name",
   labelname: "labelName",
@@ -54,9 +77,12 @@ function canManageCatalogVisibility(req) {
 }
 
 function redactProduct(product, req) {
+  const safeProduct = { ...product };
+  delete safeProduct.createRequestId;
+  delete safeProduct.createRequestHash;
   return canViewFinancials(req)
-    ? product
-    : { ...product, buyingPrice: null, wholesalePrice: null, wholesaleMinQty: null };
+    ? safeProduct
+    : { ...safeProduct, buyingPrice: null, wholesalePrice: null, wholesaleMinQty: null };
 }
 
 function normalizedUnit(value) {
@@ -388,6 +414,21 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const createRequestId = req.body.createRequestId;
+  if (createRequestId !== undefined && !validCreateRequestId(createRequestId)) {
+    return res.status(400).json({ error: "Invalid product save retry key" });
+  }
+  const createRequestHash = createRequestId ? productCreateHash(req.body) : null;
+  if (createRequestId) {
+    const existing = await prisma.product.findFirst({
+      where: { shopId, createRequestId },
+      include: { supplier: { select: { id: true, name: true, phone: true } } },
+    });
+    if (existing) {
+      if (existing.createRequestHash !== createRequestHash) throw idempotencyConflict();
+      return res.status(201).json({ product: redactProduct(existing, req) });
+    }
+  }
   const { name, labelName, sku: rawSku, unit, buyingPrice, sellingPrice, wholesalePrice, wholesaleMinQty, currentStock, minimumStock, supplierId, expiryDate, doesNotExpire, isCatalogVisible, isInternalUse = false, barcode: rawBarcode, manufacturerBarcode: rawManufacturerBarcode, barcodeType, generateBarcode, generateSku } = req.body;
 
   if (!name || buyingPrice == null || (!isInternalUse && sellingPrice == null)) {
@@ -426,62 +467,97 @@ const create = asyncHandler(async (req, res) => {
     const supplier = await findVisibleSupplier(prisma, String(supplierId), shopId, { select: { id: true } });
     if (!supplier) return res.status(400).json({ error: "Supplier not found in this shop" });
   }
-  const product = await prisma.$transaction(async (tx) => {
-    const manufacturerBarcode = checked.value;
-    const internalBarcode = generateBarcode ? await nextInternalBarcode(tx, shopId) : null;
-    const barcode = internalBarcode || manufacturerBarcode || null;
-    const sku = generateSku ? await nextInternalSku(tx, shopId) : checkedSku.value;
-    if (barcode || manufacturerBarcode || internalBarcode) {
-      const duplicate = await findBarcodeDuplicate(tx, shopId, [barcode, manufacturerBarcode, internalBarcode]);
-      if (duplicate) throw Object.assign(new Error("This barcode is already used by another product."), { status: 409, code: "BARCODE_DUPLICATE" });
-    }
-    if (sku) {
-      const duplicateSku = await tx.product.findFirst({ where: { shopId, sku }, select: { id: true } });
-      if (duplicateSku) throw Object.assign(new Error("This SKU is already used by another product."), { status: 409, code: "SKU_DUPLICATE" });
-    }
-    const created = await tx.product.create({
-      data: {
-      name,
-      labelName: normalizedLabelName(labelName),
-      sku,
-      unit: productUnit,
-      buyingPrice: Number(buyingPrice),
-      sellingPrice: retailPrice,
-      ...promotion.data,
-      wholesalePrice: parsedWholesalePrice,
-      wholesaleMinQty: wholesaleMinQty != null && wholesaleMinQty !== "" ? Number(wholesaleMinQty) : null,
-      currentStock: initialStock,
-      minimumStock: minimumStock === undefined || minimumStock === "" ? 5 : Number(minimumStock),
-      shopId,
-      supplierId: supplierId || null,
-      doesNotExpire: Boolean(doesNotExpire),
-      isCatalogVisible: !isInternalUse && isCatalogVisible !== false,
-      isInternalUse,
-      expiryDate: doesNotExpire ? null : (expiryDate ? new Date(expiryDate) : null),
-      barcode,
-      barcodeType: barcode ? inferBarcodeType(barcode, internalBarcode ? "INTERNAL" : barcodeType) : null,
-      manufacturerBarcode,
-      internalBarcode,
-      barcodeGenerated: Boolean(internalBarcode),
-      barcodeCreatedAt: barcode ? new Date() : null,
-      barcodeUpdatedAt: barcode ? new Date() : null,
-    },
-      include: { supplier: { select: { id: true, name: true, phone: true } } },
-    });
-
-    // The product and its opening balance must commit together.
-    if (created.currentStock > 0) {
-      await tx.stockMovement.create({
+  let product;
+  try {
+    product = await prisma.$transaction(async (tx) => {
+      if (createRequestId) {
+        const prior = await tx.product.findFirst({
+          where: { shopId, createRequestId },
+          include: { supplier: { select: { id: true, name: true, phone: true } } },
+        });
+        if (prior) {
+          if (prior.createRequestHash !== createRequestHash) throw idempotencyConflict();
+          return prior;
+        }
+      }
+      const manufacturerBarcode = checked.value;
+      const internalBarcode = generateBarcode ? await nextInternalBarcode(tx, shopId) : null;
+      const barcode = internalBarcode || manufacturerBarcode || null;
+      const sku = generateSku ? await nextInternalSku(tx, shopId) : checkedSku.value;
+      if (barcode || manufacturerBarcode || internalBarcode) {
+        const duplicate = await findBarcodeDuplicate(tx, shopId, [barcode, manufacturerBarcode, internalBarcode]);
+        if (duplicate) throw Object.assign(new Error("This barcode is already used by another product."), { status: 409, code: "BARCODE_DUPLICATE" });
+      }
+      if (sku) {
+        const duplicateSku = await tx.product.findFirst({ where: { shopId, sku }, select: { id: true } });
+        if (duplicateSku) throw Object.assign(new Error("This SKU is already used by another product."), { status: 409, code: "SKU_DUPLICATE" });
+      }
+      const created = await tx.product.create({
         data: {
-          type: "IN",
-          quantity: created.currentStock,
-          note: "Initial stock",
-          productId: created.id,
+          createRequestId: createRequestId || null,
+          createRequestHash,
+          name,
+          labelName: normalizedLabelName(labelName),
+          sku,
+          unit: productUnit,
+          buyingPrice: Number(buyingPrice),
+          sellingPrice: retailPrice,
+          ...promotion.data,
+          wholesalePrice: parsedWholesalePrice,
+          wholesaleMinQty: wholesaleMinQty != null && wholesaleMinQty !== "" ? Number(wholesaleMinQty) : null,
+          currentStock: initialStock,
+          minimumStock: minimumStock === undefined || minimumStock === "" ? 5 : Number(minimumStock),
+          shopId,
+          supplierId: supplierId || null,
+          doesNotExpire: Boolean(doesNotExpire),
+          isCatalogVisible: !isInternalUse && isCatalogVisible !== false,
+          isInternalUse,
+          expiryDate: doesNotExpire ? null : (expiryDate ? new Date(expiryDate) : null),
+          barcode,
+          barcodeType: barcode ? inferBarcodeType(barcode, internalBarcode ? "INTERNAL" : barcodeType) : null,
+          manufacturerBarcode,
+          internalBarcode,
+          barcodeGenerated: Boolean(internalBarcode),
+          barcodeCreatedAt: barcode ? new Date() : null,
+          barcodeUpdatedAt: barcode ? new Date() : null,
         },
+        include: { supplier: { select: { id: true, name: true, phone: true } } },
       });
+
+      // The product and its opening balance must commit together.
+      if (created.currentStock > 0) {
+        await tx.stockMovement.create({
+          data: {
+            type: "IN",
+            quantity: created.currentStock,
+            note: "Initial stock",
+            productId: created.id,
+          },
+        });
+      }
+      return created;
+    });
+  } catch (error) {
+    if (createRequestId && error?.code === "P2002") {
+      const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(" ") : String(error?.meta?.target || "");
+      if (target.includes("createRequestId")) {
+        const existing = await prisma.product.findFirst({
+          where: { shopId, createRequestId },
+          include: { supplier: { select: { id: true, name: true, phone: true } } },
+        });
+        if (existing) {
+          if (existing.createRequestHash !== createRequestHash) throw idempotencyConflict();
+          product = existing;
+        } else {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    } else {
+      throw error;
     }
-    return created;
-  });
+  }
 
   res.status(201).json({ product: redactProduct(product, req) });
 });

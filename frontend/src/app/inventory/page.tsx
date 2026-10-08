@@ -156,6 +156,7 @@ export default function InventoryPage() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [actionMenuProductId, setActionMenuProductId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "",
@@ -169,6 +170,8 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const latestLoad = useRef(0);
   const mutationInFlight = useRef(false);
+  const createRequestId = useRef<string | null>(null);
+  const createPendingUncertain = useRef(false);
   const [canViewFinancials, setCanViewFinancials] = useState(true);
   const [canManageCatalog, setCanManageCatalog] = useState(false);
   const [isFoodBusiness, setIsFoodBusiness] = useState(false);
@@ -265,12 +268,26 @@ export default function InventoryPage() {
 
   function openAdd() {
     setEditProduct(null);
-    setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false });
-    setError("");
+    if (!createPendingUncertain.current) {
+      createRequestId.current = null;
+      setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false });
+    } else {
+      setError(lang === "sw"
+        ? "Kuna uhifadhi wa bidhaa ambao haujathibitishwa. Kamilisha au jaribu tena uhifadhi huo kabla ya kuanza bidhaa nyingine."
+        : "A product save is still unconfirmed. Complete or retry that save before starting another product.");
+    }
+    if (!createPendingUncertain.current) setError("");
     setShowForm(true);
   }
 
   function openEdit(p: Product) {
+    if (createPendingUncertain.current) {
+      setError(lang === "sw"
+        ? "Kuna uhifadhi wa bidhaa ambao haujathibitishwa. Thibitisha kwanza kabla ya kuhariri bidhaa nyingine."
+        : "A product save is still unconfirmed. Confirm it before editing another product.");
+      setShowForm(true);
+      return;
+    }
     setEditProduct(p);
     setForm({
       name: p.name, labelName: p.labelName || "", sku: p.sku || "", generateSku: false, unit: p.unit,
@@ -343,7 +360,11 @@ export default function InventoryPage() {
         barcodeType: form.barcodeType || undefined,
         generateBarcode: form.generateBarcode,
       };
-      const body = editProduct ? sharedBody : { ...sharedBody, currentStock: Number(form.currentStock) };
+      const body = editProduct ? sharedBody : {
+        ...sharedBody,
+        currentStock: Number(form.currentStock),
+        createRequestId: createRequestId.current || (createRequestId.current = crypto.randomUUID()),
+      };
       const response = editProduct
         ? await api.patch<{ product: Product }>(`/products/${editProduct.id}`, body)
         : await api.post<{ product: Product }>("/products", body);
@@ -351,12 +372,23 @@ export default function InventoryPage() {
         setProducts((current) => current.map((product) => product.id === editProduct.id ? response.product : product));
       } else {
         setProducts((current) => [response.product, ...current]);
+        createRequestId.current = null;
+        createPendingUncertain.current = false;
       }
       setShowForm(false);
       toast(editProduct ? (lang === "sw" ? "Bidhaa imebadilishwa." : "Product updated.") : (lang === "sw" ? "Bidhaa imeongezwa." : "Product added."), "success");
       await fetchProducts();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t("common.error", lang));
+      if (!editProduct) {
+        const uncertain = e instanceof ApiError && (e.code === "TIMEOUT" || e.code === "NETWORK" || (e.status || 0) >= 500);
+        createPendingUncertain.current = uncertain;
+        if (!uncertain) createRequestId.current = null;
+      }
+      setError(e instanceof ApiError && e.code === "TIMEOUT" && !editProduct
+        ? (lang === "sw"
+          ? "Muda wa kusubiri umeisha; huenda bidhaa imehifadhiwa. Usifungue bidhaa mpya. Bonyeza Hifadhi tena bila kubadilisha taarifa ili kuthibitisha au kukamilisha jaribio hili salama."
+          : "The request timed out; the product may already be saved. Don't start a new product entry. Press Save again without changing the details to safely confirm or complete this save.")
+        : e instanceof Error ? e.message : t("common.error", lang));
     } finally {
       setSaving(false);
       mutationInFlight.current = false;
@@ -417,13 +449,40 @@ export default function InventoryPage() {
     if (mutationInFlight.current) return;
     mutationInFlight.current = true;
     setSaving(true);
+    setDeleteError("");
     try {
       await api.delete(`/products/${deleteProduct.id}`, lang);
       setProducts((prev) => prev.filter((p) => p.id !== deleteProduct.id));
       setDeleteProduct(null);
       toast(t("inventory.deleted", lang), "success");
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : t("common.error", lang), "error");
+      const uncertain = e instanceof ApiError && ["NETWORK", "TIMEOUT"].includes(e.failureType || "");
+      if (uncertain) {
+        try {
+          const result = await api.get<{ product: Product }>(`/products/${deleteProduct.id}`, lang);
+          if (result.product.isActive === false) {
+            setProducts((prev) => prev.filter((p) => p.id !== deleteProduct.id));
+            setDeleteProduct(null);
+            toast(t("inventory.deleted", lang), "success");
+          } else {
+            setDeleteError(lang === "sw"
+              ? "Bidhaa bado ipo kwenye inventory. Unaweza kubonyeza Futa bidhaa tena; ombi hili ni salama kurudia."
+              : "The product is still in inventory. You can press Delete product again; this operation is safe to retry.");
+          }
+        } catch (checkError: unknown) {
+          if (checkError instanceof ApiError && checkError.status === 404) {
+            setProducts((prev) => prev.filter((p) => p.id !== deleteProduct.id));
+            setDeleteProduct(null);
+            toast(t("inventory.deleted", lang), "success");
+          } else {
+            setDeleteError(lang === "sw"
+              ? "Hatukuweza kuthibitisha kama bidhaa imefutwa. Dirisha limeachwa wazi; jaribu tena ukiwa na mtandao."
+              : "We couldn't confirm whether the product was deleted. This dialog is still open; retry when your connection is back.");
+          }
+        }
+      } else {
+        setDeleteError(e instanceof Error ? e.message : t("common.error", lang));
+      }
     } finally {
       setSaving(false);
       mutationInFlight.current = false;
@@ -930,7 +989,7 @@ export default function InventoryPage() {
 
       {/* Delete Product Confirmation */}
       {deleteProduct && (
-        <Modal title={t("inventory.deleteProduct", lang)} onClose={() => setDeleteProduct(null)}>
+        <Modal title={t("inventory.deleteProduct", lang)} onClose={() => { setDeleteProduct(null); setDeleteError(""); }}>
           <div className="space-y-4">
             <div className="rounded-xl border border-red-100 bg-red-50 p-4">
               <div className="flex gap-3">
@@ -949,9 +1008,10 @@ export default function InventoryPage() {
                 </div>
               </div>
             </div>
+            {deleteError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900">{deleteError}</p>}
             <div className="flex gap-2">
               <button
-                onClick={() => setDeleteProduct(null)}
+                onClick={() => { setDeleteProduct(null); setDeleteError(""); }}
                 className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-600"
               >
                 {t("common.cancel", lang)}

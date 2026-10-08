@@ -235,6 +235,89 @@ test("product creation commits opening stock and stock movement together", async
   assert.deepEqual(movements, [{ type: "IN", quantity: 12, note: "Initial stock", productId: "prod-1" }]);
 });
 
+test("product creation retry with the same key returns the original product and does not duplicate opening stock", async () => {
+  let savedProduct = null;
+  let productCreates = 0;
+  let movementCreates = 0;
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findFirst: async () => savedProduct },
+    $transaction: async (work) => work({
+      product: {
+        findFirst: async () => savedProduct,
+        create: async ({ data }) => {
+          productCreates += 1;
+          savedProduct = { id: "prod-idempotent", ...data, supplier: null };
+          return savedProduct;
+        },
+      },
+      stockMovement: { create: async () => { movementCreates += 1; } },
+    }),
+  };
+  const ctrl = loadController(prismaMock);
+  const req = {
+    user: { userId: "user-1" },
+    body: {
+      createRequestId: "aa90c06f-5aeb-4b07-9f41-1fa817c84c12",
+      name: "Rice", unit: "kg", buyingPrice: 2000, sellingPrice: 3000, currentStock: 12, minimumStock: 0,
+    },
+  };
+
+  const firstResponse = createRes();
+  await ctrl.create(req, firstResponse);
+  const retryResponse = createRes();
+  await ctrl.create(req, retryResponse);
+
+  assert.equal(firstResponse.payload.product.id, "prod-idempotent");
+  assert.equal(retryResponse.payload.product.id, "prod-idempotent");
+  assert.equal("createRequestId" in firstResponse.payload.product, false);
+  assert.equal("createRequestHash" in firstResponse.payload.product, false);
+  assert.equal(productCreates, 1);
+  assert.equal(movementCreates, 1);
+});
+
+test("product creation rejects reuse of a retry key with changed details", async () => {
+  const existing = { id: "prod-existing", createRequestHash: "original-hash", supplier: null };
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findFirst: async () => existing },
+  });
+  const res = createRes();
+  let forwardedError;
+  await ctrl.create({
+    user: { userId: "user-1" },
+    body: { createRequestId: "aa90c06f-5aeb-4b07-9f41-1fa817c84c12", name: "Changed name" },
+  }, res, (error) => { forwardedError = error; });
+
+  assert.equal(forwardedError.status, 409);
+  assert.equal(forwardedError.code, "PRODUCT_CREATE_KEY_CONFLICT");
+});
+
+test("repeating a soft product deletion is safe and returns success", async () => {
+  const product = { id: "prod-deleted", shopId: "shop-1", isActive: false };
+  let updates = 0;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: {
+      findFirst: async () => product,
+      update: async ({ data }) => {
+        updates += 1;
+        Object.assign(product, data);
+      },
+    },
+  });
+
+  const firstResponse = createRes();
+  await ctrl.remove({ user: { userId: "user-1" }, params: { id: product.id } }, firstResponse);
+  const retryResponse = createRes();
+  await ctrl.remove({ user: { userId: "user-1" }, params: { id: product.id } }, retryResponse);
+
+  assert.equal(firstResponse.statusCode, 200);
+  assert.equal(retryResponse.statusCode, 200);
+  assert.equal(product.isActive, false);
+  assert.equal(updates, 2);
+});
+
 test("product creation can start hidden from the public catalog", async () => {
   let createdData;
   const prismaMock = {

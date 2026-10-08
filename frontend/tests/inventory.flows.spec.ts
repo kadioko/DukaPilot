@@ -54,6 +54,7 @@ test("supplier orders still reports a real server failure after authentication",
 
 test("inventory supports add, edit, and stock adjustment flows", async ({ page }) => {
   const suppliers = [{ id: "sup-1", name: "Jumla Traders", phone: "+255700000001" }];
+  let productDeleteAttempts = 0;
   const products = [
     {
       id: "prod-1",
@@ -131,6 +132,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
 
     const body = JSON.parse(route.request().postData() || "{}");
     expect(body.isCatalogVisible).toBe(true);
+    expect(body.createRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     products.unshift({
       id: `prod-${products.length + 1}`,
       isActive: true,
@@ -146,6 +148,28 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   });
 
   await page.route("**/*api/products/*", async (route) => {
+    if (route.request().method() === "DELETE") {
+      productDeleteAttempts += 1;
+      if (productDeleteAttempts === 1) {
+        await route.abort("failed");
+        return;
+      }
+      const productId = route.request().url().split("/").pop();
+      const product = products.find((item) => item.id === productId);
+      if (product) product.isActive = false;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ message: "Product deactivated" }) });
+      return;
+    }
+    if (route.request().method() === "GET") {
+      const productId = route.request().url().split("/").pop();
+      const product = products.find((item) => item.id === productId);
+      if (!product) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ product }) });
+      return;
+    }
     if (route.request().method() !== "PATCH") {
       await route.fallback();
       return;
@@ -298,6 +322,14 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/^save$|^hifadhi$/i).click();
   await expect(page.getByText("DukaPilot has a temporary server problem. Please try again shortly.", { exact: true })).toBeVisible();
   await expect(page.getByText(/edit product|hariri bidhaa/i)).toBeVisible();
+  await page.getByRole("button", { name: /^cancel$|^ghairi$/i }).click();
+  await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
+  await page.getByRole("button", { name: /delete product|futa bidhaa/i }).click();
+  await page.getByRole("button", { name: /delete product|futa bidhaa/i }).last().click();
+  await expect(page.locator('p[role="alert"]')).toContainText(/product is still in inventory/i);
+  await page.getByRole("button", { name: /delete product|futa bidhaa/i }).last().click();
+  await expect(page.getByText("Product hidden from inventory.")).toBeVisible();
+  expect(productDeleteAttempts).toBe(2);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
