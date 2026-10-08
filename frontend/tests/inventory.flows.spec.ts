@@ -346,6 +346,46 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   expect(hasHorizontalOverflow).toBe(false);
 });
 
+test("inventory search debounces product requests and loads summary independently", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
+  const productQueries: string[] = [];
+  let summaryRequests = 0;
+
+  await page.route("**/*api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/auth/me")) {
+      return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" } } } });
+    }
+    if (url.pathname.endsWith("/products/summary")) {
+      summaryRequests += 1;
+      return route.fulfill({ json: { summary: { total: 1, lowStock: 0, outOfStock: 0, inStock: 1, expiringSoon: 0, expired: 0 } } });
+    }
+    if (url.pathname.endsWith("/products")) {
+      const search = url.searchParams.get("search") || "";
+      productQueries.push(search);
+      const products = search.toLowerCase().includes("rice")
+        ? [{ id: "rice-1", name: "Rice Flour", unit: "kg", currentStock: 4, minimumStock: 1, sellingPrice: 2000, isActive: true }]
+        : [];
+      return route.fulfill({ json: { products, pagination: { page: 1, limit: 50, total: products.length, totalPages: products.length ? 1 : 0 } } });
+    }
+    if (url.pathname.endsWith("/suppliers")) return route.fulfill({ json: { suppliers: [] } });
+    if (url.pathname.endsWith("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    if (url.pathname.endsWith("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/inventory");
+  await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
+  await page.waitForTimeout(400);
+  const initialSummaryRequests = summaryRequests;
+  const search = page.getByRole("textbox", { name: "Search products" });
+  await search.fill("rice");
+  await expect(page.getByText("Rice Flour")).toBeVisible();
+  expect(productQueries.filter((value) => value === "rice")).toHaveLength(1);
+  expect(initialSummaryRequests).toBeGreaterThan(0);
+  expect(summaryRequests).toBe(initialSummaryRequests);
+});
+
 test("inventory shows the real total and lets merchants reach later product pages", async ({ page }) => {
   const products = Array.from({ length: 101 }, (_, index) => ({
     id: `prod-${index + 1}`,

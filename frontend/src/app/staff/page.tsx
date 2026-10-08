@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { api } from "@/lib/api";
+import { api, isNetworkError } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
 interface StaffMember {
@@ -52,6 +52,8 @@ export default function StaffPage() {
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
   const [actionError, setActionError] = useState("");
+  const [savingStaffAction, setSavingStaffAction] = useState(false);
+  const staffActionLock = useRef(false);
 
   async function load() {
     const [data, subscriptionStatus] = await Promise.all([
@@ -75,8 +77,32 @@ export default function StaffPage() {
   }
 
   async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
-    await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
-    await load();
+    if (staffActionLock.current) return;
+    staffActionLock.current = true;
+    setSavingStaffAction(true);
+    setActionError("");
+    try {
+      await api.patch(`/staff/${member.id}`, { [field]: !member[field] }, lang);
+      await load();
+    } catch (error) {
+      if (isNetworkError(error)) {
+        try {
+          await load();
+          setActionError(lang === "sw"
+            ? "Muunganisho ulikatika. Ruhusa zimehakikiwa upya; angalia hali ya sasa kabla ya kujaribu tena."
+            : "The connection was interrupted. Permissions were refreshed; check the current state before trying again.");
+        } catch {
+          setActionError(lang === "sw"
+            ? "Muunganisho ulikatika na hatukuweza kuthibitisha mabadiliko. Sasisha ukurasa kabla ya kujaribu tena."
+            : "The connection was interrupted and we couldn't confirm the change. Refresh this page before trying again.");
+        }
+      } else {
+        setActionError(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kuhifadhi ruhusa." : "Could not save the permission."));
+      }
+    } finally {
+      staffActionLock.current = false;
+      setSavingStaffAction(false);
+    }
   }
 
   async function removeStaff(member: StaffMember) {
@@ -170,7 +196,7 @@ export default function StaffPage() {
                   <p className="text-sm text-gray-500">{member.role.replace("_", " ")}{member.phone ? ` · ${member.phone}` : ""}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {!member.isActive && !member.phone ? <span className="rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600">{lang === "sw" ? "Akaunti imeondolewa" : "Login removed"}</span> : <button onClick={() => togglePermission(member, "isActive")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700">
+                  {!member.isActive && !member.phone ? <span className="rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600">{lang === "sw" ? "Akaunti imeondolewa" : "Login removed"}</span> : <button disabled={savingStaffAction} onClick={() => togglePermission(member, "isActive")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:cursor-wait disabled:opacity-60">
                     {member.isActive ? (lang === "sw" ? "Hai" : "Active") : (lang === "sw" ? "Imezimwa" : "Inactive")}
                   </button>}
                   {!member.isActive && member.phone && <button type="button" onClick={() => removeStaff(member)} aria-label={lang === "sw" ? `Futa akaunti ya kuingia ya ${member.name}` : `Delete ${member.name}'s staff login`} className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">{lang === "sw" ? "Futa akaunti ya kuingia" : "Delete login"}</button>}
@@ -179,7 +205,7 @@ export default function StaffPage() {
               {member.isActive || member.phone ? <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
                 {(Object.keys(permissionLabels) as Array<keyof typeof permissionLabels>).filter((field) => field !== "canUseAssistant" || proAssistantAvailable).map((field) => (
                   <label key={field} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
-                    <input type="checkbox" checked={member[field]} onChange={() => togglePermission(member, field)} />
+                    <input type="checkbox" checked={member[field]} disabled={savingStaffAction} onChange={() => togglePermission(member, field)} />
                     {permissionLabels[field]}
                   </label>
                 ))}

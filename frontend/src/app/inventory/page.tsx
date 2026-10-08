@@ -111,6 +111,7 @@ export default function InventoryPage() {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("search") || "";
   });
+  const [settledSearch, setSettledSearch] = useState(search);
   const [assistantAction] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("action") || "";
@@ -186,22 +187,36 @@ export default function InventoryPage() {
   const [stockCountScannerOpen, setStockCountScannerOpen] = useState(false);
   const [stockCountCode, setStockCountCode] = useState("");
 
-  const fetchProducts = useCallback(async () => {
+  const fetchStockSummary = useCallback(async () => {
+    try {
+      const data = await api.get<{ summary: StockSummary }>("/products/summary");
+      if (!data.summary || typeof data.summary !== "object") return;
+      setStockSummary({
+        total: Number(data.summary.total) || 0,
+        lowStock: Number(data.summary.lowStock) || 0,
+        outOfStock: Number(data.summary.outOfStock) || 0,
+        inStock: Number(data.summary.inStock) || 0,
+        expiringSoon: Number(data.summary.expiringSoon) || 0,
+        expired: Number(data.summary.expired) || 0,
+      });
+    } catch {
+      // The product list remains usable if summary counts are temporarily unavailable.
+    }
+  }, []);
+
+  const fetchProducts = useCallback(async (refreshSummary = false) => {
     const requestId = ++latestLoad.current;
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (search) params.set("search", search);
+      if (settledSearch) params.set("search", settledSearch);
       params.set("page", String(currentPage));
       params.set("limit", String(PRODUCTS_PER_PAGE));
       if (stockStatus !== "ALL") params.set("stockStatus", stockStatus);
       if (expiryFilter !== "ALL") params.set("expiryStatus", expiryFilter);
       if (usage !== "ALL") params.set("usage", usage);
       if (supplierId) params.set("supplierId", supplierId);
-      const [data, summaryData] = await Promise.all([
-        api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?${params}`),
-        api.get<{ summary: StockSummary }>("/products/summary").catch(() => null),
-      ]);
+      const data = await api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?${params}`);
       if (requestId !== latestLoad.current) return;
       const nextPagination = data.pagination || {
         page: currentPage,
@@ -215,7 +230,7 @@ export default function InventoryPage() {
       }
       setProducts(data.products);
       setPagination(nextPagination);
-      if (summaryData) setStockSummary(summaryData.summary);
+      if (refreshSummary) await fetchStockSummary();
     } catch (value: unknown) {
       if (requestId === latestLoad.current) {
         toast(value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia bidhaa." : "Could not load products."), "error");
@@ -223,9 +238,14 @@ export default function InventoryPage() {
     } finally {
       if (requestId === latestLoad.current) setLoading(false);
     }
-  }, [search, stockStatus, expiryFilter, usage, supplierId, currentPage, toast, lang]);
+  }, [settledSearch, stockStatus, expiryFilter, usage, supplierId, currentPage, toast, lang, fetchStockSummary]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => { fetchStockSummary(); }, [fetchStockSummary]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setSettledSearch(search.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (search) params.set("search", search); else params.delete("search");
@@ -378,7 +398,7 @@ export default function InventoryPage() {
       }
       setShowForm(false);
       toast(editProduct ? (lang === "sw" ? "Bidhaa imebadilishwa." : "Product updated.") : (lang === "sw" ? "Bidhaa imeongezwa." : "Product added."), "success");
-      await fetchProducts();
+      await fetchProducts(true);
     } catch (e: unknown) {
       if (!editProduct) {
         const uncertain = e instanceof ApiError && (e.code === "TIMEOUT" || e.code === "NETWORK" || (e.status || 0) >= 500);
@@ -425,7 +445,7 @@ export default function InventoryPage() {
       setProducts((current) => current.map((product) => product.id === response.product.id ? response.product : product));
       setAdjustProduct(null);
       toast(lang === "sw" ? "Stock imebadilishwa." : "Stock updated.", "success");
-      await fetchProducts();
+      await fetchProducts(true);
     } catch (e: unknown) {
       const uncertain = e instanceof ApiError && (e.failureType === "NETWORK" || e.failureType === "TIMEOUT" || (e.status || 0) >= 500);
       if (uncertain) {
@@ -473,6 +493,7 @@ export default function InventoryPage() {
       setProducts((prev) => prev.filter((p) => p.id !== deleteProduct.id));
       setDeleteProduct(null);
       toast(t("inventory.deleted", lang), "success");
+      await fetchStockSummary();
     } catch (e: unknown) {
       const uncertain = e instanceof ApiError && ["NETWORK", "TIMEOUT"].includes(e.failureType || "");
       if (uncertain) {
@@ -482,6 +503,7 @@ export default function InventoryPage() {
             setProducts((prev) => prev.filter((p) => p.id !== deleteProduct.id));
             setDeleteProduct(null);
             toast(t("inventory.deleted", lang), "success");
+            await fetchStockSummary();
           } else {
             setDeleteError(lang === "sw"
               ? "Bidhaa bado ipo kwenye inventory. Unaweza kubonyeza Futa bidhaa tena; ombi hili ni salama kurudia."
@@ -534,7 +556,7 @@ export default function InventoryPage() {
       setShowCsvImport(false);
       setCsvFile(null);
       toast(lang === "sw" ? `Bidhaa ${result.count} zimeongezwa.` : `${result.count} products imported.`, "success");
-      await fetchProducts();
+      await fetchProducts(true);
     } catch (error: unknown) {
       if (error instanceof ApiError && error.code === "PRODUCT_CSV_INVALID" && error.details?.length) {
         setCsvErrors(error.details);
@@ -569,7 +591,7 @@ export default function InventoryPage() {
     if (!stockCount) return;
     try {
       await api.post(`/stock-counts/${stockCount.id}/finish`, { applyAdjustments });
-      setStockCount(null); await fetchProducts();
+      setStockCount(null); await fetchProducts(true);
       toast(applyAdjustments ? (lang === "sw" ? "Tofauti za stock zimetumika." : "Stock differences applied.") : (lang === "sw" ? "Uhesabuji umekamilika." : "Stock count completed."), "success");
     } catch (error: unknown) { toast(error instanceof Error ? error.message : "Could not finish stock count", "error"); }
   }
