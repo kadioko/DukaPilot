@@ -38,6 +38,31 @@ test("shows login error for invalid credentials", async ({ page }) => {
   await expect(page.getByText(/invalid phone number or pin|nambari ya simu au PIN si sahihi/i)).toBeVisible();
 });
 
+test("retries a transient login network failure once", async ({ page }) => {
+  let attempts = 0;
+  await page.route("**/*api/auth/login", async (route) => {
+    attempts += 1;
+    if (attempts === 1) {
+      await route.abort("failed");
+      return;
+    }
+
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Invalid phone or PIN" }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('input[type="tel"]').fill("+255700000003");
+  await page.locator('input[inputmode="numeric"]').fill("9999");
+  await page.locator('form button[type="submit"]').click();
+
+  await expect(page.getByText(/invalid phone number or pin|nambari ya simu au PIN si sahihi/i)).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
 test("explains when a phone number has no account and offers registration", async ({ page }) => {
   await page.route("**/*api/auth/login", async (route) => {
     await route.fulfill({
