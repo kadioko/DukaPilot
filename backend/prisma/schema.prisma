@@ -1182,6 +1182,8 @@ model BranchTransfer {
 
 model StockMovement {
   id                     String                @id @default(cuid())
+  requestKey             String?
+  requestHash            String?
   type                   StockMovementType
   quantity               Float
   note                   String?
@@ -1198,6 +1200,7 @@ model StockMovement {
   createdAt              DateTime              @default(now())
 
   @@index([productId, createdAt])
+  @@unique([productId, requestKey])
   @@map("stock_movements")
 }
 

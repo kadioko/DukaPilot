@@ -170,6 +170,7 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const latestLoad = useRef(0);
   const mutationInFlight = useRef(false);
+  const adjustRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const createRequestId = useRef<string | null>(null);
   const createPendingUncertain = useRef(false);
   const [canViewFinancials, setCanViewFinancials] = useState(true);
@@ -405,19 +406,36 @@ export default function InventoryPage() {
     }
     mutationInFlight.current = true;
     setSaving(true);
+    const payload = {
+      productId: adjustProduct.id,
+      type: adjustForm.type,
+      quantity: Math.round(quantity * 1000) / 1000,
+      note: adjustForm.note.trim() || undefined,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (!adjustRequestRef.current || adjustRequestRef.current.fingerprint !== fingerprint) {
+      adjustRequestRef.current = { fingerprint, key: crypto.randomUUID() };
+    }
     try {
       const response = await api.post<{ product: Product }>("/stock/adjust", {
-        productId: adjustProduct.id,
-        type: adjustForm.type,
-        quantity: Number(adjustForm.quantity),
-        note: adjustForm.note || undefined,
+        ...payload,
+        requestKey: adjustRequestRef.current.key,
       });
+      adjustRequestRef.current = null;
       setProducts((current) => current.map((product) => product.id === response.product.id ? response.product : product));
       setAdjustProduct(null);
       toast(lang === "sw" ? "Stock imebadilishwa." : "Stock updated.", "success");
       await fetchProducts();
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : t("common.error", lang), "error");
+      const uncertain = e instanceof ApiError && (e.failureType === "NETWORK" || e.failureType === "TIMEOUT" || (e.status || 0) >= 500);
+      if (uncertain) {
+        toast(lang === "sw"
+          ? "Jibu limepotea; mabadiliko yanaweza kuwa yamehifadhiwa. Jaribu tena bila kubadilisha taarifa ili kuangalia salama."
+          : "The response was lost; the stock change may already be saved. Retry without changing the details to safely confirm it.", "error");
+      } else {
+        adjustRequestRef.current = null;
+        toast(e instanceof Error ? e.message : t("common.error", lang), "error");
+      }
     } finally {
       setSaving(false);
       mutationInFlight.current = false;

@@ -16,6 +16,14 @@ if (dsn) {
     replaysOnErrorSampleRate: 1.0,
     replaysSessionSampleRate: 0.0,
     integrations: [Sentry.replayIntegration({ maskAllText: true, blockAllMedia: true })],
+    beforeSend(event) {
+      const values = event.exception?.values || [];
+      const isInjectedAndroidBridgeError = values.some((exception) =>
+        exception.value?.includes("Error invoking postMessage: Java object is gone") &&
+        exception.stacktrace?.frames?.some((frame) => frame.filename?.startsWith("app://navigation_performance_logger_android")),
+      );
+      return isInjectedAndroidBridgeError ? null : event;
+    },
   });
 }
 

@@ -99,6 +99,52 @@ test("fractional stock adjustments preserve bag or weight quantities to three de
   assert.equal(movements.length, 1);
 });
 
+test("stock adjustment retries with the same key return the original movement without applying twice", async () => {
+  let stock = 10;
+  const movements = [];
+  const product = { id: "prod-1", shopId: "shop-1", isActive: true, get currentStock() { return stock; } };
+  const movementModel = {
+    findFirst: async ({ where }) => movements.find((movement) => movement.productId === where.productId && movement.requestKey === where.requestKey) || null,
+    create: async ({ data }) => { const movement = { id: `move-${movements.length + 1}`, ...data }; movements.push(movement); return movement; },
+  };
+  const productModel = {
+    findFirst: async () => product,
+    findUnique: async () => ({ id: product.id, currentStock: stock }),
+    updateMany: async ({ where, data }) => {
+      if (!matchesStockWhere(where, stock)) return { count: 0 };
+      stock = data.currentStock;
+      return { count: 1 };
+    },
+  };
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    product: productModel,
+    stockMovement: movementModel,
+    $transaction: async (work) => work({ product: productModel, stockMovement: movementModel }),
+  } };
+  require.cache[shopAccessPath] = { id: shopAccessPath, filename: shopAccessPath, loaded: true, exports: { getShopIdForUser: async () => "shop-1" } };
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const request = (quantity) => ({ user: { userId: "owner-1" }, body: { productId: "prod-1", type: "IN", quantity, requestKey: "8b0f9e93-d871-4e8d-bca0-7cb681a2f2b1" } });
+  const first = response();
+  await controller.adjust(request(5), first, assert.fail);
+  assert.equal(stock, 15);
+  assert.equal(first.payload.replayed, false);
+
+  const retry = response();
+  await controller.adjust(request(5), retry, assert.fail);
+  assert.equal(stock, 15);
+  assert.equal(retry.payload.replayed, true);
+  assert.equal(retry.payload.movement.id, first.payload.movement.id);
+
+  const reused = response();
+  let conflict;
+  await controller.adjust(request(7), reused, (error) => { conflict = error; });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.code, "IDEMPOTENCY_KEY_REUSED");
+  assert.equal(stock, 15);
+  assert.equal(movements.length, 1);
+});
+
 test("stock history is shop-scoped, searchable, filterable, paginated, and uses Tanzania day bounds", async () => {
   let findArgs;
   let countArgs;

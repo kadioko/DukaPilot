@@ -55,6 +55,8 @@ test("supplier orders still reports a real server failure after authentication",
 test("inventory supports add, edit, and stock adjustment flows", async ({ page }) => {
   const suppliers = [{ id: "sup-1", name: "Jumla Traders", phone: "+255700000001" }];
   let productDeleteAttempts = 0;
+  let adjustmentRequestKey: string | null = null;
+  let adjustmentApplied = false;
   const products = [
     {
       id: "prod-1",
@@ -198,11 +200,17 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
 
   await page.route("**/*api/stock/adjust", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
+    expect(body.requestKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    if (adjustmentRequestKey) expect(body.requestKey).toBe(adjustmentRequestKey);
+    else adjustmentRequestKey = body.requestKey;
     const product = products.find((item) => item.id === body.productId);
-    if (product) {
+    if (product && !adjustmentApplied) {
       if (body.type === "IN") product.currentStock += Number(body.quantity);
       if (body.type === "OUT") product.currentStock -= Number(body.quantity);
       if (body.type === "ADJUSTMENT") product.currentStock = Number(body.quantity);
+      adjustmentApplied = true;
+      await route.abort("failed");
+      return;
     }
 
     await route.fulfill({
@@ -280,6 +288,8 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/set amount|rekebisha/i).click();
   await page.getByLabel(/new quantity|idadi mpya/i).fill("25");
   await page.getByLabel(/note|maelezo/i).fill("Stock take correction");
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText(/response was lost; the stock change may already be saved/i)).toBeVisible();
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
   await expect(page.getByText(/25 pcs/)).toBeVisible();

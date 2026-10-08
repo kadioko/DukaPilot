@@ -134,13 +134,18 @@ const orderCreateValidation = [
 const stockAdjustValidation = [
   body("productId").isString().notEmpty().withMessage("productId is required"),
   body("type").custom((value) => STOCK_MOVEMENT_TYPES.includes(String(value).toUpperCase())).withMessage("type must be IN, OUT, or ADJUSTMENT"),
-  body("quantity").isInt({ min: 0 }).withMessage("quantity must be a whole number 0 or greater").bail().custom((value, { req }) => {
-    if (String(req.body.type || "").toUpperCase() !== "ADJUSTMENT" && Number(value) === 0) {
+  body("quantity").isFloat({ min: 0 }).withMessage("quantity must be a non-negative number").bail().custom((value, { req }) => {
+    const quantity = Number(value);
+    if (!Number.isFinite(quantity) || Math.abs(quantity - Math.round(quantity * 1000) / 1000) > 1e-9) {
+      throw new Error("quantity must have at most 3 decimal places");
+    }
+    if (String(req.body.type || "").toUpperCase() !== "ADJUSTMENT" && quantity === 0) {
       throw new Error("quantity must be greater than 0 for stock in or out");
     }
     return true;
   }),
   body("note").optional({ values: "falsy" }).trim().isLength({ max: 500 }).withMessage("Note must be 500 characters or less"),
+  body("requestKey").optional({ values: "falsy" }).isUUID().withMessage("requestKey must be a UUID"),
   handleValidationErrors,
 ];
 

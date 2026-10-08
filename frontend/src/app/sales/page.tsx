@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS, getCurrentSession, isNetworkError, selectedBranchId } from "@/lib/api";
+import { api, ApiError, formatTZS, getCurrentSession, isNetworkError, selectedBranchId } from "@/lib/api";
 import { Plus, X, ShoppingCart, Check, Minus, Search, Clock, WifiOff, RefreshCw, Trash2, ScanLine, MessageCircle, RotateCcw, ReceiptText, AlertTriangle, PackagePlus, ChevronLeft, ChevronRight } from "lucide-react";
 import { t, useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
@@ -265,6 +265,7 @@ export default function SalesPage() {
   const [variablePricesEnabled, setVariablePricesEnabled] = useState(false);
   const scannerBuffer = useRef("");
   const scannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restockRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   useEffect(() => {
     getCurrentSession<{ user: { id: string; role: string; businessShopId?: string; shop?: { id?: string; parentShopId?: string | null }; staff?: { id?: string; permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
@@ -578,7 +579,7 @@ export default function SalesPage() {
     const keydown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey || scannerOpen || !barcodeSettings.bluetoothScannerEnabled || !barcodeSettings.barcodeScanningEnabled) return;
       if (event.key === "Enter" && scannerBuffer.current.length >= 4) { const value = scannerBuffer.current; scannerBuffer.current = ""; if (scannerTimer.current) clearTimeout(scannerTimer.current); handleBarcode(value, "HID"); return; }
-      if (event.key.length !== 1) return;
+      if (typeof event.key !== "string" || event.key.length !== 1) return;
       scannerBuffer.current += event.key;
       if (scannerTimer.current) clearTimeout(scannerTimer.current);
       scannerTimer.current = setTimeout(() => { scannerBuffer.current = ""; }, 180);
@@ -837,15 +838,29 @@ export default function SalesPage() {
       toast(lang === "sw" ? "Weka idadi kamili iliyo zaidi ya sifuri." : "Enter a whole quantity greater than zero.", "error");
       return;
     }
+    const payload = { productId: restockProduct.id, type: "IN", quantity, note: "Restocked from POS" };
+    const fingerprint = JSON.stringify(payload);
+    if (!restockRequestRef.current || restockRequestRef.current.fingerprint !== fingerprint) {
+      restockRequestRef.current = { fingerprint, key: crypto.randomUUID() };
+    }
     setRestocking(true);
     try {
-      const result = await api.post<{ product: Product }>("/stock/adjust", { productId: restockProduct.id, type: "IN", quantity, note: "Restocked from POS" }, lang);
+      const result = await api.post<{ product: Product }>("/stock/adjust", { ...payload, requestKey: restockRequestRef.current.key }, lang);
+      restockRequestRef.current = null;
       setProducts((current) => current.map((product) => product.id === result.product.id ? result.product : product));
       toast(lang === "sw" ? `Stock ya ${restockProduct.name} imeongezwa.` : `${restockProduct.name} restocked.`, "success");
       setRestockProduct(null);
       setRestockQuantity("");
     } catch (error: unknown) {
-      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+      const uncertain = error instanceof ApiError && (error.failureType === "NETWORK" || error.failureType === "TIMEOUT" || (error.status || 0) >= 500);
+      if (uncertain) {
+        toast(lang === "sw"
+          ? "Jibu limepotea; stock inaweza kuwa tayari imeongezwa. Jaribu tena bila kubadilisha idadi ili kuthibitisha salama."
+          : "The response was lost; stock may already be added. Retry unchanged to safely confirm it.", "error");
+      } else {
+        restockRequestRef.current = null;
+        toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+      }
     } finally {
       setRestocking(false);
     }

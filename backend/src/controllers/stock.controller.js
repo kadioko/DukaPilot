@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 
@@ -20,7 +21,7 @@ function roundQuantity(value) {
 
 const adjust = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const { productId, type, quantity, note } = req.body;
+  const { productId, type, quantity, note, requestKey } = req.body;
 
   const qty = Number(quantity);
   const normalizedType = String(type).toUpperCase();
@@ -28,38 +29,69 @@ const adjust = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Quantity must be a non-negative number with at most 3 decimal places" });
   }
   const normalizedQuantity = Math.round(qty * 1000) / 1000;
-  const result = await prisma.$transaction(async (tx) => {
-    const product = await tx.product.findFirst({ where: { id: productId, shopId, isActive: true } });
-    if (!product) throw Object.assign(new Error("Product not found"), { status: 404 });
+  const normalizedNote = typeof note === "string" ? note.trim() || null : null;
+  const requestHash = requestKey ? crypto.createHash("sha256").update(JSON.stringify({
+    productId,
+    type: normalizedType,
+    quantity: normalizedQuantity,
+    note: normalizedNote,
+  })).digest("hex") : null;
 
-    const where = { id: productId, shopId, isActive: true, currentStock: product.currentStock };
-    let data;
-    if (normalizedType === "IN") data = { currentStock: roundQuantity(product.currentStock + normalizedQuantity) };
-    else if (normalizedType === "OUT") {
-      where.AND = [{ currentStock: product.currentStock }, { currentStock: { gte: normalizedQuantity } }];
-      delete where.currentStock;
-      data = { currentStock: roundQuantity(product.currentStock - normalizedQuantity) };
-    } else {
-      data = { currentStock: normalizedQuantity };
+  const findReplay = async (db) => {
+    if (!requestKey) return null;
+    const movement = await db.stockMovement.findFirst({ where: { productId, requestKey, product: { is: { shopId } } } });
+    if (!movement) return null;
+    if (movement.requestHash !== requestHash) {
+      throw Object.assign(new Error("This stock request key was already used for different details"), { status: 409, code: "IDEMPOTENCY_KEY_REUSED" });
     }
+    const currentProduct = await db.product.findUnique({ where: { id: productId } });
+    return { movement, updatedProduct: currentProduct, replayed: true };
+  };
 
-    const updated = await tx.product.updateMany({ where, data });
-    if (updated.count !== 1) {
-      throw Object.assign(new Error(normalizedType === "OUT" ? "Insufficient stock" : "Stock changed on another device. Refresh and try again."), { status: 409 });
+  let result = await findReplay(prisma);
+  if (!result) {
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const replay = await findReplay(tx);
+        if (replay) return replay;
+        const product = await tx.product.findFirst({ where: { id: productId, shopId, isActive: true } });
+        if (!product) throw Object.assign(new Error("Product not found"), { status: 404 });
+
+        const where = { id: productId, shopId, isActive: true, currentStock: product.currentStock };
+        let data;
+        if (normalizedType === "IN") data = { currentStock: roundQuantity(product.currentStock + normalizedQuantity) };
+        else if (normalizedType === "OUT") {
+          where.AND = [{ currentStock: product.currentStock }, { currentStock: { gte: normalizedQuantity } }];
+          delete where.currentStock;
+          data = { currentStock: roundQuantity(product.currentStock - normalizedQuantity) };
+        } else {
+          data = { currentStock: normalizedQuantity };
+        }
+
+        const updated = await tx.product.updateMany({ where, data });
+        if (updated.count !== 1) {
+          throw Object.assign(new Error(normalizedType === "OUT" ? "Insufficient stock" : "Stock changed on another device. Refresh and try again."), { status: 409 });
+        }
+        const movement = await tx.stockMovement.create({
+          data: {
+            type: normalizedType,
+            quantity: normalizedQuantity,
+            note: normalizedNote,
+            productId,
+            ...(requestKey ? { requestKey, requestHash } : {}),
+          },
+        });
+        const updatedProduct = await tx.product.findUnique({ where: { id: productId } });
+        return { movement, updatedProduct, replayed: false };
+      });
+    } catch (error) {
+      const replay = await findReplay(prisma);
+      if (replay) result = replay;
+      else throw error;
     }
-    const movement = await tx.stockMovement.create({
-      data: {
-        type: normalizedType,
-        quantity: normalizedQuantity,
-        note: note || null,
-        productId,
-      },
-    });
-    const updatedProduct = await tx.product.findUnique({ where: { id: productId } });
-    return { movement, updatedProduct };
-  });
+  }
 
-  res.json({ product: result.updatedProduct, movement: result.movement });
+  res.json({ product: result.updatedProduct, movement: result.movement, replayed: result.replayed });
 });
 
 const movements = asyncHandler(async (req, res) => {

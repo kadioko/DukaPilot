@@ -16,9 +16,9 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (value: st
     const stop = () => { stopped = true; controls?.stop(); };
     const handleCameraCapabilityRejection = (event: PromiseRejectionEvent) => {
       const message = event.reason instanceof Error ? event.reason.message : String(event.reason || "");
-      if (!message.includes("setPhotoOptions failed")) return;
+      if (!message.includes("setPhotoOptions failed") && !message.includes("setOptions failed")) return;
 
-      // Facebook's Android in-app browser can reject a camera capability ZXing probes for.
+      // Some Android in-app browsers reject camera capabilities that ZXing probes for.
       // Keep the manual entry fallback usable and prevent this known browser limitation from reaching Sentry.
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -47,7 +47,9 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (value: st
             submittingRef.current = true;
             setSubmitting(true);
             setMessage("Checking barcode...");
-            void Promise.resolve().then(() => onDetected(value)).finally(() => {
+            void Promise.resolve().then(() => onDetected(value)).catch(() => {
+              setMessage("Could not check the barcode. Enter it manually.");
+            }).finally(() => {
               submittingRef.current = false;
               setSubmitting(false);
             });
@@ -74,7 +76,9 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (value: st
     submittingRef.current = true;
     setSubmitting(true);
     setMessage("Checking barcode...");
-    void Promise.resolve().then(() => onDetected(value)).finally(() => {
+    void Promise.resolve().then(() => onDetected(value)).catch(() => {
+      setMessage("Could not check the barcode. Enter it manually.");
+    }).finally(() => {
       submittingRef.current = false;
       setSubmitting(false);
     });
