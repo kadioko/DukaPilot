@@ -383,7 +383,7 @@ export const api = {
   postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
     backgroundRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
   post: <T>(path: string, body: unknown, lang?: Lang) =>
-    path === "/auth/login"
+    path === "/auth/login" || path === "/sales"
       ? retryNetworkRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang, "deferred", "default")
       : request<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
   patch: <T>(path: string, body: unknown, lang?: Lang) =>
