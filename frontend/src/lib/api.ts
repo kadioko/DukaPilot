@@ -379,6 +379,7 @@ async function readRequest<T>(path: string, lang?: Lang): Promise<T> {
 
 export const api = {
   get: <T>(path: string, lang?: Lang) => readRequest<T>(path, lang),
+  getRecoverable: <T>(path: string, lang?: Lang) => retryNetworkRequest<T>(path, {}, lang, "deferred", "deferred"),
   getBackground: <T>(path: string, lang?: Lang) => backgroundRequest<T>(path, {}, lang),
   postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
     backgroundRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),

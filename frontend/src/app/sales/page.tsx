@@ -300,7 +300,7 @@ export default function SalesPage() {
       try {
         const query = new URLSearchParams({ page: String(productPage), limit: "100", usage: "FOR_SALE" });
         if (search.trim()) query.set("search", search.trim());
-        const data = await api.get<{ products: Product[]; pagination: { total: number } }>(`/products?${query.toString()}`, lang);
+        const data = await api.getRecoverable<{ products: Product[]; pagination: { total: number } }>(`/products?${query.toString()}`, lang);
         if (cancelled) return;
         setProducts((current) => {
           if (productPage === 1) return data.products;
