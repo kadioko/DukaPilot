@@ -507,14 +507,17 @@ test("stock staff can load inventory without an admin-access warning", async ({ 
 });
 
 test("stock staff without Reports cannot open purchase receiving or supplier orders", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_token", "playwright-stock-staff-token");
   });
-  await page.route("**/*api/auth/me", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (!/^\/_?api\//.test(url.pathname)) return route.continue();
+    const path = url.pathname.replace(/^\/_?api/, "");
+    if (path === "/auth/me") {
+      return route.fulfill({ json: {
         user: {
           name: "Stock Clerk",
           role: "MERCHANT",
@@ -522,8 +525,15 @@ test("stock staff without Reports cannot open purchase receiving or supplier ord
           shop: { name: "Test Shop" },
           staff: { role: "STOCK_CLERK", permissions: { canSell: false, canManageStock: true, canManageFarm: false, canManageStaff: false, canViewReports: false, canRecordExpenses: false, canManageCashSessions: false, canViewQuotations: false } },
         },
-      }),
-    });
+      } });
+    }
+    if (path === "/products/low-stock") return route.fulfill({ json: { products: [], total: 0 } });
+    if (path === "/subscription/status") return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    if (path === "/notifications") return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    if (path === "/products") return route.fulfill({ json: { products: [] } });
+    if (path === "/suppliers") return route.fulfill({ json: { suppliers: [] } });
+    if (path === "/stock-receipts" || path === "/orders") return route.fulfill({ status: 403, json: { error: "Permission denied" } });
+    return route.fulfill({ json: {} });
   });
 
   await page.goto("/receiving");
@@ -534,6 +544,7 @@ test("stock staff without Reports cannot open purchase receiving or supplier ord
   await page.goto("/orders");
   await expect(page).toHaveURL(/\/inventory$/);
   await expect(page.locator('a[href="/orders"]')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 test("inventory filters stock status, supplier, and expiry without hiding other products", async ({ page }) => {
