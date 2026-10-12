@@ -80,3 +80,37 @@ test("sale retries a transient network failure with the same idempotency referen
   expect(clientReferences[1]).toBe(clientReferences[0]);
   await expect(page.getByText(/offline\. sale saved|offline sales sync/i)).toHaveCount(0);
 });
+
+test("product search recovers from a network outage with its explicit retry action", async ({ page }) => {
+  const product = { id: "prod-1", name: "Search recovery item", unit: "pcs", sellingPrice: 3200, buyingPrice: 2800, currentStock: 5, doesNotExpire: true, expiryDate: null };
+  let searchAttempts = 0;
+
+  await page.addInitScript(() => localStorage.setItem("dukapilot_session_active", "1"));
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/auth/me")) return route.fulfill({ json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" }, features: { staff: true } } } });
+    if (url.includes("/products/low-stock")) return route.fulfill({ json: { products: [] } });
+    if (url.includes("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    if (url.includes("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    if (url.includes("/debts/customers")) return route.fulfill({ json: { customers: [] } });
+    if (url.includes("/settings") || url.includes("/barcodes/settings")) return route.fulfill({ json: { settings: {} } });
+    if (url.includes("/products?")) {
+      if (url.includes("search=")) {
+        searchAttempts += 1;
+        if (searchAttempts <= 2) return route.abort("failed");
+        return route.fulfill({ json: { products: [product], pagination: { page: 1, limit: 100, total: 1 } } });
+      }
+      return route.fulfill({ json: { products: [], pagination: { page: 1, limit: 100, total: 0 } } });
+    }
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/sales");
+  await page.getByPlaceholder(/search/i).fill("Search recovery");
+  await expect(page.getByRole("alert").getByRole("button", { name: /try again/i })).toBeVisible();
+  expect(searchAttempts).toBe(2);
+
+  await page.getByRole("button", { name: /try again/i }).click();
+  await expect(page.getByRole("button", { name: /Search recovery item/i })).toBeVisible();
+  expect(searchAttempts).toBe(3);
+});

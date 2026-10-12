@@ -382,12 +382,20 @@ export const api = {
   getBackground: <T>(path: string, lang?: Lang) => backgroundRequest<T>(path, {}, lang),
   postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
     backgroundRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
-  post: <T>(path: string, body: unknown, lang?: Lang) =>
-    path === "/auth/login" || path === "/sales"
-      ? retryNetworkRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang, "deferred", "default")
-      : request<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
+  post: <T>(path: string, body: unknown, lang?: Lang) => {
+    const options = { method: "POST", body: JSON.stringify(body) };
+    if (path === "/sales") {
+      // A final transport failure is queued locally by the POS and retried
+      // with the same clientReference; the sync history is the durable signal.
+      return retryNetworkRequest<T>(path, options, lang, "deferred", "deferred");
+    }
+    if (path === "/auth/login") return retryNetworkRequest<T>(path, options, lang, "deferred", "default");
+    return request<T>(path, options, lang);
+  },
   patch: <T>(path: string, body: unknown, lang?: Lang) =>
-    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }, lang),
+    path === "/settings/menu"
+      ? retryNetworkRequest<T>(path, { method: "PATCH", body: JSON.stringify(body) }, lang, "deferred", "default")
+      : request<T>(path, { method: "PATCH", body: JSON.stringify(body) }, lang),
   put: <T>(path: string, body: unknown, lang?: Lang) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(body) }, lang),
   delete: <T>(path: string, lang?: Lang) => request<T>(path, { method: "DELETE" }, lang),
