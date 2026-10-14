@@ -5,6 +5,13 @@ test("admin shows failed loads, retries, and opens a shop support timeline on mo
   await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
   let allowOverview = false;
   let savedNote = "";
+  let referralRewarded = false;
+  let referralRewardBody: { note?: string; overrideQualification?: boolean } | null = null;
+  let referralRewardAlert = "";
+  page.on("dialog", async (dialog) => {
+    referralRewardAlert = dialog.message();
+    await dialog.accept();
+  });
   await page.route("**/*api/**", async (route) => {
     const url = route.request().url();
     const pathname = new URL(url).pathname;
@@ -21,6 +28,17 @@ test("admin shows failed loads, retries, and opens a shop support timeline on mo
       return route.fulfill({ status: 201, json: { note: { id: "note-1", body: savedNote } } });
     }
     if (pathname.endsWith("/admin/support/shops/shop-1")) return route.fulfill({ json: { shop: { id: "shop-1", name: "Kilosa Retail Shop", location: "Kilosa", plan: "PRO", computedStatus: "active", onboardingStatus: "NEEDS_HELP", user: { id: "owner-1", name: "Owner", phone: "+255700000001" }, branches: [{ id: "branch-1", name: "Kilosa branch", location: "Kilosa", branchArchived: false }], nextFollowUpAt: null, lastContactedAt: null }, payments: [{ id: "payment-1", plan: "PRO", amount: 35000, method: "MPESA", paidAt: "2026-10-01T10:00:00Z", status: "CONFIRMED" }], reports: [], syncFailures: [], sales: { count: 12, lastAt: "2026-10-03T10:00:00Z" }, notes: savedNote ? [{ id: "note-1", body: savedNote, createdAt: "2026-10-03T11:00:00Z", author: { name: "Admin" } }] : [], noteCount: savedNote ? 1 : 0, notePage: 1, latestAdminAction: null } });
+    if (pathname.endsWith("/admin/referrals/referral-1/reward") && method === "POST") {
+      referralRewardBody = route.request().postDataJSON();
+      referralRewarded = true;
+      return route.fulfill({ json: { message: "Added 7 free days to Amina Shop" } });
+    }
+    if (pathname.endsWith("/admin/referrals")) return route.fulfill({ json: {
+      referrals: [{ id: "referral-1", status: referralRewarded ? "REWARDED" : "PENDING", salesCount: 2, salesRemaining: 8, rewardEligible: false, createdAt: "2026-10-01T10:00:00Z", note: null,
+        referrerShop: { id: "referrer-1", name: "Amina Shop", plan: "FREE_TRIAL", user: { name: "Amina", phone: "+255700000002" } },
+        referredShop: { id: "referred-1", name: "Juma Shop", createdAt: "2026-10-01T10:00:00Z", user: { name: "Juma", phone: "+255700000003" } } }],
+      pagination: { page: 1, limit: 25, total: 1, totalPages: 1 }, statusCounts: { PENDING: referralRewarded ? 0 : 1, REWARDED: referralRewarded ? 1 : 0 },
+    } });
     const data = pathname.endsWith("/auth/me") ? { user: { id: "admin-1", name: "Admin", role: "ADMIN", language: "en", shop: null } }
       : pathname.endsWith("/admin/users") ? { users: [] }
       : pathname.endsWith("/admin/audit-logs") ? { logs: [] }
@@ -52,4 +70,13 @@ test("admin shows failed loads, retries, and opens a shop support timeline on mo
   await expect(page.getByText("Called owner about renewal")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: "test-results/admin-support-mobile.png", fullPage: true });
+  await page.getByLabel("More admin tools").selectOption("referrals");
+  await page.getByRole("button", { name: "Grant 7 days early" }).click();
+  await expect(page.getByText(/bypasses the usual qualification rule/)).toBeVisible();
+  const rewardNote = page.getByLabel("Admin reason / note");
+  await expect(page.getByRole("button", { name: "Confirm 7 days" })).toBeDisabled();
+  await rewardNote.fill("Promised during assisted signup");
+  await page.getByRole("button", { name: "Confirm 7 days" }).click();
+  await expect.poll(() => referralRewardAlert).toBe("Added 7 free days to Amina Shop");
+  expect(referralRewardBody).toEqual({ note: "Promised during assisted signup", overrideQualification: true });
 });

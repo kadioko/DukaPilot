@@ -65,8 +65,11 @@ test("rewarded referral appears as a durable, bilingual owner alert", async () =
   assert.equal(referralQuery.where.status, "REWARDED");
   const notice = res.payload.items.find((item) => item.id === "referral-reward-referral-1");
   assert.equal(notice.title, "Referral reward confirmed");
-  assert.match(notice.description, /added 7 free days/);
+  assert.match(notice.description, /confirmed 7 free days/);
+  assert.match(notice.description, /admin confirmed/i);
+  assert.doesNotMatch(notice.description, /after .* qualified/i);
   assert.match(notice.descriptionSw, /siku 7 za bure/);
+  assert.match(notice.descriptionSw, /amethibitisha/);
   assert.equal(notice.href, "/referrals");
   assert.equal(notice.createdAt, referral.rewardedAt);
 });

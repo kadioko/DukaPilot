@@ -108,19 +108,105 @@ test("admin referral reward extends an active paid subscription once", async () 
   delete require.cache[referralPath];
   const { adminRewardReferral } = require(referralPath);
   const res = response();
-  const req = { params: { referralId: "referral-1" }, body: {}, user: { userId: "admin-1" } };
+  const req = { params: { referralId: "referral-1" }, body: { note: "Promised during customer onboarding" }, user: { userId: "admin-1" } };
 
   await adminRewardReferral(req, res, (error) => { throw error; });
 
   assert.equal(res.statusCode, 200);
   assert.equal(referralUpdate.status, "REWARDED");
   assert.equal(referralUpdate.rewardedBy, "admin-1");
+  assert.match(referralUpdate.note, /Promised during customer onboarding/);
   assert.equal(shopUpdate.subscriptionEndsAt.toISOString(), "2030-01-17T00:00:00.000Z");
   assert.equal(queuedPush[0], "shop-referrer");
   assert.equal(queuedPush[1], "REFERRAL_REWARD");
   assert.equal(queuedPush[2].href, "/referrals");
   assert.deepEqual(queuedPush[3], { dedupeKeyPrefix: "referral-reward:referral-1" });
   assert.equal(req.audit.action, "admin.referral.rewarded");
+  assert.equal(req.audit.metadata.qualificationBypassed, false);
+});
+
+test("admin can grant the promised referral week early with an audited note", async () => {
+  let referralUpdate;
+  let shopUpdate;
+  const tx = {
+    shopReferral: {
+      findUnique: async () => ({
+        id: "referral-early",
+        status: "PENDING",
+        qualifiedAt: null,
+        note: "Recovered by admin: referral link was confirmed",
+        referrerShopId: "shop-referrer",
+        referredShopId: "shop-referred",
+        referrerShop: {
+          id: "shop-referrer",
+          name: "Amina Shop",
+          plan: "FREE_TRIAL",
+          trialEndsAt: new Date("2030-01-10T00:00:00.000Z"),
+          subscriptionEndsAt: null,
+          isActive: true,
+          user: { language: "en" },
+        },
+        referredShop: { id: "shop-referred", name: "Juma Shop" },
+      }),
+      updateMany: async ({ data }) => { referralUpdate = data; return { count: 1 }; },
+    },
+    sale: { count: async () => 2 },
+    shop: { update: async ({ data }) => { shopUpdate = data; return { id: "shop-referrer", name: "Amina Shop", ...data }; } },
+  };
+  require.cache[pushPath] = { id: pushPath, filename: pushPath, loaded: true, exports: { queueForShop: async () => {} } };
+  mockPrisma({ $transaction: async (callback) => callback(tx) });
+  delete require.cache[referralPath];
+  const { adminRewardReferral } = require(referralPath);
+  const res = response();
+  const req = {
+    params: { referralId: "referral-early" },
+    body: { note: "Promised during onboarding", overrideQualification: true },
+    user: { userId: "admin-1" },
+  };
+
+  await adminRewardReferral(req, res, (error) => { throw error; });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(referralUpdate.status, "REWARDED");
+  assert.equal(referralUpdate.qualifiedAt, null);
+  assert.match(referralUpdate.note, /Recovered by admin: referral link was confirmed/);
+  assert.match(referralUpdate.note, /Reward granted by admin \(qualification bypassed\): Promised during onboarding/);
+  assert.equal(shopUpdate.trialEndsAt.toISOString(), "2030-01-17T00:00:00.000Z");
+  assert.equal(req.audit.metadata.salesCount, 2);
+  assert.equal(req.audit.metadata.qualificationBypassed, true);
+  assert.equal(req.audit.metadata.note, "Promised during onboarding");
+});
+
+test("admin referral reward requires a note", async () => {
+  delete require.cache[referralPath];
+  const { adminRewardReferral } = require(referralPath);
+  let nextError;
+  await adminRewardReferral({ params: { referralId: "referral-1" }, body: {}, user: { userId: "admin-1" } }, response(), (error) => { nextError = error; });
+  assert.equal(nextError?.status, 400);
+  assert.match(nextError?.message || "", /note/i);
+});
+
+test("admin must explicitly override qualification to grant before ten sales", async () => {
+  let claimed = false;
+  const tx = {
+    shopReferral: {
+      findUnique: async () => ({ id: "referral-1", status: "PENDING", referrerShopId: "referrer", referredShopId: "referred", referrerShop: {}, referredShop: {} }),
+      updateMany: async () => { claimed = true; return { count: 1 }; },
+    },
+    sale: { count: async () => 2 },
+  };
+  mockPrisma({ $transaction: async (callback) => callback(tx) });
+  delete require.cache[referralPath];
+  const { adminRewardReferral } = require(referralPath);
+  let nextError;
+  await adminRewardReferral({
+    params: { referralId: "referral-1" },
+    body: { note: "Manual exception approved" },
+    user: { userId: "admin-1" },
+  }, response(), (error) => { nextError = error; });
+  assert.equal(nextError?.status, 400);
+  assert.match(nextError?.message || "", /completed sale/);
+  assert.equal(claimed, false);
 });
 
 test("admin can recover a missing referral without bypassing qualification", async () => {

@@ -18,6 +18,7 @@ Each business note has its own author and timestamp. The migration imports exist
 - **Failed logins (24h/7d)** counts unsuccessful login attempts with a valid phone/PIN shape. The event keeps only a reason and timestamp. It does not store an attempted phone number, PIN, IP address, or customer data. The counter begins when this migration is deployed; older attempts cannot be reconstructed.
 - **Application errors** link to Sentry. Audit logs record successful actions, not failed HTTP responses, so they must not be interpreted as an error count.
 - A section that fails to load shows its own error and Retry control. An unavailable section must not be read as zero activity.
+- In **More tools → Referrals**, the standard reward follows 10 completed sales. An admin may grant the promised seven days early, but must record a reason. The grant is one-time, extends the referrer's current subscription/trial, notifies the shop owner, and records whether the normal qualification was bypassed.
 
 ## Data and release
 

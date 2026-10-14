@@ -163,10 +163,13 @@ const adminListReferrals = asyncHandler(async (req, res) => {
   });
 });
 
-// Admin: grant one free week once, only after the new shop reaches ten completed sales.
+// Admin: grant the promised free week once. Qualification can only be bypassed
+// explicitly, with a required reason recorded for the audit trail.
 const adminRewardReferral = asyncHandler(async (req, res) => {
   const { referralId } = req.params;
-  const note = String(req.body?.note || "").trim().slice(0, 1000) || null;
+  const note = String(req.body?.note || "").trim().slice(0, 1000);
+  const overrideQualification = req.body?.overrideQualification === true;
+  if (note.length < 3) throw httpError("Add a note explaining this referral reward", 400);
   const now = new Date();
 
   const result = await prisma.$transaction(async (tx) => {
@@ -182,14 +185,22 @@ const adminRewardReferral = asyncHandler(async (req, res) => {
     if (referral.status === "REJECTED") throw httpError("This referral was marked not valid", 409);
 
     const salesCount = await tx.sale.count({ where: { shopId: referral.referredShopId, status: "COMPLETED" } });
-    if (salesCount < SALES_REQUIRED) {
+    if (salesCount < SALES_REQUIRED && !overrideQualification) {
       throw httpError(`The referred shop needs ${SALES_REQUIRED - salesCount} more completed sale(s) before this reward can be granted`, 400);
     }
 
+    const rewardNote = `Reward granted by admin${salesCount < SALES_REQUIRED ? " (qualification bypassed)" : ""}: ${note}`;
+    const persistedNote = [referral.note, rewardNote].filter(Boolean).join("\n").slice(-2000);
     // Conditional update prevents two admins from awarding the same referral.
     const claim = await tx.shopReferral.updateMany({
       where: { id: referralId, status: { in: ["PENDING", "QUALIFIED"] } },
-      data: { status: "REWARDED", qualifiedAt: referral.qualifiedAt || now, rewardedAt: now, rewardedBy: req.user.userId, note },
+      data: {
+        status: "REWARDED",
+        qualifiedAt: salesCount >= SALES_REQUIRED ? referral.qualifiedAt || now : referral.qualifiedAt,
+        rewardedAt: now,
+        rewardedBy: req.user.userId,
+        note: persistedNote,
+      },
     });
     if (claim.count !== 1) throw httpError("This referral reward was just handled by another admin", 409);
 
@@ -210,7 +221,7 @@ const adminRewardReferral = asyncHandler(async (req, res) => {
       select: { id: true, name: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true },
     });
 
-    return { referral, shop, salesCount, rewardAppliedTo: paidPlanActive ? "subscription" : "trial" };
+    return { referral, shop, salesCount, rewardAppliedTo: paidPlanActive ? "subscription" : "trial", qualificationBypassed: salesCount < SALES_REQUIRED };
   });
 
   const rewardIsSwahili = result.referral.referrerShop.user?.language !== "en";
@@ -238,6 +249,8 @@ const adminRewardReferral = asyncHandler(async (req, res) => {
       salesCount: result.salesCount,
       rewardDays: REWARD_DAYS,
       rewardAppliedTo: result.rewardAppliedTo,
+      qualificationBypassed: result.qualificationBypassed,
+      note,
     },
   };
 

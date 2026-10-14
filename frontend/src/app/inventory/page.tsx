@@ -21,6 +21,7 @@ import {
   EyeOff,
   Share2,
   Download,
+  FileDown,
   FileUp,
   ChevronLeft,
   ChevronRight,
@@ -76,6 +77,27 @@ interface ProductPagination {
 type StockStatus = "ALL" | "LOW" | "OUT" | "IN_STOCK";
 type ExpiryFilter = "ALL" | "EXPIRING_SOON" | "EXPIRED";
 type ProductUsage = "ALL" | "FOR_SALE" | "INTERNAL";
+type InventoryExportField = "name" | "labelName" | "sku" | "unit" | "buyingPrice" | "sellingPrice" | "wholesalePrice" | "currentStock" | "minimumStock" | "supplier" | "barcode" | "manufacturerBarcode" | "internalBarcode" | "expiryDate" | "doesNotExpire" | "isInternalUse" | "isCatalogVisible";
+
+const INVENTORY_EXPORT_FIELDS: Array<{ key: InventoryExportField; header: string; en: string; sw: string; financial?: boolean; default?: boolean }> = [
+  { key: "name", header: "product_name", en: "Product name", sw: "Jina la bidhaa", default: true },
+  { key: "labelName", header: "label_name", en: "Label name", sw: "Jina la lebo" },
+  { key: "sku", header: "sku", en: "SKU / code", sw: "SKU / nambari", default: true },
+  { key: "unit", header: "unit", en: "Unit", sw: "Kipimo", default: true },
+  { key: "currentStock", header: "stock_on_hand", en: "Stock on hand", sw: "Hifadhi iliyopo", default: true },
+  { key: "minimumStock", header: "minimum_stock", en: "Minimum stock", sw: "Hifadhi ya chini", default: true },
+  { key: "buyingPrice", header: "buying_price_tzs", en: "Buying price (TZS)", sw: "Bei ya kununua (TZS)", financial: true, default: true },
+  { key: "sellingPrice", header: "selling_price_tzs", en: "Selling price (TZS)", sw: "Bei ya kuuza (TZS)", financial: true, default: true },
+  { key: "wholesalePrice", header: "wholesale_price_tzs", en: "Wholesale price (TZS)", sw: "Bei ya jumla (TZS)", financial: true },
+  { key: "supplier", header: "supplier", en: "Supplier", sw: "Msambazaji", default: true },
+  { key: "barcode", header: "barcode", en: "Barcode", sw: "Barcode" },
+  { key: "manufacturerBarcode", header: "manufacturer_barcode", en: "Manufacturer barcode", sw: "Barcode ya mtengenezaji" },
+  { key: "internalBarcode", header: "internal_barcode", en: "Internal barcode", sw: "Barcode ya ndani" },
+  { key: "expiryDate", header: "expiry_date", en: "Expiry date", sw: "Tarehe ya kuisha" },
+  { key: "doesNotExpire", header: "does_not_expire", en: "Does not expire", sw: "Haiishi muda" },
+  { key: "isInternalUse", header: "internal_use_only", en: "Internal use only", sw: "Matumizi ya ndani tu" },
+  { key: "isCatalogVisible", header: "visible_in_catalog", en: "Visible in catalog", sw: "Inaonekana kwenye katalogi" },
+];
 
 interface StockSummary {
   total: number;
@@ -176,9 +198,13 @@ export default function InventoryPage() {
   const createPendingUncertain = useRef(false);
   const [canViewFinancials, setCanViewFinancials] = useState(true);
   const [canManageCatalog, setCanManageCatalog] = useState(false);
+  const [canExportInventory, setCanExportInventory] = useState(false);
   const [isFoodBusiness, setIsFoodBusiness] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [showCsvExport, setShowCsvExport] = useState(false);
+  const [csvExporting, setCsvExporting] = useState(false);
+  const [csvExportFields, setCsvExportFields] = useState<InventoryExportField[]>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvErrors, setCsvErrors] = useState<ApiErrorDetail[]>([]);
@@ -268,13 +294,14 @@ export default function InventoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    getCurrentSession<{ user: { role: string; shop?: { category?: string }; staff?: { permissions?: { canViewReports?: boolean } } } }>()
+    getCurrentSession<{ user: { role: string; shop?: { category?: string }; staff?: { permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
       .then((data) => {
         setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports));
+        setCanExportInventory(data.user.role === "ADMIN" || (data.user.role === "MERCHANT" && (!data.user.staff || Boolean(data.user.staff.permissions?.canManageStock))));
         setIsFoodBusiness(["bar", "restaurant"].includes(String(data.user.shop?.category || "").toLowerCase()));
         setCanManageCatalog(data.user.role === "MERCHANT" && !data.user.staff);
       })
-      .catch(() => { setCanViewFinancials(false); setIsFoodBusiness(false); setCanManageCatalog(false); });
+      .catch(() => { setCanViewFinancials(false); setCanExportInventory(false); setIsFoodBusiness(false); setCanManageCatalog(false); });
     // This can race with the shared shell's auth redirect. Handle its rejection
     // locally so a signed-out visit never becomes an unhandled browser error.
     api.get<{ suppliers: Supplier[] }>("/suppliers")
@@ -546,6 +573,87 @@ export default function InventoryPage() {
     URL.revokeObjectURL(url);
   }
 
+  function openCsvExport() {
+    setCsvExportFields(INVENTORY_EXPORT_FIELDS
+      .filter((field) => field.default && (!field.financial || canViewFinancials))
+      .map((field) => field.key));
+    setShowCsvExport(true);
+  }
+
+  function csvCell(value: unknown) {
+    const text = value == null ? "" : String(value);
+    const safeText = /^\s*[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${safeText.replace(/"/g, '""')}"`;
+  }
+
+  async function exportInventoryCsv() {
+    const selectedFields = csvExportFields.filter((key) => canViewFinancials || !INVENTORY_EXPORT_FIELDS.find((field) => field.key === key)?.financial);
+    if (!selectedFields.length || csvExporting) return;
+    setCsvExporting(true);
+    try {
+      const pageSize = 200;
+      const firstPage = await api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?page=1&limit=${pageSize}`, lang);
+      if (!Array.isArray(firstPage.products)) throw new Error(lang === "sw" ? "Orodha ya bidhaa haijarudi katika muundo sahihi." : "The inventory response was not in the expected format.");
+      const allProducts = [...firstPage.products];
+      if (firstPage.pagination) {
+        for (let page = 2; page <= firstPage.pagination.totalPages; page++) {
+          const result = await api.get<{ products: Product[] }>(`/products?page=${page}&limit=${pageSize}`, lang);
+          if (!Array.isArray(result.products)) throw new Error(lang === "sw" ? "Haikuwezekana kupakua bidhaa zote." : "Could not download every inventory page.");
+          allProducts.push(...result.products);
+        }
+      } else {
+        let page = 2;
+        let previousPageSize = firstPage.products.length;
+        while (previousPageSize === pageSize) {
+          const result = await api.get<{ products: Product[] }>(`/products?page=${page}&limit=${pageSize}`, lang);
+          if (!Array.isArray(result.products)) throw new Error(lang === "sw" ? "Haikuwezekana kupakua bidhaa zote." : "Could not download every inventory page.");
+          allProducts.push(...result.products);
+          previousPageSize = result.products.length;
+          page++;
+        }
+      }
+
+      const fieldByKey = new Map(INVENTORY_EXPORT_FIELDS.map((field) => [field.key, field]));
+      const rows = allProducts.map((product) => selectedFields.map((key) => {
+        switch (key) {
+          case "name": return product.name;
+          case "labelName": return product.labelName;
+          case "sku": return product.sku;
+          case "unit": return product.unit;
+          case "buyingPrice": return product.buyingPrice;
+          case "sellingPrice": return product.sellingPrice;
+          case "wholesalePrice": return product.wholesalePrice;
+          case "currentStock": return product.currentStock;
+          case "minimumStock": return product.minimumStock;
+          case "supplier": return product.supplier?.name;
+          case "barcode": return product.barcode;
+          case "manufacturerBarcode": return product.manufacturerBarcode;
+          case "internalBarcode": return product.internalBarcode;
+          case "expiryDate": return product.expiryDate ? product.expiryDate.slice(0, 10) : "";
+          case "doesNotExpire": return product.doesNotExpire;
+          case "isInternalUse": return Boolean(product.isInternalUse);
+          case "isCatalogVisible": return product.isCatalogVisible !== false;
+        }
+      }));
+      const header = selectedFields.map((key) => fieldByKey.get(key)?.header || key);
+      const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+      const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `dukapilot-inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setShowCsvExport(false);
+      toast(lang === "sw" ? `Bidhaa ${allProducts.length} zimepakuliwa kwenye CSV.` : `Exported ${allProducts.length} inventory products to CSV.`, "success");
+    } catch (exportError: unknown) {
+      toast(exportError instanceof Error ? exportError.message : (lang === "sw" ? "Imeshindikana kupakua inventory." : "Could not export inventory."), "error");
+    } finally {
+      setCsvExporting(false);
+    }
+  }
+
   async function importCsv() {
     if (!csvFile || csvImporting) return;
     setCsvErrors([]);
@@ -605,7 +713,7 @@ export default function InventoryPage() {
         {/* Header */}
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold text-gray-900">{t("inventory.title", lang)}</h1>
-          <div className="flex flex-wrap gap-2">{canManageCatalog && <a href="/settings#catalog-sharing" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><Share2 className="h-4 w-4" /><span>{lang === "sw" ? "Shiriki orodha" : "Share catalog"}</span></a>}{canViewFinancials && <button onClick={startStockCount} aria-label="Start stock count" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title="Stock count"><ScanLine className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={downloadCsvTemplate} aria-label={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} title={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:text-brand-700"><Download className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={() => { setCsvFile(null); setCsvErrors([]); setShowCsvImport(true); }} className="flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><FileUp className="h-4 w-4" /><span className="hidden sm:inline">{lang === "sw" ? "Ingiza CSV" : "Import CSV"}</span></button>}{canViewFinancials && <button onClick={openAdd} aria-label={t("inventory.addProduct", lang)} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"><Plus className="w-4 h-4" /><span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span></button>}</div>
+          <div className="flex flex-wrap gap-2">{canManageCatalog && <a href="/settings#catalog-sharing" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><Share2 className="h-4 w-4" /><span>{lang === "sw" ? "Shiriki orodha" : "Share catalog"}</span></a>}{canExportInventory && <button onClick={openCsvExport} aria-label={lang === "sw" ? "Pakua inventory CSV" : "Export inventory CSV"} title={lang === "sw" ? "Pakua inventory CSV" : "Export inventory CSV"} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-700 hover:border-brand-300 hover:text-brand-700"><FileDown className="h-4 w-4" /><span>{lang === "sw" ? "Pakua CSV" : "Export CSV"}</span></button>}{canViewFinancials && <button onClick={startStockCount} aria-label="Start stock count" className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title="Stock count"><ScanLine className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={downloadCsvTemplate} aria-label={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} title={lang === "sw" ? "Pakua CSV template" : "Download CSV template"} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:text-brand-700"><Download className="h-4 w-4" /></button>}{canViewFinancials && <button onClick={() => { setCsvFile(null); setCsvErrors([]); setShowCsvImport(true); }} className="flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"><FileUp className="h-4 w-4" /><span className="hidden sm:inline">{lang === "sw" ? "Ingiza CSV" : "Import CSV"}</span></button>}{canViewFinancials && <button onClick={openAdd} aria-label={t("inventory.addProduct", lang)} className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"><Plus className="w-4 h-4" /><span className="hidden sm:inline">{t("inventory.addProduct", lang)}</span></button>}</div>
         </div>
 
         {stockCount && <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 p-3"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-brand-950">{lang === "sw" ? "Uhesabuji wa stock unaendelea" : "Stock count in progress"}</p><p className="text-xs text-brand-700">{stockCount.items.reduce((sum, item) => sum + item.counted, 0)} {lang === "sw" ? "zimescanwa" : "scanned"}</p></div><button onClick={() => setStockCountScannerOpen(true)} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white">Scan</button></div><div className="mt-3 flex gap-2"><input value={stockCountCode} onChange={(event) => setStockCountCode(event.target.value)} onKeyDown={(event) => event.key === "Enter" && scanStockCount(stockCountCode)} placeholder="Barcode" className="min-w-0 flex-1 rounded-lg border border-brand-200 px-3 py-2 text-sm" /><button onClick={() => scanStockCount(stockCountCode)} className="rounded-lg border border-brand-300 px-3 text-sm font-semibold text-brand-800">Add</button></div><div className="mt-3 max-h-32 overflow-y-auto text-xs">{stockCount.items.filter((item) => item.counted > 0).map((item) => <div key={item.id} className="flex justify-between border-t border-brand-100 py-1"><span>{item.product.name}</span><span>{item.expected} / {item.counted} ({item.counted - item.expected >= 0 ? "+" : ""}{item.counted - item.expected})</span></div>)}</div><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => finishStockCount(false)} className="rounded-lg border border-brand-300 py-2 text-sm font-semibold text-brand-800">{lang === "sw" ? "Maliza bila kubadili" : "Finish only"}</button><button onClick={() => finishStockCount(true)} className="rounded-lg bg-brand-700 py-2 text-sm font-semibold text-white">{lang === "sw" ? "Tumia tofauti" : "Apply differences"}</button></div></div>}
@@ -1123,6 +1231,16 @@ export default function InventoryPage() {
         </Modal>
       )}
       {barcodeScannerOpen && <BarcodeScanner onClose={() => setBarcodeScannerOpen(false)} onDetected={(barcode) => { setForm({ ...form, barcode: barcode.toUpperCase() }); setBarcodeScannerOpen(false); }} />}
+      {showCsvExport && <Modal title={lang === "sw" ? "Pakua inventory kwa CSV" : "Export inventory to CSV"} onClose={() => { if (!csvExporting) setShowCsvExport(false); }}><div className="space-y-4">
+        <p className="text-sm leading-5 text-gray-600">{lang === "sw" ? "Itapakua bidhaa zote zinazotumika kwenye inventory, si ukurasa au vichujio vinavyoonekana sasa." : "Exports every active inventory product, not just the current page or visible filters."}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-gray-800">{lang === "sw" ? "Chagua taarifa" : "Choose information"}</p><div className="flex gap-3 text-sm"><button type="button" onClick={() => setCsvExportFields(INVENTORY_EXPORT_FIELDS.filter((field) => !field.financial || canViewFinancials).map((field) => field.key))} className="font-semibold text-brand-700 hover:text-brand-900">{lang === "sw" ? "Chagua zote" : "Select all"}</button><button type="button" onClick={() => setCsvExportFields([])} className="font-semibold text-gray-600 hover:text-gray-900">{lang === "sw" ? "Ondoa zote" : "Clear all"}</button></div></div>
+        <fieldset className="grid max-h-[48vh] grid-cols-1 gap-1 overflow-y-auto border-y border-gray-100 py-2 sm:grid-cols-2">
+          <legend className="sr-only">{lang === "sw" ? "Sehemu za CSV" : "CSV fields"}</legend>
+          {INVENTORY_EXPORT_FIELDS.filter((field) => !field.financial || canViewFinancials).map((field) => <label key={field.key} className="flex min-h-10 items-center gap-3 rounded-md px-2 py-1.5 hover:bg-gray-50"><input type="checkbox" checked={csvExportFields.includes(field.key)} onChange={(event) => setCsvExportFields((current) => event.target.checked ? [...current, field.key] : current.filter((key) => key !== field.key))} className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" /><span className="text-sm text-gray-700">{lang === "sw" ? field.sw : field.en}</span></label>)}
+        </fieldset>
+        {csvExportFields.length === 0 && <p role="alert" className="text-sm text-amber-800">{lang === "sw" ? "Chagua angalau sehemu moja." : "Select at least one field."}</p>}
+        <div className="flex gap-2"><button type="button" onClick={() => setShowCsvExport(false)} disabled={csvExporting} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700 disabled:opacity-60">{t("common.cancel", lang)}</button><button type="button" onClick={exportInventoryCsv} disabled={!csvExportFields.length || csvExporting} className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"><FileDown className="h-4 w-4" />{csvExporting ? (lang === "sw" ? "Inapakua..." : "Exporting...") : (lang === "sw" ? "Pakua CSV" : "Download CSV")}</button></div>
+      </div></Modal>}
       {showCsvImport && <Modal title={lang === "sw" ? "Ingiza bidhaa kwa CSV" : "Import products from CSV"} onClose={() => setShowCsvImport(false)}><div className="space-y-4"><ol className="space-y-2 text-sm leading-6 text-gray-700"><li>{lang === "sw" ? "1. Pakua template, kisha ifungue kwa Excel au Google Sheets." : "1. Download the template and open it in Excel or Google Sheets."}</li><li>{lang === "sw" ? "2. Jaza jina na bei ya kununua. Bei ya kuuza inahitajika tu kwa bidhaa za kuuza." : "2. Add each name and buying price. Selling price is required only for products for sale."}</li><li>{lang === "sw" ? "3. Weka isInternalUse kuwa true kwa chakula cha mifugo, mbegu au viungo visivyouzwa. Bei ya jumla itumike kwa bidhaa zinazouzwa tu." : "3. Set isInternalUse to true for feed, seed or ingredients not sold to customers. Wholesale pricing is only for saleable products."}</li><li>{lang === "sw" ? "4. Hifadhi kama CSV, kisha chagua file hapa chini." : "4. Save as CSV, then choose the file below."}</li></ol><button type="button" onClick={downloadCsvTemplate} className="inline-flex items-center gap-2 text-sm font-semibold text-brand-700 hover:text-brand-900"><Download className="h-4 w-4" />{lang === "sw" ? "Pakua CSV template" : "Download CSV template"}</button><label className="grid gap-2 rounded-lg border border-dashed border-gray-300 p-4 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Chagua CSV file" : "Choose CSV file"}</span><input type="file" accept=".csv,text/csv" onChange={(event) => { setCsvFile(event.target.files?.[0] || null); setCsvErrors([]); }} className="block w-full text-sm" />{csvFile && <span className="text-xs font-normal text-gray-500">{csvFile.name}</span>}</label><p className="text-xs leading-5 text-gray-500">{lang === "sw" ? "SKU, stock ya kuanzia, minimum stock, barcode na expiry date ni hiari. wholesaleMinQty pia ni hiari; ukiweka jumla bila idadi, mfumo utatumia 5. Stock ya kuanzia ni 0 na minimum stock ni 5 ukiiacha wazi. Bei za TZS zinaweza kuandikwa 12500, 12,500, 12 500, au TZS 12,500." : "SKU, opening stock, minimum stock, barcode, and expiry date are optional. wholesaleMinQty is also optional; enabled wholesale products default to 5 units. Blank opening stock is 0 and minimum stock is 5. TZS prices can be written as 12500, 12,500, 12 500, or TZS 12,500."}</p>{csvErrors.length > 0 && <section aria-live="polite" className="max-h-48 overflow-y-auto rounded-lg border border-red-200 bg-red-50 p-3"><p className="text-sm font-bold text-red-900">{lang === "sw" ? "Rekebisha makosa haya, kisha chagua file tena:" : "Fix these errors, then choose the file again:"}</p><ul className="mt-2 space-y-1.5 text-xs leading-5 text-red-800">{csvErrors.map((item, index) => <li key={`${item.row}-${item.field}-${index}`}><strong>{lang === "sw" ? "Mstari" : "Row"} {item.row || 1}{item.field ? ` - ${item.field}` : ""}:</strong> {item.message}</li>)}</ul></section>}<div className="flex gap-2"><button type="button" onClick={() => setShowCsvImport(false)} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700">{t("common.cancel", lang)}</button><button type="button" onClick={importCsv} disabled={!csvFile || csvImporting} className="flex-1 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{csvImporting ? (lang === "sw" ? "Inaingiza..." : "Importing...") : (lang === "sw" ? "Ingiza bidhaa" : "Import products")}</button></div></div></Modal>}
       {stockCountScannerOpen && <BarcodeScanner onClose={() => setStockCountScannerOpen(false)} onDetected={scanStockCount} />}
       {labelProduct && <Modal title={lang === "sw" ? "Chapisha label" : "Print label"} onClose={() => setLabelProduct(null)}><LabelComposer products={[labelProduct]} initialProductIds={[labelProduct.id]} compact /></Modal>}

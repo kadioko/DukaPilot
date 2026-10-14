@@ -52,8 +52,8 @@ In Admin -> Referrals:
 
 - Review the referrer, new shop, contact details, and completed-sale progress.
 - The record moves to `QUALIFIED` after the new shop has 10 completed sales.
-- Select `Reward 7 days` to extend the referrer's active paid subscription or free-trial validity. The action is audited and cannot be granted twice.
+- Select **Grant 7 days** after the 10-sale qualification, or **Grant 7 days early** when an admin approves the promised reward before that threshold. The admin must enter a reason; the record and audit log include the sale count and whether qualification was bypassed. Both paths are one-time, extend the referrer's current paid subscription or trial, and notify the shop owner.
 - After a reward is confirmed, the shop owner sees a bilingual confirmation in Shop alerts for 90 days and the referral history shows `7 days added`. If the owner has push notifications enabled on a device, DukaPilot also queues a private push that opens the referral page. Staff do not receive this owner-only subscription notice.
 - If push is unavailable or disabled, the in-app Shop alerts entry remains available from the bell menu; no separate admin follow-up is needed to prove the reward was recorded.
 - Select `Not valid` only for a mistaken or fraudulent referral; this permanently closes the reward.
-- If a genuine registration was missed, use **Recover missing referral** with the referrer's code, the new owner phone number, and a short evidence note. This creates one audited referral record and still applies the normal 10-completed-sale rule before a reward can be granted.
+- If a genuine registration was missed, use **Recover missing referral** with the referrer's code, the new owner phone number, and a short evidence note. This creates one audited referral record. The normal reward still follows the 10-sale rule unless an admin explicitly chooses the early reward action and records why.

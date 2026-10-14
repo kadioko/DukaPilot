@@ -546,6 +546,9 @@ export default function AdminPage() {
   const [subscriptionSearch, setSubscriptionSearch] = useState("");
   const [updatingSub, setUpdatingSub] = useState<string | null>(null);
   const [updatingReferral, setUpdatingReferral] = useState<string | null>(null);
+  const [rewardReferralDraft, setRewardReferralDraft] = useState<AdminReferral | null>(null);
+  const [rewardReferralNote, setRewardReferralNote] = useState("");
+  const [rewardReferralError, setRewardReferralError] = useState("");
   const [recoveringReferral, setRecoveringReferral] = useState(false);
   const [referralRecovery, setReferralRecovery] = useState({ referralCode: "", referredPhone: "", note: "" });
   const [referralRecoveryMessage, setReferralRecoveryMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -873,19 +876,32 @@ export default function AdminPage() {
     setReferralStatusCounts(data.statusCounts || {});
   }
 
-  async function handleRewardReferral(referral: AdminReferral) {
-    const confirmed = window.confirm(
-      `Give ${referral.referrerShop.name} one free week for referring ${referral.referredShop.name}?\n\nThis reward can only be granted once.`
-    );
-    if (!confirmed) return;
+  function handleRewardReferral(referral: AdminReferral) {
+    setRewardReferralDraft(referral);
+    setRewardReferralNote("");
+    setRewardReferralError("");
+  }
+
+  async function submitReferralReward(event: React.FormEvent) {
+    event.preventDefault();
+    const referral = rewardReferralDraft;
+    const note = rewardReferralNote.trim();
+    if (!referral || note.length < 3) {
+      setRewardReferralError(sw ? "Eleza kwa kifupi sababu ya kutoa zawadi hii." : "Add a short note explaining this reward.");
+      return;
+    }
 
     setUpdatingReferral(referral.id);
     try {
-      const data = await api.post<{ message: string }>(`/admin/referrals/${referral.id}/reward`, {});
+      const data = await api.post<{ message: string }>(`/admin/referrals/${referral.id}/reward`, {
+        note,
+        overrideQualification: !referral.rewardEligible,
+      });
+      setRewardReferralDraft(null);
       window.alert(data.message);
       await Promise.all([refreshReferrals(), refreshSubscriptions()]);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Could not grant referral reward");
+      setRewardReferralError(error instanceof Error ? error.message : (sw ? "Zawadi haikutolewa." : "Could not grant referral reward."));
     } finally {
       setUpdatingReferral(null);
     }
@@ -2081,7 +2097,7 @@ export default function AdminPage() {
                   <div>
                     <h2 className="text-sm font-semibold text-brand-950">Referral rewards</h2>
                     <p className="mt-1 max-w-2xl text-xs leading-5 text-brand-800">
-                      A shop is linked automatically when the new owner registers through its referral link. After 10 completed sales, grant the referrer one free week exactly once.
+                      A shop is linked automatically through its referral link. Grant the referrer one free week; normally this follows 10 completed sales. Admins can grant it early with a required, audited note.
                     </p>
                   </div>
                 </div>
@@ -2153,10 +2169,10 @@ export default function AdminPage() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => handleRewardReferral(referral)}
-                            disabled={!referral.rewardEligible || updatingReferral === referral.id}
+                            disabled={!['PENDING', 'QUALIFIED'].includes(referral.status) || updatingReferral === referral.id}
                             className="inline-flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-40"
                           >
-                            <Gift className="h-3.5 w-3.5" /> {updatingReferral === referral.id ? "Saving..." : "Reward 7 days"}
+                            <Gift className="h-3.5 w-3.5" /> {updatingReferral === referral.id ? "Saving..." : referral.rewardEligible ? "Grant 7 days" : "Grant 7 days early"}
                           </button>
                           {(referral.status === "PENDING" || referral.status === "QUALIFIED") && (
                             <button onClick={() => handleRejectReferral(referral)} disabled={updatingReferral === referral.id} className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50">
@@ -3007,6 +3023,30 @@ export default function AdminPage() {
             <div className="overflow-hidden rounded-xl border border-gray-200"><AdminPager page={supplierPage} totalPages={supplierTotalPages} total={supplierTotal} sw={sw} onPage={(page) => refreshSuppliers(page).catch(console.error)} /></div>
           </div>
         )}
+        {rewardReferralDraft && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !updatingReferral) setRewardReferralDraft(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="referral-reward-title" className="w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 id="referral-reward-title" className="text-lg font-bold text-gray-950">{sw ? "Toa zawadi ya referral" : "Grant referral reward"}</h2>
+                <p className="mt-1 text-sm text-gray-600">{sw ? "Ongeza wiki moja ya bure kwa" : "Add one free week for"} <strong>{rewardReferralDraft.referrerShop.name}</strong> {sw ? "kwa kumleta" : "for referring"} <strong>{rewardReferralDraft.referredShop.name}</strong>.</p>
+              </div>
+              <button type="button" aria-label={sw ? "Funga" : "Close"} onClick={() => setRewardReferralDraft(null)} disabled={Boolean(updatingReferral)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 disabled:opacity-50">{sw ? "Funga" : "Close"}</button>
+            </div>
+            {!rewardReferralDraft.rewardEligible && <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{sw ? `Duka lililoletwa lina mauzo ${rewardReferralDraft.salesCount}/10. Kutoa zawadi sasa kutapita sharti la kawaida; sababu itahifadhiwa kwenye kumbukumbu ya ukaguzi.` : `The referred shop has ${rewardReferralDraft.salesCount}/10 completed sales. Granting now bypasses the usual qualification rule; your reason will be recorded in the audit trail.`}</p>}
+            <form onSubmit={submitReferralReward} className="mt-4 space-y-3">
+              <label className="grid gap-1 text-sm font-semibold text-gray-800">
+                {sw ? "Sababu / dokezo la msimamizi" : "Admin reason / note"}
+                <textarea value={rewardReferralNote} onChange={(event) => setRewardReferralNote(event.target.value)} minLength={3} maxLength={1000} required rows={3} placeholder={sw ? "Mfano: Zawadi ya wiki moja iliahidiwa wakati wa usajili." : "Example: One free week was promised during onboarding."} className="resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" />
+              </label>
+              {rewardReferralError && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{rewardReferralError}</p>}
+              <p className="text-xs text-gray-500">{sw ? "Tarehe ya kuisha ya mpango itaongezwa siku 7. Zawadi inaweza kutolewa mara moja tu." : "The plan validity is extended by 7 days. This referral can only be rewarded once."}</p>
+              <div className="flex justify-end gap-2 border-t border-gray-100 pt-3">
+                <button type="button" onClick={() => setRewardReferralDraft(null)} disabled={Boolean(updatingReferral)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">{sw ? "Ghairi" : "Cancel"}</button>
+                <button type="submit" disabled={Boolean(updatingReferral) || rewardReferralNote.trim().length < 3} className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Gift className="h-4 w-4" />{updatingReferral ? (sw ? "Inahifadhi..." : "Granting...") : (sw ? "Thibitisha siku 7" : "Confirm 7 days")}</button>
+              </div>
+            </form>
+          </section>
+        </div>}
         {selectedSupportShop && <div className="fixed inset-0 z-50 bg-gray-950/40" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSupportShop(null); }}>
           <aside role="dialog" aria-modal="true" aria-label="Shop support details" className="ml-auto flex h-full w-full max-w-md flex-col bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-gray-200 pb-4">
