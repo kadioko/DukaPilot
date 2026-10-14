@@ -8,8 +8,9 @@ test("receiving searches the full product catalog and prevents adding the same p
   });
   await page.route("**/*api/**", async (route) => {
     const url = new URL(route.request().url());
-    const apiPathIndex = url.pathname.indexOf("/api/");
-    const path = apiPathIndex >= 0 ? url.pathname.slice(apiPathIndex + 4) : url.pathname;
+    const apiPathIndex = Math.max(url.pathname.indexOf("/_api/"), url.pathname.indexOf("/api/"));
+    const apiPrefixLength = url.pathname.startsWith("/_api/", apiPathIndex) ? 6 : 5;
+    const path = apiPathIndex >= 0 ? `/${url.pathname.slice(apiPathIndex + apiPrefixLength)}` : url.pathname;
     if (path === "/auth/me") {
       return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" } } } });
     }
