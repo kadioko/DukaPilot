@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Calculator, PackageCheck, Plus, ReceiptText, RefreshCw, Trash2, Truck } from "lucide-react";
+import { Calculator, PackageCheck, Plus, ReceiptText, RefreshCw, Search, Trash2, Truck } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import DateSelect from "@/components/ui/DateSelect";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
@@ -11,7 +11,7 @@ import { useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 
 interface Supplier { id: string; name: string; }
-interface Product { id: string; name: string; unit: string; buyingPrice: number; supplier?: { id: string } | null; }
+interface Product { id: string; name: string; unit: string; buyingPrice: number; sku?: string | null; supplier?: { id: string } | null; }
 interface ReceiveLine { productId: string; quantity: string; unitCost: string; }
 interface Order { id: string; supplier: Supplier; items: Array<{ productId: string; quantity: number; unitPrice?: number | null; product: { name: string; unit: string; buyingPrice?: number } }>; }
 interface StockReceipt { id: string; invoiceNumber?: string | null; totalLandedCost: number; transportCost: number; otherCost: number; estimatedAllocation?: boolean; receivedAt: string; supplier?: Supplier | null; items: Array<{ id: string; quantity: number; landedUnitCost: number; product: { name: string; unit: string } }> }
@@ -28,6 +28,10 @@ function ReceivingContent() {
   const searchParams = useSearchParams();
   const sourceOrderId = searchParams.get("order") || "";
   const [products, setProducts] = useState<Product[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [productSearchResults, setProductSearchResults] = useState<Product[]>([]);
+  const [productSearchLoading, setProductSearchLoading] = useState(false);
+  const [productSearchError, setProductSearchError] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [receipts, setReceipts] = useState<StockReceipt[]>([]);
   const [supplierId, setSupplierId] = useState("");
@@ -65,6 +69,34 @@ function ReceivingContent() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
+    const term = productSearch.trim();
+    if (term.length < 2) {
+      setProductSearchResults([]);
+      setProductSearchError("");
+      setProductSearchLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setProductSearchLoading(true);
+    setProductSearchError("");
+    setProductSearchResults([]);
+    const timer = window.setTimeout(async () => {
+      try {
+        const query = new URLSearchParams({ page: "1", limit: "200", search: term });
+        const result = await api.getRecoverable<{ products: Product[] }>(`/products?${query.toString()}`, lang);
+        if (!cancelled) setProductSearchResults(result.products);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setProductSearchResults([]);
+          setProductSearchError(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kutafuta bidhaa." : "Could not search products."));
+        }
+      } finally {
+        if (!cancelled) setProductSearchLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [lang, productSearch]);
+  useEffect(() => {
     if (!sourceOrderId) return;
     api.get<{ order: Order }>(`/orders/${sourceOrderId}`, lang).then(({ order }) => {
       setSourceOrder(order);
@@ -78,12 +110,14 @@ function ReceivingContent() {
   const productCost = estimatedTotalMode ? Math.max(0, Number(totalGroceryBill) || 0) : directProductCost;
   const extraCost = Math.max(0, Number(transportCost) || 0) + Math.max(0, Number(otherCost) || 0);
   const totalLandedCost = productCost + extraCost;
-  const availableProducts = products.filter((product) => !lines.some((line) => line.productId === product.id) && (!supplierId || !product.supplier || product.supplier.id === supplierId));
+  const availableProducts = productSearchResults.filter((product) => !lines.some((line) => line.productId === product.id) && (!supplierId || !product.supplier || product.supplier.id === supplierId));
 
-  function addProduct(productId: string) {
-    const product = productMap.get(productId);
-    if (!product || lines.some((line) => line.productId === productId)) return;
-    setLines((current) => [...current, { productId, quantity: "1", unitCost: String(product.buyingPrice) }]);
+  function addProduct(product: Product) {
+    if (lines.some((line) => line.productId === product.id)) return;
+    setProducts((current) => current.some((item) => item.id === product.id) ? current : [...current, product]);
+    setLines((current) => [...current, { productId: product.id, quantity: "1", unitCost: String(product.buyingPrice) }]);
+    setProductSearch("");
+    setProductSearchResults([]);
   }
 
   function updateLine(productId: string, key: "quantity" | "unitCost", value: string) {
@@ -145,7 +179,7 @@ function ReceivingContent() {
         {estimatedTotalMode && <label className="mt-3 grid max-w-xs gap-1 text-sm font-medium"><span>{lang === "sw" ? "Jumla ya bill ya grocery (TZS)" : "Total grocery bill (TZS)"}</span><CurrencyInput value={totalGroceryBill} onChange={setTotalGroceryBill} className="rounded-lg border border-amber-300 bg-white px-3 py-2" placeholder="180,000" /></label>}
       </div>
       <div className="grid gap-3 md:grid-cols-3"><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Msambazaji (hiari)" : "Supplier (optional)"}</span><select value={supplierId} onChange={(event) => setSupplierId(event.target.value)} disabled={Boolean(sourceOrder)} className="rounded-lg border border-gray-300 bg-white px-3 py-3"><option value="">{lang === "sw" ? "Bila msambazaji" : "No supplier"}</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Namba ya invoice (hiari)" : "Invoice number (optional)"}</span><input value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3" placeholder="INV-001" /></label><div><DateSelect value={receivedAt} onChange={setReceivedAt} label={lang === "sw" ? "Tarehe ya kupokea" : "Received date"} lang={lang} required /></div></div>
-      <div className="mt-5 border-t border-gray-100 pt-4"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-gray-950">{lang === "sw" ? "Bidhaa zilizofika" : "Delivered products"}</h2><select value="" onChange={(event) => { addProduct(event.target.value); event.currentTarget.value = ""; }} className="rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm font-semibold text-brand-800"><option value="">{lang === "sw" ? "+ Ongeza bidhaa" : "+ Add product"}</option>{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></div>{lines.length ? <div className="mt-3 space-y-2">{lines.map((line) => { const product = productMap.get(line.productId); return <div key={line.productId} className={`grid gap-2 border border-gray-100 bg-gray-50 p-3 ${estimatedTotalMode ? "sm:grid-cols-[1fr_120px_42px]" : "sm:grid-cols-[1fr_120px_150px_42px]"} sm:items-end`}><div><p className="text-sm font-semibold text-gray-950">{product?.name}</p><p className="text-xs text-gray-500">{product?.unit}{estimatedTotalMode ? (lang === "sw" ? " - gharama itakadiriwa" : " - cost will be estimated") : ""}</p></div><label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Idadi" : "Quantity"}</span><input value={line.quantity} onChange={(event) => updateLine(line.productId, "quantity", event.target.value)} type="number" min="1" step="1" inputMode="numeric" className="rounded-lg border border-gray-300 bg-white px-3 py-2" /></label>{!estimatedTotalMode && <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Bei / kipimo (TZS)" : "Unit cost (TZS)"}</span><CurrencyInput value={line.unitCost} onChange={(value) => updateLine(line.productId, "unitCost", value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2" /></label>}<button type="button" onClick={() => setLines((current) => current.filter((item) => item.productId !== line.productId))} className="flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600" title={lang === "sw" ? "Ondoa" : "Remove"} aria-label={lang === "sw" ? "Ondoa" : "Remove"}><Trash2 className="h-4 w-4" /></button></div>; })}</div> : <div className="mt-3 border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">{lang === "sw" ? "Chagua bidhaa zilizofika." : "Choose the products that arrived."}</div>}</div>
+      <div className="mt-5 border-t border-gray-100 pt-4"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-gray-950">{lang === "sw" ? "Bidhaa zilizofika" : "Delivered products"}</h2></div><label className="relative mt-3 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><span className="sr-only">{lang === "sw" ? "Tafuta bidhaa za kuongeza" : "Search products to add"}</span><input type="search" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder={lang === "sw" ? "Tafuta bidhaa kwa jina au SKU..." : "Search products by name or SKU..."} className="min-h-11 w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100" /></label>{productSearch.trim().length < 2 ? <p className="mt-2 text-xs text-gray-500">{lang === "sw" ? "Andika angalau herufi 2 ili kutafuta kwenye bidhaa zako." : "Type at least 2 characters to search your product catalog."}</p> : productSearchLoading ? <p className="mt-2 text-sm text-gray-500">{lang === "sw" ? "Inatafuta bidhaa..." : "Searching products..."}</p> : productSearchError ? <p role="alert" className="mt-2 text-sm text-red-700">{productSearchError}</p> : availableProducts.length ? <div className="mt-2 max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white">{availableProducts.map((product) => <button key={product.id} type="button" onClick={() => addProduct(product)} className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-brand-50 focus:bg-brand-50 focus:outline-none"><span className="min-w-0"><span className="block truncate text-sm font-semibold text-gray-950">{product.name}</span>{product.sku && <span className="block truncate font-mono text-xs text-gray-500">SKU: {product.sku}</span>}</span><span className="shrink-0 text-xs font-medium text-brand-800">{lang === "sw" ? "Ongeza" : "Add"}</span></button>)}</div> : <p className="mt-2 text-sm text-gray-500">{lang === "sw" ? "Hakuna bidhaa inayolingana ambayo haijaongezwa." : "No matching products left to add."}</p>}{lines.length ? <div className="mt-3 space-y-2">{lines.map((line) => { const product = productMap.get(line.productId); return <div key={line.productId} className={`grid gap-2 border border-gray-100 bg-gray-50 p-3 ${estimatedTotalMode ? "sm:grid-cols-[1fr_120px_42px]" : "sm:grid-cols-[1fr_120px_150px_42px]"} sm:items-end`}><div><p className="text-sm font-semibold text-gray-950">{product?.name}</p><p className="text-xs text-gray-500">{product?.unit}{estimatedTotalMode ? (lang === "sw" ? " - gharama itakadiriwa" : " - cost will be estimated") : ""}</p></div><label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Idadi" : "Quantity"}</span><input value={line.quantity} onChange={(event) => updateLine(line.productId, "quantity", event.target.value)} type="number" min="1" step="1" inputMode="numeric" className="rounded-lg border border-gray-300 bg-white px-3 py-2" /></label>{!estimatedTotalMode && <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Bei / kipimo (TZS)" : "Unit cost (TZS)"}</span><CurrencyInput value={line.unitCost} onChange={(value) => updateLine(line.productId, "unitCost", value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2" /></label>}<button type="button" onClick={() => setLines((current) => current.filter((item) => item.productId !== line.productId))} className="flex h-10 w-10 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600" title={lang === "sw" ? "Ondoa" : "Remove"} aria-label={lang === "sw" ? "Ondoa" : "Remove"}><Trash2 className="h-4 w-4" /></button></div>; })}</div> : <div className="mt-3 border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">{lang === "sw" ? "Chagua bidhaa zilizofika." : "Choose the products that arrived."}</div>}</div>
       <div className="mt-5 grid gap-3 border-t border-gray-100 pt-4 md:grid-cols-3"><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Usafiri (TZS)" : "Transport (TZS)"}</span><CurrencyInput value={transportCost} onChange={setTransportCost} className="rounded-lg border border-gray-300 px-3 py-3" /></label><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Gharama nyingine (TZS)" : "Other costs (TZS)"}</span><CurrencyInput value={otherCost} onChange={setOtherCost} className="rounded-lg border border-gray-300 px-3 py-3" /></label><label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Njia ya malipo" : "Payment method"}</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-3"><option value="CASH">{lang === "sw" ? "Taslimu" : "Cash"}</option><option value="MPESA">M-Pesa</option><option value="BANK">{lang === "sw" ? "Benki" : "Bank"}</option></select></label></div>
       {paymentMethod === "CASH" && <p className="mt-3 text-xs leading-5 text-brand-800">{lang === "sw" ? "Malipo haya ya taslimu yataonekana kwenye Daily Close ya shift iliyo wazi. Usiandike tena kama Matumizi." : "This cash purchase appears in the open Daily Close shift. Do not add it again as an Expense."}</p>}
       <label className="mt-3 grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><input value={note} onChange={(event) => setNote(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3" /></label>
