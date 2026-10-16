@@ -239,9 +239,8 @@ test("supplier balance search is scoped to the active branch", async () => {
 
 test("payment allocation is tenant-scoped and idempotent for an uncertain retry", async () => {
   const requestKey = "8e7dc5ec-7a78-4eb0-9fb9-e930a9a749a1";
-  const paidAt = "2026-10-16T09:00:00.000Z";
   const allocations = [{ stockReceiptId: "receipt-1", amount: 3000 }];
-  const requestHash = crypto.createHash("sha256").update(JSON.stringify({ amount: 3000, method: "MPESA", paymentReference: "MP123", note: null, paidAt, allocations })).digest("hex");
+  const requestHash = crypto.createHash("sha256").update(JSON.stringify({ amount: 3000, method: "MPESA", paymentReference: "MP123", note: null, paidAt: null, allocations })).digest("hex");
   let created = 0;
   const tx = {
     $queryRawUnsafe: async (_sql, id, shopId) => { assert.equal(id, "receipt-1"); assert.equal(shopId, "branch-2"); },
@@ -256,17 +255,48 @@ test("payment allocation is tenant-scoped and idempotent for an uncertain retry"
   };
   const prismaMock = { $transaction: (callback) => callback(tx), supplierPayment: tx.supplierPayment };
   const controller = loadController(prismaMock, "branch-2");
-  const req = { user: { userId: "owner-1" }, body: { requestKey, amount: 3000, paymentMethod: "MPESA", paymentReference: "MP123", paidAt, allocations } };
+  const req = { user: { userId: "owner-1" }, body: { requestKey, amount: 3000, paymentMethod: "MPESA", paymentReference: "MP123", allocations } };
   const first = response();
   await controller.recordPayment(req, first);
   assert.equal(first.statusCode, 201);
   assert.equal(created, 1);
 
+  await new Promise((resolve) => setTimeout(resolve, 5));
   const retry = response();
   await controller.recordPayment(req, retry);
   assert.equal(retry.statusCode, 200);
   assert.equal(retry.payload.reused, true);
   assert.equal(created, 1);
+});
+
+test("supplier return retry stays idempotent when the server supplies the date", async () => {
+  const requestKey = "8e7dc5ec-7a78-4eb0-9fb9-e930a9a749a9";
+  let created;
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    supplierCredit: {
+      findFirst: async ({ where }) => created && where.requestKey === requestKey ? created : null,
+      create: async ({ data }) => { created = { id: "credit-1", ...data, items: data.items.create.map((item, index) => ({ id: `credit-line-${index}`, ...item })) }; return created; },
+    },
+    stockReceipt: {
+      findMany: async () => [{ id: "receipt-1", shopId: "shop-1", supplierId: "supplier-1", totalLandedCost: 10000, paidAtReceipt: 10000, paymentAllocations: [], credits: [], paymentCorrections: [] }],
+      findFirst: async () => ({ id: "receipt-1", supplierId: "supplier-1", items: [{ id: "line-1", quantity: 5, landedUnitCost: 1000, landedTotalCost: 5000, product: { id: "product-1", currentStock: 5, shopId: "shop-1" } }] }),
+    },
+    supplierCreditLine: { aggregate: async () => ({ _sum: { quantity: 0, amount: 0 } }) },
+    product: { updateMany: async () => ({ count: 1 }) },
+    stockMovement: { create: async () => {} },
+  };
+  const controller = loadController({ $transaction: (callback) => callback(tx) });
+  const req = { user: { userId: "owner-1" }, body: { stockReceiptId: "receipt-1", requestKey, kind: "RETURN", items: [{ stockReceiptItemId: "line-1", quantity: 1 }] } };
+  const first = response();
+  await controller.recordCredit(req, first);
+  assert.equal(first.statusCode, 201);
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const retry = response();
+  await controller.recordCredit(req, retry);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.reused, true);
 });
 
 test("payment allocation cannot exceed the remaining receipt balance", async () => {

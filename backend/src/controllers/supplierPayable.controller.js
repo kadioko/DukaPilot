@@ -255,7 +255,7 @@ const recordPayment = asyncHandler(async (req, res) => {
   const paidAt = req.body.paidAt ? new Date(req.body.paidAt) : new Date();
   if (Number.isNaN(paidAt.getTime())) return res.status(400).json({ error: "Payment date is invalid" });
   const normalizedAllocations = allocations.sort((a, b) => a.stockReceiptId.localeCompare(b.stockReceiptId));
-  const requestHash = hash({ amount, method, paymentReference, note, paidAt: paidAt.toISOString(), allocations: normalizedAllocations });
+  const requestHash = hash({ amount, method, paymentReference, note, paidAt: req.body.paidAt ? paidAt.toISOString() : null, allocations: normalizedAllocations });
   let payment;
   let reused = false;
   try {
@@ -390,7 +390,7 @@ const recordCredit = asyncHandler(async (req, res) => {
   if (items.some((item) => !item.stockReceiptItemId || !Number.isSafeInteger(item.quantity) || item.quantity < 0 || !Number.isSafeInteger(item.amount) || item.amount < 0 || (kind === "RETURN" ? item.quantity <= 0 : item.amount <= 0))) return res.status(400).json({ error: "Return quantities and credit amounts must be valid whole values" });
   if (kind === "CREDIT_NOTE" && items.some((item) => item.quantity !== 0)) return res.status(400).json({ error: "A non-stock credit note must not change inventory quantities" });
   if (new Set(items.map((item) => item.stockReceiptItemId)).size !== items.length) return res.status(400).json({ error: "Each original receipt item can appear only once" });
-  const requestHash = hash({ receiptId, kind, note, issuedAt: issuedAt.toISOString(), items: items.sort((a, b) => a.stockReceiptItemId.localeCompare(b.stockReceiptItemId)) });
+  const requestHash = hash({ receiptId, kind, note, issuedAt: req.body.issuedAt ? issuedAt.toISOString() : null, items: items.sort((a, b) => a.stockReceiptItemId.localeCompare(b.stockReceiptItemId)) });
   let credit;
   let reused = false;
   try {
