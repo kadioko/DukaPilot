@@ -162,6 +162,28 @@ test("concurrent payment reversal uniqueness conflict returns an already-reverse
   assert.match(res.payload.error, /already been reversed/i);
 });
 
+test("reversing a supplier refund preserves its transaction kind and restores the receipt credit", async () => {
+  const original = { id: "refund-1", shopId: "shop-1", supplierId: "supplier-1", kind: "REFUND", amount: -1000, paymentMethod: "MPESA", paymentReference: "REF-1", allocations: [{ stockReceiptId: "receipt-1", amount: -1000 }], reversal: null };
+  let reversalData;
+  const tx = {
+    supplierPayment: {
+      findFirst: async ({ where }) => where.id === original.id ? original : null,
+      create: async ({ data }) => { reversalData = data; return { id: "refund-reversal-1", ...data, allocations: data.allocations.create }; },
+    },
+    $queryRawUnsafe: async () => [],
+  };
+  const controller = loadController({ $transaction: (callback) => callback(tx) });
+  const res = response();
+
+  await controller.reversePayment({ user: { userId: "owner-1" }, params: { paymentId: original.id }, body: { requestKey: "8e7dc5ec-7a78-4eb0-9fb9-e930a9a749a9" } }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(reversalData.kind, "REFUND");
+  assert.equal(reversalData.amount, 1000);
+  assert.equal(reversalData.allocations.create[0].amount, 1000);
+  assert.equal(reversalData.reversalOfId, original.id);
+});
+
 test("concurrent supplier-credit reversal uniqueness conflict returns an already-reversed conflict", async () => {
   const uniqueError = Object.assign(new Error("unique reversal constraint"), { code: "P2002" });
   const original = { id: "credit-1", shopId: "shop-1", stockReceiptId: "receipt-1", supplierId: "supplier-1", kind: "CREDIT_NOTE", items: [], reversal: null };
@@ -261,6 +283,59 @@ test("payment allocation cannot exceed the remaining receipt balance", async () 
 
   assert.equal(res.statusCode, 409);
   assert.equal(creates, 0);
+});
+
+test("supplier refund settles only an existing receipt credit and is idempotent", async () => {
+  const requestKey = "8e7dc5ec-7a78-4eb0-9fb9-e930a9a749a6";
+  let created;
+  const tx = {
+    $queryRawUnsafe: async (_sql, receiptId, shopId) => { assert.equal(receiptId, "receipt-1"); assert.equal(shopId, "shop-1"); },
+    supplierPayment: {
+      findFirst: async ({ where }) => created && where.requestKey === requestKey ? created : null,
+      create: async ({ data }) => { created = { id: "refund-1", ...data, allocations: data.allocations.create }; return created; },
+    },
+    stockReceipt: { findMany: async () => [{ id: "receipt-1", shopId: "shop-1", supplierId: "supplier-1", totalLandedCost: 10000, paidAtReceipt: 10000, paymentAllocations: [], credits: [{ items: [{ amount: 3000 }] }], paymentCorrections: [] }] },
+  };
+  const controller = loadController({ $transaction: (callback) => callback(tx), supplierPayment: tx.supplierPayment });
+  const req = { user: { userId: "owner-1" }, body: { stockReceiptId: "receipt-1", requestKey, amount: 2000, paymentMethod: "MPESA", paymentReference: "REF-22" } };
+  const first = response();
+  await controller.recordRefund(req, first);
+  assert.equal(first.statusCode, 201);
+  assert.deepEqual({ kind: created.kind, amount: created.amount, allocation: created.allocations[0].amount, method: created.paymentMethod }, { kind: "REFUND", amount: -2000, allocation: -2000, method: "MPESA" });
+  assert.equal(controller.balanceOf({ totalLandedCost: 10000, paidAtReceipt: 10000, paymentAllocations: created.allocations, credits: [{ items: [{ amount: 3000 }] }] }), -1000);
+
+  const retry = response();
+  await controller.recordRefund(req, retry);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.reused, true);
+});
+
+test("supplier refund rejects amounts above available supplier credit", async () => {
+  let created = false;
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    supplierPayment: { findFirst: async () => null, create: async () => { created = true; } },
+    stockReceipt: { findMany: async () => [{ id: "receipt-1", shopId: "shop-1", supplierId: "supplier-1", totalLandedCost: 10000, paidAtReceipt: 10000, paymentAllocations: [], credits: [{ items: [{ amount: 1000 }] }], paymentCorrections: [] }] },
+  };
+  const controller = loadController({ $transaction: (callback) => callback(tx) });
+  const res = response();
+  await controller.recordRefund({ user: { userId: "owner-1" }, body: { stockReceiptId: "receipt-1", requestKey: "8e7dc5ec-7a78-4eb0-9fb9-e930a9a749a7", amount: 1001, paymentMethod: "MPESA" } }, res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(created, false);
+});
+
+test("cash supplier refund requires an open shift", async () => {
+  let created = false;
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    supplierPayment: { findFirst: async () => null, create: async () => { created = true; } },
+    stockReceipt: { findMany: async () => [{ id: "receipt-1", shopId: "shop-1", supplierId: "supplier-1", totalLandedCost: 10000, paidAtReceipt: 10000, paymentAllocations: [], credits: [{ items: [{ amount: 1000 }] }], paymentCorrections: [] }] },
+  };
+  const controller = loadController({ $transaction: (callback) => callback(tx) });
+  const res = response();
+  await controller.recordRefund({ user: { userId: "owner-1" }, body: { stockReceiptId: "receipt-1", requestKey: "8e7dc5ec-7a78-4eb0-9fb9-e930a9a749a8", amount: 500, paymentMethod: "CASH" } }, res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(created, false);
 });
 
 test("supplier return cannot exceed the quantity not already returned", async () => {

@@ -48,6 +48,11 @@ enum SupplierCreditKind {
   CREDIT_NOTE
 }
 
+enum SupplierPaymentKind {
+  PAYMENT
+  REFUND
+}
+
 enum SaleChannel {
   POS
   ONLINE
@@ -228,109 +233,109 @@ model User {
 }
 
 model Shop {
-  businessTransfers          BranchTransfer[]            @relation("TransferBusiness")
-  outgoingTransfers          BranchTransfer[]            @relation("TransferSourceShop")
-  incomingTransfers          BranchTransfer[]            @relation("TransferTargetShop")
-  id                         String                      @id @default(cuid())
-  name                       String
-  location                   String
-  contactPhone               String?
-  supportAssigneeId          String?
-  supportAssignee            User?                       @relation("ShopSupportAssignee", fields: [supportAssigneeId], references: [id], onDelete: SetNull)
-  nextFollowUpAt             DateTime?
-  supportNotes               ShopSupportNote[]
-  district                   String?
-  category                   String                      @default("general") // grocery, pharmacy, beauty, bar, restaurant, general
-  userId                     String?                     @unique
-  user                       User?                       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parentShopId               String?
-  parentShop                 Shop?                       @relation("BusinessBranches", fields: [parentShopId], references: [id], onDelete: Restrict)
-  branches                   Shop[]                      @relation("BusinessBranches")
-  branchArchived             Boolean                     @default(false)
-  products                   Product[]
-  sales                      Sale[]
-  saleReturns                SaleReturn[]
-  orders                     Order[]
-  customerOrders             CustomerOrder[]
-  debts                      Debt[]
-  expenses                   Expense[]
-  recurringExpenses          RecurringExpense[]
-  staffMembers               StaffMember[]
-  additionalBranchSlots      Int                         @default(0)
-  subscriptionPayments       SubscriptionPayment[]
-  subscriptionCheckouts      SubscriptionCheckout[]
-  merchantWallet             MerchantWallet?             @relation("MerchantWalletBusiness")
-  merchantWalletTransactions MerchantWalletTransaction[] @relation("MerchantWalletTransactions")
-  merchantWalletEntries      MerchantWalletEntry[]       @relation("MerchantWalletEntries")
-  offlineSyncEvents          OfflineSyncEvent[]
-  cropOperationReceipts      CropOperationReceipt[]
-  assistantActions           AssistantAction[]
-  pushSubscriptions          PushSubscription[]
-  notificationPreference     NotificationPreference?
-  pushDeliveries             PushDelivery[]
-  appUsageEvents             AppUsageEvent[]
-  barcodeScans               BarcodeScan[]
-  stockCounts                StockCount[]
-  cashSessions               CashSession[]
-  stockReceipts              StockReceipt[]
+  businessTransfers              BranchTransfer[]                @relation("TransferBusiness")
+  outgoingTransfers              BranchTransfer[]                @relation("TransferSourceShop")
+  incomingTransfers              BranchTransfer[]                @relation("TransferTargetShop")
+  id                             String                          @id @default(cuid())
+  name                           String
+  location                       String
+  contactPhone                   String?
+  supportAssigneeId              String?
+  supportAssignee                User?                           @relation("ShopSupportAssignee", fields: [supportAssigneeId], references: [id], onDelete: SetNull)
+  nextFollowUpAt                 DateTime?
+  supportNotes                   ShopSupportNote[]
+  district                       String?
+  category                       String                          @default("general") // grocery, pharmacy, beauty, bar, restaurant, general
+  userId                         String?                         @unique
+  user                           User?                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentShopId                   String?
+  parentShop                     Shop?                           @relation("BusinessBranches", fields: [parentShopId], references: [id], onDelete: Restrict)
+  branches                       Shop[]                          @relation("BusinessBranches")
+  branchArchived                 Boolean                         @default(false)
+  products                       Product[]
+  sales                          Sale[]
+  saleReturns                    SaleReturn[]
+  orders                         Order[]
+  customerOrders                 CustomerOrder[]
+  debts                          Debt[]
+  expenses                       Expense[]
+  recurringExpenses              RecurringExpense[]
+  staffMembers                   StaffMember[]
+  additionalBranchSlots          Int                             @default(0)
+  subscriptionPayments           SubscriptionPayment[]
+  subscriptionCheckouts          SubscriptionCheckout[]
+  merchantWallet                 MerchantWallet?                 @relation("MerchantWalletBusiness")
+  merchantWalletTransactions     MerchantWalletTransaction[]     @relation("MerchantWalletTransactions")
+  merchantWalletEntries          MerchantWalletEntry[]           @relation("MerchantWalletEntries")
+  offlineSyncEvents              OfflineSyncEvent[]
+  cropOperationReceipts          CropOperationReceipt[]
+  assistantActions               AssistantAction[]
+  pushSubscriptions              PushSubscription[]
+  notificationPreference         NotificationPreference?
+  pushDeliveries                 PushDelivery[]
+  appUsageEvents                 AppUsageEvent[]
+  barcodeScans                   BarcodeScan[]
+  stockCounts                    StockCount[]
+  cashSessions                   CashSession[]
+  stockReceipts                  StockReceipt[]
   stockReceiptPaymentCorrections StockReceiptPaymentCorrection[]
-  supplierPayments           SupplierPayment[]
-  supplierCredits            SupplierCredit[]
-  foodRecipes                FoodRecipe[]
-  foodPreparationBatches     FoodPreparationBatch[]
-  farmProfiles               FarmProfile[]
-  farmGroups                 FarmGroup[]
-  farmProductionBatches      FarmProductionBatch[]
-  farmPackConversions        FarmPackConversion[]
-  farmSettings               FarmSettings?
-  cropPlots                  CropPlot[]
-  cropCycles                 CropCycle[]
-  cropInputUsages            CropInputUsage[]
-  cropHarvestBatches         CropHarvestBatch[]
-  cropIrrigationLogs         CropIrrigationLog[]
-  cropFieldTasks             CropFieldTask[]
-  cropBuyerContracts         CropBuyerContract[]
-  cropWeatherAlerts          CropWeatherAlert[]
-  labelTemplates             LabelTemplate[]
-  printerProfiles            PrinterProfile[]
-  labelPrintJobs             LabelPrintJob[]
-  customers                  Customer[]
-  services                   Service[]
-  quotations                 Quotation[]
-  quotationSettings          QuotationSettings?
-  createdSuppliers           Supplier[]                  @relation("SupplierCreatedByShop")
-  referralsMade              ShopReferral[]              @relation("ShopReferralReferrer")
-  referralReceived           ShopReferral?               @relation("ShopReferralReferred")
+  supplierPayments               SupplierPayment[]
+  supplierCredits                SupplierCredit[]
+  foodRecipes                    FoodRecipe[]
+  foodPreparationBatches         FoodPreparationBatch[]
+  farmProfiles                   FarmProfile[]
+  farmGroups                     FarmGroup[]
+  farmProductionBatches          FarmProductionBatch[]
+  farmPackConversions            FarmPackConversion[]
+  farmSettings                   FarmSettings?
+  cropPlots                      CropPlot[]
+  cropCycles                     CropCycle[]
+  cropInputUsages                CropInputUsage[]
+  cropHarvestBatches             CropHarvestBatch[]
+  cropIrrigationLogs             CropIrrigationLog[]
+  cropFieldTasks                 CropFieldTask[]
+  cropBuyerContracts             CropBuyerContract[]
+  cropWeatherAlerts              CropWeatherAlert[]
+  labelTemplates                 LabelTemplate[]
+  printerProfiles                PrinterProfile[]
+  labelPrintJobs                 LabelPrintJob[]
+  customers                      Customer[]
+  services                       Service[]
+  quotations                     Quotation[]
+  quotationSettings              QuotationSettings?
+  createdSuppliers               Supplier[]                      @relation("SupplierCreatedByShop")
+  referralsMade                  ShopReferral[]                  @relation("ShopReferralReferrer")
+  referralReceived               ShopReferral?                   @relation("ShopReferralReferred")
   // Subscription / trial
-  plan                       String                      @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
-  trialEndsAt                DateTime?
-  subscriptionEndsAt         DateTime?
-  isActive                   Boolean                     @default(true)
-  isCatalogPublished         Boolean                     @default(true)
-  allowVariableSalePrices    Boolean                     @default(false)
-  hiddenMenuItems            String[]                    @default([])
-  isDemo                     Boolean                     @default(false)
-  onboardingStatus           OnboardingStatus            @default(NEW)
-  lastContactedAt            DateTime?
-  followUpNotes              String?
-  barcodeScanningEnabled     Boolean                     @default(true)
-  bluetoothScannerEnabled    Boolean                     @default(true)
-  barcodeGenerationEnabled   Boolean                     @default(true)
-  barcodeAutoFocus           Boolean                     @default(true)
-  barcodeSuccessSound        Boolean                     @default(true)
-  barcodeVibrate             Boolean                     @default(true)
-  barcodeAutoAddToCart       Boolean                     @default(true)
-  nextBarcodeNumber          Int                         @default(0)
-  nextSkuNumber              Int                         @default(0)
-  nextSaleNumber             Int                         @default(1)
-  nextQuotationNumber        Int                         @default(1)
-  acquisitionSource          String?
-  acquisitionMedium          String?
-  acquisitionCampaign        String?
-  acquisitionContent         String?
-  referralCode               String                      @unique
-  createdAt                  DateTime                    @default(now())
-  updatedAt                  DateTime                    @updatedAt
+  plan                           String                          @default("FREE_TRIAL") // FREE_TRIAL, BASIC, PRO
+  trialEndsAt                    DateTime?
+  subscriptionEndsAt             DateTime?
+  isActive                       Boolean                         @default(true)
+  isCatalogPublished             Boolean                         @default(true)
+  allowVariableSalePrices        Boolean                         @default(false)
+  hiddenMenuItems                String[]                        @default([])
+  isDemo                         Boolean                         @default(false)
+  onboardingStatus               OnboardingStatus                @default(NEW)
+  lastContactedAt                DateTime?
+  followUpNotes                  String?
+  barcodeScanningEnabled         Boolean                         @default(true)
+  bluetoothScannerEnabled        Boolean                         @default(true)
+  barcodeGenerationEnabled       Boolean                         @default(true)
+  barcodeAutoFocus               Boolean                         @default(true)
+  barcodeSuccessSound            Boolean                         @default(true)
+  barcodeVibrate                 Boolean                         @default(true)
+  barcodeAutoAddToCart           Boolean                         @default(true)
+  nextBarcodeNumber              Int                             @default(0)
+  nextSkuNumber                  Int                             @default(0)
+  nextSaleNumber                 Int                             @default(1)
+  nextQuotationNumber            Int                             @default(1)
+  acquisitionSource              String?
+  acquisitionMedium              String?
+  acquisitionCampaign            String?
+  acquisitionContent             String?
+  referralCode                   String                          @unique
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
 
   @@index([parentShopId, branchArchived])
   @@index([supportAssigneeId, nextFollowUpAt])
@@ -1456,6 +1461,7 @@ model SaleReturnItem {
 model Order {
   id            String         @id @default(cuid())
   status        OrderStatus    @default(PENDING)
+  invoiceNumber String?
   totalAmount   Int?
   note          String?
   shopId        String
@@ -1469,34 +1475,35 @@ model Order {
 
   @@index([shopId, status])
   @@index([shopId, createdAt])
+  @@index([shopId, supplierId, invoiceNumber])
   @@map("orders")
 }
 
 model CashSession {
-  id                     String                 @id @default(cuid())
-  status                 CashSessionStatus      @default(OPEN)
-  openingCash            Int                    @default(0)
-  expectedCash           Int?
-  countedCash            Int?
-  variance               Int?
-  note                   String?
-  openedById             String
-  openedByName           String
-  openedAt               DateTime               @default(now())
-  closedAt               DateTime?
-  shopId                 String
-  shop                   Shop                   @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  sales                  Sale[]
-  expenses               Expense[]
-  debtPayments           DebtPayment[]
-  quotationPayments      QuotationPayment[]
-  stockReceipts          StockReceipt[]
+  id                             String                          @id @default(cuid())
+  status                         CashSessionStatus               @default(OPEN)
+  openingCash                    Int                             @default(0)
+  expectedCash                   Int?
+  countedCash                    Int?
+  variance                       Int?
+  note                           String?
+  openedById                     String
+  openedByName                   String
+  openedAt                       DateTime                        @default(now())
+  closedAt                       DateTime?
+  shopId                         String
+  shop                           Shop                            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  sales                          Sale[]
+  expenses                       Expense[]
+  debtPayments                   DebtPayment[]
+  quotationPayments              QuotationPayment[]
+  stockReceipts                  StockReceipt[]
   stockReceiptPaymentCorrections StockReceiptPaymentCorrection[]
-  supplierPayments       SupplierPayment[]
-  foodPreparationBatches FoodPreparationBatch[]
-  farmProductionBatches  FarmProductionBatch[]
-  cropInputUsages        CropInputUsage[]
-  saleReturns            SaleReturn[]
+  supplierPayments               SupplierPayment[]
+  foodPreparationBatches         FoodPreparationBatch[]
+  farmProductionBatches          FarmProductionBatch[]
+  cropInputUsages                CropInputUsage[]
+  saleReturns                    SaleReturn[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])
@@ -1504,36 +1511,36 @@ model CashSession {
 }
 
 model StockReceipt {
-  id                  String                      @id @default(cuid())
+  id                  String                          @id @default(cuid())
   requestKey          String?
   requestHash         String?
   invoiceNumber       String?
-  paymentMethod       PaymentMethod               @default(CASH)
-  paidAtReceipt       Int                         @default(0)
+  paymentMethod       PaymentMethod                   @default(CASH)
+  paidAtReceipt       Int                             @default(0)
   paymentReference    String?
-  transportCost       Int                         @default(0)
-  otherCost           Int                         @default(0)
+  transportCost       Int                             @default(0)
+  otherCost           Int                             @default(0)
   totalProductCost    Int
   totalLandedCost     Int
-  allocationMode      String                      @default("DIRECT")
-  estimatedAllocation Boolean                     @default(false)
+  allocationMode      String                          @default("DIRECT")
+  estimatedAllocation Boolean                         @default(false)
   note                String?
   receivedBy          String?
-  receivedAt          DateTime                    @default(now())
+  receivedAt          DateTime                        @default(now())
   shopId              String
-  shop                Shop                        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop                Shop                            @relation(fields: [shopId], references: [id], onDelete: Cascade)
   supplierId          String?
-  supplier            Supplier?                   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplier            Supplier?                       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   sourceOrderId       String?
-  sourceOrder         Order?                      @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  sourceOrder         Order?                          @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
   cashSessionId       String?
-  cashSession         CashSession?                @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  cashSession         CashSession?                    @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   items               StockReceiptItem[]
   stockMovements      StockMovement[]
   paymentAllocations  SupplierPaymentAllocation[]
   paymentCorrections  StockReceiptPaymentCorrection[]
   credits             SupplierCredit[]
-  createdAt           DateTime                    @default(now())
+  createdAt           DateTime                        @default(now())
 
   @@unique([shopId, requestKey])
   @@index([shopId, receivedAt])
@@ -1544,26 +1551,26 @@ model StockReceipt {
 }
 
 model StockReceiptPaymentCorrection {
-  id                    String                         @id @default(cuid())
-  shopId                String
-  shop                  Shop                           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  stockReceiptId        String
-  stockReceipt          StockReceipt                   @relation(fields: [stockReceiptId], references: [id], onDelete: Restrict)
+  id                   String                         @id @default(cuid())
+  shopId               String
+  shop                 Shop                           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  stockReceiptId       String
+  stockReceipt         StockReceipt                   @relation(fields: [stockReceiptId], references: [id], onDelete: Restrict)
   previousCorrectionId String?                        @unique
   previousCorrection   StockReceiptPaymentCorrection? @relation("ReceiptPaymentCorrectionChain", fields: [previousCorrectionId], references: [id], onDelete: Restrict)
   nextCorrection       StockReceiptPaymentCorrection? @relation("ReceiptPaymentCorrectionChain")
-  previousAmount        Int
-  correctedAmount       Int
-  previousMethod        PaymentMethod
-  correctedMethod       PaymentMethod
-  cashOutAdjustment     Int                            @default(0)
-  cashSessionId         String?
-  cashSession           CashSession?                   @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
-  requestKey            String
-  requestHash           String
-  note                  String
-  recordedBy            String?
-  createdAt             DateTime                       @default(now())
+  previousAmount       Int
+  correctedAmount      Int
+  previousMethod       PaymentMethod
+  correctedMethod      PaymentMethod
+  cashOutAdjustment    Int                            @default(0)
+  cashSessionId        String?
+  cashSession          CashSession?                   @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+  requestKey           String
+  requestHash          String
+  note                 String
+  recordedBy           String?
+  createdAt            DateTime                       @default(now())
 
   @@unique([shopId, requestKey])
   @@index([stockReceiptId, createdAt])
@@ -2132,6 +2139,7 @@ model SupplierPayment {
   shop             Shop                        @relation(fields: [shopId], references: [id], onDelete: Cascade)
   supplierId       String
   supplier         Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  kind             SupplierPaymentKind         @default(PAYMENT)
   amount           Int
   paymentMethod    PaymentMethod
   paymentReference String?

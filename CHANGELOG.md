@@ -31,10 +31,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added owner-managed scheduled retail promotions that apply to POS/catalog during a configured local-time window without rewriting wholesale prices or historical transactions.
 - Added staff login removal after deactivation; credentials and phone assignment are removed while historical sales and shift records remain auditable.
 - Added shop-private supplier records alongside the shared supplier directory, with shop-scoped visibility and edit ownership.
+- Added a supplier refund settlement action for receipt-level credits, with whole-TZS limits, transaction retries, linked reversals, receipt allocation, and branch-scoped access.
 
 ### Changed
 
 - Updated merchant, owner-report, staff, catalog, operations, and regression-test documentation for purchase analytics, stock history, private suppliers, scheduled offers, staff-login removal, and grouped TZS input. These workspace changes remain unreleased until the matching code and required migration are deployed.
+- Updated supplier-payables guides and bilingual in-app Help for partial receipts, supplier credits/refunds, cash-shift handling, reversals, and the boundary between recording a refund and transferring money externally.
+- Updated Supplier Balances, Daily Close, and bilingual Help guidance so actual supplier refunds settle supplier credits and cash refunds are counted once as cash received.
 
 - Fixed the production PostgreSQL wallet constraint so atomic Merchant Balance subscription payments can be recorded as `SUBSCRIPTION` transactions, and added database-level regression coverage.
 - Prepared Merchant Balance for all merchant owners by making an empty pilot allowlist the documented normal production setting while retaining the global emergency stop and optional incident allowlist.

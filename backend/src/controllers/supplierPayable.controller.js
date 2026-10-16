@@ -59,7 +59,7 @@ function includeReceiptLedger() {
   return {
     supplier: { select: { id: true, name: true, phone: true } },
     items: { include: { product: { select: { id: true, name: true, unit: true, currentStock: true } }, supplierCreditLines: { include: { supplierCredit: { select: { kind: true, reversalOfId: true } } } } } },
-    paymentAllocations: { include: { supplierPayment: { select: { id: true, amount: true, paymentMethod: true, paymentReference: true, paidAt: true, reversalOfId: true, reversal: { select: { id: true } } } } } },
+    paymentAllocations: { include: { supplierPayment: { select: { id: true, kind: true, amount: true, paymentMethod: true, paymentReference: true, paidAt: true, reversalOfId: true, reversal: { select: { id: true } } } } } },
     paymentCorrections: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
     credits: { include: { items: true, reversal: { select: { id: true } } } },
   };
@@ -305,6 +305,76 @@ const recordPayment = asyncHandler(async (req, res) => {
   res.status(reused ? 200 : 201).json({ payment, reused });
 });
 
+const recordRefund = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const receiptId = String(req.body.stockReceiptId || "").trim();
+  const key = requestKey(req.body.requestKey);
+  const method = String(req.body.paymentMethod || "").toUpperCase();
+  const amount = positiveInteger(req.body.amount);
+  const paymentReference = String(req.body.paymentReference || "").trim() || null;
+  const note = String(req.body.note || "").trim() || null;
+  const paidAt = req.body.paidAt ? new Date(req.body.paidAt) : new Date();
+  if (!receiptId || !key) return res.status(400).json({ error: "Receipt and valid refund retry key are required" });
+  if (!amount || amount > 2_147_483_647) return res.status(400).json({ error: "Refund must be a positive whole-TZS amount within the supported limit" });
+  if (!METHODS.has(method) || method === "CREDIT") return res.status(400).json({ error: "Choose how the supplier actually refunded the money" });
+  if (Number.isNaN(paidAt.getTime())) return res.status(400).json({ error: "Refund date is invalid" });
+  const requestHash = hash({ receiptId, amount, method, paymentReference, note, paidAt: req.body.paidAt ? paidAt.toISOString() : null });
+  let payment;
+  let reused = false;
+  try {
+    payment = await prisma.$transaction(async (tx) => {
+      const replay = await tx.supplierPayment.findFirst({ where: { shopId, requestKey: key }, include: { allocations: true } });
+      if (replay) {
+        if (replay.requestHash !== requestHash || replay.kind !== "REFUND") throw error("This retry key was already used for different supplier transaction details", 409);
+        reused = true;
+        return replay;
+      }
+      await lockReceipts(tx, [receiptId], shopId);
+      const row = (await loadReceiptBalances(tx, [receiptId], shopId)).get(receiptId);
+      if (!row) throw error("Supplier receipt not found in this shop", 404);
+      if (row.balance >= 0) throw error("This receipt has no outstanding supplier credit to refund", 409);
+      if (amount > Math.abs(row.balance)) throw error("Refund exceeds the supplier credit available on this receipt", 409);
+      const cashSession = method === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
+      if (method === "CASH" && !cashSession) throw error("Open your cash shift before recording a cash supplier refund", 409);
+      return tx.supplierPayment.create({
+        data: {
+          shopId,
+          supplierId: row.receipt.supplierId,
+          kind: "REFUND",
+          amount: -amount,
+          paymentMethod: method,
+          paymentReference,
+          note,
+          requestKey: key,
+          requestHash,
+          paidAt,
+          recordedBy: req.user.staffId || req.user.userId,
+          cashSessionId: cashSession?.id || null,
+          allocations: { create: [{ stockReceiptId: receiptId, amount: -amount }] },
+        },
+        include: { allocations: true },
+      });
+    }, { isolationLevel: "Serializable" });
+  } catch (err) {
+    if (err.code === "P2002") {
+      const replay = await prisma.supplierPayment.findFirst({ where: { shopId, requestKey: key }, include: { allocations: true } });
+      if (replay?.kind === "REFUND" && replay.requestHash === requestHash) { payment = replay; reused = true; }
+      else if (replay) return res.status(409).json({ error: "This retry key was already used for different supplier transaction details" });
+      else throw err;
+    } else if (err.code === "P2034") {
+      const replay = await prisma.supplierPayment.findFirst({ where: { shopId, requestKey: key }, include: { allocations: true } });
+      if (replay?.kind === "REFUND" && replay.requestHash === requestHash) { payment = replay; reused = true; }
+      else return res.status(409).json({ error: "The supplier balance changed at the same time. Refresh and try again." });
+    } else if (err.status) return res.status(err.status).json({ error: err.message });
+    else throw err;
+  }
+  if (!reused) {
+    await invalidateDashboardHistory(shopId);
+    req.audit = { action: "supplier_refund.create", resourceType: "supplier_payment", resourceId: payment.id, metadata: { supplierId: payment.supplierId, stockReceiptId: receiptId, amount, paymentMethod: method, cashSessionId: payment.cashSessionId } };
+  }
+  res.status(reused ? 200 : 201).json({ payment, reused });
+});
+
 const recordCredit = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const receiptId = String(req.body.stockReceiptId || "");
@@ -422,7 +492,7 @@ const reversePayment = asyncHandler(async (req, res) => {
       await tx.$queryRawUnsafe('SELECT "id" FROM "supplier_payments" WHERE "id" = $1 FOR UPDATE', original.id);
       const cashSession = original.paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
       if (original.paymentMethod === "CASH" && !cashSession) throw error("Open your cash shift before recording a cash payment reversal", 409);
-      return tx.supplierPayment.create({ data: { shopId, supplierId: original.supplierId, amount: -original.amount, paymentMethod: original.paymentMethod, paymentReference: original.paymentReference, note: `Reversal of supplier payment ${original.id}`, requestKey: key, requestHash, recordedBy: req.user.staffId || req.user.userId, cashSessionId: cashSession?.id || null, reversalOfId: original.id, allocations: { create: original.allocations.map((item) => ({ stockReceiptId: item.stockReceiptId, amount: -item.amount })) } }, include: { allocations: true } });
+      return tx.supplierPayment.create({ data: { shopId, supplierId: original.supplierId, kind: original.kind, amount: -original.amount, paymentMethod: original.paymentMethod, paymentReference: original.paymentReference, note: `Reversal of supplier payment ${original.id}`, requestKey: key, requestHash, recordedBy: req.user.staffId || req.user.userId, cashSessionId: cashSession?.id || null, reversalOfId: original.id, allocations: { create: original.allocations.map((item) => ({ stockReceiptId: item.stockReceiptId, amount: -item.amount })) } }, include: { allocations: true } });
     }, { isolationLevel: "Serializable" });
   } catch (err) {
     if (err.code === "P2002") {
@@ -503,4 +573,4 @@ const reverseCredit = asyncHandler(async (req, res) => {
   res.status(reused ? 200 : 201).json({ credit: reversal, reused });
 });
 
-module.exports = { list, receipts, recordPayment, recordCredit, reversePayment, reverseCredit, correctReceiptPayment, balanceOf, returnCreditAmount };
+module.exports = { list, receipts, recordPayment, recordRefund, recordCredit, reversePayment, reverseCredit, correctReceiptPayment, balanceOf, returnCreditAmount };

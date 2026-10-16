@@ -8,6 +8,7 @@ router.get("/", controller.list);
 router.get("/:supplierId/receipts", controller.receipts);
 router.post("/receipts/:receiptId/payment-corrections", controller.correctReceiptPayment);
 router.post("/payments", controller.recordPayment);
+router.post("/refunds", controller.recordRefund);
 router.post("/payments/:paymentId/reverse", controller.reversePayment);
 router.post("/credits", controller.recordCredit);
 router.post("/credits/:creditId/reverse", controller.reverseCredit);

@@ -21,6 +21,11 @@ function orderInclude() {
   };
 }
 
+function normalizeInvoiceNumber(value) {
+  const invoiceNumber = String(value || "").trim().toUpperCase();
+  return invoiceNumber || null;
+}
+
 async function prepareOrder(shop, body) {
   const supplierId = String(body.supplierId || "").trim();
   const items = Array.isArray(body.items) ? body.items : [];
@@ -50,8 +55,32 @@ async function prepareOrder(shop, body) {
     totalAmount += unitPrice * item.quantity;
     return { quantity: item.quantity, unitPrice, productId: item.productId };
   });
-  return { supplierId, note: String(body.note || "").trim() || null, totalAmount, orderItemsData };
+  const invoiceNumber = normalizeInvoiceNumber(body.invoiceNumber);
+  if (invoiceNumber && invoiceNumber.length > 120) throw Object.assign(new Error("Invoice number must be 120 characters or less"), { status: 400 });
+  return { supplierId, invoiceNumber, note: String(body.note || "").trim() || null, totalAmount, orderItemsData };
 }
+
+const matchByInvoice = asyncHandler(async (req, res) => {
+  const shop = await getShop(req.user);
+  const supplierId = String(req.query.supplierId || "").trim();
+  const invoiceNumber = normalizeInvoiceNumber(req.query.invoiceNumber);
+  if (!supplierId || !invoiceNumber) return res.status(400).json({ error: "Supplier and invoice number are required" });
+  const supplier = await findVisibleSupplier(prisma, supplierId, shop.id, { select: { id: true } });
+  if (!supplier) return res.status(404).json({ error: "Supplier not found" });
+
+  const orders = await prisma.order.findMany({
+    where: {
+      shopId: shop.id,
+      supplierId,
+      invoiceNumber: { equals: invoiceNumber, mode: "insensitive" },
+      status: { in: ["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY", "PARTIALLY_RECEIVED"] },
+    },
+    include: orderInclude(),
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  res.json({ orders });
+});
 
 const list = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
@@ -86,12 +115,13 @@ const create = asyncHandler(async (req, res) => {
   } catch (error) {
     return res.status(error.status || 400).json({ error: error.message || "Could not create order" });
   }
-  const { supplierId, note, totalAmount, orderItemsData } = prepared;
+  const { supplierId, invoiceNumber, note, totalAmount, orderItemsData } = prepared;
 
   const order = await prisma.order.create({
     data: {
       shopId: shop.id,
       supplierId,
+      invoiceNumber,
       note,
       totalAmount,
       items: { create: orderItemsData },
@@ -175,35 +205,99 @@ const confirmDelivery = asyncHandler(async (req, res) => {
 
 const update = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
-  const existing = await prisma.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
-  if (!existing) return res.status(404).json({ error: "Order not found" });
-  if (existing.status !== "PENDING") return res.status(409).json({ error: "Only pending orders can be edited. Cancel and create a new order after the supplier starts processing it." });
-
   let prepared;
   try {
     prepared = await prepareOrder(shop, req.body);
   } catch (error) {
     return res.status(error.status || 400).json({ error: error.message || "Could not update order" });
   }
-  const { supplierId, note, totalAmount, orderItemsData } = prepared;
-  const order = await prisma.order.update({
-    where: { id: existing.id },
-    data: { supplierId, note, totalAmount, items: { deleteMany: {}, create: orderItemsData } },
-    include: orderInclude(),
+  const { supplierId, invoiceNumber, note, totalAmount, orderItemsData } = prepared;
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "orders" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shop.id);
+      const existing = await tx.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
+      if (!existing) return { notFound: true };
+      if (existing.status !== "PENDING") return { conflictStatus: existing.status };
+      const order = await tx.order.update({
+        where: { id: existing.id },
+        data: { supplierId, invoiceNumber, note, totalAmount, items: { deleteMany: {}, create: orderItemsData } },
+        include: orderInclude(),
+      });
+      return { order };
+    });
+  } catch (error) {
+    if (error.code === "P2034") return res.status(409).json({ error: "This order changed while it was being edited. Refresh and try again." });
+    throw error;
+  }
+  if (result.notFound) return res.status(404).json({ error: "Order not found" });
+  if (result.conflictStatus) return res.status(409).json({ error: "Only pending orders can be edited. Cancel and create a new order after the supplier starts processing it." });
+  req.audit = { action: "order.update", resourceType: "order", resourceId: result.order.id, metadata: { itemCount: orderItemsData.length, supplierId } };
+  res.json({ order: result.order, whatsappMessage: buildWhatsAppOrderMessage(result.order, shop) });
+});
+
+const updateInvoiceNumber = asyncHandler(async (req, res) => {
+  const shop = await getShop(req.user);
+  const invoiceNumber = normalizeInvoiceNumber(req.body.invoiceNumber);
+  if (invoiceNumber && invoiceNumber.length > 120) return res.status(400).json({ error: "Invoice number must be 120 characters or less" });
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRawUnsafe('SELECT "id" FROM "orders" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shop.id);
+    const order = await tx.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
+    if (!order) return { notFound: true };
+    if (!["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY"].includes(order.status)) return { conflictStatus: order.status };
+    return { order: await tx.order.update({ where: { id: order.id }, data: { invoiceNumber }, include: orderInclude() }) };
   });
-  req.audit = { action: "order.update", resourceType: "order", resourceId: order.id, metadata: { itemCount: orderItemsData.length, supplierId } };
-  res.json({ order, whatsappMessage: buildWhatsAppOrderMessage(order, shop) });
+  if (result.notFound) return res.status(404).json({ error: "Order not found" });
+  if (result.conflictStatus) return res.status(409).json({ error: "Invoice reference cannot be changed after receiving begins or the order is closed" });
+  req.audit = { action: "order.invoice.update", resourceType: "order", resourceId: result.order.id, metadata: { hasInvoiceNumber: Boolean(invoiceNumber) } };
+  res.json({ order: result.order });
+});
+
+const updateTrackingStatus = asyncHandler(async (req, res) => {
+  const shop = await getShop(req.user);
+  const status = String(req.body.status || "").toUpperCase();
+  if (!["CONFIRMED", "OUT_FOR_DELIVERY"].includes(status)) {
+    return res.status(400).json({ error: "Choose Confirmed or Out for delivery. Receipt and cancellation statuses are updated through their own workflows." });
+  }
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "orders" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shop.id);
+      const current = await tx.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
+      if (!current) return { notFound: true };
+      if (!["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY"].includes(current.status)) return { conflictStatus: current.status };
+      const allowedNext = current.status === "PENDING" ? ["CONFIRMED", "OUT_FOR_DELIVERY"] : ["OUT_FOR_DELIVERY"];
+      if (status !== current.status && !allowedNext.includes(status)) return { invalidTransition: current.status };
+      const updated = await tx.order.update({ where: { id: current.id }, data: { status }, include: orderInclude() });
+      return { order: updated, previousStatus: current.status };
+    });
+  } catch (error) {
+    if (error.code === "P2034") return res.status(409).json({ error: "This order changed while its status was being updated. Refresh and try again." });
+    throw error;
+  }
+  if (result.notFound) return res.status(404).json({ error: "Order not found" });
+  if (result.conflictStatus) return res.status(409).json({ error: `Order status ${result.conflictStatus} is controlled by receiving or cancellation and cannot be manually changed` });
+  if (result.invalidTransition) return res.status(409).json({ error: `Order status cannot move backwards from ${result.invalidTransition}` });
+  req.audit = { action: "order.trackingStatus.update", resourceType: "order", resourceId: result.order.id, metadata: { from: result.previousStatus, to: status } };
+  res.json({ order: result.order });
 });
 
 const remove = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
-  const existing = await prisma.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
-  if (!existing) return res.status(404).json({ error: "Order not found" });
-  if (!["PENDING", "CANCELLED"].includes(existing.status)) return res.status(409).json({ error: "Only pending or cancelled orders can be deleted. Confirmed and delivered orders remain as part of the purchasing history." });
-  const receiptCount = await prisma.stockReceipt.count({ where: { sourceOrderId: existing.id, shopId: shop.id } });
-  if (receiptCount > 0) return res.status(409).json({ error: "This order has stock receipt history and cannot be deleted. Keep the order and cancel any unreceived remainder." });
-  await prisma.order.delete({ where: { id: existing.id } });
-  req.audit = { action: "order.delete", resourceType: "order", resourceId: existing.id };
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRawUnsafe('SELECT "id" FROM "orders" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shop.id);
+    const existing = await tx.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
+    if (!existing) return { notFound: true };
+    if (!["PENDING", "CANCELLED"].includes(existing.status)) return { conflictStatus: existing.status };
+    const receiptCount = await tx.stockReceipt.count({ where: { sourceOrderId: existing.id, shopId: shop.id } });
+    if (receiptCount > 0) return { hasReceipts: true };
+    await tx.order.delete({ where: { id: existing.id } });
+    return { deletedId: existing.id };
+  });
+  if (result.notFound) return res.status(404).json({ error: "Order not found" });
+  if (result.conflictStatus) return res.status(409).json({ error: "Only pending or cancelled orders can be deleted. Confirmed and delivered orders remain as part of the purchasing history." });
+  if (result.hasReceipts) return res.status(409).json({ error: "This order has stock receipt history and cannot be deleted. Keep the order and cancel any unreceived remainder." });
+  req.audit = { action: "order.delete", resourceType: "order", resourceId: result.deletedId };
   res.json({ message: "Order deleted" });
 });
 
@@ -249,4 +343,4 @@ const reorder = asyncHandler(async (req, res) => {
   res.status(201).json({ order: newOrder, whatsappMessage });
 });
 
-module.exports = { list, create, update, remove, get, cancel, confirmDelivery, reorder };
+module.exports = { list, create, update, remove, get, cancel, confirmDelivery, reorder, matchByInvoice, updateInvoiceNumber, updateTrackingStatus };

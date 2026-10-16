@@ -5,7 +5,7 @@ Owner reports are available to the merchant owner and staff explicitly granted t
 ## Metric definitions
 
 - **Sales revenue** is the total value of completed sales recorded in the selected Tanzania-time range. It includes credit sales and is not the same as cash received.
-- **Cash collected** in Profit Analytics is completed non-credit sales recorded in the range, quotation payments/refunds on their original paid date, and ordinary debt-payment ledger entries received in the range. Converted quotation sales and their copied debt-payment rows are excluded to prevent counting the same receipt twice. Supplier settlements and other cash movements are not included.
+- **Cash collected** in Profit Analytics is completed non-credit sales recorded in the range, quotation payments/refunds on their original paid date, and ordinary debt-payment ledger entries received in the range. Converted quotation sales and their copied debt-payment rows are excluded to prevent counting the same receipt twice. Supplier settlements, supplier refunds, and other cash movements are not included; use Daily Close for drawer cash movement and Supplier Balances for supplier liabilities/credits.
 - **Credit sales** is the value of completed sales marked CREDIT during the selected range. It is not the current unpaid balance; use receivables for the current balance.
 - **Cost of goods sold** uses the buying-price snapshot recorded on sale items. A zero buying-price line is treated conservatively as uncosted, not as free inventory.
 - **Gross profit (known costs)** includes only sale items with a recorded positive cost. The report flags revenue from zero-cost items and excludes those items from gross profit and its margin denominator.

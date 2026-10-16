@@ -121,6 +121,12 @@ const orderListValidation = [
   handleValidationErrors,
 ];
 
+const orderMatchValidation = [
+  query("supplierId").isString().notEmpty().withMessage("supplierId is required"),
+  query("invoiceNumber").isString().trim().isLength({ min: 1, max: 120 }).withMessage("A valid invoice number is required"),
+  handleValidationErrors,
+];
+
 const orderCreateValidation = [
   body("supplierId").isString().notEmpty().withMessage("supplierId is required"),
   body("items").isArray({ min: 1 }).withMessage("Order must include at least one item"),
@@ -128,6 +134,18 @@ const orderCreateValidation = [
   body("items.*.quantity").isInt({ min: 1 }).withMessage("Each order item quantity must be a whole number greater than 0"),
   body("items.*.unitPrice").optional({ values: "falsy" }).isInt({ min: 0 }).withMessage("Each order item unitPrice must be a whole TZS amount"),
   body("note").optional({ values: "falsy" }).trim().isLength({ max: 500 }).withMessage("Note must be 500 characters or less"),
+  body("invoiceNumber").optional({ nullable: true, values: "falsy" }).trim().isLength({ max: 120 }).withMessage("Invoice number must be 120 characters or less"),
+  handleValidationErrors,
+];
+
+const orderInvoiceValidation = [
+  body("invoiceNumber").exists().withMessage("Invoice number is required").bail().custom((value) => value === null || typeof value === "string").withMessage("Invoice number must be text"),
+  body("invoiceNumber").optional({ nullable: true, values: "falsy" }).trim().isLength({ max: 120 }).withMessage("Invoice number must be 120 characters or less"),
+  handleValidationErrors,
+];
+
+const orderTrackingStatusValidation = [
+  body("status").custom((value) => ["CONFIRMED", "OUT_FOR_DELIVERY"].includes(String(value).toUpperCase())).withMessage("Choose CONFIRMED or OUT_FOR_DELIVERY"),
   handleValidationErrors,
 ];
 
@@ -190,7 +208,10 @@ module.exports = {
   saleCreateValidation,
   saleVoidValidation,
   orderListValidation,
+  orderMatchValidation,
   orderCreateValidation,
+  orderInvoiceValidation,
+  orderTrackingStatusValidation,
   stockAdjustValidation,
   stockMovementsValidation,
   supplierCreateValidation,

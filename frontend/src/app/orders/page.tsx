@@ -53,6 +53,7 @@ interface OrderItem {
 interface Order {
   id: string;
   status: string;
+  invoiceNumber?: string | null;
   totalAmount?: number;
   note?: string;
   createdAt: string;
@@ -86,12 +87,16 @@ export default function OrdersPage() {
   const [minimumStockDraft, setMinimumStockDraft] = useState("5");
   const [orderItems, setOrderItems] = useState<{ productId: string; quantity: number; unitPrice?: number }[]>([]);
   const [note, setNote] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [whatsappMsg, setWhatsappMsg] = useState<{ message: string; whatsappUrl: string | null } | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [productSearch, setProductSearch] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [invoiceDrafts, setInvoiceDrafts] = useState<Record<string, string>>({});
+  const [statusDrafts, setStatusDrafts] = useState<Record<string, string>>({});
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -100,6 +105,8 @@ export default function OrdersPage() {
     try {
       const data = await api.get<{ orders: Order[] }>(`/orders${params}`);
       setOrders(data.orders);
+      setInvoiceDrafts(Object.fromEntries(data.orders.map((order) => [order.id, order.invoiceNumber || ""])));
+      setStatusDrafts(Object.fromEntries(data.orders.map((order) => [order.id, order.status])));
     } catch (error) {
       // AppShell redirects expired or missing sessions. Keep this page's initial
       // load from surfacing the same request as an unhandled browser rejection.
@@ -224,6 +231,7 @@ export default function OrdersPage() {
         supplierId: selectedSupplier,
         items: orderItems,
         note: note || undefined,
+        invoiceNumber: invoiceNumber.trim() || undefined,
       };
       const data = editOrder
         ? await api.patch<{ order: Order; whatsappMessage: { message: string; whatsappUrl: string | null } }>(`/orders/${editOrder.id}`, payload)
@@ -233,6 +241,7 @@ export default function OrdersPage() {
       setEditOrder(null);
       setOrderItems([]);
       setNote("");
+      setInvoiceNumber("");
       fetchOrders();
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : t("common.error", lang), "error");
@@ -263,6 +272,7 @@ export default function OrdersPage() {
     setShowForm(true);
     setOrderItems([]);
     setNote("");
+    setInvoiceNumber("");
     setSelectedSupplier("");
     setSupplierCatalog([]);
     setProductSearch("");
@@ -280,8 +290,37 @@ export default function OrdersPage() {
       return [...current, ...missing];
     });
     setNote(order.note || "");
+    setInvoiceNumber(order.invoiceNumber || "");
     setProductSearch("");
     await selectSupplier(order.supplier.id);
+  }
+
+  async function saveInvoiceNumber(order: Order) {
+    setUpdatingOrderId(order.id);
+    try {
+      await api.patch(`/orders/${order.id}/invoice-number`, { invoiceNumber: invoiceDrafts[order.id] || null });
+      toast(lang === "sw" ? "Namba ya invoice imehifadhiwa." : "Invoice reference saved.", "success");
+      await fetchOrders();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  }
+
+  async function saveTrackingStatus(order: Order) {
+    const status = statusDrafts[order.id] || order.status;
+    if (status === order.status) return;
+    setUpdatingOrderId(order.id);
+    try {
+      await api.patch(`/orders/${order.id}/tracking-status`, { status });
+      toast(lang === "sw" ? "Hali ya order imesasishwa." : "Order status updated.", "success");
+      await fetchOrders();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+    } finally {
+      setUpdatingOrderId(null);
+    }
   }
 
   async function handleDelete(order: Order) {
@@ -363,6 +402,7 @@ export default function OrdersPage() {
                       #{order.id.slice(-8).toUpperCase()} •{" "}
                       {new Date(order.createdAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { day: "numeric", month: "short" })}
                     </p>
+                    {order.invoiceNumber && <p className="mt-1 text-xs text-gray-500">{lang === "sw" ? "Invoice" : "Invoice"}: {order.invoiceNumber}</p>}
                     {order.totalAmount && (
                       <p className="text-sm font-bold text-brand-700 mt-1">{formatTZS(order.totalAmount)}</p>
                     )}
@@ -384,6 +424,41 @@ export default function OrdersPage() {
                       ))}
                     </div>
                     {order.note && <p className="text-xs text-gray-400 italic mb-3">"{order.note}"</p>}
+
+                    {!["PARTIALLY_RECEIVED", "DELIVERED", "CANCELLED"].includes(order.status) && (
+                      <div className="mb-3 grid gap-2 border-y border-gray-100 py-3 sm:grid-cols-2">
+                        <label className="grid gap-1 text-xs font-medium text-gray-600">
+                          <span>{lang === "sw" ? "Namba ya invoice ya supplier" : "Supplier invoice number"}</span>
+                          <input value={invoiceDrafts[order.id] ?? order.invoiceNumber ?? ""} onChange={(event) => setInvoiceDrafts((current) => ({ ...current, [order.id]: event.target.value }))} maxLength={120} className="min-h-10 rounded-lg border border-gray-300 px-3 text-sm" placeholder="INV-001" />
+                        </label>
+                        <button type="button" disabled={updatingOrderId === order.id || (invoiceDrafts[order.id] || "") === (order.invoiceNumber || "")} onClick={() => saveInvoiceNumber(order)} className="self-end rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium disabled:opacity-50">
+                          {lang === "sw" ? "Hifadhi invoice" : "Save invoice"}
+                        </button>
+                      </div>
+                    )}
+
+                    {["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY"].includes(order.status) && (
+                      <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-gray-100 pb-3">
+                        <label className="grid flex-1 gap-1 text-xs font-medium text-gray-600">
+                          <span>{lang === "sw" ? "Hali ya ufuatiliaji wa supplier" : "Supplier order status"}</span>
+                          <select value={statusDrafts[order.id] || order.status} onChange={(event) => setStatusDrafts((current) => ({ ...current, [order.id]: event.target.value }))} className="min-h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm">
+                            {order.status === "PENDING" && <>
+                              <option value="PENDING" disabled>{lang === "sw" ? "Inasubiri" : "Pending"}</option>
+                              <option value="CONFIRMED">{lang === "sw" ? "Imethibitishwa" : "Confirmed"}</option>
+                              <option value="OUT_FOR_DELIVERY">{lang === "sw" ? "Ipo njiani" : "Out for delivery"}</option>
+                            </>}
+                            {order.status === "CONFIRMED" && <>
+                              <option value="CONFIRMED">{lang === "sw" ? "Imethibitishwa" : "Confirmed"}</option>
+                              <option value="OUT_FOR_DELIVERY">{lang === "sw" ? "Ipo njiani" : "Out for delivery"}</option>
+                            </>}
+                            {order.status === "OUT_FOR_DELIVERY" && <option value="OUT_FOR_DELIVERY">{lang === "sw" ? "Ipo njiani" : "Out for delivery"}</option>}
+                          </select>
+                        </label>
+                        <button type="button" disabled={updatingOrderId === order.id || (statusDrafts[order.id] || order.status) === order.status} onClick={() => saveTrackingStatus(order)} className="min-h-10 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white disabled:opacity-50">
+                          {lang === "sw" ? "Sasisha hali" : "Update status"}
+                        </button>
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => showWhatsApp(order.id)}
@@ -500,6 +575,12 @@ export default function OrdersPage() {
                   </div>
                 </div>
               )}
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">{lang === "sw" ? "Namba ya invoice ya supplier (hiari)" : "Supplier invoice number (optional)"}</label>
+                <input aria-label={lang === "sw" ? "Namba ya invoice ya supplier" : "Supplier invoice number"} value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} maxLength={120}
+                  placeholder="INV-001" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
 
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">{t("orders.noteLabel", lang)}</label>

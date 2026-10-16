@@ -67,17 +67,106 @@ test("supplier order create rejects products outside the merchant shop", async (
   assert.equal(productWhere.isActive, true);
 });
 
+test("supplier order saves a normalized invoice reference for matching during receiving", async () => {
+  let createdData;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
+    supplier: { findFirst: async () => ({ id: "supplier-1" }) },
+    product: { findMany: async () => [{ id: "product-1", buyingPrice: 3000 }] },
+    order: { create: async ({ data }) => { createdData = data; return { id: "order-1", ...data, supplier: {}, items: [] }; } },
+  });
+  const res = createRes();
+
+  await ctrl.create({ user: { userId: "user-1" }, body: { supplierId: "supplier-1", invoiceNumber: "  inv-04/ab ", items: [{ productId: "product-1", quantity: 2 }] } }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createdData.invoiceNumber, "INV-04/AB");
+});
+
+test("invoice matching is scoped to the active shop, supplier, and all receivable order statuses", async () => {
+  let query;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "branch-2", name: "Branch" }) },
+    supplier: { findFirst: async ({ where }) => { assert.deepEqual(where, { id: "supplier-1", OR: [{ createdByShopId: null }, { createdByShopId: "branch-2" }] }); return { id: "supplier-1" }; } },
+    order: { findMany: async (args) => { query = args; return []; } },
+  });
+  const res = createRes();
+
+  await ctrl.matchByInvoice({ user: { userId: "owner-1", resolvedShopId: "branch-2" }, query: { supplierId: "supplier-1", invoiceNumber: " inv-22 " } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(query.where, {
+    shopId: "branch-2",
+    supplierId: "supplier-1",
+    invoiceNumber: { equals: "INV-22", mode: "insensitive" },
+    status: { in: ["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY", "PARTIALLY_RECEIVED"] },
+  });
+});
+
+test("merchant tracking status updates lock the shop order and cannot fake receipt completion", async () => {
+  let lockCalled = false;
+  let updatedStatus;
+  const tx = {
+    $queryRawUnsafe: async (query, id, shopId) => {
+      assert.match(query, /FROM "orders" WHERE "id" = \$1 AND "shopId" = \$2 FOR UPDATE/);
+      assert.deepEqual([id, shopId], ["order-1", "shop-1"]);
+      lockCalled = true;
+    },
+    order: {
+      findFirst: async () => { assert.equal(lockCalled, true); return { id: "order-1", status: "PENDING" }; },
+      update: async ({ data }) => { updatedStatus = data.status; return { id: "order-1", status: data.status }; },
+    },
+  };
+  const ctrl = loadController({ shop: { findUnique: async () => ({ id: "shop-1" }) }, $transaction: (callback) => callback(tx) });
+  const req = { user: { userId: "user-1" }, params: { id: "order-1" }, body: { status: "OUT_FOR_DELIVERY" } };
+  const res = createRes();
+
+  await ctrl.updateTrackingStatus(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updatedStatus, "OUT_FOR_DELIVERY");
+  assert.deepEqual(req.audit.metadata, { from: "PENDING", to: "OUT_FOR_DELIVERY" });
+
+  tx.order.findFirst = async () => ({ id: "order-1", status: "PARTIALLY_RECEIVED" });
+  const closedRes = createRes();
+  await ctrl.updateTrackingStatus({ ...req, body: { status: "CONFIRMED" } }, closedRes);
+  assert.equal(closedRes.statusCode, 409);
+  assert.equal(updatedStatus, "OUT_FOR_DELIVERY");
+});
+
+test("supplier tracking status cannot move backwards", async () => {
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    order: {
+      findFirst: async () => ({ id: "order-1", status: "OUT_FOR_DELIVERY" }),
+      update: async () => assert.fail("backward status must not be written"),
+    },
+  };
+  const ctrl = loadController({ shop: { findUnique: async () => ({ id: "shop-1" }) }, $transaction: (callback) => callback(tx) });
+  const res = createRes();
+
+  await ctrl.updateTrackingStatus({ user: { userId: "user-1" }, params: { id: "order-1" }, body: { status: "CONFIRMED" } }, res);
+
+  assert.equal(res.statusCode, 409);
+  assert.match(res.payload.error, /cannot move backwards/i);
+});
+
 test("pending supplier order edits replace items only within the merchant shop", async () => {
   let updateData;
+  let lockAcquired = false;
   const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
-    order: {
-      findFirst: async () => ({ id: "order-1", status: "PENDING" }),
-      update: async ({ data }) => {
-        updateData = data;
-        return { id: "order-1", ...data, supplier: { id: "supplier-1", name: "Jumla Traders", phone: "+255700000001" }, items: [] };
+    $transaction: async (callback) => callback({
+      $queryRawUnsafe: async () => { lockAcquired = true; },
+      order: {
+        findFirst: async () => ({ id: "order-1", status: "PENDING" }),
+        update: async ({ data }) => {
+          assert.equal(lockAcquired, true);
+          updateData = data;
+          return { id: "order-1", ...data, supplier: { id: "supplier-1", name: "Jumla Traders", phone: "+255700000001" }, items: [] };
+        },
       },
-    },
+    }),
     supplier: { findFirst: async () => ({ id: "supplier-1" }) },
     product: { findMany: async () => [{ id: "product-1", buyingPrice: 4500 }] },
   };
@@ -168,13 +257,23 @@ test("supplier order create rejects a supplier private to another shop", async (
 test("orders with receipt history cannot be deleted, while empty pending/cancelled orders can", async () => {
   let deleted = false;
   let receiptCount = 0;
+  let lockAcquired = false;
+  let orderStatus = "CONFIRMED";
   const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
-    stockReceipt: { count: async () => receiptCount },
-    order: {
-      findFirst: async () => ({ id: "order-1", status: "CONFIRMED" }),
-      delete: async () => { deleted = true; },
-    },
+    $transaction: (callback) => callback({
+      $queryRawUnsafe: async (query, orderId, shopId) => {
+        assert.match(query, /FROM "orders" WHERE "id" = \$1 AND "shopId" = \$2 FOR UPDATE/);
+        assert.match(orderId, /^order-[123]$/);
+        assert.equal(shopId, "shop-1");
+        lockAcquired = true;
+      },
+      stockReceipt: { count: async () => { assert.equal(lockAcquired, true); return receiptCount; } },
+      order: {
+        findFirst: async ({ where }) => ({ id: where.id, status: orderStatus }),
+        delete: async () => { deleted = true; },
+      },
+    }),
   };
   const ctrl = loadController(prismaMock);
   const res = createRes();
@@ -184,7 +283,8 @@ test("orders with receipt history cannot be deleted, while empty pending/cancell
   assert.equal(res.statusCode, 409);
   assert.equal(deleted, false);
 
-  prismaMock.order.findFirst = async () => ({ id: "order-2", status: "CANCELLED" });
+  orderStatus = "CANCELLED";
+  lockAcquired = false;
   const cancelledRes = createRes();
   await ctrl.remove({ user: { userId: "user-1" }, params: { id: "order-2" } }, cancelledRes);
 
@@ -193,6 +293,8 @@ test("orders with receipt history cannot be deleted, while empty pending/cancell
 
   deleted = false;
   receiptCount = 1;
+  orderStatus = "PENDING";
+  lockAcquired = false;
   const receivedOrderRes = createRes();
   await ctrl.remove({ user: { userId: "user-1" }, params: { id: "order-3" } }, receivedOrderRes);
   assert.equal(receivedOrderRes.statusCode, 409);

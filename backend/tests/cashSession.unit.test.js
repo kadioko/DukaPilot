@@ -31,6 +31,7 @@ test("daily-close history is paginated, filters closed sessions, and decorates o
     sale: { groupBy: async () => [{ cashSessionId: "session-11", _sum: { totalAmount: 50000 }, _count: { id: 4 } }] },
     debtPayment: { groupBy: async () => [] },
     quotationPayment: { groupBy: async () => [] },
+    supplierPayment: { groupBy: async ({ where }) => where.kind === "REFUND" ? [{ cashSessionId: "session-11", _sum: { amount: -500 }, _count: { id: 1 } }] : [{ cashSessionId: "session-11", _sum: { amount: 1000 }, _count: { id: 1 } }] },
     expense: { groupBy: async () => [] },
   };
   const controller = loadController(prismaMock);
@@ -47,7 +48,9 @@ test("daily-close history is paginated, filters closed sessions, and decorates o
   assert.equal(findManyArgs.where.closedAt.lt.toISOString(), "2026-09-01T00:00:00.000Z");
   assert.deepEqual(countArgs.where, findManyArgs.where);
   assert.equal(res.payload.pagination.totalPages, 3);
-  assert.equal(res.payload.sessions[0].summary.expectedCash, 60000);
+  assert.equal(res.payload.sessions[0].summary.expectedCash, 59500);
+  assert.equal(res.payload.sessions[0].summary.supplierCashOut, 1000);
+  assert.equal(res.payload.sessions[0].summary.supplierRefundsReceived, 500);
 });
 
 test("staff daily-close history remains scoped to that staff member", async () => {
@@ -125,14 +128,16 @@ test("daily close counts only receipt-time cash paid plus later cash supplier se
     quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
     expense: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
     stockReceipt: { aggregate: async () => ({ _sum: { paidAtReceipt: 2000 }, _count: { id: 1 } }) },
-    supplierPayment: { aggregate: async () => ({ _sum: { amount: 1500 }, _count: { id: 1 } }) },
+    supplierPayment: { aggregate: async ({ where }) => ({ _sum: { amount: where.kind === "REFUND" ? -700 : 1500 }, _count: { id: where.kind === "REFUND" ? 1 : 1 } }) },
   };
   const controller = loadController(prismaMock);
   const summary = await controller.summarizeSession(prismaMock, { id: "session-1", openingCash: 10000 });
 
   assert.equal(summary.inventoryCashOut, 2000);
   assert.equal(summary.supplierCashOut, 1500);
-  assert.equal(summary.expectedCash, 6500);
+  assert.equal(summary.supplierRefundsReceived, 700);
+  assert.equal(summary.supplierRefundCount, 1);
+  assert.equal(summary.expectedCash, 7200);
 });
 
 test("daily close shows receipt-payment corrections separately and applies their signed cash effect", async () => {

@@ -155,15 +155,38 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
   assert.equal((await prisma.product.findUnique({ where: { id: product.id } })).currentStock, stockBeforeReturn);
   assert.equal(await prisma.stockMovement.count({ where: { supplierCreditLineId: { in: reversedCredit.payload.credit.items.map((item) => item.id) }, type: "IN" } }), 1);
 
+  const secondReturn = await invoke(supplierPayableController.recordCredit, {
+    user: { userId: user.id },
+    body: { stockReceiptId: firstReceiptId, requestKey: crypto.randomUUID(), kind: "RETURN", items: [{ stockReceiptItemId: firstReceiptLine.id, quantity: 1 }] },
+  });
+  assert.equal(secondReturn.statusCode, 201);
+  const supplierRefundRequest = {
+    user: { userId: user.id },
+    body: { stockReceiptId: firstReceiptId, requestKey: crypto.randomUUID(), amount: 300, paymentMethod: "MPESA", paymentReference: "SUPPLIER-REFUND-1" },
+  };
+  const supplierRefund = await invoke(supplierPayableController.recordRefund, supplierRefundRequest);
+  assert.equal(supplierRefund.statusCode, 201);
+  assert.equal(supplierRefund.payload.payment.kind, "REFUND");
+  assert.equal(supplierRefund.payload.payment.amount, -300);
+  assert.equal(supplierRefund.payload.payment.allocations[0].amount, -300);
+  const supplierRefundRetry = await invoke(supplierPayableController.recordRefund, supplierRefundRequest);
+  assert.equal(supplierRefundRetry.statusCode, 200);
+  assert.equal(supplierRefundRetry.payload.reused, true);
+
   activeShopId = branch.id;
   const branchReceipts = await invoke(supplierPayableController.receipts, { user: { userId: user.id }, params: { supplierId: supplier.id }, query: {} });
   assert.equal(branchReceipts.statusCode, 200);
   assert.equal(branchReceipts.payload.receipts.length, 0);
+  const crossBranchRefund = await invoke(supplierPayableController.recordRefund, {
+    user: { userId: user.id },
+    body: { stockReceiptId: firstReceiptId, requestKey: crypto.randomUUID(), amount: 100, paymentMethod: "MPESA" },
+  });
+  assert.equal(crossBranchRefund.statusCode, 404);
 
   activeShopId = root.id;
   const rootReceipts = await invoke(supplierPayableController.receipts, { user: { userId: user.id }, params: { supplierId: supplier.id }, query: {} });
   assert.equal(rootReceipts.payload.receipts.length, 2);
-  assert.equal(rootReceipts.payload.receipts.find((receipt) => receipt.id === firstReceiptId).balance, 500);
+  assert.equal(rootReceipts.payload.receipts.find((receipt) => receipt.id === firstReceiptId).balance, -200);
   assert.equal(rootReceipts.payload.receipts.find((receipt) => receipt.id === secondReceiptId).balance, 3000);
 
   const cashSession = await prisma.cashSession.create({ data: { shopId: root.id, openedById: `user:${user.id}`, openedByName: "Synthetic owner", openingCash: 2000 } });

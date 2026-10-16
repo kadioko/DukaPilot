@@ -178,7 +178,7 @@ const receive = asyncHandler(async (req, res) => {
         select: { id: true, supplierId: true, status: true, items: { select: { id: true, productId: true, quantity: true, receivedQuantity: true } } },
       });
       if (!order) throw Object.assign(new Error("Supplier order not found"), { status: 404 });
-      if (!["CONFIRMED", "OUT_FOR_DELIVERY", "PARTIALLY_RECEIVED"].includes(order.status)) throw Object.assign(new Error("This supplier order is not ready to receive"), { status: 409 });
+      if (!["PENDING", "CONFIRMED", "OUT_FOR_DELIVERY", "PARTIALLY_RECEIVED"].includes(order.status)) throw Object.assign(new Error("This supplier order is not ready to receive"), { status: 409 });
       if (supplierId && order.supplierId !== supplierId) throw Object.assign(new Error("Supplier must match the selected order"), { status: 400 });
       for (const item of items) {
         const orderItem = order.items.find((candidate) => candidate.productId === item.productId);

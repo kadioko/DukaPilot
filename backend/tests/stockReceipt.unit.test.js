@@ -84,3 +84,56 @@ test("a retry from an older app version reuses its receipt instead of receiving 
   assert.equal(res.payload.receipt.id, "receipt-existing");
   assert.equal(res.payload.reused, true);
 });
+
+test("an arrived pending supplier order can be received and its status follows the stock receipt", async () => {
+  const requestKey = crypto.randomUUID();
+  let orderStatus;
+  let receiptCreated;
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    stockReceipt: {
+      findFirst: async () => null,
+      create: async ({ data }) => { receiptCreated = data; return { id: "receipt-1", ...data }; },
+      findUnique: async () => ({ id: "receipt-1", supplierId: "supplier-private-1", items: [] }),
+    },
+    order: {
+      findFirst: async () => ({
+        id: "order-1",
+        supplierId: "supplier-private-1",
+        status: "PENDING",
+        items: [{ id: "order-item-1", productId: "product-1", quantity: 4, receivedQuantity: 0 }],
+      }),
+      update: async ({ data }) => { orderStatus = data.status; return { id: "order-1", ...data }; },
+    },
+    product: {
+      findMany: async () => [{ id: "product-1", buyingPrice: 1000 }],
+      update: async () => {},
+    },
+    stockReceiptItem: { create: async () => {} },
+    stockMovement: { create: async () => {} },
+    orderItem: {
+      updateMany: async () => {},
+      findMany: async () => [{ quantity: 4, receivedQuantity: 4 }],
+    },
+  };
+  const controller = loadController({ $transaction: async (callback) => callback(tx) });
+  const res = response();
+
+  await controller.receive({
+    user: { userId: "owner-1" },
+    body: {
+      requestKey,
+      sourceOrderId: "order-1",
+      allocationMode: "DIRECT",
+      paymentMethod: "CREDIT",
+      paidAtReceipt: 0,
+      receivedAt: "2026-10-16T10:00:00.000Z",
+      items: [{ productId: "product-1", quantity: 4, unitCost: 1000 }],
+    },
+  }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(receiptCreated.supplierId, "supplier-private-1");
+  assert.equal(receiptCreated.sourceOrderId, "order-1");
+  assert.equal(orderStatus, "DELIVERED");
+});
