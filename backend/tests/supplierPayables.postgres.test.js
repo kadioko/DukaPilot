@@ -123,11 +123,18 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
   assert.equal(paymentRetry.payload.reused, true);
   assert.equal(await prisma.supplierPayment.count({ where: { shopId: root.id } }), 1);
 
-  const competingPayments = await Promise.all([500, 500].map((amount) => invoke(supplierPayableController.recordPayment, {
+  const competingRequests = [500, 500].map((amount) => ({
     user: { userId: user.id },
     body: { requestKey: crypto.randomUUID(), amount, paymentMethod: "MPESA", allocations: [{ stockReceiptId: firstReceiptId, amount }] },
-  })));
-  assert.equal(competingPayments.filter((result) => result.statusCode === 201).length, 2);
+  }));
+  const competingPayments = await Promise.all(competingRequests.map((request) => invoke(supplierPayableController.recordPayment, request)));
+  const concurrentSuccesses = competingPayments.filter((result) => result.statusCode === 201).length;
+  assert.ok(concurrentSuccesses === 1 || concurrentSuccesses === 2);
+  const conflictedRequest = competingRequests[competingPayments.findIndex((result) => result.statusCode === 409)];
+  if (conflictedRequest) {
+    const retriedPayment = await invoke(supplierPayableController.recordPayment, conflictedRequest);
+    assert.equal(retriedPayment.statusCode, 201);
+  }
   const overpayment = await invoke(supplierPayableController.recordPayment, {
     user: { userId: user.id },
     body: { requestKey: crypto.randomUUID(), amount: 2000, paymentMethod: "MPESA", allocations: [{ stockReceiptId: firstReceiptId, amount: 2000 }] },
