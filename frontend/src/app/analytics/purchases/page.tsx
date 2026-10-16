@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS } from "@/lib/api";
+import { getCurrentSession, api, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
+import { useToast } from "@/components/ui/Toast";
 import { ArrowLeft, Download, RefreshCw, Search } from "lucide-react";
 
 type Period = "today" | "week" | "month" | "quarter" | "year" | "all" | "custom";
@@ -12,12 +14,12 @@ type PurchaseReport = {
   period: Period;
   from: string | null;
   to: string | null;
-  summary: { receiptCount: number; productCost: number; transportCost: number; otherCost: number; landedCost: number; estimatedReceiptCount: number };
-  paymentBreakdown: Array<{ paymentMethod: string; receiptCount: number; amount: number }>;
+  summary: { receiptCount: number; productCost: number; transportCost: number; otherCost: number; landedCost: number; paidAtReceipt: number; estimatedReceiptCount: number };
+  paymentBreakdown: Array<{ paymentMethod: string; receiptCount: number; paidAtReceipt: number }>;
   suppliers: Array<{ id: string; name: string; receiptCount: number; amount: number }>;
   supplierOptions: Array<{ id: string; name: string; receiptCount: number }>;
   products: Array<{ id: string; name: string; unit: string; quantity: number; productCost: number; allocatedAdditionalCost: number; landedCost: number }>;
-  receipts: Array<{ id: string; receivedAt: string; invoiceNumber: string | null; paymentMethod: string; totalProductCost: number; transportCost: number; otherCost: number; totalLandedCost: number; estimatedAllocation: boolean; supplier?: { id: string; name: string } | null; items?: Array<{ id: string; quantity: number; landedUnitCost: number; product: { id: string; name: string; unit: string } }> }>;
+  receipts: Array<{ id: string; receivedAt: string; invoiceNumber: string | null; paymentMethod: string; paidAtReceipt: number; totalProductCost: number; transportCost: number; otherCost: number; totalLandedCost: number; estimatedAllocation: boolean; supplier?: { id: string; name: string } | null; paymentCorrections?: Array<{ id: string; previousCorrectionId?: string | null; previousAmount: number; correctedAmount: number; previousMethod: string; correctedMethod: string; note: string; createdAt: string }>; items?: Array<{ id: string; quantity: number; landedUnitCost: number; product: { id: string; name: string; unit: string } }> }>;
   pagination: { page: number; pageSize: number; total: number; totalPages: number } | null;
 };
 
@@ -40,7 +42,7 @@ function csvCell(value: unknown) {
 
 function paymentLabel(method: string, sw: boolean) {
   const labels: Record<string, [string, string]> = {
-    CASH: ["Cash", "Taslimu"], MPESA: ["M-Pesa", "M-Pesa"], TIGOPESA: ["Mix by Yas", "Mix by Yas"],
+    CASH: ["Cash", "Taslimu"], MPESA: ["M-Pesa", "M-Pesa"], TIGOPESA: ["Mix by Yas", "Mix by Yas"], CREDIT: ["Supplier credit", "Deni la msambazaji"],
     AIRTEL_MONEY: ["Airtel Money", "Airtel Money"], HALOPESA: ["HaloPesa", "HaloPesa"], BANK: ["Bank", "Benki"],
   };
   return labels[method]?.[sw ? 1 : 0] || method;
@@ -48,7 +50,15 @@ function paymentLabel(method: string, sw: boolean) {
 
 export default function PurchasesAnalyticsPage() {
   const lang = useLang();
+  const { toast } = useToast();
   const sw = lang === "sw";
+  const [canCorrectReceiptPayment, setCanCorrectReceiptPayment] = useState(false);
+  const [selectedCorrection, setSelectedCorrection] = useState<PurchaseReport["receipts"][number] | null>(null);
+  const [correctionAmount, setCorrectionAmount] = useState("");
+  const [correctionMethod, setCorrectionMethod] = useState("CASH");
+  const [correctionNote, setCorrectionNote] = useState("");
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const correctionAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const [period, setPeriod] = useState<Period>("month");
   const [routeReady, setRouteReady] = useState(false);
   const [from, setFrom] = useState(startOfMonthValue);
@@ -63,6 +73,12 @@ export default function PurchasesAnalyticsPage() {
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+
+  useEffect(() => {
+    getCurrentSession<{ user: { staff?: { permissions?: { canManageStock?: boolean } } } }>()
+      .then(({ user }) => setCanCorrectReceiptPayment(!user.staff || Boolean(user.staff.permissions?.canManageStock)))
+      .catch(() => setCanCorrectReceiptPayment(false));
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 250);
@@ -128,13 +144,14 @@ export default function PurchasesAnalyticsPage() {
         ["Payment method filter", paymentMethod || (sw ? "Zote" : "All")],
         ["Search", search || (sw ? "Hakuna" : "None")],
         ["Total landed purchases TZS", result.summary.landedCost],
+        ["Paid at receipt TZS", result.summary.paidAtReceipt],
         ["Product cost TZS", result.summary.productCost],
         ["Transport and other costs TZS", result.summary.transportCost + result.summary.otherCost],
         ["Receipt count", result.summary.receiptCount],
-        ["Note", "Stock purchases are inventory costs, not operating expenses; costs flow to COGS when stock is sold."],
+        ["Note", "Paid at receipt is not later settlement cash. Review later allocated payments in Supplier Balances. Stock purchases are inventory costs, not operating expenses; costs flow to COGS when stock is sold."],
         [],
-        ["Received at", "Supplier", "Invoice", "Payment method", "Product cost TZS", "Transport TZS", "Other costs TZS", "Landed purchase TZS", "Estimated allocation"],
-        ...result.receipts.map((receipt) => [receipt.receivedAt, receipt.supplier?.name || (sw ? "Bila msambazaji" : "No supplier"), receipt.invoiceNumber || "", paymentLabel(receipt.paymentMethod, false), receipt.totalProductCost, receipt.transportCost, receipt.otherCost, receipt.totalLandedCost, receipt.estimatedAllocation ? "Yes" : "No"]),
+        ["Received at", "Supplier", "Invoice", "Receipt payment method", "Paid at receipt TZS", "Product cost TZS", "Transport TZS", "Other costs TZS", "Landed purchase TZS", "Estimated allocation"],
+        ...result.receipts.map((receipt) => [receipt.receivedAt, receipt.supplier?.name || (sw ? "Bila msambazaji" : "No supplier"), receipt.invoiceNumber || "", paymentLabel(receipt.paymentMethod, false), receipt.paidAtReceipt, receipt.totalProductCost, receipt.transportCost, receipt.otherCost, receipt.totalLandedCost, receipt.estimatedAllocation ? "Yes" : "No"]),
       ];
       const csv = rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
       const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
@@ -150,11 +167,46 @@ export default function PurchasesAnalyticsPage() {
     }
   }
 
+  function openCorrection(receipt: PurchaseReport["receipts"][number]) {
+    setSelectedCorrection(receipt);
+    setCorrectionAmount(String(receipt.paidAtReceipt));
+    setCorrectionMethod(receipt.paidAtReceipt === 0 ? "CASH" : receipt.paymentMethod);
+    setCorrectionNote("");
+    correctionAttempt.current = null;
+  }
+
+  async function submitCorrection() {
+    if (!selectedCorrection) return;
+    const amount = Number(correctionAmount);
+    if (!Number.isSafeInteger(amount) || amount < 0 || amount > selectedCorrection.totalLandedCost || !correctionNote.trim()) {
+      toast(sw ? "Weka kiasi halali kisichozidi jumla ya risiti na sababu." : "Enter a valid amount no greater than the receipt total, and a reason.", "error");
+      return;
+    }
+    const body = { correctedAmount: amount, paymentMethod: correctionMethod, note: correctionNote.trim() };
+    const fingerprint = JSON.stringify(body);
+    if (!correctionAttempt.current || correctionAttempt.current.fingerprint !== fingerprint) {
+      const key = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+      correctionAttempt.current = { fingerprint, key };
+    }
+    setSavingCorrection(true);
+    try {
+      await api.post(`/supplier-payables/receipts/${selectedCorrection.id}/payment-corrections`, { ...body, requestKey: correctionAttempt.current.key }, lang);
+      correctionAttempt.current = null;
+      setSelectedCorrection(null);
+      toast(sw ? "Marekebisho ya malipo yamehifadhiwa." : "Receipt payment correction saved.", "success");
+      await loadReport();
+    } catch (value) {
+      toast(value instanceof Error ? value.message : (sw ? "Imeshindikana kuhifadhi marekebisho." : "Could not save the correction."), "error");
+    } finally {
+      setSavingCorrection(false);
+    }
+  }
+
   const periodOptions: Array<[Period, string, string]> = [["today", "Today", "Leo"], ["week", "This week", "Wiki hii"], ["month", "This month", "Mwezi huu"], ["quarter", "This quarter", "Robo hii"], ["year", "This year", "Mwaka huu"], ["all", "All time", "Tangu mwanzo"], ["custom", "Custom range", "Tarehe maalum"]];
   const visibleReceipts = report?.receipts || [];
 
   return <AppShell><main className="mx-auto max-w-6xl space-y-5 pb-20 lg:pb-6">
-    <header className="border-b border-gray-200 pb-4"><Link href="/analytics" className="inline-flex min-h-9 items-center gap-1 text-sm font-semibold text-brand-700"><ArrowLeft className="h-4 w-4" />{sw ? "Uchambuzi" : "Analytics"}</Link><div className="mt-3 flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold text-gray-950">{sw ? "Manunuzi" : "Purchases"}</h1><p className="mt-1 text-sm leading-5 text-gray-600">{sw ? "Thamani ya bidhaa zilizopokelewa, ikijumuisha usafiri na gharama nyingine." : "Value of stock received, including transport and other landed costs."}</p></div><button type="button" onClick={() => void exportCsv()} disabled={exporting || !report?.summary.receiptCount} className="inline-flex min-h-10 items-center gap-2 border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 disabled:opacity-50"><Download className="h-4 w-4" />{exporting ? (sw ? "Inapakua..." : "Exporting...") : "CSV"}</button></div></header>
+    <header className="border-b border-gray-200 pb-4"><Link href="/analytics" className="inline-flex min-h-9 items-center gap-1 text-sm font-semibold text-brand-700"><ArrowLeft className="h-4 w-4" />{sw ? "Uchambuzi" : "Analytics"}</Link><div className="mt-3 flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold text-gray-950">{sw ? "Manunuzi" : "Purchases"}</h1><p className="mt-1 text-sm leading-5 text-gray-600">{sw ? "Thamani ya stock iliyopokelewa, pamoja na usafiri na gharama nyingine. Malipo ya sasa na ya baadaye yanaonyeshwa tofauti." : "Value of stock received, including transport and other landed costs. Receipt-time payments and later settlements are shown separately."}</p></div><button type="button" onClick={() => void exportCsv()} disabled={exporting || !report?.summary.receiptCount} className="inline-flex min-h-10 items-center gap-2 border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 disabled:opacity-50"><Download className="h-4 w-4" />{exporting ? (sw ? "Inapakua..." : "Exporting...") : "CSV"}</button></div></header>
 
     <section className="space-y-3 border-b border-gray-200 pb-5" aria-label={sw ? "Vichujio" : "Filters"}>
       <div className="flex max-w-full gap-1 overflow-x-auto bg-gray-100 p-1">{periodOptions.map(([key, en, swLabel]) => <button type="button" key={key} onClick={() => { setPeriod(key); setPage(1); }} aria-pressed={period === key} className={`min-h-10 whitespace-nowrap px-3 text-sm font-semibold ${period === key ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{sw ? swLabel : en}</button>)}</div>
@@ -162,7 +214,7 @@ export default function PurchasesAnalyticsPage() {
       <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(170px,0.65fr)_minmax(150px,0.55fr)]">
         <label className="relative"><span className="sr-only">{sw ? "Tafuta risiti, bidhaa au msambazaji" : "Search receipts, products, or suppliers"}</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={sw ? "Tafuta risiti, bidhaa, msambazaji" : "Search receipt, product, supplier"} className="min-h-10 w-full border border-gray-300 bg-white pl-9 pr-3 text-sm" /></label>
         <label><span className="sr-only">{sw ? "Msambazaji" : "Supplier"}</span><select aria-label={sw ? "Msambazaji" : "Supplier"} value={supplierId} onChange={(event) => { setSupplierId(event.target.value); setPage(1); }} className="min-h-10 w-full border border-gray-300 bg-white px-3 text-sm"><option value="">{sw ? "Wasambazaji wote" : "All suppliers"}</option>{report?.supplierOptions.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.id === "__unassigned__" ? (sw ? "Bila msambazaji" : "No supplier") : supplier.name}</option>)}</select></label>
-        <label><span className="sr-only">{sw ? "Njia ya malipo" : "Payment method"}</span><select aria-label={sw ? "Njia ya malipo" : "Payment method"} value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setPage(1); }} className="min-h-10 w-full border border-gray-300 bg-white px-3 text-sm"><option value="">{sw ? "Njia zote" : "All payment methods"}</option>{[["CASH", "Cash", "Taslimu"], ["MPESA", "M-Pesa", "M-Pesa"], ["TIGOPESA", "Mix by Yas", "Mix by Yas"], ["AIRTEL_MONEY", "Airtel Money", "Airtel Money"], ["HALOPESA", "HaloPesa", "HaloPesa"], ["BANK", "Bank", "Benki"]].map(([value, en, swLabel]) => <option key={value} value={value}>{sw ? swLabel : en}</option>)}</select></label>
+        <label><span className="sr-only">{sw ? "Njia iliyorekodiwa wakati wa kupokea" : "Payment method recorded at receipt"}</span><select aria-label={sw ? "Njia iliyorekodiwa wakati wa kupokea" : "Payment method recorded at receipt"} value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setPage(1); }} className="min-h-10 w-full border border-gray-300 bg-white px-3 text-sm"><option value="">{sw ? "Njia zote" : "All receipt methods"}</option>{[["CASH", "Cash", "Taslimu"], ["MPESA", "M-Pesa", "M-Pesa"], ["TIGOPESA", "Mix by Yas", "Mix by Yas"], ["AIRTEL_MONEY", "Airtel Money", "Airtel Money"], ["HALOPESA", "HaloPesa", "HaloPesa"], ["BANK", "Bank", "Benki"], ["CREDIT", "Supplier credit", "Deni la msambazaji"]].map(([value, en, swLabel]) => <option key={value} value={value}>{sw ? swLabel : en}</option>)}</select></label>
       </div>
       <p className="text-xs text-gray-500">{period === "all" ? (sw ? "Kipindi: tangu manunuzi ya kwanza yaliyorekodiwa." : "Period: all recorded purchase history.") : period === "custom" ? `${sw ? "Kipindi" : "Period"}: ${from} – ${to} · Africa/Dar_es_Salaam` : `${sw ? "Kipindi" : "Period"}: ${sw ? periodOptions.find(([key]) => key === period)?.[2] : periodOptions.find(([key]) => key === period)?.[1]} · Africa/Dar_es_Salaam`}</p>
     </section>
@@ -170,21 +222,22 @@ export default function PurchasesAnalyticsPage() {
     {error ? <section role="alert" className="border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p>{error}</p><button type="button" onClick={() => void loadReport()} className="mt-2 inline-flex min-h-9 items-center gap-1 font-semibold underline"><RefreshCw className="h-4 w-4" />{sw ? "Jaribu tena" : "Retry"}</button></section> : <>
       {exportError && <p role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-800">{exportError}</p>}
       {report?.summary.estimatedReceiptCount ? <p role="status" className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{sw ? `${report.summary.estimatedReceiptCount} risiti zina gharama zilizokadiriwa; jumla inazijumuisha.` : `${report.summary.estimatedReceiptCount} receipts use estimated cost allocation; totals include them.`}</p> : null}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[[sw ? "Jumla ya manunuzi" : "Total landed purchases", report ? formatTZS(report.summary.landedCost) : "–"], [sw ? "Gharama za bidhaa" : "Product costs", report ? formatTZS(report.summary.productCost) : "–"], [sw ? "Usafiri na nyingine" : "Transport and other", report ? formatTZS(report.summary.transportCost + report.summary.otherCost) : "–"], [sw ? "Risiti zilizopokelewa" : "Receipts received", report ? String(report.summary.receiptCount) : "–"]].map(([label, value]) => <div key={label} className="border border-gray-200 bg-white p-4"><p className="text-xs font-semibold text-gray-600">{label}</p><p className="mt-2 break-words text-xl font-bold text-gray-950">{loading && !report ? "…" : value}</p></div>)}
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[[sw ? "Jumla ya landed purchases" : "Total landed purchases", report ? formatTZS(report.summary.landedCost) : "–"], [sw ? "Kilicholipwa wakati wa kupokea" : "Paid at receipt", report ? formatTZS(report.summary.paidAtReceipt) : "–"], [sw ? "Gharama za bidhaa" : "Product costs", report ? formatTZS(report.summary.productCost) : "–"], [sw ? "Usafiri na nyingine" : "Transport and other", report ? formatTZS(report.summary.transportCost + report.summary.otherCost) : "–"], [sw ? "Risiti zilizopokelewa" : "Receipts received", report ? String(report.summary.receiptCount) : "–"]].map(([label, value]) => <div key={label} className="border border-gray-200 bg-white p-4"><p className="text-xs font-semibold text-gray-600">{label}</p><p className="mt-2 break-words text-xl font-bold text-gray-950">{loading && !report ? "…" : value}</p></div>)}
       </section>
 
       <section className="grid gap-5 lg:grid-cols-2">
         <div><h2 className="mb-2 text-sm font-semibold text-gray-900">{sw ? "Manunuzi kwa msambazaji" : "Purchases by supplier"}</h2><div className="overflow-x-auto border-y border-gray-200"><table className="w-full min-w-[390px] text-left text-sm"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-3 py-2">{sw ? "Msambazaji" : "Supplier"}</th><th className="px-3 py-2">{sw ? "Risiti" : "Receipts"}</th><th className="px-3 py-2 text-right">{sw ? "Jumla" : "Total"}</th></tr></thead><tbody>{report?.suppliers.map((supplier) => <tr key={supplier.id} className="border-t border-gray-100"><td className="px-3 py-2 font-medium">{supplier.name}</td><td className="px-3 py-2">{supplier.receiptCount}</td><td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{formatTZS(supplier.amount)}</td></tr>)}{!report?.suppliers.length && <tr><td colSpan={3} className="px-3 py-8 text-center text-sm text-gray-500">{sw ? "Hakuna risiti katika kipindi hiki." : "No receipts in this period."}</td></tr>}</tbody></table></div></div>
-        <div><h2 className="mb-2 text-sm font-semibold text-gray-900">{sw ? "Manunuzi kwa njia ya malipo" : "Purchases by payment method"}</h2><div className="divide-y divide-gray-100 border-y border-gray-200">{report?.paymentBreakdown.map((entry) => <div key={entry.paymentMethod} className="flex items-center justify-between gap-3 py-3 text-sm"><span>{paymentLabel(entry.paymentMethod, sw)} <span className="text-xs text-gray-500">· {entry.receiptCount}</span></span><strong>{formatTZS(entry.amount)}</strong></div>)}{!report?.paymentBreakdown.length && <p className="py-8 text-center text-sm text-gray-500">{sw ? "Hakuna malipo katika kipindi hiki." : "No payments in this period."}</p>}</div></div>
+        <div><h2 className="mb-2 text-sm font-semibold text-gray-900">{sw ? "Kilicholipwa wakati wa kupokea kwa njia" : "Paid at receipt by method"}</h2><div className="divide-y divide-gray-100 border-y border-gray-200">{report?.paymentBreakdown.map((entry) => <div key={entry.paymentMethod} className="flex items-center justify-between gap-3 py-3 text-sm"><span>{paymentLabel(entry.paymentMethod, sw)} <span className="text-xs text-gray-500">· {entry.receiptCount}</span></span><strong>{formatTZS(entry.paidAtReceipt)}</strong></div>)}{!report?.paymentBreakdown.length && <p className="py-8 text-center text-sm text-gray-500">{sw ? "Hakuna risiti katika kipindi hiki." : "No receipts in this period."}</p>}</div><p className="mt-2 text-xs leading-5 text-gray-500">{sw ? "Hii ni fedha iliyorekodiwa kwenye risiti pekee; haijumuishi malipo ya baadaye. Tazama Salio la Wasambazaji kwa malipo yote." : "This is only the amount recorded on the receipt; later payments are excluded. Use Supplier Balances for all settlements."}</p></div>
       </section>
 
       <section><h2 className="mb-2 text-sm font-semibold text-gray-900">{sw ? "Bidhaa zilizonunuliwa" : "Purchased products"}</h2><div className="overflow-x-auto border-y border-gray-200"><table className="w-full min-w-[650px] text-left text-sm"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-3 py-2">{sw ? "Bidhaa" : "Product"}</th><th className="px-3 py-2">{sw ? "Kiasi" : "Quantity"}</th><th className="px-3 py-2 text-right">{sw ? "Bidhaa" : "Items"}</th><th className="px-3 py-2 text-right">{sw ? "Gharama zilizogawiwa" : "Allocated costs"}</th><th className="px-3 py-2 text-right">{sw ? "Jumla ya landed cost" : "Landed total"}</th></tr></thead><tbody>{report?.products.map((product) => <tr key={product.id} className="border-t border-gray-100"><td className="px-3 py-2 font-medium">{product.name}</td><td className="px-3 py-2">{product.quantity} {product.unit}</td><td className="whitespace-nowrap px-3 py-2 text-right">{formatTZS(product.productCost)}</td><td className="whitespace-nowrap px-3 py-2 text-right">{formatTZS(product.allocatedAdditionalCost)}</td><td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{formatTZS(product.landedCost)}</td></tr>)}{!report?.products.length && <tr><td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-500">{sw ? "Hakuna bidhaa zilizopokelewa." : "No received products in this period."}</td></tr>}</tbody></table></div></section>
 
-      <section><div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-sm font-semibold text-gray-900">{sw ? "Historia ya risiti" : "Receipt history"}</h2><p className="mt-1 text-xs text-gray-500">{report?.pagination ? `${report.pagination.total} ${sw ? "risiti" : "receipts"}` : ""}</p></div>{loading && <span className="text-xs text-gray-500">{sw ? "Inasasisha…" : "Updating…"}</span>}</div><div className="space-y-2">{visibleReceipts.map((receipt) => <details key={receipt.id} className="border border-gray-200 bg-white"><summary className="flex min-h-14 cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-3"><span className="min-w-0"><strong className="block truncate text-sm text-gray-950">{receipt.supplier?.name || (sw ? "Bila msambazaji" : "No supplier")}</strong><span className="block text-xs text-gray-500">{dateLabel(receipt.receivedAt, sw)}{receipt.invoiceNumber ? ` · ${receipt.invoiceNumber}` : ""} · {paymentLabel(receipt.paymentMethod, sw)}</span></span><span className="flex items-center gap-2"><strong className="text-sm text-brand-800">{formatTZS(receipt.totalLandedCost)}</strong>{receipt.estimatedAllocation && <span className="text-[10px] font-semibold text-amber-800">{sw ? "MAKADIRIO" : "EST."}</span>}</span></summary><div className="border-t border-gray-100 px-3 py-2"><div className="divide-y divide-gray-100">{receipt.items?.map((item) => <div key={item.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm"><span>{item.product.name} · {item.quantity} {item.product.unit}</span><span>{formatTZS(item.landedUnitCost)} / {item.product.unit}</span></div>)}</div><div className="mt-2 grid grid-cols-2 gap-2 border-t border-gray-100 pt-2 text-xs text-gray-600 sm:grid-cols-4"><span>{sw ? "Bidhaa" : "Products"}: {formatTZS(receipt.totalProductCost)}</span><span>{sw ? "Usafiri" : "Transport"}: {formatTZS(receipt.transportCost)}</span><span>{sw ? "Nyingine" : "Other"}: {formatTZS(receipt.otherCost)}</span><span>{sw ? "Jumla" : "Landed total"}: {formatTZS(receipt.totalLandedCost)}</span></div></div></details>)}{!loading && !visibleReceipts.length && <p className="border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">{sw ? "Hakuna risiti zinazolingana na vichujio." : "No receipts match these filters."}</p>}</div>
+      <section><div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-sm font-semibold text-gray-900">{sw ? "Historia ya risiti" : "Receipt history"}</h2><p className="mt-1 text-xs text-gray-500">{report?.pagination ? `${report.pagination.total} ${sw ? "risiti" : "receipts"}` : ""}</p></div>{loading && <span className="text-xs text-gray-500">{sw ? "Inasasisha…" : "Updating…"}</span>}</div><div className="space-y-2">{visibleReceipts.map((receipt) => <details key={receipt.id} className="border border-gray-200 bg-white"><summary className="flex min-h-14 cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-3"><span className="min-w-0"><strong className="block truncate text-sm text-gray-950">{receipt.supplier?.name || (sw ? "Bila msambazaji" : "No supplier")}</strong><span className="block text-xs text-gray-500">{dateLabel(receipt.receivedAt, sw)}{receipt.invoiceNumber ? ` · ${receipt.invoiceNumber}` : ""} · {paymentLabel(receipt.paymentMethod, sw)} · {sw ? "imelipwa wakati wa kupokea" : "paid at receipt"}: {formatTZS(receipt.paidAtReceipt)}</span></span><span className="flex items-center gap-2"><strong className="text-sm text-brand-800">{formatTZS(receipt.totalLandedCost)}</strong>{receipt.estimatedAllocation && <span className="text-[10px] font-semibold text-amber-800">{sw ? "MAKADIRIO" : "EST."}</span>}</span></summary><div className="border-t border-gray-100 px-3 py-2"><div className="divide-y divide-gray-100">{receipt.items?.map((item) => <div key={item.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm"><span>{item.product.name} · {item.quantity} {item.product.unit}</span><span>{formatTZS(item.landedUnitCost)} / {item.product.unit}</span></div>)}</div><div className="mt-2 grid grid-cols-2 gap-2 border-t border-gray-100 pt-2 text-xs text-gray-600 sm:grid-cols-5"><span>{sw ? "Bidhaa" : "Products"}: {formatTZS(receipt.totalProductCost)}</span><span>{sw ? "Usafiri" : "Transport"}: {formatTZS(receipt.transportCost)}</span><span>{sw ? "Nyingine" : "Other"}: {formatTZS(receipt.otherCost)}</span><span>{sw ? "Imelipwa sasa" : "Paid at receipt"}: {formatTZS(receipt.paidAtReceipt)}</span><span>{sw ? "Jumla" : "Landed total"}: {formatTZS(receipt.totalLandedCost)}</span></div>{receipt.paymentCorrections?.length ? <div className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">{receipt.paymentCorrections.map((item) => <p key={item.id}>{sw ? "Marekebisho" : "Correction"}: {paymentLabel(item.previousMethod, sw)} {formatTZS(item.previousAmount)} → {paymentLabel(item.correctedMethod, sw)} {formatTZS(item.correctedAmount)} · {item.note}</p>)}</div> : null}{canCorrectReceiptPayment && <button type="button" onClick={() => openCorrection(receipt)} className="mt-3 min-h-10 border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900">{sw ? "Sahihisha malipo ya risiti" : "Correct receipt payment"}</button>}</div></details>)}{!loading && !visibleReceipts.length && <p className="border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">{sw ? "Hakuna risiti zinazolingana na vichujio." : "No receipts match these filters."}</p>}</div>
         {report?.pagination && report.pagination.totalPages > 1 && <div className="mt-3 flex items-center justify-between border-t border-gray-200 pt-3"><p className="text-xs text-gray-500">{sw ? `Ukurasa ${page} / ${report.pagination.totalPages}` : `Page ${page} of ${report.pagination.totalPages}`}</p><div className="flex gap-2"><button type="button" disabled={loading || page <= 1} onClick={() => setPage((value) => value - 1)} className="min-h-10 border border-gray-300 px-3 text-sm disabled:opacity-40">{sw ? "Iliyotangulia" : "Previous"}</button><button type="button" disabled={loading || page >= report.pagination.totalPages} onClick={() => setPage((value) => value + 1)} className="min-h-10 border border-gray-300 px-3 text-sm disabled:opacity-40">{sw ? "Inayofuata" : "Next"}</button></div></div>}
       </section>
-      <p className="text-xs leading-5 text-gray-500">{sw ? "Manunuzi hujumlishwa kwa tarehe stock ilipopokelewa. Hii ni thamani ya bidhaa pamoja na usafiri na gharama nyingine zilizogawiwa; si matumizi ya uendeshaji wala COGS. Gharama huingia COGS bidhaa inapouzwa. DukaPilot bado haifuatilii salio la supplier credit." : "Purchases are grouped by the date stock was received. Totals include product cost plus allocated transport and other charges; they are not operating expenses or COGS. Costs enter COGS when stock sells. Supplier-credit balances are not tracked yet."}</p>
+      <p className="text-xs leading-5 text-gray-500">{sw ? "Manunuzi hujumlishwa kwa tarehe stock ilipopokelewa. Jumla ya landed cost ni gharama ya bidhaa pamoja na usafiri na nyingine; haimaanishi kuwa kiasi chote kililipwa. Kadi ya 'Kilicholipwa wakati wa kupokea' haijumuishi malipo ya baadaye. Si matumizi ya uendeshaji wala COGS; gharama huingia COGS bidhaa inapouzwa. Fungua Salio la Wasambazaji kwa salio, malipo yote na returns." : "Purchases are grouped by the date stock was received. Total landed cost includes products, transport, and other charges; it does not mean the full amount was paid. The Paid at receipt metric excludes later settlements. Purchases are not operating expenses or COGS; costs enter COGS when stock sells. Open Supplier Balances for balances, all payments, and returns."}</p>
     </>}
+    {selectedCorrection && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 p-3 sm:items-center"><section role="dialog" aria-modal="true" aria-labelledby="purchase-correction-title" className="max-h-[90vh] w-full max-w-lg overflow-y-auto border border-gray-200 bg-white p-4 shadow-xl sm:p-5"><div className="mb-4 flex items-center justify-between"><h2 id="purchase-correction-title" className="text-lg font-bold text-gray-950">{sw ? "Sahihisha malipo ya risiti" : "Correct receipt payment"}</h2><button type="button" onClick={() => setSelectedCorrection(null)} aria-label={sw ? "Funga" : "Close"} className="min-h-10 min-w-10 border border-gray-300 text-gray-600">×</button></div><p className="mb-4 text-sm text-gray-600">{selectedCorrection.supplier?.name || (sw ? "Bila msambazaji" : "No supplier")} · {selectedCorrection.invoiceNumber || `#${selectedCorrection.id.slice(-7).toUpperCase()}`}</p><label className="mb-3 grid gap-1 text-sm font-medium"><span>{sw ? "Kiasi sahihi kilicholipwa wakati wa kupokea (TZS)" : "Correct amount paid at receipt (TZS)"}</span><CurrencyInput value={correctionAmount} onChange={setCorrectionAmount} className="min-h-11 border border-gray-300 px-3 py-2" /></label><label className="mb-3 grid gap-1 text-sm font-medium"><span>{sw ? "Njia sahihi ya malipo" : "Correct payment method"}</span><select value={correctionMethod} onChange={(event) => setCorrectionMethod(event.target.value)} className="min-h-11 border border-gray-300 bg-white px-3"><option value="CASH">{sw ? "Taslimu" : "Cash"}</option><option value="MPESA">M-Pesa</option><option value="TIGOPESA">Mix by Yas</option><option value="AIRTEL_MONEY">Airtel Money</option><option value="HALOPESA">HaloPesa</option><option value="BANK">{sw ? "Benki" : "Bank"}</option></select></label><label className="mb-4 grid gap-1 text-sm font-medium"><span>{sw ? "Sababu ya marekebisho (inahitajika)" : "Reason for correction (required)"}</span><textarea value={correctionNote} onChange={(event) => setCorrectionNote(event.target.value)} maxLength={500} rows={3} className="border border-gray-300 px-3 py-2" /></label><p className="mb-4 text-xs leading-5 text-gray-600">{sw ? "Risiti ya awali haitabadilishwa. Tofauti ya taslimu itaonekana kama marekebisho tofauti kwenye shift yako wazi ya Daily Close." : "The original receipt remains unchanged. Any cash difference appears as a separate adjustment in your open Daily Close shift."}</p><button type="button" disabled={savingCorrection} onClick={() => void submitCorrection()} className="min-h-11 w-full bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{savingCorrection ? (sw ? "Inahifadhi..." : "Saving...") : (sw ? "Hifadhi marekebisho" : "Save correction")}</button></section></div>}
   </main></AppShell>;
 }

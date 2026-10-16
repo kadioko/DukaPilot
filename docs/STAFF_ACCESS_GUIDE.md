@@ -39,9 +39,10 @@ The detailed **Analytics > Purchases** report is also report-protected; do not
 grant it to a cashier who should not see business financial data.
 Recording stock receipts exposes supplier purchase costs and landed unit costs,
 and supplier orders include unit prices and order totals, so both workflows
-require **Stock** and **Reports**. Stock staff without Reports can still use
-inventory stock adjustments to record quantities received without accessing
-purchase amounts.
+require **Stock** and **Reports**. Supplier Balances also requires both
+permissions because it exposes liabilities, payments, credits, and aging. Stock
+staff without Reports can still use inventory stock adjustments to record
+quantities received without accessing purchase amounts or supplier balances.
 
 ## AI Assistant (Pro)
 

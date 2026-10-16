@@ -231,14 +231,14 @@ const remove = asyncHandler(async (req, res) => {
       name: true,
       phone: true,
       userId: true,
-      _count: { select: { products: true, orders: true } },
+      _count: { select: { products: true, orders: true, stockReceipts: true, supplierPayments: true, supplierCredits: true } },
     },
   });
   if (!supplier) return res.status(404).json({ error: "Supplier not found" });
 
-  if (supplier._count.orders > 0) {
+  if (supplier._count.orders > 0 || supplier._count.stockReceipts > 0 || supplier._count.supplierPayments > 0 || supplier._count.supplierCredits > 0) {
     return res.status(400).json({
-      error: "This supplier has order history. Reject or archive the supplier instead of deleting it.",
+      error: "This supplier has order, receipt, payment, or credit history. Keep the supplier record so purchasing history remains intact.",
     });
   }
 

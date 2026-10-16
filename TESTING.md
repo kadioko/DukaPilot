@@ -34,11 +34,14 @@ npm run build
 ## Migration Gate
 
 Railway must apply every migration required by the exact release commit before
-the matching frontend is considered fully deployed. The current workspace
-includes scheduled product promotions migration
-`20261006001000_scheduled_product_promotions`; it must be committed and applied
-before those fields are used in production. Purchase Analytics and Stock
-History read existing receipt and movement tables and need no schema migration.
+the matching frontend is considered fully deployed. The scheduled product
+promotions migration
+`20261006001000_scheduled_product_promotions` is included in the deployed
+production baseline; Railway logs confirmed it applied on 2026-10-07. For each
+future release, verify the target environment has applied all migrations from
+that exact commit before enabling its schema-dependent frontend. Purchase
+Analytics and Stock History read existing receipt and movement tables and need
+no schema migration.
 Verify:
 
 - staff phone identities are unique;
@@ -54,13 +57,15 @@ Verify:
 - `20260712002000_staff_expense_permissions` is applied; owner/manager expense access is preserved and staff expense access is explicit.
 - A staff session without report permission does not receive buying prices, sale profit, or profit analytics data.
 - A cash sale, cash debt collection, and cash expense made during an open cash session are attached to that session.
-- A supplier delivery is received through `Receive Stock`; product cost, transport, other cost, and stock-movement history are saved together before the order becomes `DELIVERED`.
+- Supplier deliveries are received through `Receive Stock`; partial receipts add only delivered quantities and retain an unreceived order remainder. The order becomes `DELIVERED` only when fully received. Product cost, transport, other cost, receipt-time payment, and stock-movement history are saved together.
+- Order cancellation and stock receiving lock the same tenant-scoped order row. In the PostgreSQL integrity suite, race them and verify exactly one valid outcome: cancellation wins and no receipt/stock movement is written, or receipt wins and a delivered order cannot be cancelled.
 - Generated DukaPilot barcodes and SKUs remain unique within their shop location; manual duplicate barcodes or SKUs are rejected without changing stock.
 - Label templates, active printer profiles, and print-job history are readable only by the same active shop with Stock permission. Inactive profiles cannot prepare a job.
 - Browser/PDF label jobs print from the immutable product/template snapshot; downloaded ZPL, TSPL, EPL, and ESC/POS files are never sent from Railway to merchant hardware. The loopback bridge may send validated raw commands only from the merchant computer.
 - A custom label has at most one barcode field. A stock-only staff session cannot view, create, print, or download a wholesale-price label.
 - Purchase Analytics is scoped to the active shop/branch and requires Reports permission; it counts saved receipts by received date (including receipts without a supplier), not draft orders. Verify month/custom ranges, supplier/payment/search filters, receipt pagination, CSV metadata, and the 10,000-row export cap.
-- Purchase receiving updates inventory and landed cost once. Confirm the same receipt is not also recorded as an operating expense; purchases become COGS as received goods sell.
+- Purchase receiving updates inventory and landed cost once. Confirm a partial receipt adds only its delivered quantities; Purchases shows landed value separately from paid-at-receipt, while later settlements appear in Supplier Balances. Confirm cash is counted in Daily Close only on its payment event, the same receipt is not also recorded as an operating expense, and purchases become COGS as received goods sell.
+- Verify supplier balances with a partially paid receipt, later partial payment, physical return and credit note; check aging and whole-TZS return allocation. Receipt payment-method breakdown must sum only amounts paid at receipt, not landed purchase values or later settlements.
 - Stock history search/date/type filters paginate movements and never mutate stock. Verify adjustments show a set-to quantity, current stock is labeled as current, and receipt context is shown only for linked movements.
 - Scheduled promotions are owner-only, require a price below retail plus both start and end times, affect retail POS/catalog only during the interval, do not alter wholesale or historical sale/order prices, and are unavailable to internal-use products.
 - Deleting a staff login requires prior deactivation and confirmation; verify the phone becomes reusable while historical sales and shift attribution remain intact.
@@ -302,8 +307,8 @@ Then record a WHOLESALE sale (select Wholesale pricing tier) and confirm the dis
 6. Advance it to CONFIRMED — confirm status updates for both supplier and merchant.
 7. Advance to OUT_FOR_DELIVERY.
 8. Log back in as Amina — find the OUT_FOR_DELIVERY order and choose Receive Stock.
-9. Confirm the prefilled receipt includes the supplier and products. Enter actual buying cost and any transport/other cost, then save.
-10. Confirm the order moves to DELIVERED, stock is incremented, and the stock receipt history has linked `IN` movements.
+9. Confirm the prefilled receipt includes the supplier and products. Enter a partial delivered quantity, actual buying cost, paid-at-receipt amount, and any transport/other cost, then save.
+10. Confirm only received stock is incremented, the order remains partially received with its remainder visible, and stock receipt history has linked `IN` movements. Record a later partial supplier payment and verify it appears in Supplier Balances without changing the original receipt or being counted twice in Daily Close.
 11. Create a new order from Amina — then cancel it. Confirm status shows CANCELLED.
 12. Use the reorder button on the DELIVERED order — confirm a new PENDING order is created.
 

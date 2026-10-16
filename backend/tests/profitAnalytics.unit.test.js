@@ -49,6 +49,20 @@ test("profit analytics uses historical sale-item costs and shop-scoped totals", 
   delete require.cache[shopAccessPath];
   delete require.cache[controllerPath];
   const controller = require(controllerPath);
+
+  const quarterNow = new Date("2026-10-07T12:00:00.000Z");
+  const quarter = controller.profitRange("quarter", null, null, quarterNow);
+  assert.equal(quarter.from.toISOString(), "2026-09-30T21:00:00.000Z");
+  assert.equal(quarter.to.toISOString(), "2026-10-07T12:00:00.001Z");
+  const previousQuarter = controller.previousComparableRange("quarter", quarter);
+  assert.equal(previousQuarter.from.toISOString(), "2026-06-30T21:00:00.000Z");
+  assert.equal(previousQuarter.to.toISOString(), "2026-07-07T12:00:00.001Z");
+
+  const beforeTanzaniaQuarterBoundary = controller.profitRange("quarter", null, null, new Date("2026-09-30T20:59:59.999Z"));
+  const atTanzaniaQuarterBoundary = controller.profitRange("quarter", null, null, new Date("2026-09-30T21:00:00.000Z"));
+  assert.equal(beforeTanzaniaQuarterBoundary.from.toISOString(), "2026-06-30T21:00:00.000Z");
+  assert.equal(atTanzaniaQuarterBoundary.from.toISOString(), "2026-09-30T21:00:00.000Z");
+
   const res = response();
 
   await controller.profitAnalytics({ user: { userId: "owner-1" }, query: { period: "today" } }, res);

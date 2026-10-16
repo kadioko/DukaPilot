@@ -104,7 +104,7 @@ test("daily close counts cash stock receipts and direct cooking costs once as ca
     debtPayment: { aggregate: async () => ({ _sum: { amount: 10000 }, _count: { id: 1 } }) },
     quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
     expense: { aggregate: async () => ({ _sum: { amount: 5000 }, _count: { id: 1 } }) },
-    stockReceipt: { aggregate: async () => ({ _sum: { totalLandedCost: 240000 }, _count: { id: 2 } }) },
+    stockReceipt: { aggregate: async () => ({ _sum: { paidAtReceipt: 240000 }, _count: { id: 2 } }) },
     foodPreparationBatch: { aggregate: async () => ({ _sum: { additionalCost: 12000 }, _count: { id: 1 } }) },
   };
   const controller = loadController(prismaMock);
@@ -118,13 +118,48 @@ test("daily close counts cash stock receipts and direct cooking costs once as ca
   assert.equal(summary.expectedCash, 103000);
 });
 
+test("daily close counts only receipt-time cash paid plus later cash supplier settlements", async () => {
+  const prismaMock = {
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    expense: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    stockReceipt: { aggregate: async () => ({ _sum: { paidAtReceipt: 2000 }, _count: { id: 1 } }) },
+    supplierPayment: { aggregate: async () => ({ _sum: { amount: 1500 }, _count: { id: 1 } }) },
+  };
+  const controller = loadController(prismaMock);
+  const summary = await controller.summarizeSession(prismaMock, { id: "session-1", openingCash: 10000 });
+
+  assert.equal(summary.inventoryCashOut, 2000);
+  assert.equal(summary.supplierCashOut, 1500);
+  assert.equal(summary.expectedCash, 6500);
+});
+
+test("daily close shows receipt-payment corrections separately and applies their signed cash effect", async () => {
+  const prismaMock = {
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    expense: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    stockReceipt: { aggregate: async () => ({ _sum: { paidAtReceipt: 5000 }, _count: { id: 1 } }) },
+    stockReceiptPaymentCorrection: { aggregate: async () => ({ _sum: { cashOutAdjustment: -1000 }, _count: { id: 1 } }) },
+  };
+  const controller = loadController(prismaMock);
+  const summary = await controller.summarizeSession(prismaMock, { id: "session-correction", openingCash: 10000 });
+
+  assert.equal(summary.inventoryCashOut, 5000);
+  assert.equal(summary.receiptPaymentCorrectionCashOut, -1000);
+  assert.equal(summary.receiptPaymentCorrectionCount, 1);
+  assert.equal(summary.expectedCash, 6000);
+});
+
 test("daily close counts direct farm production cost once as cash-out", async () => {
   const prismaMock = {
     sale: { aggregate: async () => ({ _sum: { totalAmount: 50000 }, _count: { id: 2 } }) },
     debtPayment: { aggregate: async () => ({ _sum: { amount: 10000 }, _count: { id: 1 } }) },
     quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
     expense: { aggregate: async () => ({ _sum: { amount: 5000 }, _count: { id: 1 } }) },
-    stockReceipt: { aggregate: async () => ({ _sum: { totalLandedCost: 240000 }, _count: { id: 2 } }) },
+    stockReceipt: { aggregate: async () => ({ _sum: { paidAtReceipt: 240000 }, _count: { id: 2 } }) },
     foodPreparationBatch: { aggregate: async () => ({ _sum: { additionalCost: 12000 }, _count: { id: 1 } }) },
     farmProductionBatch: { aggregate: async () => ({ _sum: { additionalCost: 3000 }, _count: { id: 1 } }) },
   };

@@ -2,13 +2,14 @@ const prisma = require("../lib/prisma");
 const crypto = require("crypto");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { findVisibleSupplier } = require("../lib/supplierAccess");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
+const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK", "CREDIT"]);
 
 function parseDate(value) {
   if (value === undefined || value === null || value === "") return new Date();
@@ -20,12 +21,14 @@ function parseDate(value) {
 function distributeLandedCost(items, transportCost, otherCost) {
   const additionalCost = transportCost + otherCost;
   const productTotal = items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+  const allocationWeightTotal = productTotal || items.reduce((sum, item) => sum + item.quantity, 0);
   let allocated = 0;
   return items.map((item, index) => {
     const productCost = item.quantity * item.unitCost;
+    const allocationWeight = productTotal ? productCost : item.quantity;
     const allocatedAdditionalCost = index === items.length - 1
       ? additionalCost - allocated
-      : Math.floor((productCost * additionalCost) / productTotal);
+      : Math.floor((allocationWeight * additionalCost) / allocationWeightTotal);
     allocated += allocatedAdditionalCost;
     const landedTotalCost = productCost + allocatedAdditionalCost;
     return {
@@ -120,6 +123,10 @@ const receive = asyncHandler(async (req, res) => {
   const transportCost = Number(req.body.transportCost || 0);
   const otherCost = Number(req.body.otherCost || 0);
   const paymentMethod = String(req.body.paymentMethod || "CASH").toUpperCase();
+  const requestedPaidAtReceipt = req.body.paidAtReceipt === undefined || req.body.paidAtReceipt === null || req.body.paidAtReceipt === ""
+    ? null
+    : Number(req.body.paidAtReceipt);
+  const paymentReference = String(req.body.paymentReference || "").trim() || null;
   const receivedAt = parseDate(req.body.receivedAt);
 
   if (!["DIRECT", "TOTAL_ESTIMATE"].includes(allocationMode)) return res.status(400).json({ error: "Choose a valid cost allocation mode" });
@@ -132,11 +139,17 @@ const receive = asyncHandler(async (req, res) => {
   if (!receivedAt) return res.status(400).json({ error: "Received date is invalid" });
   if (!/^[a-f0-9-]{16,80}$/i.test(requestKey)) return res.status(400).json({ error: "A valid receipt retry key is required" });
 
+  const hashItems = [...(items || [])].sort((a, b) => a.productId.localeCompare(b.productId));
+  const legacyRequestHash = crypto.createHash("sha256").update(JSON.stringify({
+    allocationMode, totalGroceryBill: estimatedTotalMode ? totalGroceryBill : null,
+    supplierId, sourceOrderId, invoiceNumber, note, transportCost, otherCost,
+    paymentMethod, receivedAt: receivedAt?.toISOString(), items: hashItems,
+  })).digest("hex");
   const requestHash = crypto.createHash("sha256").update(JSON.stringify({
     allocationMode, totalGroceryBill: estimatedTotalMode ? totalGroceryBill : null,
     supplierId, sourceOrderId, invoiceNumber, note, transportCost, otherCost,
-    paymentMethod, receivedAt: receivedAt.toISOString(),
-    items: [...items].sort((a, b) => a.productId.localeCompare(b.productId)),
+    paymentMethod, paidAtReceipt: requestedPaidAtReceipt, paymentReference, receivedAt: receivedAt?.toISOString(),
+    items: hashItems,
   })).digest("hex");
 
   let receipt;
@@ -148,26 +161,29 @@ const receive = asyncHandler(async (req, res) => {
       include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
     });
     if (replay) {
-      if (replay.requestHash !== requestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
+      if (replay.requestHash !== requestHash && replay.requestHash !== legacyRequestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
       reused = true;
       return replay;
     }
 
     let receiptSupplierId = supplierId;
     if (supplierId) {
-      const supplier = await tx.supplier.findFirst({ where: { id: supplierId, shopId }, select: { id: true } });
+      const supplier = await findVisibleSupplier(tx, supplierId, shopId, { select: { id: true } });
       if (!supplier) throw Object.assign(new Error("Supplier not found"), { status: 404 });
     }
     if (sourceOrderId) {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "orders" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', sourceOrderId, shopId);
       const order = await tx.order.findFirst({
         where: { id: sourceOrderId, shopId },
-        select: { id: true, supplierId: true, status: true, items: { select: { productId: true } } },
+        select: { id: true, supplierId: true, status: true, items: { select: { id: true, productId: true, quantity: true, receivedQuantity: true } } },
       });
       if (!order) throw Object.assign(new Error("Supplier order not found"), { status: 404 });
-      if (!["CONFIRMED", "OUT_FOR_DELIVERY"].includes(order.status)) throw Object.assign(new Error("This supplier order is not ready to receive"), { status: 409 });
+      if (!["CONFIRMED", "OUT_FOR_DELIVERY", "PARTIALLY_RECEIVED"].includes(order.status)) throw Object.assign(new Error("This supplier order is not ready to receive"), { status: 409 });
       if (supplierId && order.supplierId !== supplierId) throw Object.assign(new Error("Supplier must match the selected order"), { status: 400 });
-      if (items.some((item) => !order.items.some((orderItem) => orderItem.productId === item.productId))) {
-        throw Object.assign(new Error("Each received product must be on the selected supplier order"), { status: 400 });
+      for (const item of items) {
+        const orderItem = order.items.find((candidate) => candidate.productId === item.productId);
+        if (!orderItem) throw Object.assign(new Error("Each received product must be on the selected supplier order"), { status: 400 });
+        if (item.quantity > orderItem.quantity - orderItem.receivedQuantity) throw Object.assign(new Error(`Received quantity exceeds the remaining ordered quantity for product ${item.productId}`), { status: 409 });
       }
       receiptSupplierId = order.supplierId;
     }
@@ -179,8 +195,12 @@ const receive = asyncHandler(async (req, res) => {
       : distributeLandedCost(items, transportCost, otherCost);
     const totalProductCost = allocatedItems.reduce((sum, item) => sum + item.productCost, 0);
     const totalLandedCost = totalProductCost + transportCost + otherCost;
-    const cashSession = paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
-    if (paymentMethod === "CASH" && !cashSession) {
+    const paidAtReceipt = requestedPaidAtReceipt === null ? totalLandedCost : requestedPaidAtReceipt;
+    if (!Number.isInteger(paidAtReceipt) || paidAtReceipt < 0 || paidAtReceipt > totalLandedCost) throw Object.assign(new Error("Amount paid now must be a whole TZS amount between 0 and the receipt total"), { status: 400 });
+    if (paymentMethod === "CREDIT" && paidAtReceipt > 0) throw Object.assign(new Error("Choose a payment method for the amount paid now, or set it to 0 for supplier credit"), { status: 400 });
+    const effectivePaymentMethod = paidAtReceipt === 0 ? "CREDIT" : paymentMethod;
+    const cashSession = paidAtReceipt > 0 && effectivePaymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
+    if (paidAtReceipt > 0 && effectivePaymentMethod === "CASH" && !cashSession) {
       throw Object.assign(new Error("Open your cash shift before recording a cash stock purchase so it appears in Daily Close"), { status: 409 });
     }
     const created = await tx.stockReceipt.create({
@@ -191,7 +211,9 @@ const receive = asyncHandler(async (req, res) => {
         supplierId: receiptSupplierId,
         sourceOrderId,
         invoiceNumber,
-        paymentMethod,
+        paymentMethod: effectivePaymentMethod,
+        paidAtReceipt,
+        paymentReference,
         transportCost,
         otherCost,
         totalProductCost,
@@ -220,25 +242,41 @@ const receive = asyncHandler(async (req, res) => {
         },
       });
     }
-    if (sourceOrderId) await tx.order.update({ where: { id: sourceOrderId }, data: { status: "DELIVERED" } });
+    if (sourceOrderId) {
+      for (const item of allocatedItems) {
+        await tx.orderItem.updateMany({ where: { orderId: sourceOrderId, productId: item.productId }, data: { receivedQuantity: { increment: item.quantity } } });
+      }
+      const updatedItems = await tx.orderItem.findMany({ where: { orderId: sourceOrderId }, select: { quantity: true, receivedQuantity: true } });
+      const fullyReceived = updatedItems.every((item) => item.receivedQuantity >= item.quantity);
+      await tx.order.update({ where: { id: sourceOrderId }, data: { status: fullyReceived ? "DELIVERED" : "PARTIALLY_RECEIVED" } });
+    }
     return tx.stockReceipt.findUnique({
       where: { id: created.id },
       include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
     });
     });
   } catch (error) {
-    if (error.code !== "P2002") throw error;
-    const replay = await prisma.stockReceipt.findFirst({
-      where: { shopId, requestKey },
-      include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
-    });
-    if (!replay) {
-      if (sourceOrderId) throw Object.assign(new Error("This supplier order has already been received. Refresh stock receipt history."), { status: 409 });
-      throw error;
+    if (error.code === "P2034") {
+      const replay = await prisma.stockReceipt.findFirst({
+        where: { shopId, requestKey },
+        include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+      });
+      if (replay?.requestHash === requestHash || replay?.requestHash === legacyRequestHash) {
+        reused = true;
+        receipt = replay;
+      } else if (replay) return res.status(409).json({ error: "This receipt retry key was already used for different details" });
+      else return res.status(409).json({ error: "Another receipt was recorded at the same time. Refresh stock and try again." });
+    } else if (error.code !== "P2002") throw error;
+    if (error.code === "P2002") {
+      const replay = await prisma.stockReceipt.findFirst({
+        where: { shopId, requestKey },
+        include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+      });
+      if (!replay) throw error;
+      if (replay.requestHash !== requestHash && replay.requestHash !== legacyRequestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
+      reused = true;
+      receipt = replay;
     }
-    if (replay.requestHash !== requestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
-    reused = true;
-    receipt = replay;
   }
 
   if (!reused) {

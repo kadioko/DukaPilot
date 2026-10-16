@@ -46,6 +46,7 @@ interface OrderItem {
   productId: string;
   product: { id: string; name: string; unit: string };
   quantity: number;
+  receivedQuantity: number;
   unitPrice?: number;
 }
 
@@ -63,6 +64,7 @@ const STATUS_COLOR: Record<string, string> = {
   PENDING: "bg-yellow-100 text-yellow-700",
   CONFIRMED: "bg-blue-100 text-blue-700",
   OUT_FOR_DELIVERY: "bg-purple-100 text-purple-700",
+  PARTIALLY_RECEIVED: "bg-orange-100 text-orange-800",
   DELIVERED: "bg-green-100 text-green-700",
   CANCELLED: "bg-gray-100 text-gray-500",
 };
@@ -302,6 +304,7 @@ export default function OrdersPage() {
     { v: "PENDING", labelKey: "orders.status.PENDING" },
     { v: "CONFIRMED", labelKey: "orders.status.CONFIRMED" },
     { v: "OUT_FOR_DELIVERY", labelKey: "orders.status.OUT_FOR_DELIVERY" },
+    { v: "PARTIALLY_RECEIVED", labelKey: "orders.status.PARTIALLY_RECEIVED" },
     { v: "DELIVERED", labelKey: "orders.status.DELIVERED" },
   ];
 
@@ -376,7 +379,7 @@ export default function OrdersPage() {
                       {order.items.map((item) => (
                         <div key={item.productId} className="flex justify-between text-sm">
                           <span className="text-gray-600">{item.product.name}</span>
-                          <span className="font-medium">{item.quantity} {item.product.unit}</span>
+                          <span className="font-medium">{item.receivedQuantity || 0} / {item.quantity} {item.product.unit}</span>
                         </div>
                       ))}
                     </div>
@@ -398,12 +401,12 @@ export default function OrdersPage() {
                           <Pencil className="w-3.5 h-3.5" /> {lang === "sw" ? "Hariri" : "Edit"}
                         </button>
                       )}
-                      {(order.status === "PENDING" || order.status === "CANCELLED") && (
+                      {(order.status === "PENDING" || (order.status === "CANCELLED" && !order.items.some((item) => item.receivedQuantity > 0))) && (
                         <button onClick={() => handleDelete(order)} className="flex items-center gap-1.5 text-xs bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg font-medium min-h-0">
                           <Trash2 className="w-3.5 h-3.5" /> {lang === "sw" ? "Futa" : "Delete"}
                         </button>
                       )}
-                      {(order.status === "CONFIRMED" || order.status === "OUT_FOR_DELIVERY") && (
+                      {(order.status === "CONFIRMED" || order.status === "OUT_FOR_DELIVERY" || order.status === "PARTIALLY_RECEIVED") && (
                         <button onClick={() => confirmDelivery(order.id)}
                           className="flex items-center gap-1.5 text-xs bg-brand-50 text-brand-700 border border-brand-200 px-3 py-1.5 rounded-lg font-medium min-h-0">
                           <Check className="w-3.5 h-3.5" /> {t("orders.confirmDelivery", lang)}

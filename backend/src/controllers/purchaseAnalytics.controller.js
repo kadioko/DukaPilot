@@ -3,9 +3,11 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaWeek } = require("../lib/businessTime");
 
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
-const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
+const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK", "CREDIT"]);
 const PAGE_SIZE_MAX = 100;
 const EXPORT_ROWS_MAX = 10000;
+const paidAmountSql = `COALESCE((SELECT c.\"correctedAmount\" FROM \"stock_receipt_payment_corrections\" c WHERE c.\"stockReceiptId\" = sr.id AND c.\"shopId\" = sr.\"shopId\" AND NOT EXISTS (SELECT 1 FROM \"stock_receipt_payment_corrections\" next WHERE next.\"previousCorrectionId\" = c.id AND next.\"shopId\" = c.\"shopId\")), sr.\"paidAtReceipt\")`;
+const paidMethodSql = `COALESCE((SELECT c.\"correctedMethod\" FROM \"stock_receipt_payment_corrections\" c WHERE c.\"stockReceiptId\" = sr.id AND c.\"shopId\" = sr.\"shopId\" AND NOT EXISTS (SELECT 1 FROM \"stock_receipt_payment_corrections\" next WHERE next.\"previousCorrectionId\" = c.id AND next.\"shopId\" = c.\"shopId\")), sr.\"paymentMethod\")`;
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -48,7 +50,6 @@ function receiptWhere({ shopId, range, supplierId, paymentMethod, search }) {
   if (range.from || range.to) where.receivedAt = { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lt: range.to } : {}) };
   if (supplierId === "__unassigned__") where.supplierId = null;
   else if (supplierId) where.supplierId = supplierId;
-  if (paymentMethod) where.paymentMethod = paymentMethod;
   if (search) {
     where.OR = [
       { invoiceNumber: { contains: search, mode: "insensitive" } },
@@ -68,12 +69,20 @@ function reportFilter(range, supplierId, paymentMethod, search) {
   if (range.to) clauses.push(`sr.\"receivedAt\" < ${bind(range.to)}`);
   if (supplierId === "__unassigned__") clauses.push('sr.\"supplierId\" IS NULL');
   else if (supplierId) clauses.push(`sr.\"supplierId\" = ${bind(supplierId)}`);
-  if (paymentMethod) clauses.push(`sr.\"paymentMethod\" = ${bind(paymentMethod)}::\"PaymentMethod\"`);
+  if (paymentMethod) clauses.push(`${paidMethodSql} = ${bind(paymentMethod)}::\"PaymentMethod\"`);
   if (search) {
     const term = bind(`%${search}%`);
     clauses.push(`(COALESCE(sr.\"invoiceNumber\", '') ILIKE ${term} OR COALESCE(sr.note, '') ILIKE ${term} OR COALESCE(sp.name, '') ILIKE ${term} OR EXISTS (SELECT 1 FROM stock_receipt_items search_item JOIN products search_product ON search_product.id = search_item.\"productId\" WHERE search_item.\"stockReceiptId\" = sr.id AND search_product.name ILIKE ${term}))`);
   }
   return { sql: clauses.join(" AND "), values };
+}
+
+function effectiveReceiptPayment(receipt) {
+  const corrections = receipt.paymentCorrections || [];
+  const superseded = new Set(corrections.map((correction) => correction.previousCorrectionId).filter(Boolean));
+  const latest = corrections.find((correction) => !superseded.has(correction.id));
+  if (!latest) return receipt;
+  return { ...receipt, paidAtReceipt: latest.correctedAmount, paymentMethod: latest.correctedMethod };
 }
 
 const report = asyncHandler(async (req, res) => {
@@ -89,7 +98,6 @@ const report = asyncHandler(async (req, res) => {
   const search = String(req.query.search || "").trim().slice(0, 120);
   if (paymentMethod && !PAYMENT_METHODS.has(paymentMethod)) return res.status(400).json({ error: "Choose a valid payment method" });
 
-  const where = receiptWhere({ shopId, range, supplierId, paymentMethod, search });
   const page = Math.min(1_000_000, Math.max(1, Number.parseInt(req.query.page, 10) || 1));
   const pageSize = Math.min(PAGE_SIZE_MAX, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
   const exportMode = req.query.export === "1";
@@ -98,21 +106,47 @@ const report = asyncHandler(async (req, res) => {
   const optionsFilter = reportFilter(range, "", "", "");
   const queryParams = [shopId, ...filter.values];
   const supplierOptionParams = [shopId, ...optionsFilter.values];
-  const summarySql = `SELECT COUNT(*)::int AS \"receiptCount\", COALESCE(SUM(sr.\"totalProductCost\"), 0)::bigint AS \"productCost\", COALESCE(SUM(sr.\"transportCost\"), 0)::bigint AS \"transportCost\", COALESCE(SUM(sr.\"otherCost\"), 0)::bigint AS \"otherCost\", COALESCE(SUM(sr.\"totalLandedCost\"), 0)::bigint AS \"landedCost\", COUNT(*) FILTER (WHERE sr.\"estimatedAllocation\")::int AS \"estimatedReceiptCount\" FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql}`;
+  const receiptLimit = exportMode ? EXPORT_ROWS_MAX + 1 : pageSize;
+  const receiptValues = [...queryParams, receiptLimit, exportMode ? 0 : offset];
+  const receiptLimitParam = `$${queryParams.length + 1}`;
+  const receiptOffsetParam = `$${queryParams.length + 2}`;
+  const receiptIdsSql = `SELECT sr.id FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql} ORDER BY sr.\"receivedAt\" DESC, sr.id DESC LIMIT ${receiptLimitParam} OFFSET ${receiptOffsetParam}`;
+  const countSql = `SELECT COUNT(*)::int AS total FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql}`;
+  const summarySql = `SELECT COUNT(*)::int AS \"receiptCount\", COALESCE(SUM(sr.\"totalProductCost\"), 0)::bigint AS \"productCost\", COALESCE(SUM(sr.\"transportCost\"), 0)::bigint AS \"transportCost\", COALESCE(SUM(sr.\"otherCost\"), 0)::bigint AS \"otherCost\", COALESCE(SUM(sr.\"totalLandedCost\"), 0)::bigint AS \"landedCost\", COALESCE(SUM(${paidAmountSql}), 0)::bigint AS \"paidAtReceipt\", COUNT(*) FILTER (WHERE sr.\"estimatedAllocation\")::int AS \"estimatedReceiptCount\" FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql}`;
 
-  const [summaryRows, paymentRows, supplierRows, supplierOptionRows, productRows, total, receipts] = await Promise.all([
+  const [summaryRows, paymentRows, supplierRows, supplierOptionRows, productRows, countRows, receiptIdRows] = await Promise.all([
     prisma.$queryRawUnsafe(summarySql, ...queryParams),
-    prisma.$queryRawUnsafe(`SELECT sr.\"paymentMethod\" AS \"paymentMethod\", COUNT(*)::int AS \"receiptCount\", COALESCE(SUM(sr.\"totalLandedCost\"), 0)::bigint AS amount FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql} GROUP BY sr.\"paymentMethod\" ORDER BY amount DESC`, ...queryParams),
+    prisma.$queryRawUnsafe(`SELECT ${paidMethodSql} AS \"paymentMethod\", COUNT(*)::int AS \"receiptCount\", COALESCE(SUM(${paidAmountSql}), 0)::bigint AS \"paidAtReceipt\" FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql} GROUP BY ${paidMethodSql} ORDER BY \"paidAtReceipt\" DESC`, ...queryParams),
     prisma.$queryRawUnsafe(`SELECT COALESCE(sr.\"supplierId\", '__unassigned__') AS id, COALESCE(MAX(sp.name), 'No supplier') AS name, COUNT(*)::int AS \"receiptCount\", COALESCE(SUM(sr.\"totalLandedCost\"), 0)::bigint AS amount FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql} GROUP BY sr.\"supplierId\" ORDER BY amount DESC, name ASC LIMIT 100`, ...queryParams),
     prisma.$queryRawUnsafe(`SELECT COALESCE(sr.\"supplierId\", '__unassigned__') AS id, COALESCE(MAX(sp.name), 'No supplier') AS name, COUNT(*)::int AS \"receiptCount\" FROM stock_receipts sr LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${optionsFilter.sql} GROUP BY sr.\"supplierId\" ORDER BY name ASC LIMIT 500`, ...supplierOptionParams),
     prisma.$queryRawUnsafe(`SELECT p.id, p.name, p.unit, COALESCE(SUM(sri.quantity), 0)::double precision AS quantity, COALESCE(SUM(sri.\"productCost\"), 0)::bigint AS \"productCost\", COALESCE(SUM(sri.\"allocatedAdditionalCost\"), 0)::bigint AS \"allocatedAdditionalCost\", COALESCE(SUM(sri.\"landedTotalCost\"), 0)::bigint AS \"landedCost\" FROM stock_receipt_items sri JOIN stock_receipts sr ON sr.id = sri.\"stockReceiptId\" JOIN products p ON p.id = sri.\"productId\" LEFT JOIN suppliers sp ON sp.id = sr.\"supplierId\" WHERE ${filter.sql} GROUP BY p.id, p.name, p.unit ORDER BY \"landedCost\" DESC, p.name ASC LIMIT 100`, ...queryParams),
-    prisma.stockReceipt.count({ where }),
-    exportMode
-      ? prisma.stockReceipt.findMany({ where, orderBy: [{ receivedAt: "desc" }, { id: "desc" }], take: EXPORT_ROWS_MAX + 1, select: { id: true, receivedAt: true, invoiceNumber: true, paymentMethod: true, totalProductCost: true, transportCost: true, otherCost: true, totalLandedCost: true, estimatedAllocation: true, supplier: { select: { name: true } } } })
-      : prisma.stockReceipt.findMany({ where, orderBy: [{ receivedAt: "desc" }, { id: "desc" }], skip: offset, take: pageSize, include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } } }),
+    prisma.$queryRawUnsafe(countSql, ...queryParams),
+    prisma.$queryRawUnsafe(receiptIdsSql, ...receiptValues),
   ]);
 
-  if (exportMode && receipts.length > EXPORT_ROWS_MAX) return res.status(413).json({ error: "Too many receipts to export at once. Narrow the date range or filters and retry." });
+  if (exportMode && receiptIdRows.length > EXPORT_ROWS_MAX) return res.status(413).json({ error: "Too many receipts to export at once. Narrow the date range or filters and retry." });
+  const receiptIds = receiptIdRows.map((row) => row.id);
+  const fetchedReceipts = receiptIds.length ? await prisma.stockReceipt.findMany({
+    where: { shopId, id: { in: receiptIds } },
+    ...(exportMode ? {
+      select: {
+        id: true, receivedAt: true, invoiceNumber: true, paymentMethod: true, paidAtReceipt: true,
+        totalProductCost: true, transportCost: true, otherCost: true, totalLandedCost: true,
+        estimatedAllocation: true,
+        supplier: { select: { name: true } },
+        paymentCorrections: { select: { id: true, previousCorrectionId: true, previousAmount: true, correctedAmount: true, previousMethod: true, correctedMethod: true, note: true, createdAt: true } },
+      },
+    } : {
+      include: {
+        supplier: { select: { id: true, name: true } },
+        items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+        paymentCorrections: { select: { id: true, previousCorrectionId: true, previousAmount: true, correctedAmount: true, previousMethod: true, correctedMethod: true, note: true, createdAt: true } },
+      },
+    }),
+  }) : [];
+  const receiptById = new Map(fetchedReceipts.map((receipt) => [receipt.id, effectiveReceiptPayment(receipt)]));
+  const receipts = receiptIds.map((id) => receiptById.get(id)).filter(Boolean);
+  const total = Number(countRows[0]?.total || 0);
   const summaryRow = summaryRows[0] || {};
   res.json({
     period,
@@ -124,9 +158,10 @@ const report = asyncHandler(async (req, res) => {
       transportCost: Number(summaryRow.transportCost || 0),
       otherCost: Number(summaryRow.otherCost || 0),
       landedCost: Number(summaryRow.landedCost || 0),
+      paidAtReceipt: Number(summaryRow.paidAtReceipt || 0),
       estimatedReceiptCount: Number(summaryRow.estimatedReceiptCount || 0),
     },
-    paymentBreakdown: paymentRows.map((row) => ({ paymentMethod: row.paymentMethod, receiptCount: Number(row.receiptCount || 0), amount: Number(row.amount || 0) })),
+    paymentBreakdown: paymentRows.map((row) => ({ paymentMethod: row.paymentMethod, receiptCount: Number(row.receiptCount || 0), paidAtReceipt: Number(row.paidAtReceipt || 0) })),
     suppliers: supplierRows.map((row) => ({ id: row.id, name: row.name, receiptCount: Number(row.receiptCount || 0), amount: Number(row.amount || 0) })),
     supplierOptions: supplierOptionRows.map((row) => ({ id: row.id, name: row.name, receiptCount: Number(row.receiptCount || 0) })),
     products: productRows.map((row) => ({ id: row.id, name: row.name, unit: row.unit, quantity: Number(row.quantity || 0), productCost: Number(row.productCost || 0), allocatedAdditionalCost: Number(row.allocatedAdditionalCost || 0), landedCost: Number(row.landedCost || 0) })),
@@ -135,4 +170,4 @@ const report = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { report, dateRange, receiptWhere, reportFilter };
+module.exports = { report, dateRange, receiptWhere, reportFilter, effectiveReceiptPayment };

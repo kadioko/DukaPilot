@@ -2,13 +2,13 @@
 
 ## What the report counts
 
-Open **Analytics > Purchases** (or select the Purchases metric from Analytics). It summarizes **saved stock receipts** by the date inventory was received, not by the date an order was placed or paid. The report includes receipts with no supplier, optional invoice numbers, product cost, transport and other allocated landed costs, payment method, and estimated allocations. Use today, this week, this month, this quarter, this year, all time, or a custom date range. Search receipt numbers, products, and supplier names; filter by supplier or payment method; open paginated receipt details; or export the filtered report to CSV. Date boundaries use `Africa/Dar_es_Salaam`.
+Open **Analytics > Purchases** (or select the Purchases metric from Analytics). It summarizes **saved stock receipts** by the date inventory was received, not by the date an order was placed or paid. The report includes receipts with no supplier, optional invoice numbers, product cost, transport and other allocated landed costs, the effective amount paid at receipt (including any later linked correction), and estimated allocations. Use today, this week, this month, this quarter, this year, all time, or a custom date range. Search receipt numbers, products, and supplier names; filter by supplier or the effective receipt payment method; open paginated receipt details; or export the filtered report to CSV. Date boundaries use `Africa/Dar_es_Salaam`.
 
 To make a purchase appear, use **Receive Stock** (or receive an order through **Orders**), enter actual delivered quantities and costs, then save the receipt. A draft supplier order by itself is not included. Receipts can use a shared supplier or a shop-private supplier; leaving the supplier blank does not exclude the receipt from purchase totals.
 
 ## Accounting treatment
 
-A stock purchase is inventory, not automatically an operating expense or an immediate COGS charge. Landed cost is attached to received products and becomes COGS as those products are sold. Do not enter the same receipt again as an ordinary expense, or profit would be understated. The report shows receipt value, not supplier-credit liabilities; the current receiving flow does not provide a complete supplier-credit balance ledger.
+A stock purchase is inventory, not automatically an operating expense or an immediate COGS charge. Landed cost is attached to received products and becomes COGS as those products are sold. Do not enter the same receipt again as an ordinary expense, or profit would be understated. Purchase Analytics reports the landed value received and separately shows **Paid at receipt**. If that original entry was wrong, an authorized user can expand the receipt and choose **Correct receipt payment**. This works for both supplier-linked and unassigned receipts; it appends a reasoned, linked correction and leaves the original unchanged. Analytics show the latest correction as the effective receipt-time amount/method and its correction history. The method breakdown sums only those corrected receipt-time amounts; it does not include payments entered later. **Supplier Balances** reports the remaining supplier amount owed after receipt-time payments, later allocated payments, returns, and credit notes. See [Supplier Purchasing and Payables](./SUPPLIER_PURCHASING_AND_PAYABLES.md).
 
 Production inputs are tracked separately by production/farm analytics. Their cost is included in the cost of output stock and becomes COGS when the output is sold; it should not be subtracted a second time as an operating expense.
 
@@ -21,6 +21,8 @@ The report uses the active shop or branch scope and requires **Reports** permiss
 - **Product cost:** amount recorded for received product lines before additional costs.
 - **Transport and other:** additional receipt charges allocated across received items.
 - **Landed purchases:** product cost plus transport and other charges, matching the receipt total.
+- **Paid at receipt:** the amount currently treated as paid while saving the receipt. It may be less than the landed purchase total. If a mistake is corrected, the report uses the latest linked correction without overwriting the original receipt or prior corrections. The payment-method breakdown groups this effective amount by its effective method; it does not report later settlements.
+- **Later supplier settlements:** payments recorded after receipt. View these and the current payable balance in **Supplier Balances**, not in the receipt-date payment breakdown.
 - **Estimated allocation:** receipt costs distributed by the receiving workflow's estimate where exact line-level allocation was unavailable. The report flags these receipts and includes their recorded landed totals.
 - **By supplier:** groups receipts without a supplier under “No supplier”; these receipts remain part of all purchase totals.
 

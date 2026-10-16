@@ -124,19 +124,36 @@ const get = asyncHandler(async (req, res) => {
 
 const cancel = asyncHandler(async (req, res) => {
   const shop = await getShop(req.user);
-  const order = await prisma.order.findFirst({
-    where: { id: req.params.id, shopId: shop.id },
-  });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (["DELIVERED", "CANCELLED"].includes(order.status)) {
-    return res.status(400).json({ error: `Cannot cancel an order with status ${order.status}` });
-  }
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "orders" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shop.id);
+      const order = await tx.order.findFirst({
+        where: { id: req.params.id, shopId: shop.id },
+        select: { id: true, status: true },
+      });
+      if (!order) return { notFound: true };
+      if (["DELIVERED", "CANCELLED"].includes(order.status)) {
+        return { conflictStatus: order.status };
+      }
 
-  const updated = await prisma.order.update({
-    where: { id: order.id },
-    data: { status: "CANCELLED" },
-  });
-  res.json({ order: updated });
+      const update = await tx.order.updateMany({
+        where: { id: order.id, shopId: shop.id, status: { notIn: ["DELIVERED", "CANCELLED"] } },
+        data: { status: "CANCELLED" },
+      });
+      if (update.count !== 1) {
+        const current = await tx.order.findFirst({ where: { id: order.id, shopId: shop.id }, select: { status: true } });
+        return current ? { conflictStatus: current.status } : { notFound: true };
+      }
+      return { order: await tx.order.findFirst({ where: { id: order.id, shopId: shop.id } }) };
+    });
+  } catch (error) {
+    if (error.code === "P2034") return res.status(409).json({ error: "This order changed while you were cancelling it. Refresh and try again." });
+    throw error;
+  }
+  if (result.notFound) return res.status(404).json({ error: "Order not found" });
+  if (result.conflictStatus) return res.status(400).json({ error: `Cannot cancel an order with status ${result.conflictStatus}` });
+  res.json({ order: result.order });
 });
 
 // Receiving needs buying and landed costs, so old clients must move into the dedicated flow.
@@ -183,6 +200,8 @@ const remove = asyncHandler(async (req, res) => {
   const existing = await prisma.order.findFirst({ where: { id: req.params.id, shopId: shop.id }, select: { id: true, status: true } });
   if (!existing) return res.status(404).json({ error: "Order not found" });
   if (!["PENDING", "CANCELLED"].includes(existing.status)) return res.status(409).json({ error: "Only pending or cancelled orders can be deleted. Confirmed and delivered orders remain as part of the purchasing history." });
+  const receiptCount = await prisma.stockReceipt.count({ where: { sourceOrderId: existing.id, shopId: shop.id } });
+  if (receiptCount > 0) return res.status(409).json({ error: "This order has stock receipt history and cannot be deleted. Keep the order and cancel any unreceived remainder." });
   await prisma.order.delete({ where: { id: existing.id } });
   req.audit = { action: "order.delete", resourceType: "order", resourceId: existing.id };
   res.json({ message: "Order deleted" });

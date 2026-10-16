@@ -270,7 +270,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Basic account can use one active staff account and cannot use AI routes; Pro and active trial include unlimited staff and AI.
 - Duplicate payment reference returns the existing confirmation without extending time again.
 - Customer orders follow `PENDING -> CONFIRMED -> OUT_FOR_DELIVERY -> DELIVERED`.
-- Supplier orders are received through Receive Stock, which records supplier, costs, stock movements, and marks the order delivered in one transaction.
+- Supplier orders are received through Receive Stock. Partial receipt records and stocks only the delivered quantity, preserving the outstanding remainder; the order is marked delivered only when fully received. The receipt stores supplier, landed costs, paid-at-receipt amount, and stock movements atomically.
 - A cashier can close only their own Daily Close session; owners see every team drawer, and a manager with **Manage team shifts** can review/close a staff drawer after counting cash without receiving Reports or profit.
 - Receipt file sharing and browser printing work after a completed sale; test a paired Android Bluetooth printer where a merchant uses one.
 - Product labels can be generated from Inventory/Barcode management: test one 40 x 30 mm browser/PDF label and scan it before approving any printer model. Each physical label uses one barcode field. Raw ZPL/TSPL/EPL/ESC-POS files require a separately tested local bridge and must not be sold as cloud-direct printing.

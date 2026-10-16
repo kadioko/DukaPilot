@@ -25,10 +25,11 @@ Use **Receive Stock** instead of recording product purchases in Expenses. A rece
 - invoice number, payment method, received date, and note
 - product quantities and unit buying cost
 - transport and other landed costs
+- the amount actually paid at receipt, which may be lower than the landed total
 
 Additional costs are distributed across the received items by their product cost. The resulting landed unit cost becomes the product's buying price for future sale-profit calculations, while completed sales keep their original historical buying cost.
 
-Receiving an existing supplier order from **Orders** opens a prefilled receipt and marks the order delivered only after the stock receipt is saved.
+Receiving an existing supplier order from **Orders** opens a prefilled receipt. Enter only what arrived; a partial receipt increments stock only for the delivered quantity and leaves the remainder on the order. The order becomes delivered after all ordered quantities are received.
 
 For an order-linked receipt, the supplier and products must match the selected order. The merchant may record the actual delivered quantity and actual cost, which can differ from what was originally ordered.
 
@@ -44,7 +45,11 @@ create a supplier login or charge the supplier a plan.
 After saving receipts, open **Analytics > Purchases** to total received stock
 for a month, all time, or a custom range. Filter by supplier/payment method,
 search receipts/products/suppliers, inspect receipt details, or export the
-filtered report. An order that has not been received is not included. See
+filtered report. The report separates landed purchases from the amount paid at
+receipt; later settlements are shown in **Supplier Balances**, together with
+partial payments, returns, credits, and aging. Cash payments are counted in
+Daily Close at the time they are made and are not duplicated as expenses. An
+order that has not been received is not included. See
 [Purchase Analytics](./PURCHASE_ANALYTICS.md) for definitions and limits.
 
 ## Stock History

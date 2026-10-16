@@ -92,6 +92,7 @@ const merchantNav: NavItem[] = [
   { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
   { href: "/stock-history", labelKey: "nav.stockHistory", icon: History, permission: "canManageStock", group: "stock" },
   { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", allPermissions: ["canViewReports"], group: "stock" },
+  { href: "/supplier-balances", labelKey: "nav.supplierBalances", icon: HandCoins, permission: "canManageStock", allPermissions: ["canViewReports"], group: "stock" },
   { href: "/food-preparation", labelKey: "nav.foodPreparation", icon: ChefHat, permission: "canManageStock", shopCategories: ["bar", "restaurant"], group: "stock" },
   { href: "/farm", labelKey: "nav.farm", icon: Tractor, permission: "canManageFarm", shopCategories: ["livestock", "farm"], group: "stock" },
   { href: "/crops", labelKey: "nav.crops", icon: Sprout, permission: "canManageFarm", shopCategories: ["farm"], group: "stock" },
@@ -147,6 +148,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     if (!permissions) return true;
     if (pathname === "/dashboard" || pathname.startsWith("/profit") || pathname.startsWith("/analytics")) return permissions.canViewReports;
     if (pathname === "/receiving" || pathname.startsWith("/receiving/")) return permissions.canManageStock && permissions.canViewReports;
+    if (pathname === "/supplier-balances" || pathname.startsWith("/supplier-balances/")) return permissions.canManageStock && permissions.canViewReports;
     if (pathname === "/orders" || pathname.startsWith("/orders/")) return permissions.canManageStock && permissions.canViewReports;
     if (pathname === "/daily-close" || pathname.startsWith("/daily-close/")) return permissions.canSell || permissions.canManageCashSessions;
     if (["/sales", "/debts", "/orders/customers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canSell;

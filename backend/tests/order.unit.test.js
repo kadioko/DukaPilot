@@ -92,6 +92,65 @@ test("pending supplier order edits replace items only within the merchant shop",
   assert.deepEqual(updateData.items.create, [{ productId: "product-1", quantity: 3, unitPrice: 4500 }]);
 });
 
+test("order cancellation locks the same tenant-scoped row used by stock receiving and rechecks status", async () => {
+  let lockAcquired = false;
+  let updateCalled = false;
+  const tx = {
+    $queryRawUnsafe: async (query, orderId, shopId) => {
+      assert.match(query, /FROM "orders" WHERE "id" = \$1 AND "shopId" = \$2 FOR UPDATE/);
+      assert.deepEqual([orderId, shopId], ["order-1", "shop-1"]);
+      lockAcquired = true;
+      return [];
+    },
+    order: {
+      findFirst: async () => {
+        assert.equal(lockAcquired, true);
+        return { id: "order-1", status: "DELIVERED" };
+      },
+      updateMany: async () => { updateCalled = true; return { count: 1 }; },
+    },
+  };
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
+    $transaction: (callback) => callback(tx),
+  });
+  const res = createRes();
+
+  await ctrl.cancel({ user: { userId: "user-1" }, params: { id: "order-1" } }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.match(res.payload.error, /DELIVERED/);
+  assert.equal(updateCalled, false);
+});
+
+test("order cancellation uses a guarded transactional update for a still-cancellable order", async () => {
+  let findCalls = 0;
+  let updateWhere;
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    order: {
+      findFirst: async () => ({ id: "order-1", status: ++findCalls === 1 ? "PARTIALLY_RECEIVED" : "CANCELLED" }),
+      updateMany: async ({ where, data }) => {
+        updateWhere = where;
+        assert.equal(data.status, "CANCELLED");
+        return { count: 1 };
+      },
+    },
+  };
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
+    $transaction: (callback) => callback(tx),
+  });
+  const res = createRes();
+
+  await ctrl.cancel({ user: { userId: "user-1" }, params: { id: "order-1" } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.order.status, "CANCELLED");
+  assert.deepEqual(updateWhere.status.notIn, ["DELIVERED", "CANCELLED"]);
+  assert.equal(updateWhere.shopId, "shop-1");
+});
+
 test("supplier order create rejects a supplier private to another shop", async () => {
   const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
@@ -106,10 +165,12 @@ test("supplier order create rejects a supplier private to another shop", async (
   assert.equal(res.payload.error, "Supplier not found");
 });
 
-test("pending and cancelled supplier orders can be deleted, while confirmed orders remain protected", async () => {
+test("orders with receipt history cannot be deleted, while empty pending/cancelled orders can", async () => {
   let deleted = false;
+  let receiptCount = 0;
   const prismaMock = {
     shop: { findUnique: async () => ({ id: "shop-1", name: "Duka la Amina" }) },
+    stockReceipt: { count: async () => receiptCount },
     order: {
       findFirst: async () => ({ id: "order-1", status: "CONFIRMED" }),
       delete: async () => { deleted = true; },
@@ -129,4 +190,11 @@ test("pending and cancelled supplier orders can be deleted, while confirmed orde
 
   assert.equal(cancelledRes.statusCode, 200);
   assert.equal(deleted, true);
+
+  deleted = false;
+  receiptCount = 1;
+  const receivedOrderRes = createRes();
+  await ctrl.remove({ user: { userId: "user-1" }, params: { id: "order-3" } }, receivedOrderRes);
+  assert.equal(receivedOrderRes.statusCode, 409);
+  assert.equal(deleted, false);
 });
