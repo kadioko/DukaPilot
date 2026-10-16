@@ -43,7 +43,9 @@ function response() {
 
 async function invoke(handler, req) {
   const res = response();
-  await handler(req, res, (error) => { if (error) throw error; });
+  await handler(req, res, (error) => {
+    if (error) res.status(error.status || 500).json({ error: error.message });
+  });
   return res;
 }
 

@@ -37,6 +37,8 @@ test("cash session summary reconciles opening cash, sales, collections, and expe
     inventoryCashOut: 0,
     receiptPaymentCorrectionCashOut: 0,
     supplierCashOut: 0,
+    supplierRefundsReceived: 0,
+    supplierRefundCount: 0,
     cookingCashOut: 0,
     farmCashOut: 0,
     cropCashOut: 0,

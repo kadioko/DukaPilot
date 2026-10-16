@@ -99,7 +99,7 @@ async function summarizeSession(tx, session) {
   const inventoryCashOut = stockReceipts._sum.paidAtReceipt || 0;
   const receiptPaymentCorrectionCashOut = receiptPaymentCorrections._sum.cashOutAdjustment || 0;
   const supplierCashOut = supplierPayments._sum.amount || 0;
-  const supplierRefundsReceived = -(supplierRefunds._sum.amount || 0);
+  const supplierRefundsReceived = Math.abs(Math.min(0, supplierRefunds._sum.amount || 0));
   const cookingCashOut = foodPreparation._sum.additionalCost || 0;
   const farmCashOut = farmProduction._sum.additionalCost || 0;
   const cropCashOut = cropInputs._sum.totalCost || 0;
@@ -205,7 +205,7 @@ async function decorateSessions(tx, sessions) {
   }
   for (const row of supplierRefunds) {
     const summary = bySession.get(row.cashSessionId);
-    if (summary) { summary.supplierRefundsReceived = -(row._sum.amount || 0); summary.supplierRefundCount = row._count.id; }
+    if (summary) { summary.supplierRefundsReceived = Math.abs(Math.min(0, row._sum.amount || 0)); summary.supplierRefundCount = row._count.id; }
   }
   for (const row of foodPreparation) {
     const summary = bySession.get(row.cashSessionId);
