@@ -53,6 +53,13 @@ enum SupplierPaymentKind {
   REFUND
 }
 
+enum SupplierReturnStatus {
+  RECORDED
+  HANDED_OVER
+  SUPPLIER_ACKNOWLEDGED
+  DISPUTED
+}
+
 enum SaleChannel {
   POS
   ONLINE
@@ -281,6 +288,7 @@ model Shop {
   stockReceiptPaymentCorrections StockReceiptPaymentCorrection[]
   supplierPayments               SupplierPayment[]
   supplierCredits                SupplierCredit[]
+  supplierReturnStatusEvents     SupplierReturnStatusEvent[]
   foodRecipes                    FoodRecipe[]
   foodPreparationBatches         FoodPreparationBatch[]
   farmProfiles                   FarmProfile[]
@@ -2193,6 +2201,7 @@ model SupplierCredit {
   reversalOf     SupplierCredit?      @relation("SupplierCreditReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
   reversal       SupplierCredit?      @relation("SupplierCreditReversal")
   items          SupplierCreditLine[]
+  returnStatusEvents SupplierReturnStatusEvent[]
   createdAt      DateTime             @default(now())
 
   @@unique([shopId, requestKey])
@@ -2213,6 +2222,25 @@ model SupplierCreditLine {
 
   @@index([stockReceiptItemId])
   @@map("supplier_credit_lines")
+}
+
+model SupplierReturnStatusEvent {
+  id               String               @id @default(cuid())
+  shopId           String
+  shop             Shop                 @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplierCreditId String
+  supplierCredit   SupplierCredit       @relation(fields: [supplierCreditId], references: [id], onDelete: Restrict)
+  requestKey       String
+  requestHash      String
+  status           SupplierReturnStatus
+  note             String?
+  reference        String?
+  recordedBy       String?
+  createdAt        DateTime             @default(now())
+
+  @@unique([shopId, requestKey])
+  @@index([shopId, supplierCreditId, createdAt])
+  @@map("supplier_return_status_events")
 }
 
 model CustomerOrder {

@@ -193,7 +193,7 @@ test("concurrent supplier-credit reversal uniqueness conflict returns an already
         findFirst: async ({ where }) => where.id === "credit-1" ? original : null,
         create: async () => { throw uniqueError; },
       },
-      $queryRawUnsafe: async () => [],
+      $queryRawUnsafe: async () => [{ id: "credit-1" }],
     }),
     supplierCredit: {
       findFirst: async ({ where }) => where.reversalOfId === "credit-1" ? { id: "winner-reversal" } : null,
@@ -283,6 +283,7 @@ test("supplier return retry stays idempotent when the server supplies the date",
       findFirst: async () => ({ id: "receipt-1", supplierId: "supplier-1", items: [{ id: "line-1", quantity: 5, landedUnitCost: 1000, landedTotalCost: 5000, product: { id: "product-1", currentStock: 5, shopId: "shop-1" } }] }),
     },
     supplierCreditLine: { aggregate: async () => ({ _sum: { quantity: 0, amount: 0 } }) },
+    supplierReturnStatusEvent: { create: async () => ({}) },
     product: { updateMany: async () => ({ count: 1 }) },
     stockMovement: { create: async () => {} },
   };
@@ -297,6 +298,55 @@ test("supplier return retry stays idempotent when the server supplies the date",
   await controller.recordCredit(req, retry);
   assert.equal(retry.statusCode, 200);
   assert.equal(retry.payload.reused, true);
+});
+
+test("supplier return progress is append-only, branch-scoped, and retry-safe", async () => {
+  const firstKey = "62c13144-0be5-4ed8-9a60-d2a848bca9d1";
+  const secondKey = "62c13144-0be5-4ed8-9a60-d2a848bca9d2";
+  const events = [];
+  const tx = {
+    $queryRawUnsafe: async (_sql, creditId, shopId) => { assert.equal(creditId, "credit-1"); assert.equal(shopId, "branch-2"); },
+    supplierCredit: { findFirst: async ({ where }) => where.shopId === "branch-2" ? { id: "credit-1", kind: "RETURN", reversalOfId: null, reversal: null } : null },
+    supplierReturnStatusEvent: {
+      findFirst: async ({ where }) => where.requestKey ? events.find((event) => event.requestKey === where.requestKey) || null : events.at(-1) || null,
+      create: async ({ data }) => { const created = { id: `event-${events.length + 1}`, createdAt: new Date(), ...data }; events.push(created); return created; },
+    },
+  };
+  const controller = loadController({ $transaction: (callback) => callback(tx), supplierReturnStatusEvent: tx.supplierReturnStatusEvent }, "branch-2");
+  const firstRequest = { user: { userId: "owner-1" }, params: { creditId: "credit-1" }, body: { requestKey: firstKey, status: "HANDED_OVER", reference: "COURIER-14" } };
+  const first = response();
+  await controller.updateReturnStatus(firstRequest, first);
+  assert.equal(first.statusCode, 201);
+  assert.equal(first.payload.event.status, "HANDED_OVER");
+  assert.equal(first.payload.event.reference, "COURIER-14");
+
+  const retry = response();
+  await controller.updateReturnStatus(firstRequest, retry);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.reused, true);
+  assert.equal(events.length, 1);
+
+  const backwards = response();
+  await controller.updateReturnStatus({ ...firstRequest, body: { requestKey: secondKey, status: "RECORDED" } }, backwards);
+  assert.equal(backwards.statusCode, 409);
+  assert.equal(events.length, 1);
+});
+
+test("supplier return status requires dispute details and hides other branches", async () => {
+  let createCount = 0;
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    supplierCredit: { findFirst: async () => null },
+    supplierReturnStatusEvent: { findFirst: async () => null, create: async () => { createCount += 1; } },
+  };
+  const controller = loadController({ $transaction: (callback) => callback(tx) }, "branch-2");
+  const disputed = response();
+  await controller.updateReturnStatus({ user: { userId: "owner-1" }, params: { creditId: "credit-other-branch" }, body: { requestKey: "62c13144-0be5-4ed8-9a60-d2a848bca9d3", status: "DISPUTED" } }, disputed);
+  assert.equal(disputed.statusCode, 400);
+  const crossBranch = response();
+  await controller.updateReturnStatus({ user: { userId: "owner-1" }, params: { creditId: "credit-other-branch" }, body: { requestKey: "62c13144-0be5-4ed8-9a60-d2a848bca9d4", status: "HANDED_OVER", note: "Handed to courier" } }, crossBranch);
+  assert.equal(crossBranch.statusCode, 404);
+  assert.equal(createCount, 0);
 });
 
 test("payment allocation cannot exceed the remaining receipt balance", async () => {
@@ -422,6 +472,7 @@ test("returning a zero-cost sample still records a stock movement and receipt-li
     supplierCreditLine: { aggregate: async () => ({ _sum: { quantity: 0 } }) },
     product: { updateMany: async () => ({ count: 1 }) },
     stockMovement: { create: async ({ data }) => { movement = data; } },
+    supplierReturnStatusEvent: { create: async ({ data }) => ({ id: "return-status-zero", ...data }) },
   };
   const controller = loadController({ $transaction: (callback) => callback(tx) });
   const res = response();

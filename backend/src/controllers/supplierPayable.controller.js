@@ -61,7 +61,7 @@ function includeReceiptLedger() {
     items: { include: { product: { select: { id: true, name: true, unit: true, currentStock: true } }, supplierCreditLines: { include: { supplierCredit: { select: { kind: true, reversalOfId: true } } } } } },
     paymentAllocations: { include: { supplierPayment: { select: { id: true, kind: true, amount: true, paymentMethod: true, paymentReference: true, paidAt: true, reversalOfId: true, reversal: { select: { id: true } } } } } },
     paymentCorrections: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
-    credits: { include: { items: true, reversal: { select: { id: true } } } },
+    credits: { include: { items: true, reversal: { select: { id: true } }, returnStatusEvents: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } } },
   };
 }
 
@@ -447,6 +447,17 @@ const recordCredit = asyncHandler(async (req, res) => {
           const original = lineMap.get(line.stockReceiptItemId);
           await tx.stockMovement.create({ data: { type: "OUT", quantity: line.quantity, note: `Supplier return for receipt ${receipt.id.slice(-6)}`, productId: original.product.id, supplierCreditLineId: line.id } });
         }
+        await tx.supplierReturnStatusEvent.create({
+          data: {
+            shopId,
+            supplierCreditId: created.id,
+            requestKey: `return-status-initial:${created.id}`,
+            requestHash: hash({ supplierCreditId: created.id, status: "RECORDED" }),
+            status: "RECORDED",
+            note: note || "Return recorded; supplier handoff is not yet confirmed.",
+            recordedBy: req.user.staffId || req.user.userId,
+          },
+        });
       }
       return created;
     }, { isolationLevel: "Serializable" });
@@ -519,6 +530,58 @@ const reversePayment = asyncHandler(async (req, res) => {
   res.status(reused ? 200 : 201).json({ payment: reversal, reused });
 });
 
+const RETURN_STATUS_TRANSITIONS = {
+  RECORDED: new Set(["HANDED_OVER", "DISPUTED"]),
+  HANDED_OVER: new Set(["SUPPLIER_ACKNOWLEDGED", "DISPUTED"]),
+  SUPPLIER_ACKNOWLEDGED: new Set(["DISPUTED"]),
+  DISPUTED: new Set(["HANDED_OVER", "SUPPLIER_ACKNOWLEDGED"]),
+};
+
+const updateReturnStatus = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const creditId = String(req.params.creditId || "").trim();
+  const key = requestKey(req.body.requestKey);
+  const status = String(req.body.status || "").toUpperCase();
+  const note = String(req.body.note || "").trim() || null;
+  const reference = String(req.body.reference || "").trim() || null;
+  if (!creditId || !key) return res.status(400).json({ error: "Return and valid retry key are required" });
+  if (!Object.hasOwn(RETURN_STATUS_TRANSITIONS, status)) return res.status(400).json({ error: "Choose a valid supplier return status" });
+  if (note?.length > 500 || reference?.length > 120) return res.status(400).json({ error: "Note or reference is too long" });
+  if (status === "DISPUTED" && !note) return res.status(400).json({ error: "Add a note explaining the supplier dispute" });
+  const requestHash = hash({ creditId, status, note, reference });
+  let event;
+  let reused = false;
+  try {
+    event = await prisma.$transaction(async (tx) => {
+      const replay = await tx.supplierReturnStatusEvent.findFirst({ where: { shopId, requestKey: key } });
+      if (replay) {
+        if (replay.requestHash !== requestHash) throw error("This retry key was already used for different return details", 409);
+        reused = true;
+        return replay;
+      }
+      await tx.$queryRawUnsafe('SELECT "id" FROM "supplier_credits" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', creditId, shopId);
+      const credit = await tx.supplierCredit.findFirst({ where: { id: creditId, shopId }, select: { id: true, kind: true, reversalOfId: true, reversal: { select: { id: true } } } });
+      if (!credit || credit.kind !== "RETURN" || credit.reversalOfId) throw error("Supplier return not found", 404);
+      if (credit.reversal) throw error("This supplier return was reversed and can no longer be updated", 409);
+      const latest = await tx.supplierReturnStatusEvent.findFirst({ where: { shopId, supplierCreditId: creditId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+      const current = latest?.status || "RECORDED";
+      if (!RETURN_STATUS_TRANSITIONS[current]?.has(status)) throw error(`Return status cannot move from ${current} to ${status}`, 409);
+      if (current === "DISPUTED" && !note) throw error("Add a note explaining how the dispute was resolved", 400);
+      return tx.supplierReturnStatusEvent.create({ data: { shopId, supplierCreditId: creditId, requestKey: key, requestHash, status, note, reference, recordedBy: req.user.staffId || req.user.userId } });
+    }, { isolationLevel: "Serializable" });
+  } catch (err) {
+    if (err.code === "P2002" || err.code === "P2034") {
+      const replay = await prisma.supplierReturnStatusEvent.findFirst({ where: { shopId, requestKey: key } });
+      if (replay?.requestHash === requestHash) { event = replay; reused = true; }
+      else if (replay) return res.status(409).json({ error: "This retry key was already used for different return details" });
+      else return res.status(409).json({ error: "The return was updated at the same time. Refresh and try again." });
+    } else if (err.status) return res.status(err.status).json({ error: err.message });
+    else throw err;
+  }
+  if (!reused) req.audit = { action: "supplier_return.status", resourceType: "supplier_credit", resourceId: creditId, metadata: { status: event.status, reference: event.reference || undefined } };
+  res.status(reused ? 200 : 201).json({ event, reused });
+});
+
 const reverseCredit = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const key = requestKey(req.body.requestKey);
@@ -527,6 +590,8 @@ const reverseCredit = asyncHandler(async (req, res) => {
   let reused = false;
   try {
     reversal = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRawUnsafe('SELECT "id" FROM "supplier_credits" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.creditId, shopId);
+      if (!locked.length) throw error("Supplier credit not found", 404);
       const original = await tx.supplierCredit.findFirst({ where: { id: req.params.creditId, shopId }, include: { items: { include: { stockReceiptItem: { include: { product: { select: { id: true } } } } } }, reversal: true } });
       if (!original) throw error("Supplier credit not found", 404);
       await lockReceipts(tx, [original.stockReceiptId], shopId);
@@ -573,4 +638,4 @@ const reverseCredit = asyncHandler(async (req, res) => {
   res.status(reused ? 200 : 201).json({ credit: reversal, reused });
 });
 
-module.exports = { list, receipts, recordPayment, recordRefund, recordCredit, reversePayment, reverseCredit, correctReceiptPayment, balanceOf, returnCreditAmount };
+module.exports = { list, receipts, recordPayment, recordRefund, recordCredit, updateReturnStatus, reversePayment, reverseCredit, correctReceiptPayment, balanceOf, returnCreditAmount };

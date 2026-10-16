@@ -9,6 +9,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added an append-only supplier-return progress timeline with merchant-recorded handoff, supplier acknowledgment, dispute notes, references, retry protection, and historical status backfill; these updates do not alter inventory, supplier balances, or claim external verification.
+
 - Added owner-only subscription payment from Merchant Balance in Billing, with exact-price confirmation, insufficient-balance guidance, an atomic ledger debit plus activation, retry-key idempotency, and subscription revenue-aware provider reconciliation.
 - Added scheduled reconciliation for nTZS subscription checkouts alongside merchant-wallet operations, so a delayed webhook does not leave a known provider payment stuck.
 - Added an explicit balance-effect value to Merchant Balance history so failed and reversed operations show no balance movement while pending withdrawals show the amount still reserved.

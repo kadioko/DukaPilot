@@ -11,6 +11,7 @@ router.post("/payments", controller.recordPayment);
 router.post("/refunds", controller.recordRefund);
 router.post("/payments/:paymentId/reverse", controller.reversePayment);
 router.post("/credits", controller.recordCredit);
+router.post("/credits/:creditId/return-status", controller.updateReturnStatus);
 router.post("/credits/:creditId/reverse", controller.reverseCredit);
 
 module.exports = router;

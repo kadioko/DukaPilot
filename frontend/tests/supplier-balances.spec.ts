@@ -86,3 +86,44 @@ test("supplier balance lets the merchant record an actual refund against a suppl
   expect(savedRefund).toMatchObject({ stockReceiptId: "receipt-1", amount: 1000, paymentMethod: "MPESA", paymentReference: "REFUND-1000" });
   expect(savedRefund).toHaveProperty("requestKey");
 });
+
+test("supplier return progress is recorded as an informational, append-only update", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("dukapilot_token", "supplier-return-progress-token");
+    localStorage.setItem("dukapilot_language", "en");
+  });
+  let savedStatus: Record<string, unknown> | null = null;
+  const statusEvents = [{ id: "status-recorded", status: "RECORDED", createdAt: "2026-10-11T08:00:00.000Z", note: "Return entered", reference: null }];
+  await page.route("**/*api/**", async (route) => {
+    const url = new URL(route.request().url());
+    const marker = Math.max(url.pathname.indexOf("/_api/"), url.pathname.indexOf("/api/"));
+    const prefixLength = url.pathname.startsWith("/_api/", marker) ? 6 : 5;
+    const path = marker >= 0 ? `/${url.pathname.slice(marker + prefixLength)}` : url.pathname;
+    if (path === "/auth/me") return route.fulfill({ json: { user: { id: "owner-1", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" } } } });
+    if (path === "/subscription/status") return route.fulfill({ json: { status: "active", daysLeft: 20 } });
+    if (path === "/notifications") return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    if (path === "/supplier-payables" && route.request().method() === "GET") return route.fulfill({ json: { suppliers: [{ id: "supplier-1", name: "Mlimani Wholesale", phone: "+255700000001", balance: -1000, current: 0, days31To60: 0, days61To90: 0, over90: 0, receiptCount: 1 }], pagination: { page: 1, totalPages: 1, total: 1 } } });
+    if (path === "/supplier-payables/supplier-1/receipts") return route.fulfill({ json: { receipts: [{ id: "receipt-1", receivedAt: "2026-10-10T08:00:00.000Z", totalLandedCost: 3000, paidAtReceipt: 3000, paymentMethod: "CASH", balance: -1000, paymentCorrections: [], items: [{ id: "line-1", quantity: 3, landedUnitCost: 1000, product: { id: "product-1", name: "Rice bag", unit: "bag", currentStock: 2 }, supplierCreditLines: [] }], paymentAllocations: [], credits: [{ id: "credit-1", kind: "RETURN", issuedAt: "2026-10-11T08:00:00.000Z", items: [{ amount: 1000, quantity: 1 }], returnStatusEvents: statusEvents }] }], pagination: { page: 1, totalPages: 1 } } });
+    if (path === "/supplier-payables/credits/credit-1/return-status" && route.request().method() === "POST") {
+      savedStatus = route.request().postDataJSON();
+      statusEvents.push({ id: "status-handed-over", status: "HANDED_OVER", createdAt: "2026-10-12T08:00:00.000Z", note: "", reference: "DELIVERY-7" });
+      return route.fulfill({ status: 201, json: { event: { id: "status-handed-over", status: "HANDED_OVER" }, reused: false } });
+    }
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/supplier-balances");
+  await page.getByRole("button", { name: /Mlimani Wholesale/ }).click();
+  await expect(page.getByText("Return progress: Recorded", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Update" }).click();
+  await expect(page.getByText("This is a record entered by your business; DukaPilot does not contact the supplier or verify receipt.")).toBeVisible();
+  await page.getByLabel("Next status").selectOption("HANDED_OVER");
+  await page.getByLabel("Delivery or document reference (optional)").fill("DELIVERY-7");
+  await page.getByRole("button", { name: "Save progress" }).click();
+  await expect(page.getByText("Return progress saved.")).toBeVisible();
+  expect(savedStatus).toMatchObject({ status: "HANDED_OVER", reference: "DELIVERY-7" });
+  expect(savedStatus).toHaveProperty("requestKey");
+  await page.getByRole("button", { name: /Mlimani Wholesale/ }).click();
+  await expect(page.getByText("Return progress: Handed over (recorded)", { exact: true })).toBeVisible();
+});

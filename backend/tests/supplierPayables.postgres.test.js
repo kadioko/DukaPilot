@@ -77,6 +77,7 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
   t.after(async () => {
     await prisma.stockReceiptPaymentCorrection.deleteMany({ where: { shopId: root.id } });
     await prisma.supplierPaymentAllocation.deleteMany({ where: { supplierPayment: { shopId: root.id } } });
+    await prisma.supplierReturnStatusEvent.deleteMany({ where: { shopId: root.id } });
     await prisma.supplierCreditLine.deleteMany({ where: { supplierCredit: { shopId: root.id } } });
     await prisma.supplierCredit.deleteMany({ where: { shopId: root.id } });
     await prisma.supplierPayment.deleteMany({ where: { shopId: root.id } });
@@ -169,6 +170,28 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
     body: { stockReceiptId: firstReceiptId, requestKey: crypto.randomUUID(), kind: "RETURN", items: [{ stockReceiptItemId: firstReceiptLine.id, quantity: 1 }] },
   });
   assert.equal(secondReturn.statusCode, 201);
+  const stockBeforeReturnStatusChanges = (await prisma.product.findUnique({ where: { id: product.id } })).currentStock;
+  const creditCountBeforeReturnStatusChanges = await prisma.supplierCredit.count({ where: { shopId: root.id } });
+  const paymentCountBeforeReturnStatusChanges = await prisma.supplierPayment.count({ where: { shopId: root.id } });
+  const initialReturnStatus = await prisma.supplierReturnStatusEvent.findFirst({ where: { supplierCreditId: secondReturn.payload.credit.id } });
+  assert.equal(initialReturnStatus.status, "RECORDED");
+  const handedOver = await invoke(supplierPayableController.updateReturnStatus, {
+    user: { userId: user.id },
+    params: { creditId: secondReturn.payload.credit.id },
+    body: { requestKey: crypto.randomUUID(), status: "HANDED_OVER", reference: "SYNTHETIC-COURIER-REF" },
+  });
+  assert.equal(handedOver.statusCode, 201);
+  const acknowledged = await invoke(supplierPayableController.updateReturnStatus, {
+    user: { userId: user.id },
+    params: { creditId: secondReturn.payload.credit.id },
+    body: { requestKey: crypto.randomUUID(), status: "SUPPLIER_ACKNOWLEDGED", note: "Supplier confirmed receipt" },
+  });
+  assert.equal(acknowledged.statusCode, 201);
+  const statusHistory = await prisma.supplierReturnStatusEvent.findMany({ where: { supplierCreditId: secondReturn.payload.credit.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  assert.deepEqual(statusHistory.map((event) => event.status), ["RECORDED", "HANDED_OVER", "SUPPLIER_ACKNOWLEDGED"]);
+  assert.equal((await prisma.product.findUnique({ where: { id: product.id } })).currentStock, stockBeforeReturnStatusChanges);
+  assert.equal(await prisma.supplierCredit.count({ where: { shopId: root.id } }), creditCountBeforeReturnStatusChanges);
+  assert.equal(await prisma.supplierPayment.count({ where: { shopId: root.id } }), paymentCountBeforeReturnStatusChanges);
   const supplierRefundRequest = {
     user: { userId: user.id },
     body: { stockReceiptId: firstReceiptId, requestKey: crypto.randomUUID(), amount: 300, paymentMethod: "MPESA", paymentReference: "SUPPLIER-REFUND-1" },
@@ -191,6 +214,12 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
     body: { stockReceiptId: firstReceiptId, requestKey: crypto.randomUUID(), amount: 100, paymentMethod: "MPESA" },
   });
   assert.equal(crossBranchRefund.statusCode, 404);
+  const crossBranchReturnStatus = await invoke(supplierPayableController.updateReturnStatus, {
+    user: { userId: user.id },
+    params: { creditId: secondReturn.payload.credit.id },
+    body: { requestKey: crypto.randomUUID(), status: "DISPUTED", note: "Should not access root branch return" },
+  });
+  assert.equal(crossBranchReturnStatus.statusCode, 404);
 
   activeShopId = root.id;
   const rootReceipts = await invoke(supplierPayableController.receipts, { user: { userId: user.id }, params: { supplierId: supplier.id }, query: {} });
