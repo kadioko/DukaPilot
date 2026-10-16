@@ -94,7 +94,7 @@ test("supplier return progress is recorded as an informational, append-only upda
     localStorage.setItem("dukapilot_language", "en");
   });
   let savedStatus: Record<string, unknown> | null = null;
-  const statusEvents = [{ id: "status-recorded", status: "RECORDED", createdAt: "2026-10-11T08:00:00.000Z", note: "Return entered", reference: null }];
+  const statusEvents: Array<{ id: string; status: string; createdAt: string; note: string; reference: string | null }> = [{ id: "status-recorded", status: "RECORDED", createdAt: "2026-10-11T08:00:00.000Z", note: "Return entered", reference: null }];
   await page.route("**/*api/**", async (route) => {
     const url = new URL(route.request().url());
     const marker = Math.max(url.pathname.indexOf("/_api/"), url.pathname.indexOf("/api/"));
