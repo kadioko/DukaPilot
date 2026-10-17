@@ -140,17 +140,30 @@ const receive = asyncHandler(async (req, res) => {
   if (!/^[a-f0-9-]{16,80}$/i.test(requestKey)) return res.status(400).json({ error: "A valid receipt retry key is required" });
 
   const hashItems = [...(items || [])].sort((a, b) => a.productId.localeCompare(b.productId));
-  const legacyRequestHash = crypto.createHash("sha256").update(JSON.stringify({
-    allocationMode, totalGroceryBill: estimatedTotalMode ? totalGroceryBill : null,
-    supplierId, sourceOrderId, invoiceNumber, note, transportCost, otherCost,
-    paymentMethod, receivedAt: receivedAt?.toISOString(), items: hashItems,
-  })).digest("hex");
-  const requestHash = crypto.createHash("sha256").update(JSON.stringify({
-    allocationMode, totalGroceryBill: estimatedTotalMode ? totalGroceryBill : null,
-    supplierId, sourceOrderId, invoiceNumber, note, transportCost, otherCost,
-    paymentMethod, paidAtReceipt: requestedPaidAtReceipt, paymentReference, receivedAt: receivedAt?.toISOString(),
-    items: hashItems,
-  })).digest("hex");
+  const suppliedReceivedAt = req.body.receivedAt !== undefined && req.body.receivedAt !== null && req.body.receivedAt !== "";
+  function fingerprint(date, legacy = false) {
+    return crypto.createHash("sha256").update(JSON.stringify({
+      allocationMode, totalGroceryBill: estimatedTotalMode ? totalGroceryBill : null,
+      supplierId, sourceOrderId, invoiceNumber, note, transportCost, otherCost,
+      paymentMethod, ...(!legacy ? { paidAtReceipt: requestedPaidAtReceipt, paymentReference } : {}),
+      receivedAt: date, items: hashItems,
+    })).digest("hex");
+  }
+  // A server-generated timestamp must not change the retry fingerprint. Older
+  // receipts hashed that timestamp, so reconstruct it from the saved receipt.
+  const requestHash = fingerprint(suppliedReceivedAt ? receivedAt.toISOString() : null);
+  function matchesRequest(saved) {
+    if (!saved) return false;
+    if (saved.requestHash === requestHash) return true;
+    const originalDate = suppliedReceivedAt ? receivedAt : saved.receivedAt;
+    if (!originalDate) return false;
+    const date = new Date(originalDate).toISOString();
+    if (saved.requestHash === fingerprint(date)) return true;
+    if (saved.requestHash !== fingerprint(date, true)) return false;
+    const originalPaid = saved.paidAtReceipt ?? (saved.paymentMethod === "CREDIT" ? 0 : saved.totalLandedCost);
+    const requestedPaid = requestedPaidAtReceipt ?? (paymentMethod === "CREDIT" ? 0 : saved.totalLandedCost);
+    return originalPaid === requestedPaid && (saved.paymentReference || null) === paymentReference;
+  }
 
   let receipt;
   let reused = false;
@@ -161,7 +174,7 @@ const receive = asyncHandler(async (req, res) => {
       include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
     });
     if (replay) {
-      if (replay.requestHash !== requestHash && replay.requestHash !== legacyRequestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
+      if (!matchesRequest(replay)) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
       reused = true;
       return replay;
     }
@@ -261,7 +274,7 @@ const receive = asyncHandler(async (req, res) => {
         where: { shopId, requestKey },
         include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
       });
-      if (replay?.requestHash === requestHash || replay?.requestHash === legacyRequestHash) {
+      if (matchesRequest(replay)) {
         reused = true;
         receipt = replay;
       } else if (replay) return res.status(409).json({ error: "This receipt retry key was already used for different details" });
@@ -273,7 +286,7 @@ const receive = asyncHandler(async (req, res) => {
         include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
       });
       if (!replay) throw error;
-      if (replay.requestHash !== requestHash && replay.requestHash !== legacyRequestHash) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
+      if (!matchesRequest(replay)) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
       reused = true;
       receipt = replay;
     }

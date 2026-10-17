@@ -64,7 +64,7 @@ test("a retry from an older app version reuses its receipt instead of receiving 
     receivedAt,
     items: body.items,
   })).digest("hex");
-  const replay = { id: "receipt-existing", requestKey, requestHash: oldHash, items: [] };
+  const replay = { id: "receipt-existing", requestKey, requestHash: oldHash, paymentMethod: "CASH", totalLandedCost: 2000, paidAtReceipt: 2000, items: [] };
   let transactionCalls = 0;
   let writes = 0;
   const tx = { stockReceipt: { findFirst: async () => replay } };
@@ -83,6 +83,10 @@ test("a retry from an older app version reuses its receipt instead of receiving 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.receipt.id, "receipt-existing");
   assert.equal(res.payload.reused, true);
+
+  let changedPaymentError;
+  await controller.receive({ user: { userId: "owner-1" }, body: { ...body, paidAtReceipt: 500 } }, response(), (error) => { changedPaymentError = error; });
+  assert.equal(changedPaymentError.status, 409);
 });
 
 test("an arrived pending supplier order can be received and its status follows the stock receipt", async () => {
@@ -136,4 +140,52 @@ test("an arrived pending supplier order can be received and its status follows t
   assert.equal(receiptCreated.supplierId, "supplier-private-1");
   assert.equal(receiptCreated.sourceOrderId, "order-1");
   assert.equal(orderStatus, "DELIVERED");
+});
+
+test("receipt retries without a supplied date keep their fingerprint after the server clock advances", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-17T09:00:00Z") });
+  let saved;
+  let stockWrites = 0;
+  const tx = {
+    stockReceipt: {
+      findFirst: async () => saved,
+      create: async ({ data }) => { saved = { id: "receipt-1", ...data, items: [] }; return saved; },
+      findUnique: async () => saved,
+    },
+    product: {
+      findMany: async () => [{ id: "product-1", buyingPrice: 1000 }],
+      update: async () => { stockWrites += 1; },
+    },
+    stockReceiptItem: { create: async () => {} },
+    stockMovement: { create: async () => {} },
+  };
+  const controller = loadController({ $transaction: async (work) => work(tx) });
+  const request = { user: { userId: "owner-1" }, body: { requestKey: crypto.randomUUID(), paymentMethod: "CREDIT", paidAtReceipt: 0, items: [{ productId: "product-1", quantity: 1, unitCost: 1000 }] } };
+  const first = response();
+  await controller.receive(request, first);
+  assert.equal(first.statusCode, 201);
+  t.mock.timers.tick(5000);
+  let error;
+  const retry = response();
+  await controller.receive(request, retry, (caught) => { error = caught; });
+  assert.equal(error, undefined);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.reused, true);
+  assert.equal(stockWrites, 1);
+
+  saved.requestHash = crypto.createHash("sha256").update(JSON.stringify({
+    allocationMode: "DIRECT", totalGroceryBill: null, supplierId: null, sourceOrderId: null,
+    invoiceNumber: null, note: null, transportCost: 0, otherCost: 0, paymentMethod: "CREDIT",
+    paidAtReceipt: 0, paymentReference: null, receivedAt: saved.receivedAt.toISOString(), items: request.body.items,
+  })).digest("hex");
+  const oldReceiptRetry = response();
+  await controller.receive(request, oldReceiptRetry);
+  assert.equal(oldReceiptRetry.payload.reused, true);
+  assert.equal(stockWrites, 1);
+
+  const changedRequest = { ...request, body: { ...request.body, items: [{ productId: "product-1", quantity: 2, unitCost: 1000 }] } };
+  let changedError;
+  await controller.receive(changedRequest, response(), (caught) => { changedError = caught; });
+  assert.equal(changedError.status, 409);
+  assert.equal(stockWrites, 1);
 });

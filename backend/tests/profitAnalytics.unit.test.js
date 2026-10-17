@@ -40,7 +40,7 @@ test("profit analytics uses historical sale-item costs and shop-scoped totals", 
         if (query.includes("collections GROUP BY method")) return [{ paymentMethod: "CASH", amount: 80000n }];
         if (query.includes('GROUP BY s."paymentMethod" ORDER BY amount DESC')) return [{ paymentMethod: "CASH", salesCount: 10, amount: 80000n }];
         if (query.includes("FROM stock_receipts sr JOIN suppliers")) return [{ id: "supplier-1", name: "Mkulima Supplies", receiptCount: 2, amount: 64000n }];
-        if (query.includes("LEFT JOIN (SELECT \"saleId\"")) return [{ name: "Asha", phoneLast4: "1234", salesCount: 3, amount: 45000n }];
+        if (query.includes("return_events GROUP BY sale_id")) return [{ name: "Asha", phoneLast4: "1234", salesCount: 3, amount: 45000n }];
         if (query.includes('LEFT JOIN staff_members st')) return [{ id: "staff-1", name: "Neema", salesCount: 8, amount: 210000n, unitsSold: 31n }];
         return [{ overdue: 5000n, dueSoon: 3000n, noDueDate: 2000n, outstanding: 10000n }];
       },
@@ -92,6 +92,7 @@ test("profit analytics uses historical sale-item costs and shop-scoped totals", 
   assert.equal(res.payload.production.totalCost, 50000);
   assert.deepEqual(res.payload.production.inputs[0], { productId: "feed-1", name: "Layer feed", unit: "kg", quantity: 25, cost: 40000 });
   assert.equal(calls.some(({ query }) => query.includes('AS "knownRevenue"') && query.includes("JOIN sale_items si")), true);
+  assert.equal(calls.some(({ query }) => query.includes("sale_return_item_reversals")), true);
   assert.equal(res.payload.chart[0].grossProfit, 85000);
   assert.equal(res.payload.chart[0].expenses, 12000);
   assert.equal(res.payload.chart[0].netProfit, 73000);

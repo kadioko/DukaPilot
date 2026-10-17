@@ -121,6 +121,24 @@ test("daily close counts cash stock receipts and direct cooking costs once as ca
   assert.equal(summary.expectedCash, 103000);
 });
 
+test("cash recovered from a corrected customer return is a separately dated drawer inflow", async () => {
+  const prismaMock = {
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 2000 }, _count: { id: 1 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    saleReturn: { aggregate: async () => ({ _sum: { refundAmount: 1000 }, _count: { id: 1 } }) },
+    saleReturnReversal: { aggregate: async () => ({ _sum: { refundRecoveredAmount: 1000 }, _count: { id: 1 } }) },
+    expense: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+  };
+  const controller = loadController(prismaMock);
+  const summary = await controller.summarizeSession(prismaMock, { id: "session-correction", openingCash: 0 });
+
+  assert.equal(summary.cashRefunds, 1000);
+  assert.equal(summary.cashRefundRecoveries, 1000);
+  assert.equal(summary.cashRefundRecoveryCount, 1);
+  assert.equal(summary.expectedCash, 2000);
+});
+
 test("daily close counts only receipt-time cash paid plus later cash supplier settlements", async () => {
   const prismaMock = {
     sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },

@@ -98,6 +98,14 @@ products. Voiding a sale restores the lot allocation, remaining quantity, and
 cost. A direct cash crop cost joins an open Daily Close session once; do not also
 enter it as an Expense.
 
+Customer returns are linked back to those harvest-sale allocations. Both
+damaged and sellable returns reduce the cycle's sold quantity and realized
+revenue; only sellable units returned to stock restore remaining harvest stock
+and allocated cost. A mistaken return can be fully reversed from Sales history,
+but only while the returned crop stock/cost remains available to reconcile.
+The original return stays in the audit history and the correction is a separate
+dated event. See [Product performance and returns](./PRODUCT_PERFORMANCE_AND_RETURNS.md).
+
 ## Field plan
 
 The **Field plan** link in Crops is the mobile workspace for recurring field

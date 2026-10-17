@@ -85,16 +85,34 @@ function metric(row) {
 
 async function productReturnRows(shopId, from, to) {
   return prisma.$queryRawUnsafe(
-    `SELECT si."productId" AS id,
-            COALESCE(SUM(sri.quantity), 0)::bigint AS units,
-            COALESCE(SUM(sri."totalAmount"), 0)::bigint AS revenue,
-            COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS "restockedCost",
-            COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" ELSE 0 END), 0)::bigint AS "knownRevenue",
-            COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS "profitReduction",
-            COALESCE(SUM(CASE WHEN sri."buyingPrice" <= 0 THEN sri."totalAmount" ELSE 0 END), 0)::bigint AS "missingCostRevenue"
-     FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri."saleReturnId"
-     JOIN sale_items si ON si.id = sri."saleItemId"
-     WHERE sr."shopId" = $1 AND si."productId" IS NOT NULL AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+    `WITH return_events AS (
+       SELECT sri."saleItemId" AS sale_item_id, sri.quantity AS units, sri."totalAmount" AS revenue,
+              CASE WHEN sri."buyingPrice" > 0 THEN sri."buyingPrice" * sri."restockQuantity" ELSE 0 END AS restocked_cost,
+              CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" ELSE 0 END AS known_revenue,
+              CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END AS profit_reduction,
+              CASE WHEN sri."buyingPrice" <= 0 THEN sri."totalAmount" ELSE 0 END AS missing_cost_revenue
+       FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri."saleReturnId"
+       WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+       UNION ALL
+       SELECT original."saleItemId", -sri.quantity, -sri."totalAmount",
+              CASE WHEN original."buyingPrice" > 0 THEN -original."buyingPrice" * sri."restockQuantity" ELSE 0 END,
+              CASE WHEN original."buyingPrice" > 0 THEN -sri."totalAmount" ELSE 0 END,
+              CASE WHEN original."buyingPrice" > 0 THEN -(sri."totalAmount" - original."buyingPrice" * sri."restockQuantity") ELSE 0 END,
+              CASE WHEN original."buyingPrice" <= 0 THEN -sri."totalAmount" ELSE 0 END
+       FROM sale_return_item_reversals sri
+       JOIN sale_return_reversals srr ON srr.id = sri."reversalId"
+       JOIN sale_return_items original ON original.id = sri."saleReturnItemId"
+       WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 AND srr."createdAt" < $3
+     )
+     SELECT si."productId" AS id,
+            COALESCE(SUM(re.units), 0)::bigint AS units,
+            COALESCE(SUM(re.revenue), 0)::bigint AS revenue,
+            COALESCE(SUM(re.restocked_cost), 0)::bigint AS "restockedCost",
+            COALESCE(SUM(re.known_revenue), 0)::bigint AS "knownRevenue",
+            COALESCE(SUM(re.profit_reduction), 0)::bigint AS "profitReduction",
+            COALESCE(SUM(re.missing_cost_revenue), 0)::bigint AS "missingCostRevenue"
+     FROM return_events re JOIN sale_items si ON si.id = re.sale_item_id
+     WHERE si."productId" IS NOT NULL
      GROUP BY si."productId"`,
     shopId, from, to,
   );
@@ -190,18 +208,32 @@ const detail = asyncHandler(async (req, res) => {
     productReturnRows(shopId, selection.range.from, selection.range.to),
     productReturnRows(shopId, previous.from, previous.to),
     prisma.$queryRawUnsafe(
-      `SELECT to_char(date_trunc('${bucket}', sr."createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam'), '${bucketLabel}') AS label,
-              COALESCE(SUM(sri.quantity), 0)::bigint AS units,
-              COALESCE(SUM(sri."totalAmount"), 0)::bigint AS revenue,
-              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS "profitReduction"
-       FROM sale_returns sr JOIN sale_return_items sri ON sri."saleReturnId" = sr.id JOIN sale_items si ON si.id = sri."saleItemId"
-       WHERE sr."shopId" = $1 AND si."productId" = $4 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+      `WITH return_events AS (
+         SELECT sr."createdAt" AS occurred_at, sri."saleItemId" AS sale_item_id, sri.quantity AS units,
+                sri."totalAmount" AS revenue,
+                CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE sri."totalAmount" END AS profit_reduction
+         FROM sale_returns sr JOIN sale_return_items sri ON sri."saleReturnId" = sr.id
+         WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+         UNION ALL
+         SELECT srr."createdAt", original."saleItemId", -sri.quantity, -sri."totalAmount",
+                CASE WHEN original."buyingPrice" > 0 THEN -(sri."totalAmount" - original."buyingPrice" * sri."restockQuantity") ELSE -sri."totalAmount" END
+         FROM sale_return_item_reversals sri
+         JOIN sale_return_reversals srr ON srr.id = sri."reversalId"
+         JOIN sale_return_items original ON original.id = sri."saleReturnItemId"
+         WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 AND srr."createdAt" < $3
+       )
+       SELECT to_char(date_trunc('${bucket}', re.occurred_at AT TIME ZONE 'Africa/Dar_es_Salaam'), '${bucketLabel}') AS label,
+              COALESCE(SUM(re.units), 0)::bigint AS units,
+              COALESCE(SUM(re.revenue), 0)::bigint AS revenue,
+              COALESCE(SUM(re.profit_reduction), 0)::bigint AS "profitReduction"
+       FROM return_events re JOIN sale_items si ON si.id = re.sale_item_id
+       WHERE si."productId" = $4
        GROUP BY 1 ORDER BY 1 ASC`,
       shopId, selection.range.from, selection.range.to, productId,
     ),
     prisma.saleReturnItem.findMany({
       where: { saleItem: { productId, sale: { shopId } }, saleReturn: { createdAt: { gte: selection.range.from, lt: selection.range.to } } },
-      select: { id: true, quantity: true, restockQuantity: true, damagedQuantity: true, unitPrice: true, totalAmount: true, saleReturn: { select: { id: true, reason: true, refundAmount: true, debtReduction: true, refundMethod: true, createdAt: true, sale: { select: { receiptNumber: true } } } } },
+      select: { id: true, quantity: true, restockQuantity: true, damagedQuantity: true, unitPrice: true, totalAmount: true, saleReturn: { select: { id: true, reason: true, refundAmount: true, debtReduction: true, refundMethod: true, createdAt: true, reversal: { select: { id: true, reason: true, totalAmount: true, refundRecoveredAmount: true, recoveryMethod: true, paymentRef: true, createdAt: true } }, sale: { select: { receiptNumber: true } } } } },
       orderBy: { saleReturn: { createdAt: "desc" } }, take: 10,
     }),
   ]);

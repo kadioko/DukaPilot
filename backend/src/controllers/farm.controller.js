@@ -281,7 +281,7 @@ const recordAnimalEvent = asyncHandler(async (req, res) => {
   try {
     result = await prisma.$transaction(async (tx) => {
       if (requestId) {
-        const existing = await tx.farmAnimalEvent.findUnique({ where: { groupId_clientRequestId: { groupId: req.params.id, clientRequestId: requestId } } });
+        const existing = await tx.farmAnimalEvent.findFirst({ where: { groupId: req.params.id, clientRequestId: requestId, group: { shopId } } });
         if (existing) {
           reused = true;
           return { event: existing, group: await tx.farmGroup.findUnique({ where: { id: existing.groupId } }) };
@@ -309,7 +309,7 @@ const recordAnimalEvent = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     if (!requestId || error?.code !== "P2002") throw error;
-    const event = await prisma.farmAnimalEvent.findUnique({ where: { groupId_clientRequestId: { groupId: req.params.id, clientRequestId: requestId } } });
+    const event = await prisma.farmAnimalEvent.findFirst({ where: { groupId: req.params.id, clientRequestId: requestId, group: { shopId } } });
     if (!event) throw error;
     reused = true;
     result = { event, group: await prisma.farmGroup.findUnique({ where: { id: event.groupId }, include: { liveProduct: { select: { id: true, name: true, unit: true, currentStock: true } } } }) };

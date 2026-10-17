@@ -32,4 +32,4 @@ The Branch performance view applies one date range to all branches, compares com
 
 ## Demo data caution
 
-Public demo sales are synthetic examples, not evidence of a real merchant's trading. The history seeder deliberately does not change on-hand stock or create Daily Close cash records, so demo sales, inventory, and drawer totals are not expected to reconcile. The current public demo snapshot has 72 completed sales per merchant account across 30 days ending 2026-10-02; refresh it only through the guarded process in [Demo Sales History Seeding](./DEMO_HISTORY_SEEDING.md).
+Demo sales are synthetic examples, not evidence of a real merchant's trading. The history seeder deliberately does not change on-hand stock or create Daily Close cash records, so demo sales, inventory, and drawer totals are not expected to reconcile. As of 2026-10-16, each of the seven merchant demo accounts has 72 completed sales across 30 days ending 2026-10-16. Refresh them only through the guarded process in [Demo Sales History Seeding](./DEMO_HISTORY_SEEDING.md).

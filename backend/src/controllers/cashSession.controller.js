@@ -55,7 +55,7 @@ async function actorName(user) {
 }
 
 async function summarizeSession(tx, session) {
-  const [sales, debtPayments, quotationPayments, quotationRefunds, saleRefunds, expenses, stockReceipts, receiptPaymentCorrections, supplierPayments, supplierRefunds, foodPreparation, farmProduction, cropInputs] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, quotationRefunds, saleRefunds, saleRefundRecoveries, expenses, stockReceipts, receiptPaymentCorrections, supplierPayments, supplierRefunds, foodPreparation, farmProduction, cropInputs] = await Promise.all([
     tx.sale.aggregate({ where: cashSaleWhere(session.id), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment?.aggregate
@@ -67,6 +67,9 @@ async function summarizeSession(tx, session) {
     tx.saleReturn?.aggregate
       ? tx.saleReturn.aggregate({ where: { cashSessionId: session.id, refundMethod: "CASH" }, _sum: { refundAmount: true }, _count: { id: true } })
       : Promise.resolve({ _sum: { refundAmount: 0 }, _count: { id: 0 } }),
+    tx.saleReturnReversal?.aggregate
+      ? tx.saleReturnReversal.aggregate({ where: { cashSessionId: session.id, recoveryMethod: "CASH" }, _sum: { refundRecoveredAmount: true }, _count: { id: true } })
+      : Promise.resolve({ _sum: { refundRecoveredAmount: 0 }, _count: { id: 0 } }),
     tx.expense.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.stockReceipt?.aggregate
       ? tx.stockReceipt.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { paidAtReceipt: true }, _count: { id: true } })
@@ -95,6 +98,7 @@ async function summarizeSession(tx, session) {
   const quotationCash = (quotationPayments._sum.amount || 0) - (quotationRefunds._sum.amount || 0);
   const quotationPaymentCount = (quotationPayments._count.id || 0) + (quotationRefunds._count.id || 0);
   const cashRefunds = saleRefunds._sum.refundAmount || 0;
+  const cashRefundRecoveries = saleRefundRecoveries._sum.refundRecoveredAmount || 0;
   const cashExpenses = expenses._sum.amount || 0;
   const inventoryCashOut = stockReceipts._sum.paidAtReceipt || 0;
   const receiptPaymentCorrectionCashOut = receiptPaymentCorrections._sum.cashOutAdjustment || 0;
@@ -109,6 +113,8 @@ async function summarizeSession(tx, session) {
     quotationCash,
     cashRefunds,
     cashRefundCount: saleRefunds._count.id,
+    cashRefundRecoveries,
+    cashRefundRecoveryCount: saleRefundRecoveries._count.id,
     cashExpenses,
     inventoryCashOut,
     receiptPaymentCorrectionCashOut,
@@ -127,7 +133,7 @@ async function summarizeSession(tx, session) {
     cookingCostCount: foodPreparation._count.id,
     farmProductionCostCount: farmProduction._count.id,
     cropInputCostCount: cropInputs._count.id,
-    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash - cashRefunds - cashExpenses - inventoryCashOut - receiptPaymentCorrectionCashOut - supplierCashOut + supplierRefundsReceived - cookingCashOut - farmCashOut - cropCashOut,
+    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash + cashRefundRecoveries - cashRefunds - cashExpenses - inventoryCashOut - receiptPaymentCorrectionCashOut - supplierCashOut + supplierRefundsReceived - cookingCashOut - farmCashOut - cropCashOut,
   };
 }
 
@@ -137,12 +143,15 @@ async function decorateSessions(tx, sessions) {
 
   // The daily-close history used to run five aggregates for every session.
   // Group the same facts once per table, then attach them to the sessions.
-  const [sales, debtPayments, quotationPayments, saleRefunds, expenses, stockReceipts, receiptPaymentCorrections, supplierPayments, supplierRefunds, foodPreparation, farmProduction, cropInputs] = await Promise.all([
+  const [sales, debtPayments, quotationPayments, saleRefunds, saleRefundRecoveries, expenses, stockReceipts, receiptPaymentCorrections, supplierPayments, supplierRefunds, foodPreparation, farmProduction, cropInputs] = await Promise.all([
     tx.sale.groupBy({ by: ["cashSessionId"], where: cashSaleWhere({ in: sessionIds }), _sum: { totalAmount: true }, _count: { id: true } }),
     tx.debtPayment.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.quotationPayment.groupBy({ by: ["cashSessionId", "kind"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH", debtPaymentId: null, kind: { in: ["PAYMENT", "REFUND"] } }, _sum: { amount: true }, _count: { id: true } }),
     tx.saleReturn?.groupBy
       ? tx.saleReturn.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, refundMethod: "CASH" }, _sum: { refundAmount: true }, _count: { id: true } })
+      : Promise.resolve([]),
+    tx.saleReturnReversal?.groupBy
+      ? tx.saleReturnReversal.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, recoveryMethod: "CASH" }, _sum: { refundRecoveredAmount: true }, _count: { id: true } })
       : Promise.resolve([]),
     tx.expense.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
     tx.stockReceipt?.groupBy
@@ -167,7 +176,7 @@ async function decorateSessions(tx, sessions) {
       ? tx.cropInputUsage.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { totalCost: true }, _count: { id: true } })
       : Promise.resolve([]),
   ]);
-  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashRefunds: 0, cashRefundCount: 0, cashExpenses: 0, inventoryCashOut: 0, receiptPaymentCorrectionCashOut: 0, receiptPaymentCorrectionCount: 0, supplierCashOut: 0, supplierRefundsReceived: 0, supplierRefundCount: 0, cookingCashOut: 0, farmCashOut: 0, cropCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, supplierPaymentCount: 0, cookingCostCount: 0, farmProductionCostCount: 0, cropInputCostCount: 0 }]));
+  const bySession = new Map(sessionIds.map((id) => [id, { cashSales: 0, debtCollections: 0, quotationCash: 0, cashRefunds: 0, cashRefundCount: 0, cashRefundRecoveries: 0, cashRefundRecoveryCount: 0, cashExpenses: 0, inventoryCashOut: 0, receiptPaymentCorrectionCashOut: 0, receiptPaymentCorrectionCount: 0, supplierCashOut: 0, supplierRefundsReceived: 0, supplierRefundCount: 0, cookingCashOut: 0, farmCashOut: 0, cropCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, supplierPaymentCount: 0, cookingCostCount: 0, farmProductionCostCount: 0, cropInputCostCount: 0 }]));
   for (const row of sales) {
     const summary = bySession.get(row.cashSessionId);
     if (summary) { summary.cashSales = row._sum.totalAmount || 0; summary.saleCount = row._count.id; }
@@ -186,6 +195,10 @@ async function decorateSessions(tx, sessions) {
   for (const row of saleRefunds) {
     const summary = bySession.get(row.cashSessionId);
     if (summary) { summary.cashRefunds = row._sum.refundAmount || 0; summary.cashRefundCount = row._count.id; }
+  }
+  for (const row of saleRefundRecoveries) {
+    const summary = bySession.get(row.cashSessionId);
+    if (summary) { summary.cashRefundRecoveries = row._sum.refundRecoveredAmount || 0; summary.cashRefundRecoveryCount = row._count.id; }
   }
   for (const row of expenses) {
     const summary = bySession.get(row.cashSessionId);
@@ -221,7 +234,7 @@ async function decorateSessions(tx, sessions) {
   }
   return sessions.map((session) => {
     const summary = bySession.get(session.id);
-    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash - summary.cashRefunds - summary.cashExpenses - summary.inventoryCashOut - summary.receiptPaymentCorrectionCashOut - summary.supplierCashOut + summary.supplierRefundsReceived - summary.cookingCashOut - summary.farmCashOut - summary.cropCashOut } };
+    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash + summary.cashRefundRecoveries - summary.cashRefunds - summary.cashExpenses - summary.inventoryCashOut - summary.receiptPaymentCorrectionCashOut - summary.supplierCashOut + summary.supplierRefundsReceived - summary.cookingCashOut - summary.farmCashOut - summary.cropCashOut } };
   });
 }
 

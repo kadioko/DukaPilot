@@ -51,7 +51,7 @@ interface SaleRecord {
   debt?: { amountPaid: number } | null;
   shop?: { name: string };
   items: Array<{ id: string; productId?: string | null; quantity: number; returnedQuantity: number; unitPrice: number; listedUnitPrice?: number | null; totalPrice: number; name?: string | null; unit?: string | null; product?: { id: string; name: string; unit: string } | null }>;
-  returns?: Array<{ id: string; reason: string; totalAmount: number; debtReduction: number; refundAmount: number; refundMethod?: string | null; paymentRef?: string | null; createdAt: string; items: Array<{ saleItemId: string; quantity: number; restockQuantity: number; damagedQuantity: number; totalAmount: number }> }>;
+  returns?: Array<{ id: string; reason: string; totalAmount: number; debtReduction: number; refundAmount: number; refundMethod?: string | null; paymentRef?: string | null; createdAt: string; reversal?: { id: string; reason: string; totalAmount: number; debtRestored: number; refundRecoveredAmount: number; recoveryMethod?: string | null; paymentRef?: string | null; createdAt: string } | null; items: Array<{ saleItemId: string; quantity: number; restockQuantity: number; damagedQuantity: number; totalAmount: number }> }>;
 }
 
 interface ReturnLineDraft {
@@ -260,6 +260,12 @@ export default function SalesPage() {
   const [returnPaymentRef, setReturnPaymentRef] = useState("");
   const [returnRequestKey, setReturnRequestKey] = useState("");
   const [savingReturn, setSavingReturn] = useState(false);
+  const [returnReversalTarget, setReturnReversalTarget] = useState<{ sale: SaleRecord; entry: NonNullable<SaleRecord["returns"]>[number] } | null>(null);
+  const [returnReversalReason, setReturnReversalReason] = useState("");
+  const [returnRecoveryMethod, setReturnRecoveryMethod] = useState("");
+  const [returnRecoveryRef, setReturnRecoveryRef] = useState("");
+  const [returnReversalRequestKey, setReturnReversalRequestKey] = useState("");
+  const [savingReturnReversal, setSavingReturnReversal] = useState(false);
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const [shopName, setShopName] = useState("DukaPilot");
   const [variablePricesEnabled, setVariablePricesEnabled] = useState(false);
@@ -750,6 +756,51 @@ export default function SalesPage() {
       toast(error instanceof Error ? error.message : (lang === "sw" ? "Rejesho halijahifadhiwa. Jaribu tena." : "Return was not saved. Please retry."), "error");
     } finally {
       setSavingReturn(false);
+    }
+  }
+
+  function beginReturnReversal(sale: SaleRecord, entry: NonNullable<SaleRecord["returns"]>[number]) {
+    setReturnReversalTarget({ sale, entry });
+    setReturnReversalReason("");
+    setReturnRecoveryMethod("");
+    setReturnRecoveryRef("");
+    setReturnReversalRequestKey(newReturnRequestKey());
+  }
+
+  async function submitReturnReversal() {
+    if (!returnReversalTarget || savingReturnReversal) return;
+    if (!returnReversalReason.trim()) {
+      toast(lang === "sw" ? "Weka sababu ya kusahihisha rejesho." : "Enter a reason for correcting this return.", "error");
+      return;
+    }
+    const needsRecovery = returnReversalTarget.entry.refundAmount > 0;
+    if (needsRecovery && !returnRecoveryMethod) {
+      toast(lang === "sw" ? "Chagua jinsi pesa ya marejesho ilivyopokelewa tena." : "Choose how the refunded money was actually recovered.", "error");
+      return;
+    }
+    setSavingReturnReversal(true);
+    try {
+      const result = await api.post<{ reversal: { totalAmount: number; debtRestored: number; refundRecoveredAmount: number }; reused?: boolean }>(
+        "/sales/" + returnReversalTarget.sale.id + "/returns/" + returnReversalTarget.entry.id + "/reverse",
+        {
+          reason: returnReversalReason.trim(),
+          recoveryMethod: returnRecoveryMethod || undefined,
+          paymentRef: returnRecoveryRef.trim() || undefined,
+          requestKey: returnReversalRequestKey,
+        },
+        lang,
+      );
+      const successMessage = result.reused
+        ? (lang === "sw" ? "Marekebisho haya yalikuwa yamehifadhiwa tayari." : "This correction was already saved.")
+        : (lang === "sw" ? "Rejesho limesahihishwa: " : "Return corrected: ") + formatTZS(result.reversal.totalAmount);
+      toast(successMessage, "success");
+      setReturnReversalTarget(null);
+      setReturnReversalRequestKey("");
+      await fetchHistory();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Marekebisho hayajahifadhiwa. Jaribu tena." : "Correction was not saved. Please retry."), "error");
+    } finally {
+      setSavingReturnReversal(false);
     }
   }
 
@@ -1336,7 +1387,17 @@ export default function SalesPage() {
                       ))}
                     </div>
                     {sale.voidReason && <p className="mt-2 text-xs font-medium text-red-700">{lang === "sw" ? "Sababu" : "Reason"}: {sale.voidReason}</p>}
-                    {sale.returns?.map((entry) => <div key={entry.id} className="mt-2 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-950"><p className="font-semibold">{lang === "sw" ? "Rejesho" : "Return"} · {new Date(entry.createdAt).toLocaleString(lang === "sw" ? "sw-TZ" : "en-US", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {formatTZS(entry.totalAmount)}</p><p>{entry.reason}{entry.debtReduction > 0 ? ` · ${lang === "sw" ? "Deni limepunguzwa" : "Debt reduced"}: ${formatTZS(entry.debtReduction)}` : ""}{entry.refundAmount > 0 ? ` · ${lang === "sw" ? "Imerejeshwa" : "Refunded"}: ${formatTZS(entry.refundAmount)} (${entry.refundMethod})` : ""}</p></div>)}
+                    {sale.returns?.map((entry) => <div key={entry.id} className="mt-2 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold">{lang === "sw" ? "Rejesho" : "Return"} · {new Date(entry.createdAt).toLocaleString(lang === "sw" ? "sw-TZ" : "en-US", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {formatTZS(entry.totalAmount)}</p>
+                        {!entry.reversal && canViewFinancials && <button type="button" onClick={() => beginReturnReversal(sale, entry)} className="inline-flex min-h-8 items-center gap-1 rounded border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-900 hover:bg-amber-100"><RotateCcw className="h-3.5 w-3.5" />{lang === "sw" ? "Sahihisha rejesho" : "Correct return"}</button>}
+                      </div>
+                      <p>{entry.reason}{entry.debtReduction > 0 ? " · " + (lang === "sw" ? "Deni limepunguzwa" : "Debt reduced") + ": " + formatTZS(entry.debtReduction) : ""}{entry.refundAmount > 0 ? " · " + (lang === "sw" ? "Imerejeshwa" : "Refunded") + ": " + formatTZS(entry.refundAmount) + " (" + entry.refundMethod + ")" : ""}</p>
+                      {entry.reversal && <div className="mt-2 border-l-2 border-blue-500 bg-blue-50 px-2 py-1.5 text-blue-950">
+                        <p className="font-semibold">{lang === "sw" ? "Rejesho limesahihishwa" : "Return corrected"} · {new Date(entry.reversal.createdAt).toLocaleString(lang === "sw" ? "sw-TZ" : "en-US", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                        <p>{entry.reversal.reason}{entry.reversal.debtRestored > 0 ? " · " + (lang === "sw" ? "Deni limerejeshwa" : "Debt restored") + ": " + formatTZS(entry.reversal.debtRestored) : ""}{entry.reversal.refundRecoveredAmount > 0 ? " · " + (lang === "sw" ? "Pesa imepokelewa tena" : "Refund recovered") + ": " + formatTZS(entry.reversal.refundRecoveredAmount) + " (" + entry.reversal.recoveryMethod + ")" : ""}</p>
+                      </div>}
+                    </div>)}
                     {sale.status !== "VOIDED" && (
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
                         <button onClick={() => shareReceipt(sale)} className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"><MessageCircle className="h-4 w-4" />{lang === "sw" ? "Tuma risiti" : "Share receipt"}</button>
@@ -1437,6 +1498,34 @@ export default function SalesPage() {
             <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button type="button" disabled={savingReturn} onClick={() => { setReturnTarget(null); setReturnRequestKey(""); }} className="min-h-11 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Ghairi" : "Cancel"}</button>
               <button type="button" disabled={savingReturn} onClick={() => void submitReturn()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white disabled:opacity-50"><Check className="h-4 w-4" />{savingReturn ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi rejesho" : "Save return")}</button>
+            </div>
+          </section>
+        </div>
+      )}
+      {returnReversalTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="return-correction-title" className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-2xl sm:p-6">
+            <header className="flex items-start justify-between gap-3 border-b border-gray-200 pb-3">
+              <div>
+                <h2 id="return-correction-title" className="text-lg font-bold text-gray-950">{lang === "sw" ? "Sahihisha rejesho" : "Correct customer return"}</h2>
+                <p className="mt-1 text-sm text-gray-600">{receiptLabel(returnReversalTarget.sale)} · {formatTZS(returnReversalTarget.entry.totalAmount)}</p>
+              </div>
+              <button type="button" aria-label={lang === "sw" ? "Funga" : "Close"} onClick={() => setReturnReversalTarget(null)} disabled={savingReturnReversal} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+            </header>
+            <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm leading-5 text-amber-950">{lang === "sw"
+              ? "Hii itaongeza tena mauzo na faida, kuondoa bidhaa zilizorudishwa kutoka stock, na kurudisha deni lililopunguzwa. Rejesho la pesa taslimu linahitaji shift iliyo wazi."
+              : "This adds the return back to sales and profit, removes restocked items from inventory, and restores any debt reduction. Cash recovery requires an open shift."}</p>
+            {returnReversalTarget.entry.refundAmount > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Njia ambayo pesa ilipokelewa tena" : "How the refund was actually recovered"}</span><select value={returnRecoveryMethod} onChange={(event) => setReturnRecoveryMethod(event.target.value)} className="h-11 rounded-lg border border-gray-300 bg-white px-3"><option value="">{lang === "sw" ? "Chagua njia" : "Choose method"}</option>{PAYMENT_METHODS.filter((method) => method.value !== "CREDIT").map((method) => <option key={method.value} value={method.value}>{t(method.labelKey, lang)}</option>)}</select></label>
+              <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Kumbukumbu ya kupokea pesa" : "Recovery reference"}</span><input value={returnRecoveryRef} onChange={(event) => setReturnRecoveryRef(event.target.value)} maxLength={120} className="h-11 rounded-lg border border-gray-300 px-3" /></label>
+            </div>}
+            <label className="mt-4 grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Sababu ya marekebisho" : "Correction reason"}</span><textarea value={returnReversalReason} onChange={(event) => setReturnReversalReason(event.target.value)} maxLength={500} rows={3} className="rounded-lg border border-gray-300 px-3 py-2" /></label>
+            <p className="mt-3 text-xs leading-5 text-gray-600">{lang === "sw"
+              ? "Rejesho la awali halifutwi. Rekodi hii mpya inahifadhi sababu na tarehe. Thibitisha kuwa bidhaa inayouzeka bado ipo stock na pesa iliyorejeshwa imepokelewa kweli."
+              : "The original return is never deleted. This new record preserves the reason and date. Confirm the sellable item is still in stock and any refunded money was actually recovered."}</p>
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" disabled={savingReturnReversal} onClick={() => setReturnReversalTarget(null)} className="min-h-11 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Ghairi" : "Cancel"}</button>
+              <button type="button" disabled={savingReturnReversal || !returnReversalReason.trim() || (returnReversalTarget.entry.refundAmount > 0 && !returnRecoveryMethod)} onClick={() => void submitReturnReversal()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white disabled:opacity-50"><Check className="h-4 w-4" />{savingReturnReversal ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi marekebisho" : "Save correction")}</button>
             </div>
           </section>
         </div>

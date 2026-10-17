@@ -209,6 +209,7 @@ enum FarmAnimalEventType {
   MORTALITY
   CULL
   SALE
+  RETURN_REVERSAL
 }
 
 enum FarmProductionType {
@@ -262,6 +263,7 @@ model Shop {
   products                       Product[]
   sales                          Sale[]
   saleReturns                    SaleReturn[]
+  saleReturnReversals            SaleReturnReversal[]
   orders                         Order[]
   customerOrders                 CustomerOrder[]
   debts                          Debt[]
@@ -1205,25 +1207,27 @@ model BranchTransfer {
 }
 
 model StockMovement {
-  id                     String                @id @default(cuid())
-  requestKey             String?
-  requestHash            String?
-  type                   StockMovementType
-  quantity               Float
-  note                   String?
-  productId              String
-  product                Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
-  stockReceiptId         String?
-  stockReceipt           StockReceipt?         @relation(fields: [stockReceiptId], references: [id], onDelete: SetNull)
-  supplierCreditLineId   String?               @unique
-  supplierCreditLine     SupplierCreditLine?   @relation(fields: [supplierCreditLineId], references: [id], onDelete: SetNull)
-  foodPreparationBatchId String?
-  foodPreparationBatch   FoodPreparationBatch? @relation(fields: [foodPreparationBatchId], references: [id], onDelete: SetNull)
-  cropHarvestBatchId     String?
-  cropHarvestBatch       CropHarvestBatch?     @relation(fields: [cropHarvestBatchId], references: [id], onDelete: SetNull)
-  saleReturnItemId       String?               @unique
-  saleReturnItem         SaleReturnItem?       @relation(fields: [saleReturnItemId], references: [id], onDelete: SetNull)
-  createdAt              DateTime              @default(now())
+  id                       String                  @id @default(cuid())
+  requestKey               String?
+  requestHash              String?
+  type                     StockMovementType
+  quantity                 Float
+  note                     String?
+  productId                String
+  product                  Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockReceiptId           String?
+  stockReceipt             StockReceipt?           @relation(fields: [stockReceiptId], references: [id], onDelete: SetNull)
+  supplierCreditLineId     String?                 @unique
+  supplierCreditLine       SupplierCreditLine?     @relation(fields: [supplierCreditLineId], references: [id], onDelete: SetNull)
+  foodPreparationBatchId   String?
+  foodPreparationBatch     FoodPreparationBatch?   @relation(fields: [foodPreparationBatchId], references: [id], onDelete: SetNull)
+  cropHarvestBatchId       String?
+  cropHarvestBatch         CropHarvestBatch?       @relation(fields: [cropHarvestBatchId], references: [id], onDelete: SetNull)
+  saleReturnItemId         String?                 @unique
+  saleReturnItem           SaleReturnItem?         @relation(fields: [saleReturnItemId], references: [id], onDelete: SetNull)
+  saleReturnReversalItemId String?                 @unique
+  saleReturnReversalItem   SaleReturnItemReversal? @relation(fields: [saleReturnReversalItemId], references: [id], onDelete: SetNull)
+  createdAt                DateTime                @default(now())
 
   @@unique([productId, requestKey])
   @@index([productId, createdAt])
@@ -1420,24 +1424,25 @@ model SaleItem {
 }
 
 model SaleReturn {
-  id            String           @id @default(cuid())
+  id            String              @id @default(cuid())
   shopId        String
-  shop          Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
   saleId        String
-  sale          Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  sale          Sale                @relation(fields: [saleId], references: [id], onDelete: Cascade)
   reason        String
   totalAmount   Int
-  debtReduction Int              @default(0)
-  refundAmount  Int              @default(0)
+  debtReduction Int                 @default(0)
+  refundAmount  Int                 @default(0)
   refundMethod  PaymentMethod?
   paymentRef    String?
   requestKey    String
   requestHash   String
   recordedBy    String?
   cashSessionId String?
-  cashSession   CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  cashSession   CashSession?        @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   items         SaleReturnItem[]
-  createdAt     DateTime         @default(now())
+  reversal      SaleReturnReversal?
+  createdAt     DateTime            @default(now())
 
   @@unique([shopId, requestKey])
   @@index([shopId, createdAt])
@@ -1447,23 +1452,71 @@ model SaleReturn {
 }
 
 model SaleReturnItem {
-  id              String         @id @default(cuid())
+  id              String                        @id @default(cuid())
   saleReturnId    String
-  saleReturn      SaleReturn     @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+  saleReturn      SaleReturn                    @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
   saleItemId      String
-  saleItem        SaleItem       @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  saleItem        SaleItem                      @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
   quantity        Int
-  restockQuantity Int            @default(0)
-  damagedQuantity Int            @default(0)
+  restockQuantity Int                           @default(0)
+  damagedQuantity Int                           @default(0)
   unitPrice       Int
   buyingPrice     Int
   totalAmount     Int
   stockMovement   StockMovement?
-  createdAt       DateTime       @default(now())
+  cropAllocations CropHarvestReturnAllocation[]
+  reversal        SaleReturnItemReversal?
+  createdAt       DateTime                      @default(now())
 
   @@unique([saleReturnId, saleItemId])
   @@index([saleItemId, createdAt])
   @@map("sale_return_items")
+}
+
+model SaleReturnReversal {
+  id                    String                   @id @default(cuid())
+  shopId                String
+  shop                  Shop                     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  saleReturnId          String                   @unique
+  saleReturn            SaleReturn               @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
+  reason                String
+  totalAmount           Int
+  debtRestored          Int                      @default(0)
+  refundRecoveredAmount Int                      @default(0)
+  recoveryMethod        PaymentMethod?
+  paymentRef            String?
+  requestKey            String
+  requestHash           String
+  recordedBy            String?
+  cashSessionId         String?
+  cashSession           CashSession?             @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  items                 SaleReturnItemReversal[]
+  createdAt             DateTime                 @default(now())
+
+  @@unique([shopId, requestKey])
+  @@index([shopId, createdAt])
+  @@index([cashSessionId, recoveryMethod])
+  @@map("sale_return_reversals")
+}
+
+model SaleReturnItemReversal {
+  id               String                                @id @default(cuid())
+  reversalId       String
+  reversal         SaleReturnReversal                    @relation(fields: [reversalId], references: [id], onDelete: Cascade)
+  saleReturnItemId String                                @unique
+  saleReturnItem   SaleReturnItem                        @relation(fields: [saleReturnItemId], references: [id], onDelete: Restrict)
+  quantity         Int
+  restockQuantity  Int
+  damagedQuantity  Int
+  totalAmount      Int
+  stockMovement    StockMovement?
+  cropAllocations  CropHarvestReturnAllocationReversal[]
+  farmAnimalEvent  FarmAnimalEvent?
+  createdAt        DateTime                              @default(now())
+
+  @@unique([reversalId, saleReturnItemId])
+  @@index([reversalId])
+  @@map("sale_return_item_reversals")
 }
 
 model Order {
@@ -1512,6 +1565,7 @@ model CashSession {
   farmProductionBatches          FarmProductionBatch[]
   cropInputUsages                CropInputUsage[]
   saleReturns                    SaleReturn[]
+  saleReturnReversals            SaleReturnReversal[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])
@@ -1712,19 +1766,21 @@ model FarmGroup {
 }
 
 model FarmAnimalEvent {
-  id              String              @id @default(cuid())
-  groupId         String
-  group           FarmGroup           @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  type            FarmAnimalEventType
-  quantity        Int
-  note            String?
-  occurredAt      DateTime            @default(now())
-  recordedBy      String?
-  clientRequestId String?
-  saleItemId      String?             @unique
-  saleItem        SaleItem?           @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
-  voidedAt        DateTime?
-  createdAt       DateTime            @default(now())
+  id                       String                  @id @default(cuid())
+  groupId                  String
+  group                    FarmGroup               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  type                     FarmAnimalEventType
+  quantity                 Int
+  note                     String?
+  occurredAt               DateTime                @default(now())
+  recordedBy               String?
+  clientRequestId          String?
+  saleItemId               String?                 @unique
+  saleItem                 SaleItem?               @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
+  saleReturnReversalItemId String?                 @unique
+  saleReturnReversalItem   SaleReturnItemReversal? @relation(fields: [saleReturnReversalItemId], references: [id], onDelete: SetNull)
+  voidedAt                 DateTime?
+  createdAt                DateTime                @default(now())
 
   @@unique([groupId, clientRequestId])
   @@index([groupId, occurredAt])
@@ -2094,19 +2150,51 @@ model CropWeatherAlert {
 }
 
 model CropHarvestAllocation {
-  id             String           @id @default(cuid())
-  harvestBatchId String
-  harvestBatch   CropHarvestBatch @relation(fields: [harvestBatchId], references: [id], onDelete: Cascade)
-  saleItemId     String
-  saleItem       SaleItem         @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
-  quantity       Int
-  revenue        Int
-  cost           Int
-  createdAt      DateTime         @default(now())
+  id                String                        @id @default(cuid())
+  harvestBatchId    String
+  harvestBatch      CropHarvestBatch              @relation(fields: [harvestBatchId], references: [id], onDelete: Cascade)
+  saleItemId        String
+  saleItem          SaleItem                      @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  returnAllocations CropHarvestReturnAllocation[]
+  quantity          Int
+  revenue           Int
+  cost              Int
+  createdAt         DateTime                      @default(now())
 
   @@unique([harvestBatchId, saleItemId])
   @@index([saleItemId])
   @@map("crop_harvest_allocations")
+}
+
+model CropHarvestReturnAllocation {
+  id                      String                               @id @default(cuid())
+  saleReturnItemId        String
+  saleReturnItem          SaleReturnItem                       @relation(fields: [saleReturnItemId], references: [id], onDelete: Cascade)
+  cropHarvestAllocationId String
+  cropHarvestAllocation   CropHarvestAllocation                @relation(fields: [cropHarvestAllocationId], references: [id], onDelete: Restrict)
+  quantity                Int
+  restockQuantity         Int
+  damagedQuantity         Int
+  revenue                 Int
+  costRestored            Int
+  reversal                CropHarvestReturnAllocationReversal?
+  createdAt               DateTime                             @default(now())
+
+  @@unique([saleReturnItemId, cropHarvestAllocationId])
+  @@index([cropHarvestAllocationId])
+  @@map("crop_harvest_return_allocations")
+}
+
+model CropHarvestReturnAllocationReversal {
+  id                            String                      @id @default(cuid())
+  saleReturnItemReversalId      String
+  saleReturnItemReversal        SaleReturnItemReversal      @relation(fields: [saleReturnItemReversalId], references: [id], onDelete: Cascade)
+  cropHarvestReturnAllocationId String                      @unique
+  cropHarvestReturnAllocation   CropHarvestReturnAllocation @relation(fields: [cropHarvestReturnAllocationId], references: [id], onDelete: Restrict)
+  createdAt                     DateTime                    @default(now())
+
+  @@index([saleReturnItemReversalId])
+  @@map("crop_harvest_return_allocation_reversals")
 }
 
 model StockReceiptItem {
@@ -2184,25 +2272,25 @@ model SupplierPaymentAllocation {
 }
 
 model SupplierCredit {
-  id             String               @id @default(cuid())
-  shopId         String
-  shop           Shop                 @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  supplierId     String
-  supplier       Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  stockReceiptId String
-  stockReceipt   StockReceipt         @relation(fields: [stockReceiptId], references: [id], onDelete: Restrict)
-  kind           SupplierCreditKind
-  requestKey     String
-  requestHash    String
-  note           String?
-  issuedAt       DateTime             @default(now())
-  recordedBy     String?
-  reversalOfId   String?              @unique
-  reversalOf     SupplierCredit?      @relation("SupplierCreditReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
-  reversal       SupplierCredit?      @relation("SupplierCreditReversal")
-  items          SupplierCreditLine[]
+  id                 String                      @id @default(cuid())
+  shopId             String
+  shop               Shop                        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplierId         String
+  supplier           Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  stockReceiptId     String
+  stockReceipt       StockReceipt                @relation(fields: [stockReceiptId], references: [id], onDelete: Restrict)
+  kind               SupplierCreditKind
+  requestKey         String
+  requestHash        String
+  note               String?
+  issuedAt           DateTime                    @default(now())
+  recordedBy         String?
+  reversalOfId       String?                     @unique
+  reversalOf         SupplierCredit?             @relation("SupplierCreditReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           SupplierCredit?             @relation("SupplierCreditReversal")
+  items              SupplierCreditLine[]
   returnStatusEvents SupplierReturnStatusEvent[]
-  createdAt      DateTime             @default(now())
+  createdAt          DateTime                    @default(now())
 
   @@unique([shopId, requestKey])
   @@index([shopId, supplierId, issuedAt])

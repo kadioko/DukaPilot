@@ -6,7 +6,7 @@ const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
 const cashSessionPath = path.resolve(__dirname, "../src/lib/cashSession.js");
 const controllerPath = path.resolve(__dirname, "../src/controllers/crop.controller.js");
-const { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations } = require("../src/lib/cropHarvestSales");
+const { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations, applyCropHarvestReturn, reverseCropHarvestReturn } = require("../src/lib/cropHarvestSales");
 
 function response() {
   return { statusCode: 200, payload: null, status(code) { this.statusCode = code; return this; }, json(payload) { this.payload = payload; return this; } };
@@ -222,4 +222,72 @@ test("crop harvest sale allocations are FIFO and reverse when a sale is voided",
   await reverseCropHarvestSaleAllocations(tx, ["sale-item-1"]);
   assert.equal(updates[1].data.remainingQuantity.increment, 4);
   assert.equal(updates[1].data.realizedRevenue.decrement, 14000);
+});
+
+test("damaged customer returns reduce crop revenue but leave crop cost as a loss, and reversal restores exact values", async () => {
+  const batch = { id: "batch-1", remainingQuantity: 0, remainingCost: 0, soldQuantity: 10, realizedRevenue: 50000, realizedCost: 20000 };
+  const returnAllocations = [];
+  const allocationReversals = [];
+  let returnSequence = 0;
+  const tx = {
+    cropHarvestAllocation: {
+      findMany: async () => [{
+        id: "allocation-1", harvestBatchId: batch.id, saleItemId: "sale-item-1",
+        quantity: 10, revenue: 50000, cost: 20000,
+        returnAllocations: returnAllocations.map((row) => ({ ...row, reversal: allocationReversals.find((entry) => entry.cropHarvestReturnAllocationId === row.id) || null })),
+      }],
+    },
+    cropHarvestReturnAllocation: {
+      create: async ({ data }) => {
+        const row = { id: "return-allocation-" + (++returnSequence), ...data };
+        returnAllocations.push(row);
+        return row;
+      },
+      findMany: async () => returnAllocations.filter((row) => !allocationReversals.some((entry) => entry.cropHarvestReturnAllocationId === row.id)).map((row) => ({ ...row, cropHarvestAllocation: { harvestBatchId: batch.id } })),
+    },
+    cropHarvestReturnAllocationReversal: { create: async ({ data }) => { allocationReversals.push(data); return data; } },
+    cropHarvestBatch: {
+      updateMany: async ({ where, data }) => {
+        if (where.soldQuantity?.gte && batch.soldQuantity < where.soldQuantity.gte) return { count: 0 };
+        if (where.realizedRevenue?.gte && batch.realizedRevenue < where.realizedRevenue.gte) return { count: 0 };
+        if (where.realizedCost?.gte && batch.realizedCost < where.realizedCost.gte) return { count: 0 };
+        for (const field of ["remainingQuantity", "remainingCost", "soldQuantity", "realizedRevenue", "realizedCost"]) {
+          if (data[field]?.increment) batch[field] += data[field].increment;
+          if (data[field]?.decrement) batch[field] -= data[field].decrement;
+        }
+        return { count: 1 };
+      },
+    },
+  };
+
+  const [allocation] = await applyCropHarvestReturn(tx, {
+    saleItemId: "sale-item-1", saleReturnItemId: "return-item-1", restockQuantity: 0, damagedQuantity: 2,
+  });
+  assert.equal(allocation.revenue, 10000);
+  assert.equal(allocation.costRestored, 0);
+  assert.equal(batch.soldQuantity, 8);
+  assert.equal(batch.realizedRevenue, 40000);
+  assert.equal(batch.realizedCost, 20000);
+  assert.equal(batch.remainingQuantity, 0);
+
+  await reverseCropHarvestReturn(tx, { saleReturnItemId: "return-item-1", saleReturnItemReversalId: "reversal-item-1" });
+  assert.equal(batch.soldQuantity, 10);
+  assert.equal(batch.realizedRevenue, 50000);
+  assert.equal(batch.realizedCost, 20000);
+});
+
+test("reversing a sellable crop return fails if returned stock has since been used", async () => {
+  const tx = {
+    cropHarvestAllocation: { findMany: async () => [] },
+    cropHarvestReturnAllocation: {
+      findMany: async () => [{ id: "return-allocation-1", restockQuantity: 2, quantity: 2, revenue: 10000, costRestored: 4000, cropHarvestAllocation: { harvestBatchId: "batch-1" } }],
+    },
+    cropHarvestReturnAllocationReversal: { create: async () => assert.fail("must not record reversal") },
+    cropHarvestBatch: { updateMany: async () => ({ count: 0 }) },
+  };
+
+  await assert.rejects(
+    reverseCropHarvestReturn(tx, { saleReturnItemId: "return-item-1", saleReturnItemReversalId: "reversal-item-1" }),
+    (error) => error.status === 409,
+  );
 });

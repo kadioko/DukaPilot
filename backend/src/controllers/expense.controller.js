@@ -25,6 +25,16 @@ function parseSpentAt(value, fallback) {
   return date;
 }
 
+function filterDateBoundary(value, end = false) {
+  const date = parseSpentAt(value, null);
+  if (!date) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value).trim())) {
+    const start = startOfTanzaniaDay(date);
+    return end ? new Date(start.getTime() + 86400000) : start;
+  }
+  return end ? new Date(date.getTime() + 1) : date;
+}
+
 function validationError(req, res, english, swahili, code = "EXPENSE_VALIDATION_ERROR") {
   return res.status(400).json({
     error: getRequestLanguage(req) === "sw" ? swahili : english,
@@ -135,12 +145,11 @@ const list = asyncHandler(async (req, res) => {
   const category = String(req.query.category || "").toUpperCase();
   const search = String(req.query.search || "").trim().slice(0, 120);
   const vendor = String(req.query.vendor || "").trim().slice(0, 120);
-  const from = req.query.from ? parseSpentAt(req.query.from, null) : null;
-  const to = req.query.to ? parseSpentAt(req.query.to, null) : null;
+  const from = req.query.from ? filterDateBoundary(req.query.from) : null;
+  const to = req.query.to ? filterDateBoundary(req.query.to, true) : null;
   if (req.query.from && !from) return validationError(req, res, "Start date is invalid", "Tarehe ya kuanzia si sahihi", "INVALID_EXPENSE_FILTER_DATE");
   if (req.query.to && !to) return validationError(req, res, "End date is invalid", "Tarehe ya mwisho si sahihi", "INVALID_EXPENSE_FILTER_DATE");
-  if (to) to.setUTCHours(23, 59, 59, 999);
-  if (from && to && from > to) return validationError(req, res, "Start date must be before end date", "Tarehe ya kuanzia lazima iwe kabla ya tarehe ya mwisho", "INVALID_EXPENSE_FILTER_RANGE");
+  if (from && to && from >= to) return validationError(req, res, "Start date must be before end date", "Tarehe ya kuanzia lazima iwe kabla ya tarehe ya mwisho", "INVALID_EXPENSE_FILTER_RANGE");
   if (category === LEGACY_STOCK_CATEGORY) return validationError(req, res, "Stock purchases are managed in Inventory, not Expenses", "Ununuzi wa bidhaa unasimamiwa kwenye Hifadhi ya Bidhaa, si Matumizi", "STOCK_PURCHASES_USE_INVENTORY");
 
   const filters = { shopId };
@@ -157,7 +166,7 @@ const list = asyncHandler(async (req, res) => {
   function expenseWhere(range, useExplicitDates = true) {
     const where = { ...filters, category: filters.category || { not: LEGACY_STOCK_CATEGORY } };
     if (useExplicitDates && (from || to)) {
-      where.spentAt = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
+      where.spentAt = { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) };
     } else if (range.from || range.to) {
       where.spentAt = { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lt: range.to } : {}) };
     }
@@ -168,21 +177,42 @@ const list = asyncHandler(async (req, res) => {
   const previousWhere = !from && !to && window.previousFrom && window.previousTo
     ? expenseWhere({ from: window.previousFrom, to: window.previousTo }, false)
     : null;
+  const selectedRange = from || to ? { from, to } : window;
   const salesWhere = { shopId, status: "COMPLETED" };
-  if (window.from || window.to) salesWhere.createdAt = { ...(window.from ? { gte: window.from } : {}), ...(window.to ? { lt: window.to } : {}) };
+  if (selectedRange.from || selectedRange.to) salesWhere.createdAt = { ...(selectedRange.from ? { gte: selectedRange.from } : {}), ...(selectedRange.to ? { lt: selectedRange.to } : {}) };
 
-  const [expenses, summary, recurringExpenses, sales, previousSummary, categoryBreakdown] = await Promise.all([
+  const [expenses, summary, recurringExpenses, sales, previousSummary, categoryBreakdown, returnRows] = await Promise.all([
     prisma.expense.findMany({ where, orderBy: { spentAt: "desc" }, take: 100 }),
     prisma.expense.aggregate({ where, _sum: { amount: true }, _count: { id: true } }),
     prisma.recurringExpense.findMany({ where: { shopId, isActive: true, category: { not: LEGACY_STOCK_CATEGORY } }, orderBy: { nextDueAt: "asc" }, take: 20 }),
     prisma.sale.aggregate({ where: salesWhere, _sum: { totalAmount: true, profit: true }, _count: { id: true } }),
     previousWhere ? prisma.expense.aggregate({ where: previousWhere, _sum: { amount: true } }) : Promise.resolve(null),
     prisma.expense.groupBy({ by: ["category"], where, _sum: { amount: true }, orderBy: { _sum: { amount: "desc" } }, take: 3 }),
+    prisma.$queryRaw`
+      WITH return_events AS (
+        SELECT sr."createdAt" AS occurred_at, sri."totalAmount" AS revenue,
+          sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" AS profit_reduction
+        FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri."saleReturnId"
+        WHERE sr."shopId" = ${shopId}
+        UNION ALL
+        SELECT srr."createdAt", -sri."totalAmount",
+          -(sri."totalAmount" - original."buyingPrice" * sri."restockQuantity")
+        FROM sale_return_item_reversals sri
+        JOIN sale_return_reversals srr ON srr.id = sri."reversalId"
+        JOIN sale_return_items original ON original.id = sri."saleReturnItemId"
+        WHERE srr."shopId" = ${shopId}
+      )
+      SELECT COALESCE(SUM(revenue), 0)::bigint AS "returnedRevenue",
+        COALESCE(SUM(profit_reduction), 0)::bigint AS "returnedProfit"
+      FROM return_events
+      WHERE (${selectedRange.from}::timestamptz IS NULL OR occurred_at >= ${selectedRange.from})
+        AND (${selectedRange.to}::timestamptz IS NULL OR occurred_at < ${selectedRange.to})
+    `,
   ]);
 
   const total = summary._sum.amount || 0;
-  const totalSales = sales._sum.totalAmount || 0;
-  const grossProfit = sales._sum.profit || 0;
+  const totalSales = (sales._sum.totalAmount || 0) - Number(returnRows[0]?.returnedRevenue || 0);
+  const grossProfit = (sales._sum.profit || 0) - Number(returnRows[0]?.returnedProfit || 0);
   const previousTotal = previousSummary?._sum.amount || 0;
   res.json({
     expenses,
@@ -254,7 +284,12 @@ const update = asyncHandler(async (req, res) => {
       const session = await tx.cashSession.findFirst({ where: { id: current.cashSessionId, shopId }, select: { status: true } });
       if (session?.status === "CLOSED") throw Object.assign(new Error("This cash expense belongs to a closed shift and cannot be edited. Keep the closed Z-report unchanged and record a separate correction with the owner."), { status: 409 });
     }
-    return tx.expense.update({ where: { id: current.id }, data });
+    const updateData = { ...data };
+    if (data.paymentMethod === "CASH" && current.paymentMethod !== "CASH" && !current.cashSessionId) {
+      const cashSession = await findOpenCashSession(tx, shopId, req.user);
+      updateData.cashSessionId = cashSession?.id || null;
+    }
+    return tx.expense.update({ where: { id: current.id }, data: updateData });
   });
 
   await invalidateDashboardHistory(shopId);

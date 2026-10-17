@@ -14,13 +14,13 @@ function response() {
   return { statusCode: 200, payload: null, status(code) { this.statusCode = code; return this; }, json(payload) { this.payload = payload; } };
 }
 
-function loadController(prismaMock) {
+function loadController(prismaMock, cropMock = { applyCropHarvestReturn: async () => [], reverseCropHarvestReturn: async () => [] }, cashSessionMock = { findOpenCashSession: async () => ({ id: "cash-1" }) }) {
   delete require.cache[controllerPath];
   require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: prismaMock };
   require.cache[shopAccessPath] = { id: shopAccessPath, filename: shopAccessPath, loaded: true, exports: { getShopIdForUser: async () => "shop-1" } };
-  require.cache[cashSessionPath] = { id: cashSessionPath, filename: cashSessionPath, loaded: true, exports: { findOpenCashSession: async () => ({ id: "cash-1" }) } };
+  require.cache[cashSessionPath] = { id: cashSessionPath, filename: cashSessionPath, loaded: true, exports: cashSessionMock };
   require.cache[dashboardCachePath] = { id: dashboardCachePath, filename: dashboardCachePath, loaded: true, exports: { invalidateDashboardHistory: async () => {} } };
-  require.cache[cropHarvestSalesPath] = { id: cropHarvestSalesPath, filename: cropHarvestSalesPath, loaded: true, exports: { restoreCropHarvestAllocationQuantity: async () => {} } };
+  require.cache[cropHarvestSalesPath] = { id: cropHarvestSalesPath, filename: cropHarvestSalesPath, loaded: true, exports: cropMock };
   return require(controllerPath);
 }
 
@@ -131,4 +131,50 @@ test("return rejects quantities above the sale remainder without writing", async
   assert.equal(error.status, 409);
   assert.match(error.message, /exceeds the remaining quantity/);
   assert.equal(returnCreated, false);
+});
+
+test("return correction restores debt without deleting the original return", async () => {
+  const original = {
+    id: "return-1", shopId: "shop-1", saleId: "sale-1", totalAmount: 1000,
+    debtReduction: 1000, refundAmount: 0, reversal: null,
+    sale: { id: "sale-1", status: "COMPLETED", receiptNumber: 42, debt: { id: "debt-1", amount: 2000, amountPaid: 0, status: "OPEN", note: null } },
+    items: [{
+      id: "return-item-1", quantity: 1, restockQuantity: 0, damagedQuantity: 1, totalAmount: 1000,
+      saleItem: { id: "sale-item-1", saleId: "sale-1", productId: null, returnedQuantity: 1, farmAnimalEvent: null },
+    }],
+  };
+  const reversalRequestKey = "22345678-1234-1234-1234-123456789abc";
+  let debtWrite;
+  let returnedQuantityChange;
+  let createdReversal;
+  const tx = {
+    $queryRawUnsafe: async () => [],
+    saleReturnReversal: {
+      findFirst: async () => null,
+      create: async ({ data }) => {
+        createdReversal = data;
+        return { id: "reversal-1", ...data, items: data.items.create.map((item, index) => ({ id: "reversal-item-" + index, ...item })) };
+      },
+    },
+    saleReturn: { findFirst: async () => original },
+    debt: { updateMany: async ({ where, data }) => { debtWrite = { where, data }; return { count: 1 }; } },
+    saleItem: { updateMany: async ({ where, data }) => { returnedQuantityChange = { where, data }; return { count: 1 }; } },
+  };
+  const controller = loadController({ $transaction: async (work) => work(tx) });
+  const res = response();
+
+  await controller.reverse({
+    user: { userId: "owner-1" },
+    params: { id: "sale-1", returnId: "return-1" },
+    body: { reason: "Entered return against wrong receipt", requestKey: reversalRequestKey },
+  }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createdReversal.debtRestored, 1000);
+  assert.equal(createdReversal.refundRecoveredAmount, 0);
+  assert.equal(createdReversal.cashSessionId, null);
+  assert.equal(debtWrite.data.amount, 3000);
+  assert.equal(debtWrite.data.status, "OPEN");
+  assert.equal(returnedQuantityChange.data.returnedQuantity.decrement, 1);
+  assert.equal(original.reversal, null);
 });

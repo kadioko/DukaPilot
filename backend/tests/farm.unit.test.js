@@ -164,7 +164,10 @@ test("retried livestock events reuse their key without changing animal or linked
   const productUpdates = [];
   const transaction = {
     farmAnimalEvent: {
-      findUnique: async ({ where }) => events.find((event) => event.groupId === where.groupId_clientRequestId.groupId && event.clientRequestId === where.groupId_clientRequestId.clientRequestId) || null,
+      findFirst: async ({ where }) => {
+        assert.equal(where.group.shopId, "shop-1");
+        return events.find((event) => event.groupId === where.groupId && event.clientRequestId === where.clientRequestId) || null;
+      },
       create: async ({ data }) => { const event = { id: `event-${events.length + 1}`, ...data }; events.push(event); return event; },
     },
     farmGroup: {
@@ -190,6 +193,26 @@ test("retried livestock events reuse their key without changing animal or linked
   assert.equal(groupUpdates.length, 1);
   assert.equal(productUpdates.length, 1);
   assert.equal(productUpdates[0].data.currentStock.decrement, 2);
+});
+
+test("a livestock retry never returns another shop's event or group", async () => {
+  const foreignEvent = { id: "foreign-event", groupId: "foreign-group", clientRequestId: "farm_event_retry_001" };
+  const tx = {
+    farmAnimalEvent: {
+      findUnique: async () => foreignEvent,
+      findFirst: async () => null,
+    },
+    farmGroup: {
+      findFirst: async () => null,
+      findUnique: async () => ({ id: "foreign-group", shopId: "other-shop", currentAnimals: 500 }),
+    },
+  };
+  const controller = loadController({ $transaction: async (work) => work(tx) });
+  const res = response();
+  let error;
+  await controller.recordAnimalEvent({ user: { userId: "owner-1", role: "MERCHANT" }, params: { id: "foreign-group" }, body: { type: "ADDITION", quantity: 1, clientRequestId: "farm_event_retry_001" } }, res, (caught) => { error = caught; });
+  assert.equal(error?.status, 404);
+  assert.equal(res.payload, null);
 });
 
 test("live-animal POS sale decrements the mapped group and records the sale item", async () => {

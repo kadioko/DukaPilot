@@ -33,6 +33,8 @@ test("cash session summary reconciles opening cash, sales, collections, and expe
     quotationCash: 30000,
     cashRefunds: 0,
     cashRefundCount: 0,
+    cashRefundRecoveries: 0,
+    cashRefundRecoveryCount: 0,
     cashExpenses: 18000,
     inventoryCashOut: 0,
     receiptPaymentCorrectionCashOut: 0,

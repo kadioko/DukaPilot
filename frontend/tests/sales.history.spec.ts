@@ -18,11 +18,22 @@ test("sales history searches, filters, paginates, and fits a phone viewport", as
   await page.route("**/*api/products?*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 1 } }) }));
 
   const historyRequests: URL[] = [];
+  const correctionBodies: Array<Record<string, unknown>> = [];
+  let returnCorrected = false;
+  await page.route("**/*api/sales/*/returns/*/reverse", async (route) => {
+    correctionBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    returnCorrected = true;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ reversal: { totalAmount: 1000, debtRestored: 0, refundRecoveredAmount: 1000 }, reused: false }),
+    });
+  });
   await page.route("**/*api/sales?*", async (route) => {
     if (route.request().method() !== "GET") return route.continue();
     historyRequests.push(new URL(route.request().url()));
     const offset = Number(new URL(route.request().url()).searchParams.get("offset") || 0);
-    const sales = Array.from({ length: offset === 0 ? 20 : 5 }, (_, index) => ({
+    const sales: Array<Record<string, unknown>> = Array.from({ length: offset === 0 ? 20 : 5 }, (_, index) => ({
       id: `sale-${offset + index}`,
       receiptNumber: offset + index + 1,
       totalAmount: 2500,
@@ -34,12 +45,35 @@ test("sales history searches, filters, paginates, and fits a phone viewport", as
       createdAt: "2026-10-02T08:00:00.000Z",
       items: [{ quantity: 1, unitPrice: 2500, totalPrice: 2500, name: "Unga wa sembe", product: { id: "product-1", name: "Unga wa sembe", unit: "kg" } }],
     }));
+    if (offset === 0) {
+      sales[0].returns = [{
+        id: "return-1", reason: "Wrong item", totalAmount: 1000, debtReduction: 0, refundAmount: 1000,
+        refundMethod: "CASH", createdAt: "2026-10-02T08:30:00.000Z", items: [],
+        reversal: returnCorrected ? {
+          id: "reversal-1", reason: "Recorded against the wrong receipt", totalAmount: 1000,
+          debtRestored: 0, refundRecoveredAmount: 1000, recoveryMethod: "CASH",
+          createdAt: "2026-10-02T09:00:00.000Z",
+        } : null,
+      }];
+    }
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ sales, total: 25, limit: 20, offset }) });
   });
 
   await page.goto("/sales");
   await page.getByRole("button", { name: "Sales History" }).click();
   await expect(page.getByText("DP-000001")).toBeVisible();
+  await page.getByRole("button", { name: "Correct return" }).click();
+  await page.getByLabel("Correction reason").fill("Recorded against the wrong receipt");
+  await page.getByLabel("How the refund was actually recovered").selectOption("CASH");
+  await page.getByLabel("Recovery reference").fill("CASH-RECOVERED-1");
+  await page.getByRole("button", { name: "Save correction" }).click();
+  await expect.poll(() => correctionBodies.length).toBe(1);
+  expect(correctionBodies[0]).toMatchObject({
+    reason: "Recorded against the wrong receipt",
+    recoveryMethod: "CASH",
+    paymentRef: "CASH-RECOVERED-1",
+  });
+  await expect(page.getByText(/^Return corrected: TZS/)).toBeVisible();
 
   await page.getByRole("textbox", { name: "Search sales" }).fill("Asha");
   await expect.poll(() => historyRequests.at(-1)?.searchParams.get("search")).toBe("Asha");

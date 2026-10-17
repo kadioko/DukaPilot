@@ -64,7 +64,7 @@ test("voiding a sale restores stock, cancels unpaid debt, and records the reason
     },
     product: { update: async ({ data }) => { restoredStock += data.currentStock.increment; } },
     stockMovement: { create: async ({ data }) => { movementNote = data.note; } },
-    debt: { update: async () => { cancelledDebt = true; } },
+    debt: { updateMany: async () => { cancelledDebt = true; return { count: 1 }; } },
     farmAnimalEvent: { findMany: async () => [], updateMany: async () => ({ count: 0 }) },
   };
   mockPrisma({

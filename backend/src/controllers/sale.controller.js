@@ -87,7 +87,7 @@ const list = asyncHandler(async (req, res) => {
         items: {
           include: { product: { select: { id: true, name: true, unit: true } } },
         },
-        returns: { include: { items: true }, orderBy: { createdAt: "desc" } },
+        returns: { include: { items: true, reversal: true }, orderBy: { createdAt: "desc" } },
       },
       orderBy: { createdAt: "desc" },
       take: pageSize,
@@ -335,10 +335,11 @@ const voidSale = asyncHandler(async (req, res) => {
     if (existing.debt && (existing.debt.amountPaid > 0 || existing.debt.payments.length > 0)) {
       throw Object.assign(new Error("This credit sale has a recorded payment. Reverse the payment before voiding the sale."), { status: 409 });
     }
+    let cashSession = existing.cashSession;
     if (existing.cashSessionId && typeof tx.$queryRawUnsafe === "function") {
-      await tx.$queryRawUnsafe('SELECT "id" FROM "cash_sessions" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', existing.cashSessionId, shopId);
+      [cashSession] = await tx.$queryRawUnsafe('SELECT "id", "status" FROM "cash_sessions" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', existing.cashSessionId, shopId);
     }
-    if (existing.cashSession?.status === "CLOSED") {
+    if (cashSession?.status === "CLOSED") {
       throw Object.assign(new Error("This sale belongs to a closed cash shift and cannot be voided. Use the return flow for a completed customer return, or ask the owner to reconcile the closed shift."), { status: 409 });
     }
 
@@ -365,7 +366,11 @@ const voidSale = asyncHandler(async (req, res) => {
       });
     }
     if (existing.debt) {
-      await tx.debt.update({ where: { id: existing.debt.id }, data: { status: "CANCELLED", note: `Sale voided: ${reason}` } });
+      const cancelled = await tx.debt.updateMany({
+        where: { id: existing.debt.id, shopId, amountPaid: 0, payments: { none: {} } },
+        data: { status: "CANCELLED", note: `Sale voided: ${reason}` },
+      });
+      if (cancelled.count !== 1) throw Object.assign(new Error("This debt received a payment while the sale was being voided. Refresh and use the return/refund flow."), { status: 409 });
     }
 
     return tx.sale.findUnique({
@@ -373,7 +378,7 @@ const voidSale = asyncHandler(async (req, res) => {
       include: {
         shop: { select: { name: true } },
         items: { include: { product: { select: { id: true, name: true, unit: true } } } },
-        returns: { include: { items: true }, orderBy: { createdAt: "desc" } },
+        returns: { include: { items: true, reversal: true }, orderBy: { createdAt: "desc" } },
       },
     });
   });
@@ -396,7 +401,7 @@ const get = asyncHandler(async (req, res) => {
       items: {
         include: { product: { select: { id: true, name: true, unit: true, sellingPrice: true } } },
       },
-      returns: { include: { items: true }, orderBy: { createdAt: "desc" } },
+      returns: { include: { items: true, reversal: true }, orderBy: { createdAt: "desc" } },
     },
   });
   if (!sale) return res.status(404).json({ error: "Sale not found" });

@@ -114,6 +114,7 @@ test("recurring expense creation stores payment method and advances the schedule
 test("expense list applies search, vendor, category, and date range filters", async () => {
   let findManyArgs;
   let aggregateArgs;
+  let salesArgs;
   const controller = loadController({
     shop: { findUnique: async () => ({ id: "shop-1" }) },
     expense: {
@@ -122,7 +123,8 @@ test("expense list applies search, vendor, category, and date range filters", as
       groupBy: async () => [],
     },
     recurringExpense: { findMany: async () => [] },
-    sale: { aggregate: async () => ({ _sum: { totalAmount: 0, profit: 0 }, _count: { id: 0 } }) },
+    sale: { aggregate: async (args) => { salesArgs = args; return { _sum: { totalAmount: 0, profit: 0 }, _count: { id: 0 } }; } },
+    $queryRaw: async () => [],
   });
   const req = {
     user: { userId: "owner-1" },
@@ -136,8 +138,9 @@ test("expense list applies search, vendor, category, and date range filters", as
   assert.equal(res.statusCode, 200);
   assert.equal(findManyArgs.where.category, "UTILITIES");
   assert.equal(findManyArgs.where.vendor.contains, "TANESCO");
-  assert.equal(findManyArgs.where.spentAt.gte.toISOString(), "2026-07-01T12:00:00.000Z");
-  assert.equal(findManyArgs.where.spentAt.lte.toISOString(), "2026-07-31T23:59:59.999Z");
+  assert.equal(findManyArgs.where.spentAt.gte.toISOString(), "2026-06-30T21:00:00.000Z");
+  assert.equal(findManyArgs.where.spentAt.lt.toISOString(), "2026-07-31T21:00:00.000Z");
+  assert.deepEqual(salesArgs.where.createdAt, findManyArgs.where.spentAt);
   assert.equal(findManyArgs.where.OR.length, 3);
   assert.deepEqual(aggregateArgs.where, findManyArgs.where);
 });
@@ -154,6 +157,7 @@ test("expense overview excludes legacy stock entries and reports sales-based met
     },
     recurringExpense: { findMany: async () => [] },
     sale: { aggregate: async ({ where }) => { salesWhere = where; return { _sum: { totalAmount: 100000, profit: 40000 }, _count: { id: 4 } }; } },
+    $queryRaw: async () => [],
   });
   const req = { user: { userId: "owner-1" }, query: { period: "all" } };
   const res = response();
@@ -167,6 +171,38 @@ test("expense overview excludes legacy stock entries and reports sales-based met
   assert.equal(res.payload.summary.netProfit, 25000);
   assert.equal(res.payload.summary.previousTotal, null);
   assert.deepEqual(res.payload.summary.topCategories, [{ category: "UTILITIES", total: 10000 }, { category: "RENT", total: 5000 }]);
+});
+
+test("expense profit pressure includes dated customer returns and keeps damaged goods as a cost", async () => {
+  const controller = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    expense: { findMany: async () => [], aggregate: async () => ({ _sum: { amount: 200 }, _count: { id: 1 } }), groupBy: async () => [] },
+    recurringExpense: { findMany: async () => [] },
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 2000, profit: 1000 }, _count: { id: 1 } }) },
+    $queryRaw: async () => [{ returnedRevenue: 1000n, returnedProfit: 1000n }],
+  });
+  const res = response();
+  await controller.list({ user: { userId: "owner-1" }, query: { period: "all" } }, res);
+  assert.equal(res.payload.summary.totalSales, 1000);
+  assert.equal(res.payload.summary.grossProfit, 0);
+  assert.equal(res.payload.summary.netProfit, -200);
+  assert.equal(res.payload.summary.expensePercentOfSales, 20);
+});
+
+test("changing a non-cash expense to cash attaches it to the current open drawer", async () => {
+  let updatedData;
+  const existing = { id: "expense-1", title: "Transport", amount: 1000, category: "TRANSPORT", paymentMethod: "MPESA", spentAt: new Date(), cashSessionId: null };
+  const prismaMock = {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    expense: { findFirst: async () => existing, update: async ({ data }) => { updatedData = data; return { ...existing, ...data }; } },
+    cashSession: { findFirst: async () => ({ id: "session-1", status: "OPEN" }) },
+  };
+  prismaMock.$transaction = async (work) => work(prismaMock);
+  const controller = loadController(prismaMock);
+  const res = response();
+  await controller.update({ user: { userId: "owner-1" }, params: { id: existing.id }, body: { paymentMethod: "CASH" } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(updatedData.cashSessionId, "session-1");
 });
 
 test("recording a recurring expense creates one real ledger entry and advances its next date", async () => {

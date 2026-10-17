@@ -13,11 +13,16 @@ function costQualityQuery(shopId, from, to) {
   return prisma.$queryRawUnsafe(
     `SELECT
        COALESCE((SELECT SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)
-         - COALESCE((SELECT SUM(sri.\"totalAmount\" - sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)::bigint AS \"knownCostGrossProfit\",
+         - COALESCE((SELECT SUM(sri.\"totalAmount\" - sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)
+         + COALESCE((SELECT SUM(sri.\"totalAmount\" - sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" JOIN sale_return_items original ON original.id = sri.\"saleReturnItemId\" WHERE srr.\"shopId\" = $1 AND original.\"buyingPrice\" > 0 AND ($2::timestamptz IS NULL OR srr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR srr.\"createdAt\" < $3)), 0)::bigint AS \"knownCostGrossProfit\",
        COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" <= 0 AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)
          + COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND NOT EXISTS (SELECT 1 FROM sale_items si WHERE si.\"saleId\" = s.id) AND ($2::timestamptz IS NULL OR s.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR s.\"createdAt\" < $3)), 0)
-         - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" <= 0 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)::bigint AS \"missingCostSalesRevenue\",
-       COALESCE((SELECT SUM(sr.\"totalAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)::bigint AS \"returnedRevenue\"`,
+         - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" <= 0 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)
+         + COALESCE((SELECT SUM(original.\"totalAmount\") FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" JOIN sale_return_items original ON original.id = sri.\"saleReturnItemId\" WHERE srr.\"shopId\" = $1 AND original.\"buyingPrice\" <= 0 AND ($2::timestamptz IS NULL OR srr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR srr.\"createdAt\" < $3)), 0)::bigint AS \"missingCostSalesRevenue\",
+       COALESCE((SELECT SUM(sr.\"totalAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)::bigint AS \"grossReturnedRevenue\",
+       COALESCE((SELECT SUM(srr.\"totalAmount\") FROM sale_return_reversals srr WHERE srr.\"shopId\" = $1 AND ($2::timestamptz IS NULL OR srr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR srr.\"createdAt\" < $3)), 0)::bigint AS \"reversedRevenue\",
+       (COALESCE((SELECT SUM(sr.\"totalAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND ($2::timestamptz IS NULL OR sr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR sr.\"createdAt\" < $3)), 0)
+        - COALESCE((SELECT SUM(srr.\"totalAmount\") FROM sale_return_reversals srr WHERE srr.\"shopId\" = $1 AND ($2::timestamptz IS NULL OR srr.\"createdAt\" >= $2) AND ($3::timestamptz IS NULL OR srr.\"createdAt\" < $3)), 0))::bigint AS \"returnedRevenue\"`,
     shopId, from, to,
   );
 }
@@ -165,13 +170,20 @@ const overview = asyncHandler(async (req, res) => {
               COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS profitReduction
        FROM sale_returns sr JOIN sale_return_items sri ON sri."saleReturnId" = sr.id
        WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 GROUP BY 1
+     ), daily_reversal_adjustments AS (
+       SELECT to_char(srr."createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam', 'YYYY-MM-DD') AS date,
+              COALESCE(SUM(srr."totalAmount"), 0)::bigint AS revenue,
+              COALESCE(SUM(CASE WHEN original."buyingPrice" > 0 THEN original."totalAmount" - original."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS profit
+       FROM sale_return_reversals srr JOIN sale_return_item_reversals sri ON sri."reversalId" = srr.id JOIN sale_return_items original ON original.id = sri."saleReturnItemId"
+       WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 GROUP BY 1
      )
-     SELECT COALESCE(daily_sales.date, daily_profit.date, daily_returns.date, daily_return_cost.date) AS date,
-            COALESCE(daily_sales.sales, 0) - COALESCE(daily_returns.returns, 0)::bigint AS sales,
-            (COALESCE(daily_profit.profit, 0) - COALESCE(daily_return_cost.profitReduction, 0))::bigint AS profit
+     SELECT COALESCE(daily_sales.date, daily_profit.date, daily_returns.date, daily_return_cost.date, daily_reversal_adjustments.date) AS date,
+            COALESCE(daily_sales.sales, 0) - COALESCE(daily_returns.returns, 0)::bigint + COALESCE(daily_reversal_adjustments.revenue, 0)::bigint AS sales,
+            (COALESCE(daily_profit.profit, 0) - COALESCE(daily_return_cost.profitReduction, 0) + COALESCE(daily_reversal_adjustments.profit, 0))::bigint AS profit
      FROM daily_sales FULL OUTER JOIN daily_profit USING (date)
        FULL OUTER JOIN daily_returns USING (date)
-       FULL OUTER JOIN daily_return_cost USING (date)`,
+       FULL OUTER JOIN daily_return_cost USING (date)
+       FULL OUTER JOIN daily_reversal_adjustments USING (date)`,
     shopId,
     chartDays[0],
   );
@@ -261,15 +273,22 @@ const overview = asyncHandler(async (req, res) => {
          COALESCE((SELECT SUM(s."totalAmount") FROM sales s WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."paymentMethod" <> 'CREDIT' AND s."quotationId" IS NULL AND ($2::timestamptz IS NULL OR s."createdAt" >= $2) AND s."createdAt" < $3), 0)
          + COALESCE((SELECT SUM(CASE WHEN qp.kind = 'PAYMENT' THEN qp.amount ELSE -qp.amount END) FROM quotation_payments qp JOIN quotations q ON q.id = qp."quotationId" WHERE q."shopId" = $1 AND qp."paidAt" >= COALESCE($2, '-infinity'::timestamptz) AND qp."paidAt" < $3), 0)
          + COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp JOIN debts d ON d.id = dp."debtId" WHERE d."shopId" = $1 AND ($2::timestamptz IS NULL OR dp."createdAt" >= $2) AND dp."createdAt" < $3 AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.id = d."saleId" AND s."quotationId" IS NOT NULL)), 0)
-         - COALESCE((SELECT SUM(sr."refundAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)::bigint AS amount`,
+         - COALESCE((SELECT SUM(sr."refundAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)
+         + COALESCE((SELECT SUM(srr."refundRecoveredAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND ($2::timestamptz IS NULL OR srr."createdAt" >= $2) AND srr."createdAt" < $3), 0)::bigint AS amount`,
       shopId, from, new Date(now.getTime() + 1),
     ),
     prisma.$queryRawUnsafe(
-      `SELECT COALESCE(SUM(sr."totalAmount"), 0)::bigint AS amount, COUNT(*)::int AS count
-       FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3`,
+      `SELECT COALESCE((SELECT SUM(sr."totalAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)::bigint AS "grossAmount",
+              COALESCE((SELECT SUM(srr."totalAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND ($2::timestamptz IS NULL OR srr."createdAt" >= $2) AND srr."createdAt" < $3), 0)::bigint AS "reversedAmount",
+              (COALESCE((SELECT SUM(sr."totalAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)
+               - COALESCE((SELECT SUM(srr."totalAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND ($2::timestamptz IS NULL OR srr."createdAt" >= $2) AND srr."createdAt" < $3), 0))::bigint AS amount`,
       shopId, from, new Date(now.getTime() + 1),
     ),
-    previousRange ? prisma.saleReturn.aggregate({ where: { shopId, createdAt: { gte: previousRange.from, lt: previousRange.to } }, _sum: { totalAmount: true } }) : Promise.resolve(null),
+    previousRange ? prisma.$queryRawUnsafe(
+      `SELECT (COALESCE((SELECT SUM(sr."totalAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3), 0)
+               - COALESCE((SELECT SUM(srr."totalAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 AND srr."createdAt" < $3), 0))::bigint AS amount`,
+      shopId, previousRange.from, previousRange.to,
+    ) : Promise.resolve(null),
     costQualityQuery(shopId, from, new Date(now.getTime() + 1)),
     costQualityQuery(shopId, null, null),
     previousRange ? costQualityQuery(shopId, previousRange.from, previousRange.to) : Promise.resolve([]),
@@ -282,7 +301,7 @@ const overview = asyncHandler(async (req, res) => {
   const returnedRevenue = Number(returnSummaryRows[0]?.amount || 0);
   const comparisonCurrent = { sales: Number(salesAgg._sum.totalAmount || 0) - returnedRevenue, grossProfit: Number(grossProfit), expenses: Number(totalExpenses), netProfit: Number(grossProfit - totalExpenses), salesCount: Number(salesCount) };
   const comparisonPrevious = previousSales ? {
-    sales: Number(previousSales._sum.totalAmount || 0) - Number(previousReturnSummaryRows?._sum.totalAmount || 0),
+    sales: Number(previousSales._sum.totalAmount || 0) - Number(previousReturnSummaryRows?.[0]?.amount || 0),
     grossProfit: previousGrossProfit,
     expenses: Number(previousExpenses?._sum.amount || 0),
     netProfit: previousGrossProfit - Number(previousExpenses?._sum.amount || 0),
@@ -298,7 +317,8 @@ const overview = asyncHandler(async (req, res) => {
     features: featureSnapshot(shopPlan),
     summary: {
       totalSales: salesAgg._sum.totalAmount || 0,
-      returnedSales: returnedRevenue,
+      returnedSales: Number(returnSummaryRows[0]?.grossAmount || 0),
+      reversedSalesReturns: Number(returnSummaryRows[0]?.reversedAmount || 0),
       netSales: Number(salesAgg._sum.totalAmount || 0) - returnedRevenue,
       cashCollected: Number(cashCollections[0]?.amount || 0),
       creditSales: paymentBreakdownRaw.find((item) => item.paymentMethod === "CREDIT")?._sum.totalAmount || 0,
@@ -316,7 +336,9 @@ const overview = asyncHandler(async (req, res) => {
     },
     allTimeSummary: {
       totalSales: allTimeSales,
-      returnedSales: Number(allTimeCostRows[0]?.returnedRevenue || 0),
+      returnedSales: Number(allTimeCostRows[0]?.grossReturnedRevenue || 0),
+      reversedSalesReturns: Number(allTimeCostRows[0]?.reversedRevenue || 0),
+      netSales: allTimeSales - Number(allTimeCostRows[0]?.returnedRevenue || 0),
       totalProfit: allTimeProfit,
       missingCostSalesRevenue: allTimeMissingCostSalesRevenue,
       costComplete: allTimeMissingCostSalesRevenue === 0,
@@ -382,22 +404,28 @@ const profitAnalytics = asyncHandler(async (req, res) => {
   const summaryQuery = `SELECT
        COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"salesRevenue\",
        COALESCE((SELECT SUM(sr.\"totalAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"salesReturns\",
-       COALESCE((SELECT SUM(sr.\"debtReduction\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"debtReductions\",
+       COALESCE((SELECT SUM(srr.\"totalAmount\") FROM sale_return_reversals srr WHERE srr.\"shopId\" = $1 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0)::bigint AS \"salesReturnReversals\",
+       (COALESCE((SELECT SUM(sr.\"debtReduction\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)
+        - COALESCE((SELECT SUM(srr.\"debtRestored\") FROM sale_return_reversals srr WHERE srr.\"shopId\" = $1 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0))::bigint AS \"debtReductions\",
        COALESCE((SELECT SUM(sr.\"refundAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS refunds,
+       COALESCE((SELECT SUM(srr.\"refundRecoveredAmount\") FROM sale_return_reversals srr WHERE srr.\"shopId\" = $1 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0)::bigint AS \"refundRecoveries\",
        COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"paymentMethod\" <> 'CREDIT' AND s.\"quotationId\" IS NULL AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)
          + COALESCE((SELECT SUM(CASE WHEN qp.kind = 'PAYMENT' THEN qp.amount ELSE -qp.amount END) FROM quotation_payments qp JOIN quotations q ON q.id = qp.\"quotationId\" WHERE q.\"shopId\" = $1 AND qp.\"paidAt\" >= $2 AND qp.\"paidAt\" < $3), 0)
          + COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp JOIN debts d ON d.id = dp.\"debtId\" WHERE d.\"shopId\" = $1 AND dp.\"createdAt\" >= $2 AND dp.\"createdAt\" < $3 AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.id = d.\"saleId\" AND s.\"quotationId\" IS NOT NULL)), 0)
-         - COALESCE((SELECT SUM(sr.\"refundAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"cashCollected\",
+         - COALESCE((SELECT SUM(sr.\"refundAmount\") FROM sale_returns sr WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)
+         + COALESCE((SELECT SUM(srr.\"refundRecoveredAmount\") FROM sale_return_reversals srr WHERE srr.\"shopId\" = $1 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0)::bigint AS \"cashCollected\",
        COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"paymentMethod\" = 'CREDIT' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint AS \"creditSales\",
-       (COALESCE((SELECT SUM(si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0) - COALESCE((SELECT SUM(sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0))::bigint AS \"costOfGoodsSold\",
-       (COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0) - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0))::bigint AS \"knownCostRevenue\",
+       (COALESCE((SELECT SUM(si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0) - COALESCE((SELECT SUM(sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0) + COALESCE((SELECT SUM(original.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" JOIN sale_return_items original ON original.id = sri.\"saleReturnItemId\" WHERE srr.\"shopId\" = $1 AND original.\"buyingPrice\" > 0 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0))::bigint AS \"costOfGoodsSold\",
+       (COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0) - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0) + COALESCE((SELECT SUM(original.\"totalAmount\") FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" JOIN sale_return_items original ON original.id = sri.\"saleReturnItemId\" WHERE srr.\"shopId\" = $1 AND original.\"buyingPrice\" > 0 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0))::bigint AS \"knownCostRevenue\",
        COALESCE((SELECT SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" > 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)
-         - COALESCE((SELECT SUM(sri.\"totalAmount\" - sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"knownCostGrossProfit\",
+         - COALESCE((SELECT SUM(sri.\"totalAmount\" - sri.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" > 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)
+         + COALESCE((SELECT SUM(original.\"totalAmount\" - original.\"buyingPrice\" * sri.\"restockQuantity\") FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" JOIN sale_return_items original ON original.id = sri.\"saleReturnItemId\" WHERE srr.\"shopId\" = $1 AND original.\"buyingPrice\" > 0 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0)::bigint AS \"knownCostGrossProfit\",
        (COALESCE((SELECT SUM(si.\"totalPrice\") FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND si.\"buyingPrice\" <= 0 AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)
          - COALESCE((SELECT SUM(sri.\"totalAmount\") FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sri.\"buyingPrice\" <= 0 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)
+         + COALESCE((SELECT SUM(original.\"totalAmount\") FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" JOIN sale_return_items original ON original.id = sri.\"saleReturnItemId\" WHERE srr.\"shopId\" = $1 AND original.\"buyingPrice\" <= 0 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0)
          + COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND NOT EXISTS (SELECT 1 FROM sale_items si WHERE si.\"saleId\" = s.id) AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0))::bigint AS \"missingCostSalesRevenue\",
        (SELECT COUNT(*)::int FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3) AS \"salesCount\",
-       COALESCE((SELECT SUM(si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint - COALESCE((SELECT SUM(sri.quantity) FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint AS \"unitsSold\",
+       COALESCE((SELECT SUM(si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint - COALESCE((SELECT SUM(sri.quantity) FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint + COALESCE((SELECT SUM(sri.quantity) FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" WHERE srr.\"shopId\" = $1 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0)::bigint AS \"unitsSold\",
        COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $2 AND e.\"spentAt\" < $3), 0)::bigint AS expenses`;
 
   const [totalsRows, previousRows, chartRows, returnChartRows, expenseChartRows, salesChartRows, slowProductRows, productRows, productReturnRows, debtAgingRows, collectionRows, salesPaymentRows, topSupplierRows, topCustomerRows, salesByStaffRows, productionAggregate, productionInputRows] = await Promise.all([
@@ -418,15 +446,31 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       shopId, range.from, range.to,
     ),
     prisma.$queryRawUnsafe(
-      `SELECT to_char(${bucket.replaceAll('s."createdAt"', 'sr."createdAt"')}, '${label}') AS label,
-              to_char(${bucket.replaceAll('s."createdAt"', 'sr."createdAt"')}, 'YYYY-MM-DD HH24:MI') AS "sortKey",
-              COALESCE(SUM(sri."totalAmount"), 0)::bigint AS revenue,
-              COALESCE(SUM(sri.quantity), 0)::bigint AS units,
-              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS cogs,
-              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" ELSE 0 END), 0)::bigint AS "knownRevenue",
-              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS profit
-       FROM sale_returns sr JOIN sale_return_items sri ON sri."saleReturnId" = sr.id
-       WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+      `WITH return_events AS (
+         SELECT sr."createdAt" AS occurred_at, sri."totalAmount" AS revenue, sri.quantity AS units,
+                CASE WHEN sri."buyingPrice" > 0 THEN sri."buyingPrice" * sri."restockQuantity" ELSE 0 END AS cogs,
+                CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" ELSE 0 END AS known_revenue,
+                CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE sri."totalAmount" END AS profit
+         FROM sale_returns sr JOIN sale_return_items sri ON sri."saleReturnId" = sr.id
+         WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+         UNION ALL
+         SELECT srr."createdAt", -sri."totalAmount", -sri.quantity,
+                CASE WHEN original."buyingPrice" > 0 THEN -original."buyingPrice" * sri."restockQuantity" ELSE 0 END,
+                CASE WHEN original."buyingPrice" > 0 THEN -sri."totalAmount" ELSE 0 END,
+                CASE WHEN original."buyingPrice" > 0 THEN -(sri."totalAmount" - original."buyingPrice" * sri."restockQuantity") ELSE -sri."totalAmount" END
+         FROM sale_return_item_reversals sri
+         JOIN sale_return_reversals srr ON srr.id = sri."reversalId"
+         JOIN sale_return_items original ON original.id = sri."saleReturnItemId"
+         WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 AND srr."createdAt" < $3
+       )
+       SELECT to_char(${bucket.replaceAll('s."createdAt"', 'return_events.occurred_at')}, '${label}') AS label,
+              to_char(${bucket.replaceAll('s."createdAt"', 'return_events.occurred_at')}, 'YYYY-MM-DD HH24:MI') AS "sortKey",
+              COALESCE(SUM(revenue), 0)::bigint AS revenue,
+              COALESCE(SUM(units), 0)::bigint AS units,
+              COALESCE(SUM(cogs), 0)::bigint AS cogs,
+              COALESCE(SUM(known_revenue), 0)::bigint AS "knownRevenue",
+              COALESCE(SUM(profit), 0)::bigint AS profit
+       FROM return_events
        GROUP BY 1, 2 ORDER BY 2 ASC`,
       shopId, range.from, range.to,
     ),
@@ -499,13 +543,34 @@ const profitAnalytics = asyncHandler(async (req, res) => {
       shopId, range.from, range.to,
     ),
     prisma.$queryRawUnsafe(
-      `SELECT CASE WHEN si."productId" IS NOT NULL THEN si."productId"::text ELSE 'unlinked:' || COALESCE(si.name, si.description, 'Item') || '|' || COALESCE(si.unit, '') END AS id,
-              COALESCE(SUM(sri.quantity), 0)::bigint AS units,
-              COALESCE(SUM(sri."totalAmount"), 0)::bigint AS revenue,
-              COALESCE(SUM(CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END), 0)::bigint AS profitReduction,
-              COALESCE(SUM(CASE WHEN sri."buyingPrice" <= 0 THEN sri."totalAmount" ELSE 0 END), 0)::bigint AS missingCostRevenue
-       FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri."saleReturnId" JOIN sale_items si ON si.id = sri."saleItemId"
-       WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+      `WITH return_events AS (
+         SELECT sr."createdAt" AS occurred_at, sri."saleItemId" AS sale_item_id, sri.quantity AS units,
+                sri."totalAmount" AS revenue,
+                CASE WHEN sri."buyingPrice" > 0 THEN sri."buyingPrice" * sri."restockQuantity" ELSE 0 END AS restocked_cost,
+                CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" ELSE 0 END AS known_revenue,
+                CASE WHEN sri."buyingPrice" > 0 THEN sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" ELSE 0 END AS profit_reduction,
+                CASE WHEN sri."buyingPrice" <= 0 THEN sri."totalAmount" ELSE 0 END AS missing_cost_revenue
+         FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri."saleReturnId"
+         WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3
+         UNION ALL
+         SELECT srr."createdAt", original."saleItemId", -sri.quantity, -sri."totalAmount",
+                CASE WHEN original."buyingPrice" > 0 THEN -original."buyingPrice" * sri."restockQuantity" ELSE 0 END,
+                CASE WHEN original."buyingPrice" > 0 THEN -sri."totalAmount" ELSE 0 END,
+                CASE WHEN original."buyingPrice" > 0 THEN -(sri."totalAmount" - original."buyingPrice" * sri."restockQuantity") ELSE 0 END,
+                CASE WHEN original."buyingPrice" <= 0 THEN -sri."totalAmount" ELSE 0 END
+         FROM sale_return_item_reversals sri
+         JOIN sale_return_reversals srr ON srr.id = sri."reversalId"
+         JOIN sale_return_items original ON original.id = sri."saleReturnItemId"
+         WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 AND srr."createdAt" < $3
+       )
+       SELECT CASE WHEN si."productId" IS NOT NULL THEN si."productId"::text ELSE 'unlinked:' || COALESCE(si.name, si.description, 'Item') || '|' || COALESCE(si.unit, '') END AS id,
+              COALESCE(SUM(re.units), 0)::bigint AS units,
+              COALESCE(SUM(re.revenue), 0)::bigint AS revenue,
+              COALESCE(SUM(re.restocked_cost), 0)::bigint AS "restockedCost",
+              COALESCE(SUM(re.known_revenue), 0)::bigint AS "knownRevenue",
+              COALESCE(SUM(re.profit_reduction), 0)::bigint AS "profitReduction",
+              COALESCE(SUM(re.missing_cost_revenue), 0)::bigint AS "missingCostRevenue"
+       FROM return_events re JOIN sale_items si ON si.id = re.sale_item_id
        GROUP BY 1`,
       shopId, range.from, range.to,
     ),
@@ -531,7 +596,10 @@ const profitAnalytics = asyncHandler(async (req, res) => {
          WHERE q.\"shopId\" = $1 AND qp.\"paidAt\" >= $2 AND qp.\"paidAt\" < $3
          UNION ALL
          SELECT sr.\"refundMethod\" AS method, -sr.\"refundAmount\" AS amount FROM sale_returns sr
-         WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3 AND sr.\"refundAmount\" > 0
+          WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3 AND sr.\"refundAmount\" > 0
+          UNION ALL
+          SELECT srr.\"recoveryMethod\" AS method, srr.\"refundRecoveredAmount\" AS amount FROM sale_return_reversals srr
+          WHERE srr.\"shopId\" = $1 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3 AND srr.\"refundRecoveredAmount\" > 0
        ) collections GROUP BY method ORDER BY amount DESC`,
       shopId, range.from, range.to,
     ),
@@ -554,7 +622,15 @@ const profitAnalytics = asyncHandler(async (req, res) => {
               COUNT(*)::int AS "salesCount",
               (COALESCE(SUM(s."totalAmount"), 0) - COALESCE(SUM(ret.amount), 0))::bigint AS amount
        FROM sales s
-       LEFT JOIN (SELECT "saleId", SUM("totalAmount")::bigint AS amount FROM sale_returns WHERE "shopId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3 GROUP BY "saleId") ret ON ret."saleId" = s.id
+       LEFT JOIN (
+         SELECT sale_id, SUM(amount)::bigint AS amount FROM (
+           SELECT "saleId" AS sale_id, "totalAmount" AS amount FROM sale_returns WHERE "shopId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3
+           UNION ALL
+           SELECT sr."saleId" AS sale_id, -srr."totalAmount" AS amount
+           FROM sale_return_reversals srr JOIN sale_returns sr ON sr.id = srr."saleReturnId"
+           WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 AND srr."createdAt" < $3
+         ) return_events GROUP BY sale_id
+       ) ret ON ret.sale_id = s.id
        WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."createdAt" >= $2 AND s."createdAt" < $3
          AND (NULLIF(BTRIM(s."customerPhone"), '') IS NOT NULL OR NULLIF(BTRIM(s."customerName"), '') IS NOT NULL)
        GROUP BY COALESCE(s."customerId"::text, NULLIF(BTRIM(s."customerPhone"), ''), 'name:' || LOWER(NULLIF(BTRIM(s."customerName"), '')))
@@ -612,9 +688,11 @@ const profitAnalytics = asyncHandler(async (req, res) => {
   const currentSummary = {
     salesRevenue: revenue,
     salesReturns: Number(totals.salesReturns || 0),
-    netSalesRevenue: revenue - Number(totals.salesReturns || 0),
+    salesReturnReversals: Number(totals.salesReturnReversals || 0),
+    netSalesRevenue: revenue - Number(totals.salesReturns || 0) + Number(totals.salesReturnReversals || 0),
     cashCollected: Number(totals.cashCollected || 0),
     refunds: Number(totals.refunds || 0),
+    refundRecoveries: Number(totals.refundRecoveries || 0),
     netCashCollected: Number(totals.cashCollected || 0),
     creditSales: Number(totals.creditSales || 0),
     debtReductions: Number(totals.debtReductions || 0),
@@ -670,9 +748,11 @@ const profitAnalytics = asyncHandler(async (req, res) => {
   const previousSummary = previous ? {
     salesRevenue: Number(previous.salesRevenue || 0),
     salesReturns: Number(previous.salesReturns || 0),
-    netSalesRevenue: Number(previous.salesRevenue || 0) - Number(previous.salesReturns || 0),
+    salesReturnReversals: Number(previous.salesReturnReversals || 0),
+    netSalesRevenue: Number(previous.salesRevenue || 0) - Number(previous.salesReturns || 0) + Number(previous.salesReturnReversals || 0),
     cashCollected: Number(previous.cashCollected || 0),
     refunds: Number(previous.refunds || 0),
+    refundRecoveries: Number(previous.refundRecoveries || 0),
     netCashCollected: Number(previous.cashCollected || 0),
     creditSales: Number(previous.creditSales || 0),
     debtReductions: Number(previous.debtReductions || 0),
@@ -685,7 +765,7 @@ const profitAnalytics = asyncHandler(async (req, res) => {
     salesCount: Number(previous.salesCount || 0),
   } : null;
   const comparison = previousSummary ? Object.fromEntries(
-    ["salesRevenue", "salesReturns", "netSalesRevenue", "cashCollected", "refunds", "netCashCollected", "creditSales", "debtReductions", "netCreditSales", "costOfGoodsSold", "grossProfit", "grossProfitMargin", "expenses", "netProfit", "salesCount"].map((key) => {
+    ["salesRevenue", "salesReturns", "salesReturnReversals", "netSalesRevenue", "cashCollected", "refunds", "refundRecoveries", "netCashCollected", "creditSales", "debtReductions", "netCreditSales", "costOfGoodsSold", "grossProfit", "grossProfitMargin", "expenses", "netProfit", "salesCount"].map((key) => {
       const current = currentSummary[key];
       const prior = previousSummary[key];
       return [key, { current, previous: prior, change: current - prior, changePercent: prior === 0 ? null : Number((((current - prior) / Math.abs(prior)) * 100).toFixed(1)) }];

@@ -17,7 +17,7 @@ It does not change current product stock when it creates synthetic historical sa
 
 ## Current Demo Snapshot
 
-As of 2026-10-02, all seven public merchant demos have 72 completed, illustrative sales spread across the previous 30 Tanzania calendar days, ending on 2026-10-02. The crop farm history uses harvested maize and tomatoes; the livestock farm history uses eggs, egg trays, and pork. These are sample transactions, not merchant activity. They do not decrement current product stock, create stock receipts, or create Daily Close sessions. Do not use demo reports to reconcile real cash, inventory, or accounting.
+As of 2026-10-16, all seven merchant demo accounts have 72 completed, illustrative sales spread across the 30 Tanzania calendar days from 2026-09-17 through 2026-10-16. The crop farm history uses harvested maize and tomatoes; the livestock farm history uses eggs, egg trays, and pork. These are sample transactions, not merchant activity. They do not decrement current product stock, create stock receipts, or create Daily Close sessions. Do not use demo reports to reconcile real cash, inventory, or accounting.
 
 ## Production Schema Preflight
 

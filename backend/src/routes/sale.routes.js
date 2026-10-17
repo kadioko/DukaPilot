@@ -11,6 +11,7 @@ router.use(requireActiveSubscription);
 
 router.patch("/:id/void", requirePermission("canViewReports"), saleVoidValidation, ctrl.voidSale);
 router.post("/:id/returns", requirePermission("canViewReports"), saleReturn.create);
+router.post("/:id/returns/:returnId/reverse", requirePermission("canViewReports"), saleReturn.reverse);
 
 router.use(requirePermission("canSell"));
 
