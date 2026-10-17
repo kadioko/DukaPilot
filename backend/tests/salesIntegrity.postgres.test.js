@@ -22,7 +22,10 @@ const controlledPrisma = new Proxy(prisma, {
 });
 require.cache[require.resolve("../src/lib/prisma")].exports = controlledPrisma;
 const cachePath = require.resolve("../src/services/dashboard-cache.service");
-require.cache[cachePath] = { id: cachePath, filename: cachePath, loaded: true, exports: { invalidateDashboardHistory: async () => {} } };
+require.cache[cachePath] = { id: cachePath, filename: cachePath, loaded: true, exports: {
+  dashboardHistory: (_shopId, loader) => loader(),
+  invalidateDashboardHistory: async () => {},
+} };
 const sales = require("../src/controllers/sale.controller");
 const returns = require("../src/controllers/saleReturn.controller");
 const debts = require("../src/controllers/debt.controller");
@@ -230,6 +233,9 @@ test("damaged crop returns reduce cycle revenue/profit and an audited reversal r
   assert.equal(afterCorrection.realizedProfit, 1000);
   assert.equal(afterCorrection.soldQuantity, 2);
   assert.equal((await prisma.saleItem.findUnique({ where: { id: f.sale.items[0].id } })).returnedQuantity, 0);
+
+  const overview = await invoke(dashboard.overview, { user: f.user, query: { period: "today" } });
+  assert.equal(overview.statusCode, 200, JSON.stringify(overview.payload));
 
   const analytics = await invoke(dashboard.profitAnalytics, { user: f.user, query: { period: "month" } });
   assert.equal(analytics.statusCode, 200, JSON.stringify(analytics.payload));
