@@ -23,8 +23,10 @@ exited successfully.
 
 1. Sign in to the Railway CLI and keep the project linked to DukaPilot.
 2. Use either PostgreSQL client tools with `pg_dump`, `pg_restore`, and `psql`
-   on your PATH, or start Docker Desktop. The script falls back to the official
-   `postgres:16-alpine` image and pulls it on its first successful run.
+   on your PATH, or install Docker Desktop. When local PostgreSQL tools are
+   absent, the Windows runner starts Docker Desktop and waits up to two minutes
+   for its engine. The backup uses the official `postgres:16-alpine` image and
+   pulls it on its first successful run.
 3. Keep the backup folder in the signed-in Windows user's protected profile or
    on a full-disk-encrypted drive. Do not move archives into Git, a public link,
    WhatsApp, an unprotected USB device, or a shared folder.
@@ -80,14 +82,15 @@ counts, duration, and outcome in the private operations record.
 
 ## Failure Handling
 
-- If Docker Desktop and PostgreSQL client tools are both unavailable, the
-  backup fails before claiming success. Start Docker Desktop or install the
-  client tools, then rerun it.
+- If PostgreSQL client tools are absent and Docker Desktop cannot start or its
+  engine does not become ready, the backup fails before claiming success.
+  Check the local log, start Docker Desktop or install the client tools, then
+  rerun it.
 - If Railway cannot inject the production connection, confirm the Railway CLI
   login, project link, and production backend service name. Do not copy the
   database URL from Railway into a command or document.
-- If a scheduled run fails, review that day's local log, fix the cause, and run
-  a successful manual backup the same day.
+- If a scheduled run fails, review that day's local log for the tool preflight
+  and failure line, fix the cause, and run a successful backup the same day.
 
 This local copy reduces risk on Railway Hobby, but it is not a substitute for
 an isolated restore drill. If `BACKUP_S3_BUCKET` is configured in Railway, the
