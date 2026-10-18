@@ -145,6 +145,56 @@ test("stock adjustment retries with the same key return the original movement wi
   assert.equal(movements.length, 1);
 });
 
+test("stock adjustment hides product costs from staff without Reports permission, including retries", async () => {
+  let stock = 10;
+  let movement;
+  const product = {
+    id: "prod-1", shopId: "shop-1", isActive: true, buyingPrice: 700,
+    sellingPrice: 1000, wholesalePrice: 900, wholesaleMinQty: 5,
+    createRequestId: "private-key", createRequestHash: "private-hash",
+  };
+  const productModel = {
+    findFirst: async () => ({ ...product, currentStock: stock }),
+    findUnique: async () => ({ ...product, currentStock: stock }),
+    updateMany: async ({ where, data }) => {
+      if (!matchesStockWhere(where, stock)) return { count: 0 };
+      stock = data.currentStock;
+      return { count: 1 };
+    },
+  };
+  const stockMovementModel = {
+    findFirst: async () => movement || null,
+    create: async ({ data }) => { movement = { id: "move-1", ...data }; return movement; },
+  };
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    product: productModel, stockMovement: stockMovementModel,
+    $transaction: async (work) => work({ product: productModel, stockMovement: stockMovementModel }),
+  } };
+  require.cache[shopAccessPath] = { id: shopAccessPath, filename: shopAccessPath, loaded: true, exports: { getShopIdForUser: async () => "shop-1" } };
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const user = { userId: "owner-1", staffId: "staff-1", role: "MERCHANT", permissions: { canManageStock: true, canViewReports: false } };
+  const body = { productId: "prod-1", type: "IN", quantity: 1, requestKey: "8b0f9e93-d871-4e8d-bca0-7cb681a2f2b1" };
+
+  for (const replayed of [false, true]) {
+    const res = response();
+    await controller.adjust({ user, body }, res, assert.fail);
+    assert.equal(res.payload.replayed, replayed);
+    assert.equal(res.payload.product.sellingPrice, 1000);
+    assert.equal(res.payload.product.buyingPrice, null);
+    assert.equal(res.payload.product.wholesalePrice, null);
+    assert.equal(res.payload.product.wholesaleMinQty, null);
+    assert.equal("createRequestId" in res.payload.product, false);
+    assert.equal("createRequestHash" in res.payload.product, false);
+  }
+  const owner = response();
+  await controller.adjust({ user: { userId: "owner-1", role: "MERCHANT" }, body }, owner, assert.fail);
+  assert.equal(owner.payload.replayed, true);
+  assert.equal(owner.payload.product.buyingPrice, 700);
+  assert.equal(owner.payload.product.wholesalePrice, 900);
+  assert.equal(stock, 11);
+});
+
 test("stock history is shop-scoped, searchable, filterable, paginated, and uses Tanzania day bounds", async () => {
   let findArgs;
   let countArgs;

@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
+const { redactProduct } = require("../lib/productRedaction");
 
 function tanzaniaDayStart(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
@@ -91,7 +92,7 @@ const adjust = asyncHandler(async (req, res) => {
     }
   }
 
-  res.json({ product: result.updatedProduct, movement: result.movement, replayed: result.replayed });
+  res.json({ product: redactProduct(result.updatedProduct, req), movement: result.movement, replayed: result.replayed });
 });
 
 const movements = asyncHandler(async (req, res) => {

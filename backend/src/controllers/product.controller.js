@@ -7,6 +7,7 @@ const { inferBarcodeType, validateBarcode, validateSku, nextInternalBarcode, nex
 const { getRequestLanguage } = require("../lib/requestLanguage");
 const { findVisibleSupplier } = require("../lib/supplierAccess");
 const { hasPromotionInput, normalizePromotion } = require("../lib/productPricing");
+const { redactProduct } = require("../lib/productRedaction");
 
 const PRODUCT_IMPORT_MAX_ROWS = 200;
 const PRODUCT_IMPORT_MAX_BYTES = 500_000;
@@ -64,25 +65,12 @@ function asyncHandler(fn) {
   });
 }
 
-function canViewFinancials(req) {
-  return req.user.role === "ADMIN" || !req.user.staffId || req.user.permissions?.canViewReports;
-}
-
 function canGenerateBarcode(req) {
   return req.user.role === "ADMIN" || !req.user.staffId || Boolean(req.user.permissions?.canManageStock);
 }
 
 function canManageCatalogVisibility(req) {
   return req.user.role === "ADMIN" || !req.user.staffId;
-}
-
-function redactProduct(product, req) {
-  const safeProduct = { ...product };
-  delete safeProduct.createRequestId;
-  delete safeProduct.createRequestHash;
-  return canViewFinancials(req)
-    ? safeProduct
-    : { ...safeProduct, buyingPrice: null, wholesalePrice: null, wholesaleMinQty: null };
 }
 
 function normalizedUnit(value) {
