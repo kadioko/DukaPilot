@@ -44,6 +44,13 @@ permissions because it exposes liabilities, payments, credits, and aging. Stock
 staff without Reports can still use inventory stock adjustments to record
 quantities received without accessing purchase amounts or supplier balances.
 
+**Correct stock/receipts** is a separate permission and is off for existing
+staff until the owner grants it. With **Stock**, it permits reasoned reversal
+of eligible manual entries in Stock History. Correcting a receiving receipt
+also requires **Reports**, because that can change purchase and supplier
+balances. Neither action deletes its original record. See
+[Stock and receiving corrections](./STOCK_CORRECTIONS.md).
+
 ## AI Assistant (Pro)
 
 On an active **Pro** plan, the owner can tick **Use AI Assistant** for each individual staff member. It is off by default and does not grant any other permission.

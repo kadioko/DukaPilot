@@ -6,6 +6,13 @@ Open **Analytics > Purchases** (or select the Purchases metric from Analytics). 
 
 To make a purchase appear, use **Receive Stock** (or receive an order through **Orders**), enter actual delivered quantities and costs, then save the receipt. A draft supplier order by itself is not included. Receipts can use a shared supplier or a shop-private supplier; leaving the supplier blank does not exclude the receipt from purchase totals.
 
+An authorized correction of an eligible saved receipt changes its effective
+received quantity and landed total in the original receipt-date period. A
+fully reversed receipt stays in audit history but is excluded from purchase
+totals and exports. The correction has its own date and reason in the receipt
+history; it is not a new purchase or a new cash payment. See
+[Stock and receiving corrections](./STOCK_CORRECTIONS.md).
+
 ## Accounting treatment
 
 A stock purchase is inventory, not automatically an operating expense or an immediate COGS charge. Landed cost is attached to received products and becomes COGS as those products are sold. Do not enter the same receipt again as an ordinary expense, or profit would be understated. Purchase Analytics reports the landed value received and separately shows **Paid at receipt**. If that original entry was wrong, an authorized user can expand the receipt and choose **Correct receipt payment**. This works for both supplier-linked and unassigned receipts; it appends a reasoned, linked correction and leaves the original unchanged. Analytics show the latest correction as the effective receipt-time amount/method and its correction history. The method breakdown sums only those corrected receipt-time amounts; it does not include later payments or supplier refunds. **Supplier Balances** reports the remaining supplier amount owed after receipt-time payments, later allocated payments, returns, credit notes, and refunds received. Supplier returns have a merchant-entered progress history; it is not delivery verification. A cash supplier refund is recorded only after funds arrive, requires an open shift, and is included in Daily Close. A supplier refund is not sales income or a purchase. See [Supplier Purchasing and Payables](./SUPPLIER_PURCHASING_AND_PAYABLES.md).

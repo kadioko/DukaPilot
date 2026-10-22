@@ -1,7 +1,7 @@
 # Stock and receiving corrections
 
 This release adds linked corrections; it does not delete financial or inventory history.
-Apply migration `20261022001000_stock_receipt_corrections` before deploying the backend and updated frontend. Do not use the new UI against an older backend.
+Migration `20261022001000_stock_receipt_corrections` was applied on Railway on 2026-10-22, followed by the backend and frontend deployment. For another environment, apply that migration before serving the updated backend and frontend; do not use the new UI against an older backend.
 
 ## Who can correct
 
@@ -36,4 +36,4 @@ Use a demo shop, not a live supplier transaction:
 4. Reverse a new manual stock-in entry and confirm the opposite movement and the original row both remain.
 5. Confirm a staff member without **Correct stock/receipts** cannot call either correction route.
 
-The unit suite covers these guards. A real PostgreSQL concurrency/integration run and demo browser smoke test are still required before production rollout. No migration or production data change is performed by editing this guide.
+The focused unit suite covers these guards. A real PostgreSQL concurrency/integration run and an end-to-end demo browser correction test remain useful follow-up verification; they have not been completed merely by the deployment. Use a controlled demo transaction, not a real supplier record.

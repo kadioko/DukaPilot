@@ -26,7 +26,7 @@ ordinary merchant records.
 
 ## Current Production Status
 
-As of 2026-10-16, all seven merchant demo accounts have 72 completed illustrative sales each across the Tanzania calendar dates 2026-09-17 through 2026-10-16. The showcase data for shop, pharmacy, beauty, bar, restaurant, crops, and livestock was also refreshed on 2026-10-16. Supplier demo profiles/catalogs and the cashier demo account were refreshed at the same time. All merchant demo shops remain hidden from the public catalog. See [Demo Sales History Seeding](./DEMO_HISTORY_SEEDING.md) for the limitations of illustrative sales data.
+As of 2026-10-22, all seven merchant demo accounts have 72 seeder-managed illustrative sales each across the Tanzania calendar dates 2026-09-23 through 2026-10-22. The showcase data for shop, pharmacy, beauty, bar, restaurant, crops, and livestock was refreshed on 2026-10-22, along with three supplier demos and the cashier demo. Other demo-account sales, including controlled return or shift tests, were left untouched. Merchant demo shops remain hidden from the public catalog. Crop and livestock inputs and kitchen ingredients are marked for internal use, not sale. See [Demo Sales History Seeding](./DEMO_HISTORY_SEEDING.md) for the limitations of illustrative sales data.
 
 The full showcase command initially stopped on 2026-10-02 because Railway lacked `sales.createdByStaffId`. Migration `20261002001000_sales_staff_ownership` was applied and verified on Railway on 2026-10-02. The guarded showcase refresh then completed successfully for 7 merchant demos, 3 supplier demos, the cashier demo, food operations, crop operations, and livestock operations. Railway reported all 48 migrations applied, and the API health check returned `ok`.
 
@@ -39,6 +39,9 @@ The full showcase command initially stopped on 2026-10-02 because Railway lacked
    write mode.
 4. Do not use it to create a real customer, reset a real customer PIN, or seed
    production-looking data into a real shop.
+5. The script refuses to rewrite its fixed showcase sales if a return, debt, or
+   cash session has been linked to them. Review that conflict instead of
+   removing the linked history.
 
 ## Demo logins
 

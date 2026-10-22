@@ -5,7 +5,7 @@ Owner reports are available to the merchant owner and staff explicitly granted t
 ## Metric definitions
 
 - **Sales revenue** is the total value of completed sales recorded in the selected Tanzania-time range. It includes credit sales and is not the same as cash received.
-- **Cash collected** in Profit Analytics is completed non-credit sales recorded in the range, quotation payments/refunds on their original paid date, and ordinary debt-payment ledger entries received in the range. Converted quotation sales and their copied debt-payment rows are excluded to prevent counting the same receipt twice. Supplier settlements, supplier refunds, and other cash movements are not included; use Daily Close for drawer cash movement and Supplier Balances for supplier liabilities/credits.
+- **Cash collected** in Analytics is completed non-credit sales recorded in the range, quotation payments/refunds on their original paid date, and ordinary debt-payment ledger entries received in the range. Converted quotation sales and their copied debt-payment rows are excluded to prevent counting the same receipt twice. Supplier settlements, supplier refunds, and other cash movements are not included; use Daily Close for drawer cash movement and Supplier Balances for supplier liabilities/credits.
 - **Credit sales** is the value of completed sales marked CREDIT during the selected range. It is not the current unpaid balance; use receivables for the current balance.
 - **Cost of goods sold** uses the buying-price snapshot recorded on sale items. A zero buying-price line is treated conservatively as uncosted, not as free inventory.
 - **Gross profit (known costs)** includes only sale items with a recorded positive cost. The report flags revenue from zero-cost items and excludes those items from gross profit and its margin denominator.
@@ -19,7 +19,7 @@ Owner reports are available to the merchant owner and staff explicitly granted t
 
 Date-only filters are interpreted as full calendar dates in `Africa/Dar_es_Salaam`; the end date is inclusive. Dashboard and Profit preset comparisons align with the prior calendar period: today compares with the same local time yesterday, week-to-date with the same weekdays and time last week, and month/quarter/year-to-date with the matching date and time in the prior calendar period. Custom Profit and branch ranges compare with the immediately preceding interval of equal duration.
 
-The Branch performance view applies one date range to all branches, compares combined totals with the preceding equal-duration range, combines totals over the filtered branch set, and exports the same filtered rows shown in the table. Profit Analytics trends known-cost gross profit, expenses, and net profit using the same local-time buckets. Its export includes the selected range, comparison range, financial summary, receivables snapshot, product performance, and trend rows.
+The Branch performance view applies one date range to all branches, compares combined totals with the preceding equal-duration range, combines totals over the filtered branch set, and exports the same filtered rows shown in the table. Analytics trends known-cost gross profit, expenses, and net profit using the same local-time buckets. Its export includes the selected range, comparison range, financial summary, receivables snapshot, product performance, and trend rows.
 
 ## Owner workflow
 
@@ -32,4 +32,4 @@ The Branch performance view applies one date range to all branches, compares com
 
 ## Demo data caution
 
-Demo sales are synthetic examples, not evidence of a real merchant's trading. The history seeder deliberately does not change on-hand stock or create Daily Close cash records, so demo sales, inventory, and drawer totals are not expected to reconcile. As of 2026-10-16, each of the seven merchant demo accounts has 72 completed sales across 30 days ending 2026-10-16. Refresh them only through the guarded process in [Demo Sales History Seeding](./DEMO_HISTORY_SEEDING.md).
+Demo sales are synthetic examples, not evidence of a real merchant's trading. The history seeder deliberately does not change on-hand stock or create Daily Close cash records, so demo sales, inventory, and drawer totals are not expected to reconcile. As of 2026-10-22, each of the seven merchant demo accounts has 72 seeder-managed sales across 30 days ending 2026-10-22, plus any separately recorded demo transactions. Refresh them only through the guarded process in [Demo Sales History Seeding](./DEMO_HISTORY_SEEDING.md).

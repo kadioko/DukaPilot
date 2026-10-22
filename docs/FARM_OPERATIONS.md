@@ -22,7 +22,7 @@ For example, receive layers feed as kg at its cost per kg. A 25 kg bag costs
 TZS 50,000, so the input cost is TZS 2,000 per kg. Recording 37.5 kg used in
 egg production removes that quantity from feed stock and assigns TZS 75,000 to
 the egg batch. The produced eggs or trays take that cost into their inventory
-valuation. **Profit Analytics** shows production input costs for the production
+valuation. **Analytics** shows production input costs for the production
 period, but does not subtract them again as an operating expense. Their cost
 appears in cost of goods sold and known-cost profit when the eggs or trays are
 sold. Unsold output remains stock; an ordinary stock adjustment does not
@@ -159,7 +159,7 @@ For example, if feed stock is measured in kilograms and one bag contains 25 kg,
 using 1.5 bags is recorded as 37.5 kg. Keep the product unit consistent (kg or
 bag) between receiving, stock, and production, and set its buying cost per that
 unit. Stock adjustments also accept up to three decimals for reconciliation.
-The Profit Analytics page shows batch input quantities and costs for the
+The Analytics page shows batch input quantities and costs for the
 selected day, week, month, quarter, year, or custom period. Production cost is
 capitalized into output inventory and becomes cost of goods sold as that output
 sells; the report displays production cost separately and does not subtract it

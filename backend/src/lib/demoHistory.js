@@ -3,6 +3,20 @@ const MAX_SALES = 80;
 const HISTORY_DAYS = 30;
 const PAYMENT_METHODS = ["CASH", "CASH", "CASH", "CASH", "MPESA", "MPESA", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "BANK"];
 
+function managedDemoSalesWhere(shopId, windowStart) {
+  return {
+    shopId,
+    status: "COMPLETED",
+    createdAt: { gte: windowStart },
+    clientReference: { startsWith: "demo-history-v1:" },
+    returns: { none: {} },
+    debt: null,
+    cashSessionId: null,
+    quotationId: null,
+    customerOrderId: null,
+  };
+}
+
 function parseDateOnly(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
   if (!match) throw new Error("End date must use YYYY-MM-DD format");
@@ -120,4 +134,4 @@ function generateDemoSaleSchedule({ endDate, count = 72, products }) {
   return schedule.sort((a, b) => a.createdAt - b.createdAt);
 }
 
-module.exports = { HISTORY_DAYS, MAX_SALES, MIN_SALES, generateDemoSaleSchedule };
+module.exports = { HISTORY_DAYS, MAX_SALES, MIN_SALES, generateDemoSaleSchedule, managedDemoSalesWhere };

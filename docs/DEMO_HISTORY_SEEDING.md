@@ -6,9 +6,12 @@ The seeder uses Prisma directly to:
 
 - spread 60-80 completed demo sales across the last 30 Tanzanian calendar days;
 - keep every day represented, with a busier Friday/Saturday curve;
-- redistribute existing recent demo sales first, removing the artificial "all today" spike;
+- redistribute only its own `demo-history-v1:` sales, removing the artificial
+  "all today" spike without moving independently recorded demo transactions;
 - create only the missing sales needed to reach the target;
-- preserve sale totals, items, receipts, and linked credit-debt dates for existing sales;
+- leave returns, debts, cash shifts, quotations, customer orders, and other
+  controlled demo sales and their dates untouched;
+- choose only active, saleable products when creating new history sales;
 - mark the target as a demo shop and remove it from the public catalog.
 
 The history seed does not create Daily Close sessions or stock receipts. Demonstrate those workflows with a fresh controlled entry during a demo so the opening cash, counted cash, variance, landed cost, and stock history match the values you explain.
@@ -17,7 +20,7 @@ It does not change current product stock when it creates synthetic historical sa
 
 ## Current Demo Snapshot
 
-As of 2026-10-16, all seven merchant demo accounts have 72 completed, illustrative sales spread across the 30 Tanzania calendar days from 2026-09-17 through 2026-10-16. The crop farm history uses harvested maize and tomatoes; the livestock farm history uses eggs, egg trays, and pork. These are sample transactions, not merchant activity. They do not decrement current product stock, create stock receipts, or create Daily Close sessions. Do not use demo reports to reconcile real cash, inventory, or accounting.
+As of 2026-10-22, all seven merchant demo accounts have 72 seeder-managed, illustrative sales spread across the 30 Tanzania calendar days from 2026-09-23 through 2026-10-22. Separately recorded demo sales may also appear in reports; the history refresh does not move them. Crop and livestock history uses saleable output rather than seed, feed, or other internal inputs. These are sample transactions, not merchant activity. They do not decrement current product stock, create stock receipts, or create Daily Close sessions. Do not use demo reports to reconcile real cash, inventory, or accounting.
 
 ## Production Schema Preflight
 
@@ -33,7 +36,7 @@ Use a new controlled quotation when demonstrating acceptance, conversion, deposi
 
 ## Safety Guard
 
-The default target is the featured `Duka la Amina` seed account (`+255700000002`). Any other target must already have `Shop.isDemo = true`. The command refuses to run without an exact confirmation value and refuses to partially redistribute a window containing more than 80 completed sales.
+The default target is the featured `Duka la Amina` seed account (`+255700000002`). Any other target must already have `Shop.isDemo = true`. The command refuses to run without an exact confirmation value and refuses to partially redistribute a window containing more than 80 seeder-managed sales. It does not delete or re-date other demo sales when the reporting window shifts.
 
 Run from `backend/` in the Railway service shell or another environment that has the production `DATABASE_URL`:
 
@@ -50,3 +53,11 @@ Review the dry-run output. It reads the target and planned counts without writin
 Optional: set `DEMO_HISTORY_END_DATE=YYYY-MM-DD` to pin the reporting window to a specific demo date. Without it, the script ends the window on today's date in Tanzania.
 
 Expected output reports the shop, total sales, number of represented days, how many existing sales were redistributed, and how many demo-only sales were created. Rerunning for the same window redistributes the same recent sales and does not create more once the target is reached.
+
+When using the Railway CLI from a local computer, its injected `DATABASE_URL`
+may be a private `postgres.railway.internal` address. The script prefers the
+service's public `DATABASE_MIGRATE_URL` when present, as the showcase seeder
+does. Run it through `railway run --no-local --service DukaPilot --environment
+production npm run db:seed-demo-history` from `backend/`, with the confirmation,
+target phone, count, and dry-run variables set as above. Never print either URL
+or commit it to source control.

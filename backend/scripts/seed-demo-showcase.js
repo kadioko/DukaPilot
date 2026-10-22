@@ -66,6 +66,7 @@ function productData(data) {
     minimumStock: data.minimumStock,
     expiryDate: data.expiryDate || null,
     doesNotExpire: Boolean(data.doesNotExpire),
+    isInternalUse: Boolean(data.isInternalUse),
     isActive: true,
   };
 }
@@ -183,9 +184,9 @@ async function ensureFreshActivity(shop, key, products, expenseTitle) {
         createdAt: saleDate,
       },
     });
-    await tx.saleItem.deleteMany({ where: { saleId } });
-    await tx.saleItem.create({
-      data: {
+    await tx.saleItem.upsert({
+      where: { id: itemId },
+      create: {
         id: itemId,
         saleId,
         productId: product.id,
@@ -196,6 +197,8 @@ async function ensureFreshActivity(shop, key, products, expenseTitle) {
         buyingPrice: product.buyingPrice,
         totalPrice: total,
       },
+      update: { productId: product.id, name: product.name, unit: product.unit,
+        quantity: 1, unitPrice: product.sellingPrice, buyingPrice: product.buyingPrice, totalPrice: total },
     });
     await tx.expense.upsert({
       where: { id: id(key, "fresh-expense") },
@@ -325,9 +328,9 @@ async function seedKitchen(shop, key, config) {
 async function seedCropFarm(shop) {
   const key = "crops";
   const products = await Promise.all([
-    ensureProduct(shop.id, key, { name: "Mbegu za Mahindi", sku: "CROP-SEED", unit: "kg", buyingPrice: 6500, sellingPrice: 8000, currentStock: 14, minimumStock: 5, doesNotExpire: true }),
-    ensureProduct(shop.id, key, { name: "NPK Mbolea", sku: "CROP-NPK", unit: "bag", buyingPrice: 120000, sellingPrice: 135000, currentStock: 10, minimumStock: 4, doesNotExpire: true }),
-    ensureProduct(shop.id, key, { name: "Dawa ya Mimea", sku: "CROP-PEST", unit: "litre", buyingPrice: 18000, sellingPrice: 23000, currentStock: 6, minimumStock: 2, doesNotExpire: true }),
+    ensureProduct(shop.id, key, { name: "Mbegu za Mahindi", sku: "CROP-SEED", unit: "kg", buyingPrice: 6500, sellingPrice: 8000, currentStock: 14, minimumStock: 5, doesNotExpire: true, isInternalUse: true }),
+    ensureProduct(shop.id, key, { name: "NPK Mbolea", sku: "CROP-NPK", unit: "bag", buyingPrice: 120000, sellingPrice: 135000, currentStock: 10, minimumStock: 4, doesNotExpire: true, isInternalUse: true }),
+    ensureProduct(shop.id, key, { name: "Dawa ya Mimea", sku: "CROP-PEST", unit: "litre", buyingPrice: 18000, sellingPrice: 23000, currentStock: 6, minimumStock: 2, doesNotExpire: true, isInternalUse: true }),
     ensureProduct(shop.id, key, { name: "Mahindi - Shamba A", sku: "CROP-MAIZE-A", unit: "kg", buyingPrice: 708, sellingPrice: 1500, currentStock: 190, minimumStock: 50, doesNotExpire: true }),
     ensureProduct(shop.id, key, { name: "Nyanya - Greenhouse", sku: "CROP-TOMATO-G", unit: "crate", buyingPrice: 2400, sellingPrice: 4800, currentStock: 0, minimumStock: 10, doesNotExpire: false }),
   ]);
@@ -424,8 +427,7 @@ async function seedCropFarm(shop) {
       create: { id: saleId, shopId: shop.id, totalAmount: 45000, profit: 23760, paymentMethod: "MPESA", paymentRef: "DEMO-CROP-TODAY", channel: "POS", pricingTier: "RETAIL", customerName: "Demo grain buyer", receiptNumber: 9901, clientReference: "demo-showcase:crops:fresh-sale", note: "Fresh harvest showcase sale", createdAt: daysAgo(0, 13) },
       update: { totalAmount: 45000, profit: 23760, paymentMethod: "MPESA", paymentRef: "DEMO-CROP-TODAY", customerName: "Demo grain buyer", note: "Fresh harvest showcase sale", createdAt: daysAgo(0, 13) },
     });
-    await tx.saleItem.deleteMany({ where: { saleId } });
-    await tx.saleItem.create({ data: { id: saleItemId, saleId, productId: bySku["CROP-MAIZE-A"].id, name: "Mahindi - Shamba A", unit: "kg", quantity: 30, unitPrice: 1500, buyingPrice: 708, totalPrice: 45000 } });
+    await tx.saleItem.upsert({ where: { id: saleItemId }, create: { id: saleItemId, saleId, productId: bySku["CROP-MAIZE-A"].id, name: "Mahindi - Shamba A", unit: "kg", quantity: 30, unitPrice: 1500, buyingPrice: 708, totalPrice: 45000 }, update: { productId: bySku["CROP-MAIZE-A"].id, name: "Mahindi - Shamba A", unit: "kg", quantity: 30, unitPrice: 1500, buyingPrice: 708, totalPrice: 45000 } });
     await tx.cropHarvestAllocation.upsert({ where: { id: id(key, "sale-allocation") }, create: { id: id(key, "sale-allocation"), harvestBatchId: harvestOneId, saleItemId, quantity: 30, revenue: 45000, cost: 21240 }, update: { harvestBatchId: harvestOneId, saleItemId, quantity: 30, revenue: 45000, cost: 21240 } });
     await tx.expense.upsert({ where: { id: id(key, "fresh-expense") }, create: { id: id(key, "fresh-expense"), shopId: shop.id, title: "Greenhouse water", amount: 18000, category: "UTILITIES", paymentMethod: "CASH", spentAt: daysAgo(0, 9), note: "Fresh crop showcase operating cost" }, update: { title: "Greenhouse water", amount: 18000, category: "UTILITIES", paymentMethod: "CASH", spentAt: daysAgo(0, 9), note: "Fresh crop showcase operating cost" } });
   }, SEED_TRANSACTION_OPTIONS);
@@ -434,8 +436,8 @@ async function seedCropFarm(shop) {
 async function seedLivestockFarm(shop) {
   const key = "livestock";
   const products = await Promise.all([
-    ensureProduct(shop.id, key, { name: "Layer Mash", sku: "FARM-LAYER-MASH", unit: "bag", buyingPrice: 46000, sellingPrice: 52000, currentStock: 12, minimumStock: 5, doesNotExpire: true }),
-    ensureProduct(shop.id, key, { name: "Pig Grower Feed", sku: "FARM-PIG-FEED", unit: "bag", buyingPrice: 47000, sellingPrice: 54000, currentStock: 8, minimumStock: 4, doesNotExpire: true }),
+    ensureProduct(shop.id, key, { name: "Layer Mash", sku: "FARM-LAYER-MASH", unit: "bag", buyingPrice: 46000, sellingPrice: 52000, currentStock: 12, minimumStock: 5, doesNotExpire: true, isInternalUse: true }),
+    ensureProduct(shop.id, key, { name: "Pig Grower Feed", sku: "FARM-PIG-FEED", unit: "bag", buyingPrice: 47000, sellingPrice: 54000, currentStock: 8, minimumStock: 4, doesNotExpire: true, isInternalUse: true }),
     ensureProduct(shop.id, key, { name: "Mayai Mabichi", sku: "FARM-EGGS", unit: "egg", buyingPrice: 313, sellingPrice: 450, currentStock: 420, minimumStock: 120, doesNotExpire: true }),
     ensureProduct(shop.id, key, { name: "Tray ya Mayai", sku: "FARM-EGG-TRAY", unit: "tray", buyingPrice: 9390, sellingPrice: 12500, currentStock: 14, minimumStock: 5, doesNotExpire: true }),
     ensureProduct(shop.id, key, { name: "Nyama ya Nguruwe", sku: "FARM-PORK", unit: "kg", buyingPrice: 3400, sellingPrice: 12500, currentStock: 45, minimumStock: 10, doesNotExpire: true }),
@@ -489,6 +491,25 @@ async function main() {
   }
   if (!databaseUrl) throw new Error("DATABASE_MIGRATE_URL or DATABASE_URL is required to refresh the demo showcase.");
 
+  const targetUsers = await prisma.user.findMany({
+    where: { phone: { in: [...merchants, ...suppliers].map((account) => account.phone) } },
+    include: { shop: { select: { isDemo: true } } },
+  });
+  for (const user of targetUsers) {
+    if (merchants.some((account) => account.phone === user.phone) && user.shop && !user.shop.isDemo) {
+      throw new Error(`Refusing to change ${user.phone}: its shop is not marked as a demo.`);
+    }
+    if (suppliers.some((account) => account.phone === user.phone) && user.shop) {
+      throw new Error(`Refusing to change ${user.phone}: a supplier demo phone owns a shop.`);
+    }
+  }
+  const linkedSales = await prisma.sale.findMany({
+    where: { id: { in: merchants.map((account) => id(account.key, "fresh-sale")) },
+      OR: [{ returns: { some: {} } }, { debt: { isNot: null } }, { cashSessionId: { not: null } }] },
+    select: { id: true },
+  });
+  if (linkedSales.length) throw new Error(`Refusing to rewrite linked showcase sales: ${linkedSales.map((sale) => sale.id).join(", ")}`);
+
   const pinHash = await bcrypt.hash(DEMO_PIN, 10);
   const accounts = new Map();
   for (const spec of merchants) {
@@ -520,9 +541,9 @@ async function main() {
     additionalCostNote: "Mkaa na kupika",
     expenseTitle: "Bar electricity",
     products: [
-      { name: "Kuku Mbichi", sku: "BAR-RAW-CHICKEN", unit: "kuku", buyingPrice: 18000, sellingPrice: 22000, currentStock: 8, minimumStock: 4, doesNotExpire: false },
-      { name: "Chips", sku: "BAR-CHIPS", unit: "portion", buyingPrice: 1800, sellingPrice: 3500, currentStock: 36, minimumStock: 10, doesNotExpire: true },
-      { name: "Mafuta ya Kupikia", sku: "BAR-OIL", unit: "litre", buyingPrice: 5000, sellingPrice: 6500, currentStock: 10, minimumStock: 3, doesNotExpire: false },
+      { name: "Kuku Mbichi", sku: "BAR-RAW-CHICKEN", unit: "kuku", buyingPrice: 18000, sellingPrice: 22000, currentStock: 8, minimumStock: 4, doesNotExpire: false, isInternalUse: true },
+      { name: "Chips", sku: "BAR-CHIPS", unit: "portion", buyingPrice: 1800, sellingPrice: 3500, currentStock: 36, minimumStock: 10, doesNotExpire: true, isInternalUse: true },
+      { name: "Mafuta ya Kupikia", sku: "BAR-OIL", unit: "litre", buyingPrice: 5000, sellingPrice: 6500, currentStock: 10, minimumStock: 3, doesNotExpire: false, isInternalUse: true },
       { name: "Kuku Choma Plate", sku: "BAR-CHICKEN-PLATE", unit: "plate", buyingPrice: 6200, sellingPrice: 14000, currentStock: 18, minimumStock: 6, doesNotExpire: false },
       { name: "Safari Lager", sku: "BAR-SAFARI", unit: "bottle", buyingPrice: 2800, sellingPrice: 4500, currentStock: 48, minimumStock: 12, doesNotExpire: true },
     ],
@@ -539,9 +560,9 @@ async function main() {
     additionalCostNote: "Mkaa na vibarua",
     expenseTitle: "Restaurant cooking gas",
     products: [
-      { name: "Mchele", sku: "REST-RICE", unit: "kg", buyingPrice: 2300, sellingPrice: 3100, currentStock: 30, minimumStock: 10, doesNotExpire: true },
-      { name: "Maharage", sku: "REST-BEANS", unit: "kg", buyingPrice: 3000, sellingPrice: 4200, currentStock: 22, minimumStock: 8, doesNotExpire: true },
-      { name: "Mafuta ya Kupikia", sku: "REST-OIL", unit: "litre", buyingPrice: 5000, sellingPrice: 6500, currentStock: 9, minimumStock: 3, doesNotExpire: false },
+      { name: "Mchele", sku: "REST-RICE", unit: "kg", buyingPrice: 2300, sellingPrice: 3100, currentStock: 30, minimumStock: 10, doesNotExpire: true, isInternalUse: true },
+      { name: "Maharage", sku: "REST-BEANS", unit: "kg", buyingPrice: 3000, sellingPrice: 4200, currentStock: 22, minimumStock: 8, doesNotExpire: true, isInternalUse: true },
+      { name: "Mafuta ya Kupikia", sku: "REST-OIL", unit: "litre", buyingPrice: 5000, sellingPrice: 6500, currentStock: 9, minimumStock: 3, doesNotExpire: false, isInternalUse: true },
       { name: "Wali Maharage Plate", sku: "REST-RICE-BEANS-PLATE", unit: "plate", buyingPrice: 1500, sellingPrice: 5000, currentStock: 20, minimumStock: 8, doesNotExpire: false },
       { name: "Fresh Juice", sku: "REST-JUICE", unit: "glass", buyingPrice: 900, sellingPrice: 2500, currentStock: 30, minimumStock: 10, doesNotExpire: false },
     ],

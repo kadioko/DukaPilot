@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { generateDemoSaleSchedule } = require("../src/lib/demoHistory");
+const { generateDemoSaleSchedule, managedDemoSalesWhere } = require("../src/lib/demoHistory");
 
 const products = [
   { id: "flour", unit: "kg", buyingPrice: 2000, sellingPrice: 3000 },
@@ -29,4 +29,19 @@ test("demo history is deterministic and spreads realistic sales across all 30 da
 test("demo history refuses unsafe sale counts", () => {
   assert.throws(() => generateDemoSaleSchedule({ endDate: "2026-08-06", count: 59, products }), /between 60 and 80/);
   assert.throws(() => generateDemoSaleSchedule({ endDate: "2026-08-06", count: 81, products }), /between 60 and 80/);
+});
+
+test("history refresh selects only unlinked sales owned by the seeder", () => {
+  const start = new Date("2026-09-23T00:00:00+03:00");
+  assert.deepEqual(managedDemoSalesWhere("demo-shop", start), {
+    shopId: "demo-shop",
+    status: "COMPLETED",
+    createdAt: { gte: start },
+    clientReference: { startsWith: "demo-history-v1:" },
+    returns: { none: {} },
+    debt: null,
+    cashSessionId: null,
+    quotationId: null,
+    customerOrderId: null,
+  });
 });
