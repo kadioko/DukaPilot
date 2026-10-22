@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, History, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
-import { api } from "@/lib/api";
+import { api, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 
 type MovementType = "IN" | "OUT" | "ADJUSTMENT";
@@ -18,6 +18,9 @@ interface Movement {
   createdAt: string;
   product: { id: string; name: string; sku?: string | null; unit: string; currentStock: number };
   stockReceipt?: { id: string; invoiceNumber?: string | null; supplier?: { id: string; name: string } | null } | null;
+  manualAdjustment?: boolean;
+  reversalOfId?: string | null;
+  reversal?: { id: string } | null;
 }
 
 interface Pagination { page: number; limit: number; total: number; totalPages: number; }
@@ -47,6 +50,19 @@ function StockHistoryContent() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [canCorrect, setCanCorrect] = useState(false);
+  const [canViewReceipts, setCanViewReceipts] = useState(false);
+  const [correctionId, setCorrectionId] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionError, setCorrectionError] = useState("");
+  const [correcting, setCorrecting] = useState(false);
+  const correctionAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  useEffect(() => {
+    getCurrentSession<{ user: { staff?: { permissions?: { canCorrectStock?: boolean; canViewReports?: boolean } } } }>()
+      .then(({ user }) => { setCanCorrect(!user.staff || Boolean(user.staff.permissions?.canCorrectStock)); setCanViewReceipts(!user.staff || Boolean(user.staff.permissions?.canViewReports)); })
+      .catch(() => { setCanCorrect(false); setCanViewReceipts(false); });
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -75,6 +91,22 @@ function StockHistoryContent() {
   }, [from, lang, page, search, sw, to, type]);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function reverseSelected() {
+    if (!correctionId || !correctionReason.trim()) { setCorrectionError(sw ? "Chagua tukio na andika sababu." : "Choose an entry and enter a reason."); return; }
+    if (!window.confirm(sw ? "Geuza tukio hili la stock? Historia ya awali itabaki." : "Reverse this stock entry? Its original history will remain.")) return;
+    setCorrecting(true);
+    setCorrectionError("");
+    try {
+      const fingerprint = `${correctionId}:${correctionReason.trim()}`;
+      if (!correctionAttempt.current || correctionAttempt.current.fingerprint !== fingerprint) correctionAttempt.current = { fingerprint, key: crypto.randomUUID() };
+      await api.post(`/stock/movements/${correctionId}/reverse`, { requestKey: correctionAttempt.current.key, reason: correctionReason.trim() }, lang);
+      correctionAttempt.current = null;
+      setCorrectionId(""); setCorrectionReason("");
+      await load();
+    } catch (value) { setCorrectionError(value instanceof Error ? value.message : (sw ? "Imeshindikana kusahihisha stock." : "Could not correct stock.")); }
+    finally { setCorrecting(false); }
+  }
 
   const hasFilters = Boolean(search || type !== "ALL" || from || to);
   function clearFilters() {
@@ -123,6 +155,18 @@ function StockHistoryContent() {
             </div>
           </div>
         </section>
+
+        {canCorrect && <section className="space-y-2 border border-amber-200 bg-amber-50 p-4" aria-label={sw ? "Sahihisha stock" : "Correct stock"}>
+          <h2 className="text-sm font-semibold text-amber-950">{sw ? "Sahihisha tukio la stock" : "Correct a stock entry"}</h2>
+          <p className="text-xs leading-5 text-amber-900">{sw ? "Geuza tukio la mkono lililorekodiwa karibuni. Marekebisho yanaongezwa kwenye historia; risiti za kupokea husahihishwa kwenye Pokea Stock." : "Reverse a recent manual entry. A linked correction stays in history; receiving receipts are corrected on the Receive Stock page."} {canViewReceipts && <Link href="/receiving" className="font-semibold underline">{sw ? "Pokea Stock" : "Receive Stock"}</Link>}</p>
+          <div className="flex flex-wrap gap-2"><select value={correctionId} onChange={(event) => setCorrectionId(event.target.value)} className="min-h-10 min-w-0 flex-1 border border-amber-300 bg-white px-2 text-sm" aria-label={sw ? "Tukio la kusahihisha" : "Entry to correct"}><option value="">{sw ? "Chagua tukio la mkono" : "Select a manual entry"}</option>{movements.filter((movement) => movement.manualAdjustment && !movement.reversalOfId && !movement.reversal).map((movement) => <option key={movement.id} value={movement.id}>{movement.product.name} · {movement.type} {formatQuantity(movement.quantity)} · {formatDate(movement.createdAt, lang)}</option>)}</select><input value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} maxLength={500} placeholder={sw ? "Sababu ya kusahihisha" : "Correction reason"} aria-label={sw ? "Sababu ya kusahihisha" : "Correction reason"} className="min-h-10 min-w-0 flex-1 border border-amber-300 bg-white px-2 text-sm" /><button type="button" disabled={correcting || !correctionId || !correctionReason.trim()} onClick={() => void reverseSelected()} className="min-h-10 bg-amber-800 px-3 text-sm font-semibold text-white disabled:opacity-50">{correcting ? "..." : sw ? "Geuza tukio" : "Reverse entry"}</button></div>
+          {correctionError && <p role="alert" className="text-sm text-red-700">{correctionError}</p>}
+        </section>}
+
+        {canViewReceipts && movements.some((movement) => movement.stockReceipt) && <section className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2 text-xs text-gray-600">
+          <span className="font-semibold">{sw ? "Risiti kwenye ukurasa huu:" : "Receipts on this page:"}</span>
+          {Array.from(new Map(movements.filter((movement) => movement.stockReceipt).map((movement) => [movement.stockReceipt!.id, movement.stockReceipt!])).values()).map((receipt) => <Link key={receipt.id} href={`/receiving?receipt=${encodeURIComponent(receipt.id)}`} className="border border-gray-300 bg-white px-2 py-1 font-semibold text-brand-800 hover:bg-brand-50">{receipt.invoiceNumber || `#${receipt.id.slice(-6)}`}</Link>)}
+        </section>}
 
         <section className="overflow-hidden border border-gray-200 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">

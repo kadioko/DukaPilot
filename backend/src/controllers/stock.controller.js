@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { redactProduct } = require("../lib/productRedaction");
+const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 
 function tanzaniaDayStart(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
@@ -79,6 +80,9 @@ const adjust = asyncHandler(async (req, res) => {
             quantity: normalizedQuantity,
             note: normalizedNote,
             productId,
+            manualAdjustment: true,
+            stockBefore: product.currentStock,
+            stockAfter: data.currentStock,
             ...(requestKey ? { requestKey, requestHash } : {}),
           },
         });
@@ -93,6 +97,59 @@ const adjust = asyncHandler(async (req, res) => {
   }
 
   res.json({ product: redactProduct(result.updatedProduct, req), movement: result.movement, replayed: result.replayed });
+});
+
+const reverseManualMovement = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const movementId = String(req.params.id || "");
+  const requestKey = String(req.body.requestKey || "").trim();
+  const reason = String(req.body.reason || "").trim();
+  if (!/^[a-f0-9-]{16,80}$/i.test(requestKey) || !reason || reason.length > 500) {
+    return res.status(400).json({ error: "A retry key and correction reason (up to 500 characters) are required" });
+  }
+  const requestHash = crypto.createHash("sha256").update(JSON.stringify({ movementId, reason })).digest("hex");
+  const replay = async () => prisma.stockMovement.findFirst({ where: { requestKey, reversalOfId: movementId, product: { is: { shopId } } } });
+  let reversal = await replay();
+  let reused = Boolean(reversal);
+  if (reversal && reversal.requestHash !== requestHash) return res.status(409).json({ error: "This retry key was used for different correction details" });
+  if (!reversal) {
+    try {
+      reversal = await prisma.$transaction(async (tx) => {
+        await tx.$queryRawUnsafe('SELECT m."id" FROM "stock_movements" m JOIN products p ON p.id = m."productId" WHERE m.id = $1 AND p."shopId" = $2 FOR UPDATE OF m', movementId, shopId);
+        const original = await tx.stockMovement.findFirst({ where: { id: movementId, product: { is: { shopId } } }, include: { reversal: { select: { id: true } } } });
+        if (!original) throw Object.assign(new Error("Stock movement not found"), { status: 404 });
+        if (!original.manualAdjustment || original.reversalOfId || original.stockReceiptId || original.receiptCorrectionId || original.supplierCreditLineId || original.foodPreparationBatchId || original.cropHarvestBatchId || original.saleReturnItemId || original.saleReturnReversalItemId) {
+          throw Object.assign(new Error("This entry must be corrected through its source workflow. Older entries without a verified manual source cannot be reversed here."), { status: 409 });
+        }
+        if (original.reversal) throw Object.assign(new Error("This stock movement was already reversed"), { status: 409 });
+        const delta = original.stockBefore !== null && original.stockAfter !== null
+          ? roundQuantity(original.stockAfter - original.stockBefore)
+          : original.type === "IN" ? original.quantity : -original.quantity;
+        const product = await tx.product.findFirst({ where: { id: original.productId, shopId } });
+        if (!product) throw Object.assign(new Error("Product not found"), { status: 404 });
+        const nextStock = roundQuantity(product.currentStock - delta);
+        if (nextStock < 0) throw Object.assign(new Error("Cannot reverse: some stock was already used. Record a separate correction with the real counted quantity."), { status: 409 });
+        const changed = await tx.product.updateMany({ where: { id: product.id, shopId, currentStock: product.currentStock }, data: { currentStock: nextStock } });
+        if (changed.count !== 1) throw Object.assign(new Error("Stock changed on another device. Refresh and try again."), { status: 409 });
+        return tx.stockMovement.create({ data: {
+          productId: product.id, type: delta > 0 ? "OUT" : delta < 0 ? "IN" : "ADJUSTMENT",
+          quantity: Math.abs(delta) || nextStock, note: `Correction: ${reason}`,
+          manualAdjustment: true, stockBefore: product.currentStock, stockAfter: nextStock,
+          reversalOfId: original.id, requestKey, requestHash,
+        } });
+      }, { isolationLevel: "Serializable" });
+    } catch (error) {
+      const saved = await replay();
+      if (saved?.requestHash === requestHash) { reversal = saved; reused = true; }
+      else if (error.code === "P2002" || error.code === "P2034") return res.status(409).json({ error: "This movement changed during correction. Refresh stock history and try again." });
+      else throw error;
+    }
+  }
+  if (!reused) {
+    await invalidateDashboardHistory(shopId);
+    req.audit = { action: "stock.manual.reverse", resourceType: "stock_movement", resourceId: reversal.id, metadata: { reversalOfId: movementId, productId: reversal.productId, quantity: reversal.quantity } };
+  }
+  res.status(reused ? 200 : 201).json({ movement: reversal, reused });
 });
 
 const movements = asyncHandler(async (req, res) => {
@@ -149,6 +206,7 @@ const history = asyncHandler(async (req, res) => {
       include: {
         product: { select: { id: true, name: true, sku: true, unit: true, currentStock: true } },
         stockReceipt: { select: { id: true, invoiceNumber: true, supplier: { select: { id: true, name: true } } } },
+        reversal: { select: { id: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit,
@@ -160,4 +218,4 @@ const history = asyncHandler(async (req, res) => {
   res.json({ movements, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
 
-module.exports = { adjust, movements, history };
+module.exports = { adjust, reverseManualMovement, movements, history };

@@ -12,6 +12,7 @@ interface StaffMember {
   role: string;
   canSell: boolean;
   canManageStock: boolean;
+  canCorrectStock: boolean;
   canManageFarm: boolean;
   canManageStaff: boolean;
   canViewReports: boolean;
@@ -76,7 +77,7 @@ export default function StaffPage() {
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canCorrectStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     if (staffActionLock.current) return;
     staffActionLock.current = true;
     setSavingStaffAction(true);
@@ -122,6 +123,7 @@ export default function StaffPage() {
   const permissionLabels = {
     canSell: lang === "sw" ? "Kuuza" : "Sell",
     canManageStock: lang === "sw" ? "Bidhaa" : "Stock",
+    canCorrectStock: lang === "sw" ? "Kusahihisha stock/risiti" : "Correct stock/receipts",
     canManageFarm: lang === "sw" ? "Kusimamia uzalishaji wa shamba" : "Manage farm production",
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",

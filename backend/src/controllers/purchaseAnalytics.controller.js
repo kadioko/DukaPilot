@@ -63,7 +63,7 @@ function receiptWhere({ shopId, range, supplierId, paymentMethod, search }) {
 
 function reportFilter(range, supplierId, paymentMethod, search) {
   const values = [];
-  const clauses = ["sr.\"shopId\" = $1"];
+  const clauses = ["sr.\"shopId\" = $1", "sr.\"voidedAt\" IS NULL"];
   const bind = (value) => { values.push(value); return `$${values.length + 1}`; };
   if (range.from) clauses.push(`sr.\"receivedAt\" >= ${bind(range.from)}`);
   if (range.to) clauses.push(`sr.\"receivedAt\" < ${bind(range.to)}`);

@@ -3,6 +3,10 @@ const bcrypt = require("bcryptjs");
 const { Prisma } = require("@prisma/client");
 const prisma = require("../lib/prisma");
 
+function anonymizeReceiptCorrectionSnapshot(value) {
+  return { ...value, invoiceNumber: null, note: null };
+}
+
 async function assertMerchantWalletCanBeDeleted(tx, rootId) {
   const [wallet, unsettledTransactions] = await Promise.all([
     tx.merchantWallet.findUnique({ where: { businessShopId: rootId }, select: { balanceTzs: true } }),
@@ -59,6 +63,15 @@ async function anonymizeMerchantAccount(userId) {
     });
     await tx.order.updateMany({ where: { shopId: { in: shopIds } }, data: { note: null } });
     await tx.stockReceipt.updateMany({ where: { shopId: { in: shopIds } }, data: { invoiceNumber: null, note: null, receivedBy: null } });
+    if (tx.stockReceiptCorrection) {
+      const corrections = await tx.stockReceiptCorrection.findMany({ where: { shopId: { in: shopIds } }, select: { id: true, before: true, after: true } });
+      for (const correction of corrections) {
+        await tx.stockReceiptCorrection.update({ where: { id: correction.id }, data: {
+          reason: "Account deleted", recordedBy: "deleted",
+          before: anonymizeReceiptCorrectionSnapshot(correction.before), after: anonymizeReceiptCorrectionSnapshot(correction.after),
+        } });
+      }
+    }
     await tx.stockMovement.updateMany({ where: { product: { shopId: { in: shopIds } } }, data: { note: null } });
     await tx.sale.updateMany({ where: { shopId: { in: shopIds } }, data: { createdByStaffId: null } });
     await tx.cashSession.updateMany({ where: { shopId: { in: shopIds } }, data: { openedByName: "Deleted staff", note: null } });
@@ -131,4 +144,4 @@ async function anonymizeMerchantAccount(userId) {
   });
 }
 
-module.exports = { anonymizeMerchantAccount, assertMerchantWalletCanBeDeleted };
+module.exports = { anonymizeMerchantAccount, assertMerchantWalletCanBeDeleted, anonymizeReceiptCorrectionSnapshot };

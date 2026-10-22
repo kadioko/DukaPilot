@@ -6,15 +6,16 @@ import { Calculator, PackageCheck, Plus, ReceiptText, RefreshCw, Search, Trash2,
 import AppShell from "@/components/layout/AppShell";
 import DateSelect from "@/components/ui/DateSelect";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
-import { api, formatTZS } from "@/lib/api";
+import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
+import ReceiptCorrection, { type CorrectableReceipt } from "./ReceiptCorrection";
 
 interface Supplier { id: string; name: string; }
 interface Product { id: string; name: string; unit: string; buyingPrice: number; sku?: string | null; supplier?: { id: string } | null; }
 interface ReceiveLine { productId: string; quantity: string; unitCost: string; }
 interface Order { id: string; status: string; invoiceNumber?: string | null; supplier: Supplier; items: Array<{ productId: string; quantity: number; receivedQuantity: number; unitPrice?: number | null; product: { name: string; unit: string; buyingPrice?: number } }>; }
-interface StockReceipt { id: string; invoiceNumber?: string | null; totalLandedCost: number; paidAtReceipt: number; paymentMethod: string; transportCost: number; otherCost: number; estimatedAllocation?: boolean; receivedAt: string; supplier?: Supplier | null; items: Array<{ id: string; quantity: number; landedUnitCost: number; product: { name: string; unit: string } }> }
+interface StockReceipt extends CorrectableReceipt { paidAtReceipt: number; paymentMethod: string; receivedAt: string; supplier?: Supplier | null; items: Array<{ id: string; quantity: number; landedUnitCost: number; product: { name: string; unit: string } }> }
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function newReceiptRequestKey() {
@@ -27,6 +28,7 @@ function ReceivingContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const sourceOrderId = searchParams.get("order") || "";
+  const selectedReceiptId = searchParams.get("receipt") || "";
   const [products, setProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [productSearchResults, setProductSearchResults] = useState<Product[]>([]);
@@ -34,6 +36,7 @@ function ReceivingContent() {
   const [productSearchError, setProductSearchError] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [receipts, setReceipts] = useState<StockReceipt[]>([]);
+  const [canCorrect, setCanCorrect] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [lines, setLines] = useState<ReceiveLine[]>([]);
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -64,15 +67,29 @@ function ReceivingContent() {
       ]);
       setProducts(productsData.products);
       setSuppliers(suppliersData.suppliers);
-      setReceipts(receiptsData.receipts);
+      if (selectedReceiptId && !receiptsData.receipts.some((receipt) => receipt.id === selectedReceiptId)) {
+        const selected = await api.get<{ receipt: StockReceipt }>(`/stock-receipts/${encodeURIComponent(selectedReceiptId)}`, lang);
+        setReceipts([selected.receipt, ...receiptsData.receipts]);
+      } else setReceipts(receiptsData.receipts);
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kupakia kupokea stock." : "Could not load stock receiving."), "error");
     } finally {
       setLoading(false);
     }
-  }, [lang, toast]);
+  }, [lang, selectedReceiptId, toast]);
+
+  useEffect(() => {
+    if (selectedReceiptId && receipts.some((receipt) => receipt.id === selectedReceiptId)) {
+      document.getElementById(`receipt-${selectedReceiptId}`)?.scrollIntoView({ block: "center" });
+    }
+  }, [receipts, selectedReceiptId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    getCurrentSession<{ user: { staff?: { permissions?: { canCorrectStock?: boolean } } } }>()
+      .then(({ user }) => setCanCorrect(!user.staff || Boolean(user.staff.permissions?.canCorrectStock)))
+      .catch(() => setCanCorrect(false));
+  }, []);
   useEffect(() => {
     const term = productSearch.trim();
     if (term.length < 2) {
@@ -292,7 +309,7 @@ function ReceivingContent() {
       <label className="mt-3 grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><input value={note} onChange={(event) => setNote(event.target.value)} className="rounded-lg border border-gray-300 px-3 py-3" /></label>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-700"><Calculator className="h-5 w-5" /></span><div><p className="text-xs text-gray-500">{lang === "sw" ? "Gharama ya bidhaa" : "Product cost"}: {formatTZS(productCost)} + {lang === "sw" ? "gharama za ziada" : "extra costs"}: {formatTZS(extraCost)}</p><p className="font-bold text-gray-950">{lang === "sw" ? "Jumla" : "Receipt total"}: {formatTZS(totalLandedCost)} · {lang === "sw" ? "imelipwa" : "paid"}: {formatTZS(paidAmount)} · {lang === "sw" ? "salio" : "due"}: {formatTZS(Math.max(0, totalLandedCost - paidAmount))}</p></div></div><button type="button" disabled={saving || !lines.length || !Number.isSafeInteger(Number(paidNow === "" ? totalLandedCost : paidNow)) || Number(paidNow === "" ? totalLandedCost : paidNow) < 0 || Number(paidNow === "" ? totalLandedCost : paidNow) > totalLandedCost} onClick={receiveStock} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"><Truck className="h-4 w-4" />{saving ? "..." : (lang === "sw" ? "Pokea stock" : "Receive stock")}</button></div>
     </section>
-    <section><div className="mb-3 flex items-center gap-2"><ReceiptText className="h-4 w-4 text-brand-700" /><h2 className="font-bold text-gray-950">{lang === "sw" ? "Stock iliyopokelewa karibuni" : "Recent stock receipts"}</h2></div><div className="space-y-2">{receipts.length ? receipts.map((receipt) => <details key={receipt.id} className="border border-gray-200 bg-white p-4"><summary className="cursor-pointer list-none"><div className="flex flex-wrap items-center justify-between gap-2 pr-6"><div><p className="font-semibold text-gray-950">{receipt.supplier?.name || (lang === "sw" ? "Bila msambazaji" : "No supplier")}</p><p className="mt-0.5 text-xs text-gray-500">{new Date(receipt.receivedAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-TZ")}{receipt.invoiceNumber ? ` - ${receipt.invoiceNumber}` : ""}{receipt.estimatedAllocation ? ` - ${lang === "sw" ? "makadirio ya gharama" : "estimated costs"}` : ""}</p></div><p className="font-bold text-brand-800">{formatTZS(receipt.totalLandedCost)}</p></div></summary><div className="mt-3 border-t border-gray-100 pt-3 text-sm">{receipt.items.map((item) => <div key={item.id} className="flex justify-between gap-3 border-b border-gray-100 py-2 last:border-0"><span>{item.product.name} x {item.quantity} {item.product.unit}</span><span className="font-semibold">{formatTZS(item.landedUnitCost)} / {item.product.unit}</span></div>)}<p className="mt-3 text-xs text-gray-500">{lang === "sw" ? "Usafiri" : "Transport"}: {formatTZS(receipt.transportCost)} | {lang === "sw" ? "Nyingine" : "Other"}: {formatTZS(receipt.otherCost)}</p></div></details>) : <div className="border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">{lang === "sw" ? "Hakuna stock iliyopokelewa bado." : "No stock receipts yet."}</div>}</div></section>
+    <section><div className="mb-3 flex items-center gap-2"><ReceiptText className="h-4 w-4 text-brand-700" /><h2 className="font-bold text-gray-950">{lang === "sw" ? "Stock iliyopokelewa karibuni" : "Recent stock receipts"}</h2></div><div className="space-y-2">{receipts.length ? receipts.map((receipt) => <details id={`receipt-${receipt.id}`} key={receipt.id} open={receipt.id === selectedReceiptId ? true : undefined} className="border border-gray-200 bg-white p-4"><summary className="cursor-pointer list-none"><div className="flex flex-wrap items-center justify-between gap-2 pr-6"><div><p className="font-semibold text-gray-950">{receipt.supplier?.name || (lang === "sw" ? "Bila msambazaji" : "No supplier")}{receipt.voidedAt && <span className="ml-2 text-xs font-semibold text-red-700">{lang === "sw" ? "IMEGEUZWA" : "REVERSED"}</span>}</p><p className="mt-0.5 text-xs text-gray-500">{new Date(receipt.receivedAt).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-TZ")}{receipt.invoiceNumber ? ` - ${receipt.invoiceNumber}` : ""}{receipt.estimatedAllocation ? ` - ${lang === "sw" ? "makadirio ya gharama" : "estimated costs"}` : ""}</p></div><p className="font-bold text-brand-800">{formatTZS(receipt.totalLandedCost)}</p></div></summary><div className="mt-3 border-t border-gray-100 pt-3 text-sm">{receipt.items.map((item) => <div key={item.id} className="flex justify-between gap-3 border-b border-gray-100 py-2 last:border-0"><span>{item.product.name} x {item.quantity} {item.product.unit}</span><span className="font-semibold">{formatTZS(item.landedUnitCost)} / {item.product.unit}</span></div>)}<p className="mt-3 text-xs text-gray-500">{lang === "sw" ? "Usafiri" : "Transport"}: {formatTZS(receipt.transportCost)} | {lang === "sw" ? "Nyingine" : "Other"}: {formatTZS(receipt.otherCost)}</p>{canCorrect && <ReceiptCorrection key={`${receipt.id}:${receipt.stockCorrections?.length || 0}`} receipt={receipt} sw={lang === "sw"} onSaved={load} />}</div></details>) : <div className="border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">{lang === "sw" ? "Hakuna stock iliyopokelewa bado." : "No stock receipts yet."}</div>}</div></section>
   </main></AppShell>;
 }
 

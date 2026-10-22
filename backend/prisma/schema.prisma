@@ -288,6 +288,7 @@ model Shop {
   cashSessions                   CashSession[]
   stockReceipts                  StockReceipt[]
   stockReceiptPaymentCorrections StockReceiptPaymentCorrection[]
+  stockReceiptCorrections        StockReceiptCorrection[]
   supplierPayments               SupplierPayment[]
   supplierCredits                SupplierCredit[]
   supplierReturnStatusEvents     SupplierReturnStatusEvent[]
@@ -1210,6 +1211,14 @@ model StockMovement {
   id                       String                  @id @default(cuid())
   requestKey               String?
   requestHash              String?
+  manualAdjustment         Boolean                 @default(false)
+  stockBefore              Float?
+  stockAfter               Float?
+  reversalOfId             String?                 @unique
+  reversalOf               StockMovement?          @relation("StockMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal                 StockMovement?          @relation("StockMovementReversal")
+  receiptCorrectionId      String?
+  receiptCorrection        StockReceiptCorrection? @relation(fields: [receiptCorrectionId], references: [id], onDelete: Restrict)
   type                     StockMovementType
   quantity                 Float
   note                     String?
@@ -1231,6 +1240,7 @@ model StockMovement {
 
   @@unique([productId, requestKey])
   @@index([productId, createdAt])
+  @@index([receiptCorrectionId])
   @@map("stock_movements")
 }
 
@@ -1371,6 +1381,7 @@ model StaffMember {
   role                         StaffRole @default(CASHIER)
   canSell                      Boolean   @default(true)
   canManageStock               Boolean   @default(false)
+  canCorrectStock              Boolean   @default(false)
   canManageFarm                Boolean   @default(false)
   canManageStaff               Boolean   @default(false)
   canViewReports               Boolean   @default(false)
@@ -1589,6 +1600,7 @@ model StockReceipt {
   note                String?
   receivedBy          String?
   receivedAt          DateTime                        @default(now())
+  voidedAt            DateTime?
   shopId              String
   shop                Shop                            @relation(fields: [shopId], references: [id], onDelete: Cascade)
   supplierId          String?
@@ -1601,6 +1613,7 @@ model StockReceipt {
   stockMovements      StockMovement[]
   paymentAllocations  SupplierPaymentAllocation[]
   paymentCorrections  StockReceiptPaymentCorrection[]
+  stockCorrections    StockReceiptCorrection[]
   credits             SupplierCredit[]
   createdAt           DateTime                        @default(now())
 
@@ -1610,6 +1623,26 @@ model StockReceipt {
   @@index([cashSessionId, paymentMethod])
   @@index([sourceOrderId, receivedAt])
   @@map("stock_receipts")
+}
+
+model StockReceiptCorrection {
+  id             String          @id @default(cuid())
+  shopId         String
+  shop           Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  stockReceiptId String
+  stockReceipt   StockReceipt    @relation(fields: [stockReceiptId], references: [id], onDelete: Restrict)
+  requestKey     String
+  requestHash    String
+  reason         String
+  before         Json
+  after          Json
+  recordedBy     String
+  createdAt      DateTime        @default(now())
+  movements      StockMovement[]
+
+  @@unique([shopId, requestKey])
+  @@index([stockReceiptId, createdAt])
+  @@map("stock_receipt_corrections")
 }
 
 model StockReceiptPaymentCorrection {

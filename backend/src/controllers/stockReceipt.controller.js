@@ -95,18 +95,28 @@ function publicReceipt(receipt) {
   return safe;
 }
 
+const receiptInclude = {
+  supplier: { select: { id: true, name: true } },
+  items: { include: { product: { select: { id: true, name: true, unit: true } } } },
+  stockCorrections: { select: { id: true, reason: true, before: true, after: true, createdAt: true }, orderBy: { createdAt: "desc" } },
+};
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const receipts = await prisma.stockReceipt.findMany({
     where: { shopId },
-    include: {
-      supplier: { select: { id: true, name: true } },
-      items: { include: { product: { select: { id: true, name: true, unit: true } } } },
-    },
+    include: receiptInclude,
     orderBy: { receivedAt: "desc" },
     take: 50,
   });
   res.json({ receipts: receipts.map(publicReceipt) });
+});
+
+const get = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const receipt = await prisma.stockReceipt.findFirst({ where: { id: req.params.id, shopId }, include: receiptInclude });
+  if (!receipt) return res.status(404).json({ error: "Stock receipt not found" });
+  res.json({ receipt: publicReceipt(receipt) });
 });
 
 const receive = asyncHandler(async (req, res) => {
@@ -299,4 +309,4 @@ const receive = asyncHandler(async (req, res) => {
   res.status(reused ? 200 : 201).json({ receipt: publicReceipt(receipt), reused });
 });
 
-module.exports = { list, receive, distributeLandedCost, allocateEstimatedGroceryCost };
+module.exports = { list, get, receive, distributeLandedCost, allocateEstimatedGroceryCost };

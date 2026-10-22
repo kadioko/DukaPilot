@@ -82,6 +82,7 @@ test("purchase report applies receipt-payment corrections to filters, totals, hi
 
   const filteredQuery = rawCalls[0];
   assert.match(filteredQuery.query, /sr\."shopId" = \$1/);
+  assert.match(filteredQuery.query, /sr\."voidedAt" IS NULL/);
   assert.match(filteredQuery.query, /sr\."supplierId" IS NULL/);
   assert.match(filteredQuery.query, /COALESCE\(\(SELECT c\."correctedMethod"/);
   assert.match(filteredQuery.query, /\) = \$4::"PaymentMethod"/);

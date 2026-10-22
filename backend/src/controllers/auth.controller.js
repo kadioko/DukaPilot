@@ -130,6 +130,7 @@ function staffPermissions(staff) {
   return {
     canSell: Boolean(staff.canSell),
     canManageStock: Boolean(staff.canManageStock),
+    canCorrectStock: Boolean(staff.canCorrectStock),
     canManageFarm: Boolean(staff.canManageFarm),
     canManageStaff: Boolean(staff.canManageStaff),
     canViewReports: Boolean(staff.canViewReports),
