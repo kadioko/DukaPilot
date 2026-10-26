@@ -76,3 +76,30 @@ test("a shift supervisor without Sell can still access only the team-shift scree
   await expect(page.getByRole("link", { name: "Sales" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Team shift supervision" })).toBeVisible();
 });
+
+test("a lost close response is verified against the saved shift", async ({ page }) => {
+  let closed = false;
+  const summary = { cashSales: 0, debtCollections: 0, quotationCash: 0, cashRefunds: 0, cashRefundCount: 0, cashExpenses: 0, inventoryCashOut: 0, cookingCashOut: 0, farmCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, cookingCostCount: 0, farmProductionCostCount: 0, expectedCash: 1000 };
+  const session = () => ({ id: "shift-1", status: closed ? "CLOSED" : "OPEN", openingCash: 1000, countedCash: closed ? 1000 : null, variance: closed ? 0 : null, openedByName: "Owner", openedAt: "2026-10-26T06:00:00.000Z", summary });
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("auth/me")) return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" }, features: { staff: true } } } });
+    if (url.includes("cash-sessions/shift-1/close")) {
+      closed = true;
+      return route.fulfill({ status: 504, json: { error: "Upstream timeout" } });
+    }
+    if (url.includes("cash-sessions/shift-1")) return route.fulfill({ json: { session: session() } });
+    if (url.includes("cash-sessions/current")) return route.fulfill({ json: { session: closed ? null : session(), sessions: [session()], canManageAllSessions: true, canOpenOwnSession: true } });
+    if (url.includes("cash-sessions/history")) return route.fulfill({ json: { sessions: closed ? [session()] : [], pagination: { page: 1, limit: 10, total: closed ? 1 : 0, totalPages: closed ? 1 : 0 } } });
+    if (url.includes("subscription/status")) return route.fulfill({ json: { plan: "PRO", status: "active", isActive: true, daysLeft: 30 } });
+    if (url.includes("notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/daily-close");
+  await page.getByLabel("Cash counted (TZS)").fill("1000");
+  await page.getByRole("button", { name: "Close day" }).click();
+  await expect(page.getByText("The shift was closed; only the response was lost.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Open your shift for today" })).toBeVisible();
+  await expect(page.getByText("CLOSED").first()).toBeVisible();
+});

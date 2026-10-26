@@ -2,6 +2,7 @@ import { t, type Lang } from "@/lib/i18n";
 import { clearActiveOfflineSalesScope, hasPendingOfflineSales } from "@/lib/offlineSalesStorage";
 import { clearActiveOfflineCropScope, hasPendingOfflineCropOperations } from "@/lib/offlineCropStorage";
 import * as Sentry from "@sentry/nextjs";
+import { diagnosticEndpoint } from "@/lib/apiDiagnostics";
 
 const PROD_API_URL = "https://dukapilotproduction.up.railway.app/api";
 const LOCAL_API_URL = "http://localhost:4000/api";
@@ -92,7 +93,7 @@ function getBaseUrl(): string {
 }
 
 function requestContext(baseUrl: string, path: string, method: string): ApiRequestContext {
-  const endpoint = path.split("?")[0] || "/";
+  const endpoint = diagnosticEndpoint(path);
   const browserOrigin = typeof window !== "undefined" ? window.location.origin : PROD_API_URL;
   try {
     const target = new URL(baseUrl, browserOrigin);
@@ -383,6 +384,8 @@ export const api = {
   getBackground: <T>(path: string, lang?: Lang) => backgroundRequest<T>(path, {}, lang),
   postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
     backgroundRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),
+  postBestEffort: <T>(path: string, body: unknown, lang?: Lang) =>
+    request<T>(path, { method: "POST", body: JSON.stringify(body) }, lang, false, "background"),
   post: <T>(path: string, body: unknown, lang?: Lang) => {
     const options = { method: "POST", body: JSON.stringify(body) };
     if (path === "/sales") {

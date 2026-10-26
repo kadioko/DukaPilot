@@ -29,7 +29,7 @@ function deviceLabel() {
 }
 
 function report(operation: PendingCropOperation, status: "SYNCED" | "FAILED", attempts: number, message?: string) {
-  api.post("/sync/events", {
+  api.postBestEffort("/sync/events", {
     operationKind: "CROP_FIELD",
     status,
     attempts,

@@ -8,11 +8,14 @@ router.use(requireRole("MERCHANT", "ADMIN"));
 router.use(requireAnyPermission("canSell", "canManageCashSessions"));
 router.use((req, res, next) => {
   const closingExistingSession = req.method === "POST" && /^\/[^/]+\/close$/.test(req.path);
-  if (closingExistingSession) return next();
+  const verifyingExistingSession = req.method === "GET" && /^\/[^/]+$/.test(req.path)
+    && req.path !== "/current" && req.path !== "/history";
+  if (closingExistingSession || verifyingExistingSession) return next();
   return requireActiveSubscription(req, res, next);
 });
 router.get("/current", controller.current);
 router.get("/history", controller.history);
+router.get("/:id", controller.get);
 router.post("/open", requirePermission("canSell"), controller.open);
 router.post("/:id/close", controller.close);
 

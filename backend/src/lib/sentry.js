@@ -9,6 +9,7 @@
  */
 
 const Sentry = require("@sentry/node");
+const { scrubSentryEvent } = require("./sentryPrivacy");
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -17,6 +18,7 @@ if (dsn) {
     dsn,
     environment: process.env.NODE_ENV || "development",
     sendDefaultPii: false,
+    beforeSend: scrubSentryEvent,
     tracesSampleRate: 0.1, // 10% of transactions
     ignoreErrors: [
       "Unauthorized",

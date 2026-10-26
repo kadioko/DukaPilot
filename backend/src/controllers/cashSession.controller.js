@@ -287,6 +287,15 @@ const history = asyncHandler(async (req, res) => {
   });
 });
 
+const get = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const where = { id: req.params.id, shopId };
+  if (!canManageAllSessions(req)) where.openedById = cashSessionActorId(req.user);
+  const session = await prisma.cashSession.findFirst({ where });
+  if (!session) return res.status(404).json({ error: "Cash session not found" });
+  res.json({ session: (await decorateSessions(prisma, [session]))[0] });
+});
+
 const open = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const openingCash = Number(req.body.openingCash || 0);
@@ -332,4 +341,4 @@ const close = asyncHandler(async (req, res) => {
   res.json({ session: { ...updated, summary } });
 });
 
-module.exports = { current, history, open, close, summarizeSession, cashSaleWhere };
+module.exports = { current, history, get, open, close, summarizeSession, cashSaleWhere };

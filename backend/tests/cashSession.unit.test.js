@@ -73,6 +73,29 @@ test("staff daily-close history remains scoped to that staff member", async () =
   assert.equal(findManyArgs.where.status, "CLOSED");
 });
 
+test("cash session detail verifies a lost close response without crossing staff or shop boundaries", async () => {
+  let where;
+  const session = { id: "session-11", shopId: "shop-1", openedById: "staff:staff-4", status: "CLOSED", openingCash: 0, countedCash: 1000 };
+  const prismaMock = {
+    cashSession: { findFirst: async (args) => { where = args.where; return args.where.openedById === "staff:staff-4" ? session : null; } },
+    sale: { groupBy: async () => [] },
+    debtPayment: { groupBy: async () => [] },
+    quotationPayment: { groupBy: async () => [] },
+    expense: { groupBy: async () => [] },
+  };
+  const controller = loadController(prismaMock);
+  const allowed = response();
+  await controller.get({ user: { userId: "staff-user", staffId: "staff-4", role: "MERCHANT" }, params: { id: "session-11" } }, allowed);
+  assert.equal(allowed.payload.session.status, "CLOSED");
+  assert.equal(allowed.payload.session.countedCash, 1000);
+  assert.deepEqual(where, { id: "session-11", shopId: "shop-1", openedById: "staff:staff-4" });
+
+  const denied = response();
+  await controller.get({ user: { userId: "other-staff", staffId: "staff-5", role: "MERCHANT" }, params: { id: "session-11" } }, denied);
+  assert.equal(denied.statusCode, 404);
+  assert.equal(where.shopId, "shop-1");
+});
+
 test("a manager with team-shift permission sees every active shop drawer", async () => {
   let findManyArgs;
   const prismaMock = {

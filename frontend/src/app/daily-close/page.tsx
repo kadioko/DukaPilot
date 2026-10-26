@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, LockKeyhole, RefreshCw, Search, WalletCards } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
-import { api, formatTZS } from "@/lib/api";
+import { api, ApiError, formatTZS } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 
@@ -163,7 +163,31 @@ export default function DailyClosePage() {
       setManagedSessionId(null);
       await Promise.all([load(), loadHistory()]);
     } catch (error: unknown) {
-      toast(error instanceof Error ? error.message : "Could not close session", "error");
+      const uncertain = error instanceof ApiError && (
+        error.failureType === "NETWORK" || error.failureType === "TIMEOUT" ||
+        (error.status || 0) >= 500 || error.status === 409
+      );
+      if (!uncertain) {
+        toast(error instanceof Error ? error.message : "Could not close session", "error");
+      } else {
+        try {
+          const verified = await api.getRecoverable<{ session: CashSession }>(`/cash-sessions/${session.id}`, lang);
+          if (verified.session.status === "CLOSED") {
+            toast(verified.session.countedCash === value
+              ? (lang === "sw" ? "Shift ilifungwa; jibu pekee ndilo lilipotea." : "The shift was closed; only the response was lost.")
+              : (lang === "sw" ? "Shift imefungwa kwa hesabu tofauti. Kagua historia kabla ya kuendelea." : "The shift was closed with a different cash count. Review its history."),
+            verified.session.countedCash === value ? "success" : "info");
+            setCountedCash("");
+            setCloseNote("");
+            setManagedSessionId(null);
+            await Promise.all([load(), loadHistory()]);
+          } else {
+            toast(lang === "sw" ? "Shift bado iko wazi. Jaribu kuifunga tena mtandao ukirudi." : "The shift is still open. Retry closing it when your connection returns.", "error");
+          }
+        } catch {
+          toast(lang === "sw" ? "Hatujaweza kuthibitisha hali ya shift. Angalia historia kabla ya kujaribu tena." : "We could not confirm the shift status. Check history before retrying.", "error");
+        }
+      }
     } finally {
       setSaving(false);
     }
