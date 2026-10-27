@@ -19,6 +19,7 @@ if (dsn) {
     environment: process.env.NODE_ENV || "development",
     sendDefaultPii: false,
     beforeSend: scrubSentryEvent,
+    beforeSendTransaction: scrubSentryEvent,
     tracesSampleRate: 0.1, // 10% of transactions
     ignoreErrors: [
       "Unauthorized",
