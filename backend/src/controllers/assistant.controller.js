@@ -42,9 +42,9 @@ async function measureAction(shopId, actionKey) {
       : actionKey.slice("stock-".length);
     const product = await prisma.product.findFirst({
       where: { id: productId, shopId, isActive: true },
-      select: { currentStock: true, minimumStock: true },
+      select: { currentStock: true },
     });
-    return product ? Number(product.currentStock <= product.minimumStock) : 0;
+    return product ? Math.round(Number(product.currentStock) * 1000) : null;
   }
   if (actionKey === "stock") {
     const rows = await prisma.$queryRaw`SELECT COUNT(*)::int AS count FROM "products" WHERE "shopId" = ${shopId} AND "isActive" = true AND "isInternalUse" = false AND "currentStock" <= "minimumStock"`;
@@ -85,7 +85,8 @@ function outcomeVerified(actionKey, baseline, current) {
   if (current === null) return false;
   if (actionKey.startsWith("quotation-convert-")) return current === 1;
   if (actionKey.startsWith("quotation-deposit-")) return baseline !== null && current > baseline;
-  if (["debt", "stock"].includes(actionKey) || actionKey.startsWith("staff-stock-") || actionKey.startsWith("stock-")) return baseline !== null && current < baseline;
+  if (actionKey === "debt") return baseline !== null && current < baseline;
+  if (actionKey.startsWith("staff-stock-") || actionKey.startsWith("stock-")) return baseline !== null && current > baseline;
   if (actionKey.startsWith("crop-input-") || actionKey.startsWith("crop-harvest-") || actionKey.startsWith("crop-irrigation-")) return baseline !== null && current > baseline;
   if (actionKey.startsWith("crop-task-") || actionKey.startsWith("crop-weather-")) return current === 1;
   return false;

@@ -2,7 +2,6 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
@@ -153,7 +152,6 @@ function formatCheckedAt(value: string, lang: "sw" | "en") {
 
 export default function AssistantPage() {
   const lang = useLang();
-  const router = useRouter();
   const [snapshotData, setSnapshotData] = useState<AssistantSnapshotData>(emptyAssistantData);
   const [sourceStatuses, setSourceStatuses] = useState<Partial<Record<AssistantSourceKey, AssistantSourceStatus>>>({});
   const [snapshotKey, setSnapshotKey] = useState("");
@@ -477,12 +475,8 @@ export default function AssistantPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Link
                         href={item.href}
-                        onClick={(event) => {
-                          if (!canTrackActions || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                          event.preventDefault();
-                          trackRecommendation(item, "OPENED")
-                            .catch(() => {})
-                            .finally(() => router.push(item.href));
+                        onClick={() => {
+                          if (canTrackActions) trackRecommendation(item, "OPENED").catch(() => {});
                         }}
                         className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
                       >

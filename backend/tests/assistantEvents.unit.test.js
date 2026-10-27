@@ -138,11 +138,11 @@ test("stock outcome measurements are scoped to the recommended product", async (
       findUnique: async () => null,
       upsert: async (args) => { upsertArgs = args; return { id: "action-2", ...args.create }; },
     },
-    assistantActionEvent: { findFirst: async () => ({ measuredValue: 1 }) },
+    assistantActionEvent: { findFirst: async () => ({ measuredValue: 4500 }) },
     product: {
       findFirst: async (query) => {
         selectedProduct = query;
-        return { currentStock: 12, minimumStock: 5 };
+        return { currentStock: 7.25 };
       },
     },
     $transaction: async (callback) => callback({
@@ -154,9 +154,38 @@ test("stock outcome measurements are scoped to the recommended product", async (
     const res = response();
     await loader.controller.trackAction({ user: {}, body: { actionKey, impressionKey, title: "Review stock", href: "/inventory", status: "COMPLETED" } }, res, (error) => { throw error; });
     assert.deepEqual(selectedProduct.where, { id: "product-7", shopId: "shop-1", isActive: true });
-    assert.equal(upsertArgs.create.baselineValue, 1);
-    assert.equal(upsertArgs.create.outcomeValue, 0);
+    assert.deepEqual(selectedProduct.select, { currentStock: true });
+    assert.equal(upsertArgs.create.baselineValue, 4500);
+    assert.equal(upsertArgs.create.outcomeValue, 7250);
     assert.ok(upsertArgs.create.outcomeVerifiedAt instanceof Date);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("a deleted or deactivated recommended product is not counted as a restock outcome", async () => {
+  let upsertArgs;
+  let recordedEvents;
+  const actionKey = "stock-product-7";
+  const impressionKey = todayImpressionKey(actionKey);
+  const loader = loadController({
+    assistantAction: {
+      findUnique: async () => null,
+      upsert: async (args) => { upsertArgs = args; return { id: "action-4", ...args.create }; },
+    },
+    assistantActionEvent: { findFirst: async () => ({ measuredValue: 0 }) },
+    product: { findFirst: async () => null },
+    $transaction: async (callback) => callback({
+      assistantAction: { upsert: async (args) => { upsertArgs = args; return { id: "action-4", ...args.create }; } },
+      assistantActionEvent: { createMany: async ({ data }) => { recordedEvents = data; return { count: data.length }; } },
+    }),
+  });
+  try {
+    const res = response();
+    await loader.controller.trackAction({ user: {}, body: { actionKey, impressionKey, title: "Review stock", href: "/inventory", status: "COMPLETED" } }, res, (error) => { throw error; });
+    assert.equal(upsertArgs.create.outcomeValue, null);
+    assert.equal(upsertArgs.create.outcomeVerifiedAt, null);
+    assert.deepEqual(recordedEvents.map((event) => event.eventType), ["MARKED_DONE"]);
   } finally {
     loader.restore();
   }

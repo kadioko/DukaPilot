@@ -106,7 +106,7 @@ export default function HelpPage() {
     ],
     [
       lang === "sw" ? "5. Hupima kilichobadilika" : "5. Measures what changed",
-      lang === "sw" ? "Kufungua au kuweka hatua kuwa imefanyika si uthibitisho wa matokeo. Mabadiliko yanayopimika hayaonyeshi kuwa msaidizi ndiye aliyoyasababisha. Ushauri wa shamba unabaki kwenye shughuli zilizorekodiwa, si tiba au agronomy." : "Opening or marking an action done is not proof of impact. A measured change does not prove the assistant caused it. Farm guidance stays operational, not medical or agronomic advice.",
+      lang === "sw" ? "Kufungua au kuweka hatua kuwa imefanyika si uthibitisho wa matokeo. Kwa stock, mfumo huhesabu tu ongezeko la kiasi cha bidhaa hiyo hiyo; kufuta au kuzima bidhaa hakuhesabiki kama kujaza stock. Mabadiliko hayaonyeshi kuwa msaidizi ndiye aliyoyasababisha. Ushauri wa shamba unabaki kwenye shughuli zilizorekodiwa, si tiba au agronomy." : "Opening or marking an action done is not proof of impact. For stock, only an increase in that same product's recorded quantity counts; deleting or deactivating it does not count as restocking. This still does not prove the assistant caused the change. Farm guidance stays operational, not medical or agronomic advice.",
     ],
   ];
 
