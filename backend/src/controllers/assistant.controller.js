@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { randomUUID } = require("node:crypto");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { getFarmConfiguration } = require("../lib/farmAccess");
 
@@ -35,8 +36,10 @@ async function measureAction(shopId, actionKey) {
     const result = await prisma.debt.aggregate({ where: { shopId, status: { in: ["OPEN", "PARTIAL"] } }, _sum: { amount: true, amountPaid: true } });
     return (result._sum.amount || 0) - (result._sum.amountPaid || 0);
   }
-  if (actionKey.startsWith("staff-stock-")) {
-    const productId = actionKey.slice("staff-stock-".length);
+  if (actionKey.startsWith("staff-stock-") || actionKey.startsWith("stock-")) {
+    const productId = actionKey.startsWith("staff-stock-")
+      ? actionKey.slice("staff-stock-".length)
+      : actionKey.slice("stock-".length);
     const product = await prisma.product.findFirst({
       where: { id: productId, shopId, isActive: true },
       select: { currentStock: true, minimumStock: true },
@@ -44,7 +47,7 @@ async function measureAction(shopId, actionKey) {
     return product ? Number(product.currentStock <= product.minimumStock) : 0;
   }
   if (actionKey === "stock") {
-    const rows = await prisma.$queryRaw`SELECT COUNT(*)::int AS count FROM "products" WHERE "shopId" = ${shopId} AND "isActive" = true AND "currentStock" <= "minimumStock"`;
+    const rows = await prisma.$queryRaw`SELECT COUNT(*)::int AS count FROM "products" WHERE "shopId" = ${shopId} AND "isActive" = true AND "isInternalUse" = false AND "currentStock" <= "minimumStock"`;
     return Number(rows[0]?.count || 0);
   }
   const cropMatch = actionKey.match(/^crop-(input|harvest)-(.+)$/);
@@ -82,7 +85,7 @@ function outcomeVerified(actionKey, baseline, current) {
   if (current === null) return false;
   if (actionKey.startsWith("quotation-convert-")) return current === 1;
   if (actionKey.startsWith("quotation-deposit-")) return baseline !== null && current > baseline;
-  if (["debt", "stock"].includes(actionKey) || actionKey.startsWith("staff-stock-")) return baseline !== null && current < baseline;
+  if (["debt", "stock"].includes(actionKey) || actionKey.startsWith("staff-stock-") || actionKey.startsWith("stock-")) return baseline !== null && current < baseline;
   if (actionKey.startsWith("crop-input-") || actionKey.startsWith("crop-harvest-") || actionKey.startsWith("crop-irrigation-")) return baseline !== null && current > baseline;
   if (actionKey.startsWith("crop-task-") || actionKey.startsWith("crop-weather-")) return current === 1;
   return false;
@@ -119,6 +122,7 @@ const stockSummary = asyncHandler(async (req, res) => {
     FROM "products"
     WHERE "shopId" = ${shopId}
       AND "isActive" = true
+      AND "isInternalUse" = false
       AND "currentStock" <= "minimumStock"
     ORDER BY ("minimumStock" - "currentStock") DESC, "currentStock" ASC, "name" ASC
     LIMIT 5
@@ -174,7 +178,7 @@ const farmSummary = asyncHandler(async (req, res) => {
     for (const cycle of dueHarvest) actions.push({ id: `crop-harvest-${cycle.id}`, rank: 86, href: `/crops?action=harvest&cycle=${cycle.id}`, title: language === "sw" ? `Panga mavuno ya ${cycle.cropName}` : `Prepare to harvest ${cycle.cropName}`, body: language === "sw" ? `${cycle.plot.name} ina tarehe ya mavuno ndani ya siku 7. Rekodi mavuno kabla ya kuyauza.` : `${cycle.plot.name} is due for harvest within seven days. Record the harvest before selling it.`, action: language === "sw" ? "Fungua Mazao" : "Open Crops" });
     for (const cycle of missingIrrigation) actions.push({ id: `crop-irrigation-${cycle.id}`, rank: 80, href: "/crops/operations", title: language === "sw" ? `Kagua umwagiliaji wa ${cycle.cropName}` : `Check irrigation for ${cycle.cropName}`, body: language === "sw" ? `${cycle.plot.name} haina umwagiliaji uliorekodiwa ndani ya siku 7 zilizopita. Rekodi hali halisi ya shamba.` : `${cycle.plot.name} has no irrigation record in the last seven days. Record the real field condition.`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
     for (const task of dueTasks) actions.push({ id: `crop-task-${task.id}`, rank: 85, href: "/crops/operations", title: language === "sw" ? `Kamilisha kazi: ${task.title}` : `Complete task: ${task.title}`, body: language === "sw" ? `${task.cropCycle ? `${task.cropCycle.cropName} - ${task.cropCycle.plot.name}: ` : ""}tarehe ya kazi imefika. Sasisha baada ya kukamilisha.` : `${task.cropCycle ? `${task.cropCycle.cropName} - ${task.cropCycle.plot.name}: ` : ""}the task is due. Update it when complete.`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
-    for (const alert of weatherWarnings) actions.push({ id: `crop-weather-${alert.id}`, rank: 88, href: "/crops/operations", title: language === "sw" ? "Kagua tahadhari ya shamba" : "Review field warning", body: language === "sw" ? `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Shamba"}: ${alert.message}` : `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Field"}: ${alert.message}`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
+    for (const alert of weatherWarnings) actions.push({ id: `crop-weather-${alert.id}`, rank: 88, href: "/crops/operations", title: language === "sw" ? "Kagua tahadhari ya shamba" : "Review field warning", body: language === "sw" ? `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Shamba"}: kuna tahadhari iliyorekodiwa. Kagua chanzo na rekodi hali halisi.` : `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Field"}: a warning is recorded. Review its source and the actual field condition.`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
     if (remainingHarvest) actions.push({ id: `crop-review-${remainingHarvest.id}`, rank: 71, href: "/crops", title: language === "sw" ? `Kagua stock ya ${remainingHarvest.outputProduct.name}` : `Review ${remainingHarvest.outputProduct.name} harvest stock`, body: language === "sw" ? `Kuna ${remainingHarvest.remainingQuantity} ${remainingHarvest.outputProduct.unit} kutoka ${remainingHarvest.cropCycle.cropName} ya ${remainingHarvest.cropCycle.plot.name} ambayo bado ipo kwenye stock.` : `${remainingHarvest.remainingQuantity} ${remainingHarvest.outputProduct.unit} from ${remainingHarvest.cropCycle.cropName} in ${remainingHarvest.cropCycle.plot.name} is still in stock.`, action: language === "sw" ? "Kagua Mazao" : "Review Crops" });
   }
   res.json({ actions: actions.sort((a, b) => b.rank - a.rank) });
@@ -197,42 +201,62 @@ const trackAction = asyncHandler(async (req, res) => {
   const title = String(req.body.title || "").trim();
   const href = String(req.body.href || "").trim();
   const status = normalizeStatus(req.body.status);
+  const impressionKey = String(req.body.impressionKey || `legacy:${tanzaniaDayKey(new Date())}:${actionKey}`).trim().slice(0, 240);
 
-  if (!actionKey || !title || !href) {
+  if (!actionKey || actionKey.length > 160 || !title || title.length > 240 || !href || href.length > 500 || !href.startsWith("/") || href.startsWith("//")) {
     return res.status(400).json({ error: "actionKey, title, and href are required" });
   }
+  if (!impressionKey) return res.status(400).json({ error: "Invalid recommendation impression" });
 
   const now = new Date();
   const existing = await prisma.assistantAction.findUnique({ where: { shopId_actionKey: { shopId, actionKey } } });
   const measured = await measureAction(shopId, actionKey);
-  const baselineValue = existing?.baselineValue ?? measured;
+  const shownEvent = await prisma.assistantActionEvent.findFirst({
+    where: { shopId, actionKey, impressionKey, eventType: "SHOWN" },
+    select: { measuredValue: true },
+  });
+  const baselineValue = shownEvent
+    ? shownEvent.measuredValue
+    : impressionKey.startsWith("legacy:")
+      ? existing?.baselineValue ?? measured
+      : measured;
   const verified = status === "COMPLETED" && outcomeVerified(actionKey, baselineValue, measured);
-  const action = await prisma.assistantAction.upsert({
-    where: { shopId_actionKey: { shopId, actionKey } },
-    create: {
-      shopId,
-      actionKey,
-      title,
-      href,
-      status,
-      openedAt: status === "OPENED" ? now : null,
-      completedAt: status === "COMPLETED" ? now : null,
-      dismissedAt: status === "DISMISSED" ? now : null,
-      baselineValue,
-      outcomeValue: status === "COMPLETED" ? measured : null,
-      outcomeVerifiedAt: verified ? now : null,
-    },
-    update: {
-      title,
-      href,
-      status,
-      openedAt: status === "OPENED" ? now : undefined,
-      completedAt: status === "COMPLETED" ? now : undefined,
-      dismissedAt: status === "DISMISSED" ? now : undefined,
-      baselineValue,
-      outcomeValue: status === "COMPLETED" ? measured : undefined,
-      outcomeVerifiedAt: status === "COMPLETED" ? (verified ? now : null) : undefined,
-    },
+  const eventTypes = status === "OPENED" ? ["OPENED"] : status === "COMPLETED" ? ["MARKED_DONE", ...(verified ? ["OUTCOME_VERIFIED"] : [])] : status === "DISMISSED" ? ["DISMISSED"] : [];
+  const action = await prisma.$transaction(async (tx) => {
+    const saved = await tx.assistantAction.upsert({
+      where: { shopId_actionKey: { shopId, actionKey } },
+      create: {
+        shopId,
+        actionKey,
+        title,
+        href,
+        status,
+        openedAt: status === "OPENED" ? now : null,
+        completedAt: status === "COMPLETED" ? now : null,
+        dismissedAt: status === "DISMISSED" ? now : null,
+        baselineValue,
+        outcomeValue: status === "COMPLETED" ? measured : null,
+        outcomeVerifiedAt: verified ? now : null,
+      },
+      update: {
+        title,
+        href,
+        status,
+        openedAt: status === "OPENED" ? now : undefined,
+        completedAt: status === "COMPLETED" ? now : undefined,
+        dismissedAt: status === "DISMISSED" ? now : undefined,
+        baselineValue,
+        outcomeValue: status === "COMPLETED" ? measured : undefined,
+        outcomeVerifiedAt: status === "COMPLETED" ? (verified ? now : null) : undefined,
+      },
+    });
+    if (eventTypes.length) {
+      await tx.assistantActionEvent.createMany({
+        data: eventTypes.map((eventType) => ({ id: randomUUID(), shopId, actionKey, impressionKey, eventType, createdAt: now })),
+        skipDuplicates: true,
+      });
+    }
+    return saved;
   });
 
   req.audit = {
@@ -245,11 +269,31 @@ const trackAction = asyncHandler(async (req, res) => {
   res.status(201).json({ action });
 });
 
+const recordImpressions = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const entries = Array.isArray(req.body.events) ? req.body.events : [];
+  if (!entries.length || entries.length > 20) return res.status(400).json({ error: "Provide between 1 and 20 recommendation impressions" });
+  const dateKey = tanzaniaDayKey(new Date());
+  const previousDateKey = tanzaniaDayKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  const data = [];
+  for (const entry of entries) {
+    const actionKey = String(entry.actionKey || "").trim();
+    const impressionKey = String(entry.impressionKey || "").trim();
+    if (!actionKey || actionKey.length > 160 || impressionKey.length > 240 || ![dateKey, previousDateKey].some((key) => impressionKey.startsWith(`${key}:`))) {
+      return res.status(400).json({ error: "Invalid recommendation impression" });
+    }
+    const measuredValue = await measureAction(shopId, actionKey);
+    data.push({ id: randomUUID(), shopId, actionKey, impressionKey, eventType: "SHOWN", measuredValue });
+  }
+  const result = await prisma.assistantActionEvent.createMany({ data, skipDuplicates: true });
+  res.status(201).json({ recorded: result.count });
+});
+
 const adminAnalytics = asyncHandler(async (req, res) => {
   const sinceDays = Math.max(1, Math.min(365, Number(req.query.days) || 30));
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
 
-  const [total, statusRows, topRows, recentActions] = await Promise.all([
+  const [total, statusRows, topRows, recentActions, eventRows] = await Promise.all([
     prisma.assistantAction.count({ where: { updatedAt: { gte: since } } }),
     prisma.assistantAction.groupBy({
       by: ["status"],
@@ -269,6 +313,23 @@ const adminAnalytics = asyncHandler(async (req, res) => {
       take: 12,
       include: { shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } } },
     }),
+    prisma.$queryRaw`
+      WITH impressions AS (
+        SELECT "shopId", "impressionKey",
+          BOOL_OR("eventType" = 'SHOWN') AS shown,
+          BOOL_OR("eventType" = 'OPENED') AS opened,
+          BOOL_OR("eventType" = 'MARKED_DONE') AS "markedDone",
+          BOOL_OR("eventType" = 'OUTCOME_VERIFIED') AS verified
+        FROM assistant_action_events
+        WHERE "createdAt" >= ${since}
+        GROUP BY "shopId", "impressionKey"
+      )
+      SELECT COUNT(*) FILTER (WHERE shown)::int AS shown,
+        COUNT(*) FILTER (WHERE shown AND opened)::int AS opened,
+        COUNT(*) FILTER (WHERE shown AND "markedDone")::int AS "markedDone",
+        COUNT(*) FILTER (WHERE shown AND verified)::int AS verified
+      FROM impressions
+    `,
   ]);
 
   const statusCounts = Object.fromEntries(statusRows.map((row) => [row.status, row._count.id]));
@@ -281,6 +342,11 @@ const adminAnalytics = asyncHandler(async (req, res) => {
       })
     : [];
   const labelMap = new Map(actionLabels.map((action) => [action.actionKey, action]));
+  const eventCounts = eventRows[0] || {};
+  const shown = Number(eventCounts.shown || 0);
+  const opened = Number(eventCounts.opened || 0);
+  const markedDone = Number(eventCounts.markedDone || 0);
+  const verified = Number(eventCounts.verified || 0);
 
   res.json({
     days: sinceDays,
@@ -294,6 +360,16 @@ const adminAnalytics = asyncHandler(async (req, res) => {
       dismissedRate: total ? Math.round(((statusCounts.DISMISSED || 0) / total) * 100) : 0,
       openedRate: total ? Math.round(((statusCounts.OPENED || 0) / total) * 100) : 0,
     },
+    funnel: {
+      shown,
+      opened,
+      markedDone,
+      outcomesVerified: verified,
+      openedRate: shown ? Math.round((opened / shown) * 100) : 0,
+      markedDoneRate: shown ? Math.round((markedDone / shown) * 100) : 0,
+      verifiedOutcomeRate: shown ? Math.round((verified / shown) * 100) : 0,
+      interpretation: "Verified outcomes show a measured change after a recommendation was marked done; they do not prove the assistant caused that change.",
+    },
     topActions: topRows.map((row) => ({
       actionKey: row.actionKey,
       count: row._count.id,
@@ -304,4 +380,9 @@ const adminAnalytics = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { listActions, trackAction, quotationSummary, stockSummary, farmSummary, adminAnalytics };
+function tanzaniaDayKey(value = new Date()) {
+  const shifted = new Date(value.getTime() + 3 * 60 * 60 * 1000);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+}
+
+module.exports = { listActions, trackAction, recordImpressions, quotationSummary, stockSummary, farmSummary, adminAnalytics };

@@ -1,40 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { TextReveal } from "@/components/ui/cascade-text";
 import { api, formatTZS, getCurrentSession } from "@/lib/api";
 import { useLang } from "@/lib/i18n";
-import { ArrowRight, CheckCircle2, ClipboardCopy, FileText, HandCoins, Package, ReceiptText, ShoppingCart, Sparkles, Sprout, Tractor, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCopy, FileText, HandCoins, LoaderCircle, MessageCircle, Package, ReceiptText, RotateCw, Send, ShoppingCart, Sparkles, Sprout, Tractor } from "lucide-react";
 
 interface DashboardData {
-  summary: { totalSales: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
-  lowStockAlerts?: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string; buyingPrice?: number; sellingPrice?: number }>;
+  summary: { totalSales: number; netSales?: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
+  lowStockAlerts?: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string; buyingPrice?: number; sellingPrice?: number; hasReliablePace?: boolean; dailySalesRate?: number; daysOfCoverage?: number; reorderQuantity14d?: number; estimatedReorderCost?: number; saleDays28d?: number; observedDays?: number }>;
   topProducts?: Array<{ product?: { name: string; unit?: string }; totalQuantity?: number; totalRevenue?: number }>;
 }
 
 interface DebtSummary {
   summary: { openCount: number; totalOwed: number };
-  debts?: Array<{ customerName?: string | null; customerPhone: string; amount: number; amountPaid: number; status: string; dueDate?: string | null }>;
+  debts?: Array<{ customerName?: string | null; customerPhone: string; amount: number; amountPaid: number; status: string; dueDate?: string | null; createdAt?: string }>;
 }
 
 interface ExpenseSummary {
   summary: { total: number; count: number };
   expenses?: Array<{ title: string; amount: number; category: string; spentAt: string }>;
-}
-
-interface QuotationSummary {
-  id: string;
-  quotationNumber: string;
-  status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CONVERTED" | "ARCHIVED" | "CANCELLED";
-  projectTitle: string;
-  totalAmount: number;
-  amountPaid: number;
-  depositRequiredAmount: number;
-  depositDueDate?: string | null;
-  expiryDate?: string | null;
-  customer: { name: string };
+  trend?: { current: number; previous: number; currentCount: number; previousCount: number };
 }
 
 interface Recommendation {
@@ -99,28 +88,132 @@ interface AssistantAccess {
   canSell: boolean;
 }
 
+type AssistantSourceKey = "salesToday" | "inventory" | "debts" | "expenses" | "quotations" | "farm" | "actionHistory";
+type AssistantSourceStatus = { status: "ready" | "unavailable" | "not_permitted"; checkedAt: string; dataThrough?: string | null; errorCode?: string };
+interface AssistantSnapshotResponse {
+  generatedAt: string;
+  snapshotKey: string;
+  sections: Partial<Record<AssistantSourceKey, AssistantSourceStatus & { data?: Record<string, unknown> }>>;
+}
+interface AssistantSnapshotData {
+  dashboard: DashboardData | null;
+  debts: DebtSummary | null;
+  expenses: ExpenseSummary | null;
+  quotationActions: QuotationAssistantAction[];
+  stockActions: StockAssistantAction[];
+  stockProducts: NonNullable<DashboardData["lowStockAlerts"]>;
+  farmActions: FarmAssistantAction[];
+  actions: AssistantAction[];
+}
+interface AssistantAnswer {
+  message: string;
+  href: string;
+  evidence: Array<{ source: string; checkedAt: string; dataThrough?: string | null }>;
+  privacy: string;
+}
+
+const SOURCE_KEYS: AssistantSourceKey[] = ["salesToday", "inventory", "debts", "expenses", "quotations", "farm", "actionHistory"];
+
+function emptyAssistantData(): AssistantSnapshotData {
+  return { dashboard: null, debts: null, expenses: null, quotationActions: [], stockActions: [], stockProducts: [], farmActions: [], actions: [] };
+}
+
+function applySnapshotToData(previous: AssistantSnapshotData, snapshot: AssistantSnapshotResponse): AssistantSnapshotData {
+  const next = { ...previous };
+  const ready = (key: AssistantSourceKey) => snapshot.sections[key]?.status === "ready" ? snapshot.sections[key]?.data : null;
+  const today = ready("salesToday")?.dashboard as DashboardData | undefined;
+  if (today) next.dashboard = today;
+  const inventory = ready("inventory");
+  if (inventory) {
+    next.stockActions = (inventory.actions || []) as StockAssistantAction[];
+    next.stockProducts = (inventory.products || []) as AssistantSnapshotData["stockProducts"];
+  }
+  const debts = ready("debts");
+  if (debts) next.debts = debts as unknown as DebtSummary;
+  const expenses = ready("expenses");
+  if (expenses) next.expenses = expenses as unknown as ExpenseSummary;
+  const quotations = ready("quotations");
+  if (quotations) next.quotationActions = (quotations.actions || []) as QuotationAssistantAction[];
+  const farm = ready("farm");
+  if (farm) next.farmActions = (farm.actions || []) as FarmAssistantAction[];
+  const historyActions = ready("actionHistory");
+  if (historyActions) next.actions = (historyActions.actions || []) as AssistantAction[];
+  if (next.dashboard) {
+    next.dashboard = {
+      ...next.dashboard,
+      lowStockAlerts: next.stockProducts,
+    };
+  }
+  return next;
+}
+
+function formatCheckedAt(value: string, lang: "sw" | "en") {
+  return new Intl.DateTimeFormat(lang === "sw" ? "sw-TZ" : "en-TZ", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Dar_es_Salaam" }).format(new Date(value));
+}
+
 export default function AssistantPage() {
   const lang = useLang();
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [allTime, setAllTime] = useState<DashboardData | null>(null);
-  const [debts, setDebts] = useState<DebtSummary | null>(null);
-  const [expenses, setExpenses] = useState<ExpenseSummary | null>(null);
-  const quotations: QuotationSummary[] = [];
-  const [quotationActions, setQuotationActions] = useState<QuotationAssistantAction[]>([]);
-  const [stockActions, setStockActions] = useState<StockAssistantAction[]>([]);
-  const [farmActions, setFarmActions] = useState<FarmAssistantAction[]>([]);
-  const [actions, setActions] = useState<AssistantAction[]>([]);
+  const router = useRouter();
+  const [snapshotData, setSnapshotData] = useState<AssistantSnapshotData>(emptyAssistantData);
+  const [sourceStatuses, setSourceStatuses] = useState<Partial<Record<AssistantSourceKey, AssistantSourceStatus>>>({});
+  const [snapshotKey, setSnapshotKey] = useState("");
+  const [loadingSnapshot, setLoadingSnapshot] = useState(true);
+  const [snapshotError, setSnapshotError] = useState("");
+  const [retryingSources, setRetryingSources] = useState<Set<AssistantSourceKey>>(new Set());
   const [copied, setCopied] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
+  const [askError, setAskError] = useState("");
+  const [asking, setAsking] = useState(false);
+  const impressionKeys = useRef(new Set<string>());
   const [access, setAccess] = useState<AssistantAccess>({ loaded: false, isStaff: false, canViewReports: false, canManageStock: false, canManageFarm: false, canSell: false });
+
+  const dashboard = snapshotData.dashboard;
+  const debts = snapshotData.debts;
+  const expenses = snapshotData.expenses;
+  const quotationActions = snapshotData.quotationActions;
+  const stockActions = snapshotData.stockActions;
+  const farmActions = snapshotData.farmActions;
+  const actions = snapshotData.actions;
+
+  const markSourcesUnavailable = useCallback((source?: AssistantSourceKey) => {
+    const checkedAt = new Date().toISOString();
+    const failed = (key: AssistantSourceKey, previous?: AssistantSourceStatus): AssistantSourceStatus => previous?.status === "not_permitted"
+      ? previous
+      : { ...previous, status: "unavailable", checkedAt, errorCode: "REQUEST_FAILED" };
+    setSourceStatuses((current) => source
+      ? { ...current, [source]: failed(source, current[source]) }
+      : { ...current, ...Object.fromEntries(SOURCE_KEYS.map((key) => [key, failed(key, current[key])])) });
+  }, []);
+
+  async function requestSnapshot(source?: AssistantSourceKey) {
+    if (source) setRetryingSources((current) => new Set(current).add(source));
+    else setLoadingSnapshot(true);
+    setSnapshotError("");
+    try {
+      const path = source ? `/assistant/today?source=${encodeURIComponent(source)}` : "/assistant/today";
+      const data = await api.get<AssistantSnapshotResponse>(path, lang);
+      setSourceStatuses((current) => ({ ...current, ...data.sections }));
+      setSnapshotKey(data.snapshotKey || "");
+      setSnapshotData((current) => applySnapshotToData(current, data));
+    } catch (error) {
+      markSourcesUnavailable(source);
+      setSnapshotError(error instanceof Error ? error.message : (lang === "sw" ? "Data za msaidizi hazikupatikana." : "Assistant data could not be loaded."));
+    } finally {
+      if (source) setRetryingSources((current) => { const next = new Set(current); next.delete(source); return next; });
+      else setLoadingSnapshot(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
+    let sessionLoaded = false;
     async function loadAssistant() {
       try {
         const session = await getCurrentSession<{ user: { shop?: { category?: string | null }; staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canManageFarm?: boolean; canViewReports?: boolean } } } }>();
+        sessionLoaded = true;
         const isStaff = Boolean(session.user.staff);
         const permissions = session.user.staff?.permissions;
-        const isFarm = ["livestock", "farm"].includes(String(session.user.shop?.category || "").toLowerCase());
         const nextAccess = {
           loaded: true,
           isStaff,
@@ -131,32 +224,24 @@ export default function AssistantPage() {
         };
         if (!active) return;
         setAccess(nextAccess);
-        if (nextAccess.canViewReports) {
-          const [today, all, debtData, expenseData, quoteData, actionData, farmData] = await Promise.all([
-            api.get<DashboardData>("/dashboard?period=today", lang),
-            api.get<DashboardData>("/dashboard?period=all", lang),
-            api.get<DebtSummary>("/debts", lang),
-            api.get<ExpenseSummary>("/expenses", lang),
-            api.get<{ actions: QuotationAssistantAction[] }>("/assistant/quotations", lang),
-            api.get<{ actions: AssistantAction[] }>("/assistant/actions", lang),
-            isFarm && nextAccess.canManageFarm ? api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang) : Promise.resolve({ actions: [] }),
-          ]);
-          if (!active) return;
-          setDashboard(today); setAllTime(all); setDebts(debtData); setExpenses(expenseData); setQuotationActions(quoteData.actions); setActions(actionData.actions); setFarmActions(farmData.actions);
-        } else if (isFarm && nextAccess.canManageFarm) {
-          const data = await api.get<{ actions: FarmAssistantAction[] }>("/assistant/farm", lang);
-          if (active) setFarmActions(data.actions);
-        } else if (nextAccess.canManageStock) {
-          const data = await api.get<{ actions: StockAssistantAction[] }>("/assistant/stock", lang);
-          if (active) setStockActions(data.actions);
-        }
+        const data = await api.get<AssistantSnapshotResponse>("/assistant/today", lang);
+        if (!active) return;
+        setSourceStatuses(data.sections);
+        setSnapshotKey(data.snapshotKey || "");
+        setSnapshotData((current) => applySnapshotToData(current, data));
       } catch (error) {
-        if (active) setAccess((current) => ({ ...current, loaded: true }));
+        if (active) {
+          setAccess((current) => ({ ...current, loaded: true }));
+          if (sessionLoaded) markSourcesUnavailable();
+          setSnapshotError(error instanceof Error ? error.message : (lang === "sw" ? "Data za msaidizi hazikupatikana." : "Assistant data could not be loaded."));
+        }
+      } finally {
+        if (active) setLoadingSnapshot(false);
       }
     }
     loadAssistant();
     return () => { active = false; };
-  }, [lang]);
+  }, [lang, markSourcesUnavailable]);
 
   const cashierGuidance: Recommendation[] = access.loaded && access.isStaff && !access.canViewReports && access.canSell ? [{
     id: "cashier-safe-guidance", rank: 40, icon: ShoppingCart, tone: "bg-blue-50 text-blue-700",
@@ -168,8 +253,8 @@ export default function AssistantPage() {
   }] : [];
   const recommendations = [
     ...(access.canViewReports ? quotationActions.map((item) => ({ ...item, icon: FileText, tone: item.rank >= 90 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii imetolewa na server kwa ruhusa za akaunti yako na data ya nukuu za duka lako." : "This is generated on the server from quotation data your account is allowed to view.", impact: lang === "sw" ? "Kamilisha hatua bila kuchanganya nukuu na mapato yaliyothibitishwa." : "Complete the next step without confusing quotation value with confirmed revenue." })) : []),
-    ...(access.canViewReports ? buildRecommendations({ dashboard, allTime, debts, expenses, quotations, lang }).filter((item) => !item.id.startsWith("quotation-")) : []),
-    ...stockActions.map((item) => ({ ...item, icon: Package, tone: "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii inaonyesha stock inayohitaji kuangaliwa; haionyeshi mauzo, bei au faida." : "This highlights stock that needs attention; it does not show sales, prices, or profit.", impact: lang === "sw" ? "Tayarisha stock count au mjulishe mwenye duka mapema." : "Prepare a stock count or alert the owner early." })),
+    ...(access.canViewReports ? buildRecommendations({ dashboard, debts, expenses, stockProducts: snapshotData.stockProducts, lang }) : []),
+    ...(!access.canViewReports ? stockActions.map((item) => ({ ...item, icon: Package, tone: "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii inaonyesha stock inayohitaji kuangaliwa; haionyeshi mauzo, bei au faida." : "This highlights stock that needs attention; it does not show sales, prices, or profit.", impact: lang === "sw" ? "Tayarisha stock count au mjulishe mwenye duka mapema." : "Prepare a stock count or alert the owner early." })) : []),
     ...farmActions.map((item) => ({ ...item, icon: item.id.startsWith("crop-") ? Sprout : Tractor, tone: item.rank >= 90 ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700", why: lang === "sw" ? "Hii inatokana na rekodi za shamba lako. Haijumuishi ushauri wa afya ya wanyama au kilimo." : "This uses records from your farm. It does not provide animal-health or agronomy advice.", impact: lang === "sw" ? "Rekodi za shamba na stock zinabaki sahihi kabla ya kuuza." : "Keep field records and sellable stock accurate before sales." })),
     ...cashierGuidance,
   ].sort((a, b) => b.rank - a.rank).slice(0, 5);
@@ -177,6 +262,18 @@ export default function AssistantPage() {
   const urgentCount = recommendations.filter((item) => item.rank >= 80).length;
   const actionCount = recommendations.length;
   const canTrackActions = access.canViewReports;
+  const hasUnavailableSources = Object.values(sourceStatuses).some((status) => status?.status === "unavailable");
+
+  useEffect(() => {
+    if (!canTrackActions || !snapshotKey || !recommendations.length) return;
+    const events = recommendations.flatMap((item) => {
+      const impressionKey = `${snapshotKey}:${item.id}`;
+      if (impressionKeys.current.has(impressionKey)) return [];
+      impressionKeys.current.add(impressionKey);
+      return [{ actionKey: item.id, impressionKey }];
+    });
+    if (events.length) api.post("/assistant/actions/impressions", { events }, lang).catch(() => {});
+  }, [canTrackActions, lang, recommendations, snapshotKey]);
 
   async function copyOwnerSummary() {
     const message = lang === "sw"
@@ -192,16 +289,30 @@ export default function AssistantPage() {
   }
 
   async function trackRecommendation(item: Recommendation, status: AssistantAction["status"]) {
+    const impressionKey = `${snapshotKey}:${item.id}`;
     const data = await api.post<{ action: AssistantAction }>("/assistant/actions", {
       actionKey: item.id,
       title: item.title,
       href: item.href,
       status,
+      impressionKey,
     }, lang);
-    setActions((prev) => {
-      const next = prev.filter((action) => action.actionKey !== item.id);
-      return [data.action, ...next];
-    });
+    setSnapshotData((prev) => ({ ...prev, actions: [data.action, ...prev.actions.filter((action) => action.actionKey !== item.id)] }));
+  }
+
+  async function submitQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!question.trim() || asking) return;
+    setAsking(true);
+    setAskError("");
+    try {
+      const result = await api.post<{ answer: AssistantAnswer }>("/assistant/ask", { question: question.trim() }, lang);
+      setAnswer(result.answer);
+    } catch (error) {
+      setAskError(error instanceof Error ? error.message : (lang === "sw" ? "Swali halikujibiwa. Jaribu tena." : "The question could not be answered. Try again."));
+    } finally {
+      setAsking(false);
+    }
   }
 
   return (
@@ -249,6 +360,64 @@ export default function AssistantPage() {
           </div>
         </div>
 
+        <section className="rounded-lg border border-gray-200 bg-white p-4" aria-labelledby="assistant-data-status">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 id="assistant-data-status" className="text-sm font-semibold text-gray-950">{lang === "sw" ? "Hali na muda wa data" : "Data status and freshness"}</h2>
+              <p className="mt-1 text-xs text-gray-500">{lang === "sw" ? "Kila chanzo kina hali yake; hitilafu moja haifichi mapendekezo mengine." : "Each source reports independently, so one failure does not hide the rest."}</p>
+            </div>
+            <button type="button" onClick={() => requestSnapshot()} disabled={loadingSnapshot} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50">
+              {loadingSnapshot ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+              {lang === "sw" ? "Sasisha zote" : "Refresh all"}
+            </button>
+          </div>
+          {snapshotError && <p role="alert" className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{snapshotError}</p>}
+          {loadingSnapshot && !Object.keys(sourceStatuses).length && <p className="mt-3 text-sm text-gray-500">{lang === "sw" ? "Inapakia data za biashara..." : "Loading business data..."}</p>}
+          {Object.keys(sourceStatuses).length > 0 && <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {SOURCE_KEYS.map((key) => {
+              const status = sourceStatuses[key];
+              if (!status) return null;
+              const label = ({ salesToday: lang === "sw" ? "Mauzo ya leo" : "Today's sales", inventory: lang === "sw" ? "Stock" : "Inventory", debts: lang === "sw" ? "Madeni" : "Debts", expenses: lang === "sw" ? "Matumizi" : "Expenses", quotations: lang === "sw" ? "Nukuu" : "Quotations", farm: lang === "sw" ? "Shamba" : "Farm", actionHistory: lang === "sw" ? "Historia ya hatua" : "Action history" })[key];
+              const failed = status.status === "unavailable";
+              const restricted = status.status === "not_permitted";
+              return <div key={key} className={`flex min-w-0 items-start justify-between gap-2 rounded-md border px-3 py-2 ${failed ? "border-red-200 bg-red-50" : "border-gray-200 bg-gray-50"}`}>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-gray-800">{label}</p>
+                  <p className={`mt-0.5 text-[11px] ${failed ? "text-red-700" : "text-gray-500"}`}>
+                    {failed ? (lang === "sw" ? "Haikupatikana · Jaribio " : "Unavailable · Tried ") + formatCheckedAt(status.checkedAt, lang) : restricted ? (lang === "sw" ? "Ruhusa inahitajika" : "Access restricted") : (lang === "sw" ? "Imekaguliwa " : "Checked ") + formatCheckedAt(status.checkedAt, lang)}
+                  </p>
+                  {!restricted && status.dataThrough && <p className="mt-0.5 text-[10px] text-gray-500">{lang === "sw" ? "Rekodi hadi" : "Records through"} {formatCheckedAt(status.dataThrough, lang)}</p>}
+                </div>
+                {failed && <button type="button" onClick={() => requestSnapshot(key)} disabled={retryingSources.has(key)} aria-label={`${lang === "sw" ? "Jaribu tena" : "Retry"} ${label}`} className="inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50">
+                  <RotateCw className={`h-3.5 w-3.5 ${retryingSources.has(key) ? "animate-spin" : ""}`} />{lang === "sw" ? "Jaribu tena" : "Retry"}
+                </button>}
+              </div>;
+            })}
+          </div>}
+          {canTrackActions && <p className="mt-3 text-[11px] leading-5 text-gray-500">{lang === "sw" ? "Kuweka hatua kuwa imefanyika ni uthibitisho wako tu; matokeo yaliyothibitishwa yanahitaji mabadiliko ya rekodi yanayopimika na hayaonyeshi kuwa AI ndiyo iliyoyasababisha." : "Marking an action done records your confirmation; a verified outcome requires a measurable record change and does not prove the assistant caused it."}</p>}
+        </section>
+
+        <section className="rounded-lg border border-brand-200 bg-white p-4" aria-labelledby="ask-dukapilot-heading">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-5 w-5 text-brand-700" />
+            <h2 id="ask-dukapilot-heading" className="font-semibold text-gray-950">{lang === "sw" ? "Muulize DukaPilot" : "Ask DukaPilot"}</h2>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-gray-500">{lang === "sw" ? "Majibu hutumia rekodi unazoruhusiwa kuona. Hayaandiki wala kubadilisha mauzo, malipo au stock." : "Answers use records your account may view. They never create or change sales, payments, or stock."}</p>
+          <form onSubmit={submitQuestion} className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={240} aria-label={lang === "sw" ? "Uliza kuhusu biashara yako" : "Ask about your business"} placeholder={lang === "sw" ? "Mfano: Ni bidhaa gani inahitaji kuagizwa?" : "For example: Which product may need reordering?"} className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100" />
+            <button type="submit" disabled={asking || !question.trim()} className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              {asking ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{lang === "sw" ? "Uliza" : "Ask"}
+            </button>
+          </form>
+          {askError && <p role="alert" className="mt-2 text-sm text-red-700">{askError}</p>}
+          {answer && <div className="mt-3 rounded-md bg-brand-50 p-3" aria-live="polite">
+            <p className="text-sm leading-6 text-gray-800">{answer.message}</p>
+            <Link href={answer.href} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-800">{lang === "sw" ? "Fungua rekodi husika" : "Open relevant records"}<ArrowRight className="h-3.5 w-3.5" /></Link>
+            {answer.evidence.length > 0 && <p className="mt-2 text-[11px] text-gray-600">{lang === "sw" ? "Chanzo" : "Source"}: {answer.evidence.map((item) => `${item.source} (${formatCheckedAt(item.checkedAt, lang)})`).join(" · ")}</p>}
+            <p className="mt-1 text-[11px] text-gray-500">{answer.privacy}</p>
+          </div>}
+        </section>
+
         <section className="rounded-lg border border-gray-200 bg-white p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -263,7 +432,11 @@ export default function AssistantPage() {
           </div>
           <div className="mt-4 grid gap-3">
             {recommendations.length === 0 ? (
-              <p className="text-sm text-gray-500">{lang === "sw" ? "Ongeza mauzo, bidhaa, madeni, matumizi au nukuu za bei ili msaidizi aanze kutoa mapendekezo." : "Add sales, inventory, debts, expenses, or quotations so the assistant can start producing recommendations."}</p>
+              <p className="text-sm text-gray-500">{hasUnavailableSources
+                ? (lang === "sw" ? "Baadhi ya data hazikupatikana; jaribu tena chanzo husika hapo juu ili mapendekezo yakamilike." : "Some data sources are unavailable; retry the affected source above to complete recommendations.")
+                : !access.canViewReports
+                  ? (lang === "sw" ? "Hakuna hatua ya stock au shamba inayohitaji uangalizi kwa sasa." : "No stock or farm action needs attention right now.")
+                  : (lang === "sw" ? "Ongeza mauzo, bidhaa, madeni, matumizi au nukuu za bei ili msaidizi aanze kutoa mapendekezo." : "Add sales, inventory, debts, expenses, or quotations so the assistant can start producing recommendations.")}</p>
             ) : recommendations.map((item, index) => {
               const status = actionStatus(item);
               return (
@@ -304,8 +477,12 @@ export default function AssistantPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Link
                         href={item.href}
-                        onClick={() => {
-                          if (canTrackActions) trackRecommendation(item, "OPENED").catch(console.error);
+                        onClick={(event) => {
+                          if (!canTrackActions || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                          event.preventDefault();
+                          trackRecommendation(item, "OPENED")
+                            .catch(() => {})
+                            .finally(() => router.push(item.href));
                         }}
                         className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
                       >
@@ -354,144 +531,27 @@ export default function AssistantPage() {
 
 function buildRecommendations({
   dashboard,
-  allTime,
   debts,
   expenses,
-  quotations,
+  stockProducts,
   lang,
 }: {
   dashboard: DashboardData | null;
-  allTime: DashboardData | null;
   debts: DebtSummary | null;
   expenses: ExpenseSummary | null;
-  quotations: QuotationSummary[];
+  stockProducts: NonNullable<DashboardData["lowStockAlerts"]>;
   lang: "sw" | "en";
 }): Recommendation[] {
   const items: Recommendation[] = [];
-  const salesByProduct = new Map((allTime?.topProducts || []).map((item) => [item.product?.name || "", {
-    quantity: item.totalQuantity || 0,
-    revenue: item.totalRevenue || 0,
-  }]));
-  const recentSalesByProduct = new Map((dashboard?.topProducts || []).map((item) => [item.product?.name || "", item.totalQuantity || 0]));
-  const lowStock = [...(dashboard?.lowStockAlerts || [])].sort((a, b) => {
-    const aSales = salesByProduct.get(a.name) || { quantity: 0, revenue: 0 };
-    const bSales = salesByProduct.get(b.name) || { quantity: 0, revenue: 0 };
-    const score = (product: typeof a, sales: { quantity: number; revenue: number }) => {
-      const recentQuantity = recentSalesByProduct.get(product.name) || 0;
-      const hasSalesHistory = sales.quantity > 0 || recentQuantity > 0;
-      return (hasSalesHistory ? 1000000 : 0) +
-        (hasSalesHistory && product.currentStock === 0 ? 100000 : 0) +
-        sales.revenue +
-        (sales.quantity * 1000) +
-        (recentQuantity * 5000) +
-        Math.max(0, (product.sellingPrice || 0) - (product.buyingPrice || 0)) * 10;
-    };
-    return score(b, bSales) - score(a, aSales);
+  const lowStock = [...stockProducts].sort((a, b) => {
+    const score = (product: typeof a) =>
+      (product.hasReliablePace ? 1000000 : 0) +
+      (product.currentStock === 0 && product.hasReliablePace ? 100000 : 0) +
+      (product.hasReliablePace && product.daysOfCoverage !== undefined ? Math.max(0, 1000 - product.daysOfCoverage) : 0) +
+      Math.max(0, product.minimumStock - product.currentStock) * 10;
+    return score(b) - score(a);
   });
   const mostUrgentStock = lowStock[0];
-  const todaySalesCount = dashboard?.summary.salesCount || 0;
-  const hasBusinessHistory = Boolean((allTime?.summary.salesCount || 0) > 0 || (allTime?.summary.totalSales || 0) > 0);
-
-  const acceptedQuotation = quotations
-    .filter((quotation) => quotation.status === "ACCEPTED")
-    .sort((a, b) => (b.totalAmount - b.amountPaid) - (a.totalAmount - a.amountPaid))[0];
-  if (acceptedQuotation) {
-    const outstanding = Math.max(0, acceptedQuotation.totalAmount - acceptedQuotation.amountPaid);
-    items.push({
-      id: `quotation-convert-${acceptedQuotation.id}`,
-      rank: 93,
-      icon: FileText,
-      tone: "bg-emerald-50 text-emerald-700",
-      title: lang === "sw"
-        ? `Badilisha ${acceptedQuotation.quotationNumber} kuwa mauzo`
-        : `Convert ${acceptedQuotation.quotationNumber} to a sale`,
-      body: lang === "sw"
-        ? `${acceptedQuotation.customer.name} amekubali ${acceptedQuotation.projectTitle}. Nukuu ina salio la ${formatTZS(outstanding)}.`
-        : `${acceptedQuotation.customer.name} accepted ${acceptedQuotation.projectTitle}. The quotation has ${formatTZS(outstanding)} outstanding.`,
-      action: lang === "sw" ? "Fungua nukuu zilizokubaliwa" : "Open accepted quotations",
-      href: "/quotations?status=ACCEPTED",
-      why: lang === "sw"
-        ? "Nukuu iliyokubaliwa bado si mauzo wala mapato mpaka ibadilishwe kwa uthibitisho wa biashara."
-        : "An accepted quotation is still not a sale or revenue until the business confirms conversion.",
-      impact: lang === "sw"
-        ? "Rekodi mauzo mara moja, weka salio kama deni ikihitajika, na punguza stock ya mistari iliyolinkiwa tu."
-        : "Record the sale once, keep any balance as a receivable, and deduct stock only for linked inventory lines.",
-    });
-  }
-
-  const depositFollowUp = quotations
-    .filter((quotation) => ["SENT", "ACCEPTED"].includes(quotation.status) && quotation.depositRequiredAmount > quotation.amountPaid)
-    .sort((a, b) => quotationDate(a.depositDueDate || a.expiryDate) - quotationDate(b.depositDueDate || b.expiryDate))[0];
-  if (depositFollowUp) {
-    const remainingDeposit = Math.max(0, depositFollowUp.depositRequiredAmount - depositFollowUp.amountPaid);
-    const dueDate = depositFollowUp.depositDueDate ? new Date(depositFollowUp.depositDueDate) : null;
-    const overdue = dueDate ? daysUntil(depositFollowUp.depositDueDate!) < 0 : false;
-    items.push({
-      id: `quotation-deposit-${depositFollowUp.id}`,
-      rank: overdue ? 91 : 79,
-      icon: HandCoins,
-      tone: overdue ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700",
-      title: lang === "sw"
-        ? `${overdue ? "Fuatilia amana ya" : "Kumbuka amana ya"} ${depositFollowUp.quotationNumber}`
-        : `${overdue ? "Follow up the deposit for" : "Track the deposit for"} ${depositFollowUp.quotationNumber}`,
-      body: lang === "sw"
-        ? `${depositFollowUp.customer.name} anahitaji kulipa ${formatTZS(remainingDeposit)} kabla ya kazi kuendelea.`
-        : `${depositFollowUp.customer.name} still needs to pay ${formatTZS(remainingDeposit)} before work proceeds.`,
-      action: lang === "sw" ? "Fungua nukuu na rekodi malipo" : "Open quotation and record payment",
-      href: `/quotations?status=${depositFollowUp.status}`,
-      why: lang === "sw"
-        ? "Amana hulinda cash ya kuanza kazi; malipo yasiwekwe kama mauzo mara mbili."
-        : "A deposit protects the cash needed to start work; it must not be counted as revenue twice.",
-      impact: lang === "sw"
-        ? "Kuweka malipo kwenye nukuu, kisha salio libaki wazi mpaka mauzo yathibitishwe."
-        : "Keep the payment on the quotation and leave the balance clear until the sale is confirmed.",
-    });
-  }
-
-  const expiringQuotation = quotations
-    .filter((quotation) => quotation.status === "SENT" && quotation.expiryDate && daysUntil(quotation.expiryDate) >= 0 && daysUntil(quotation.expiryDate) <= 3)
-    .sort((a, b) => quotationDate(a.expiryDate) - quotationDate(b.expiryDate))[0];
-  if (expiringQuotation) {
-    const days = daysUntil(expiringQuotation.expiryDate!);
-    items.push({
-      id: `quotation-expiring-${expiringQuotation.id}`,
-      rank: 84,
-      icon: FileText,
-      tone: "bg-amber-50 text-amber-700",
-      title: lang === "sw"
-        ? `${expiringQuotation.quotationNumber} inaisha ${days === 0 ? "leo" : "hivi karibuni"}`
-        : `${expiringQuotation.quotationNumber} ${days === 0 ? "expires today" : "is expiring soon"}`,
-      body: lang === "sw"
-        ? `Fuatilia ${expiringQuotation.customer.name} kuhusu ${expiringQuotation.projectTitle} kabla bei haijaisha muda.`
-        : `Follow up with ${expiringQuotation.customer.name} about ${expiringQuotation.projectTitle} before the price expires.`,
-      action: lang === "sw" ? "Fungua nukuu zilizotumwa" : "Open sent quotations",
-      href: "/quotations?status=SENT",
-      why: lang === "sw"
-        ? "Nukuu iliyotumwa ikikaa bila mawasiliano inaweza kupoteza mradi bila sababu."
-        : "A sent quotation without follow-up can lose a project for no good reason.",
-      impact: lang === "sw"
-        ? "Pata jibu, rekebisha toleo kama scope imebadilika, au ruhusu nukuu iishe kwa kumbukumbu sahihi."
-        : "Get an answer, issue a revision if scope changed, or let the quotation expire with a clean record.",
-    });
-  }
-
-  const expiredQuotation = quotations.find((quotation) => quotation.status === "EXPIRED");
-  if (expiredQuotation) {
-    items.push({
-      id: `quotation-expired-${expiredQuotation.id}`,
-      rank: 64,
-      icon: FileText,
-      tone: "bg-gray-100 text-gray-700",
-      title: lang === "sw" ? `Amua hatua kwa ${expiredQuotation.quotationNumber}` : `Decide what to do with ${expiredQuotation.quotationNumber}`,
-      body: lang === "sw"
-        ? `${expiredQuotation.customer.name} hajakubali ${expiredQuotation.projectTitle} kabla ya tarehe ya mwisho.`
-        : `${expiredQuotation.customer.name} did not accept ${expiredQuotation.projectTitle} before its expiry date.`,
-      action: lang === "sw" ? "Fungua nukuu zilizoisha" : "Open expired quotations",
-      href: "/quotations?status=EXPIRED",
-      why: lang === "sw" ? "Nukuu zilizoisha zinahitaji follow-up, toleo jipya, au kufungwa kwa kumbukumbu sahihi." : "Expired quotations need follow-up, a fresh revision, or a clean close-out.",
-      impact: lang === "sw" ? "Orodha ya mauzo ya baadaye ibaki sahihi, si mkusanyiko wa kazi zilizokwama." : "Keep the future-sales pipeline meaningful instead of filling it with stale work.",
-    });
-  }
 
   if ((dashboard?.summary.totalSales || 0) > 0 && (dashboard?.summary.netProfit || 0) < 0) {
     items.push({
@@ -514,59 +574,37 @@ function buildRecommendations({
     });
   }
 
-  if (hasBusinessHistory && todaySalesCount === 0) {
-    items.push({
-      id: "quiet-sales",
-      rank: 85,
-      icon: TrendingDown,
-      tone: "bg-red-50 text-red-700",
-      title: lang === "sw" ? "Hakuna mauzo yaliyorekodiwa leo" : "No sale recorded today yet",
-      body: lang === "sw"
-        ? "Angalia kama mauzo hayajaingizwa au tumia bidhaa inayouza sana kuvutia wateja."
-        : "Check whether sales were missed or use a proven product to pull customers in.",
-      action: lang === "sw" ? "Rekodi sale ya kwanza" : "Record first sale",
-      href: "/sales?intent=first-sale",
-      why: lang === "sw"
-        ? "Duka likikaa bila sale, ni vigumu kujua kama tatizo ni wateja, stock, au kurekodi."
-        : "A quiet sales day makes it hard to know whether the issue is demand, stock, or missing records.",
-      impact: lang === "sw"
-        ? "Kuanza siku kwa data sahihi ili mapendekezo yawe makali zaidi."
-        : "Start the day with clean data so recommendations become sharper.",
-    });
-  }
-
   if (mostUrgentStock) {
     const outOfStock = mostUrgentStock.currentStock === 0;
-    const productSales = salesByProduct.get(mostUrgentStock.name) || { quantity: 0, revenue: 0 };
-    const recentQuantity = recentSalesByProduct.get(mostUrgentStock.name) || 0;
-    const hasSalesHistory = productSales.quantity > 0 || recentQuantity > 0;
-    const marginPerUnit = Math.max(0, (mostUrgentStock.sellingPrice || 0) - (mostUrgentStock.buyingPrice || 0));
-    const stockRank = hasSalesHistory
-      ? Math.min(100, 78 + (outOfStock ? 12 : 0) + (productSales.revenue > 0 ? 5 : 0) + (marginPerUnit > 0 ? 3 : 0))
-      : 35;
+    const hasReliablePace = Boolean(mostUrgentStock.hasReliablePace && mostUrgentStock.daysOfCoverage !== undefined);
+    const stockRank = hasReliablePace
+      ? outOfStock ? 96 : mostUrgentStock.daysOfCoverage! <= 7 ? 91 : 82
+      : outOfStock ? 50 : 35;
+    const reorder = mostUrgentStock.reorderQuantity14d;
+    const approximateCost = mostUrgentStock.estimatedReorderCost;
     items.push({
-      id: "stock",
+      id: `stock-${mostUrgentStock.id}`,
       rank: stockRank,
       icon: Package,
-      tone: hasSalesHistory ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700",
+      tone: hasReliablePace ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700",
       title: lang === "sw"
-        ? (!hasSalesHistory ? `Kagua mahitaji ya ${mostUrgentStock.name} kabla ya kuagiza` : outOfStock ? `Stock ya ${mostUrgentStock.name} imeisha - agiza leo` : `Agiza ${mostUrgentStock.name} kabla stock haijaisha`)
-        : (!hasSalesHistory ? `Verify demand for ${mostUrgentStock.name} before reordering` : outOfStock ? `${mostUrgentStock.name} is out of stock - reorder today` : `Restock ${mostUrgentStock.name} before it runs out`),
+        ? (!hasReliablePace ? `Kagua mahitaji ya ${mostUrgentStock.name} kabla ya kuagiza` : outOfStock ? `Stock ya ${mostUrgentStock.name} imeisha - agiza leo` : `Kagua kuagiza ${mostUrgentStock.name}`)
+        : (!hasReliablePace ? `Verify demand for ${mostUrgentStock.name} before reordering` : outOfStock ? `${mostUrgentStock.name} is out of stock - review a reorder` : `Review a reorder for ${mostUrgentStock.name}`),
       body: lang === "sw"
-        ? (!hasSalesHistory
-          ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}, lakini hakuna mauzo yaliyorekodiwa kwa bidhaa hii. Thibitisha mahitaji kabla ya kufunga pesa kwenye stock.`
-          : `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit}; kiwango cha chini ni ${mostUrgentStock.minimumStock}. Imeuza ${productSales.quantity} na kuleta ${formatTZS(productSales.revenue)}. Bidhaa nyingine ${Math.max(0, lowStock.length - 1)} pia zinahitaji kuangaliwa.`)
-        : (!hasSalesHistory
-          ? `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} remain, but this product has no recorded sales. Verify demand before tying up cash in more stock.`
-          : `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} left; minimum is ${mostUrgStockMinimum(mostUrgentStock)}. It sold ${productSales.quantity} units for ${formatTZS(productSales.revenue)}. ${Math.max(0, lowStock.length - 1)} other products also need attention.`),
-      action: lang === "sw" ? (hasSalesHistory ? "Fungua Hifadhi ya Bidhaa na agiza tena" : "Kagua bidhaa kwenye Hifadhi") : (hasSalesHistory ? "Open inventory and reorder" : "Review product in inventory"),
+        ? (!hasReliablePace
+          ? `Imebaki ${mostUrgentStock.currentStock} ${mostUrgentStock.unit} dhidi ya kiwango cha chini ${mostUrgentStock.minimumStock}. Data ya siku ${mostUrgentStock.observedDays || 0} na siku ${mostUrgentStock.saleDays28d || 0} zenye mauzo haitoshi kutabiri kuisha au kiasi cha kuagiza.`
+          : `Kasi ya mauzo ya siku 28 zilizopita inaonyesha stock inaweza kudumu takriban siku ${Math.max(0, Math.round(mostUrgentStock.daysOfCoverage!))}. Kiasi cha kujaza stock ya siku 14 ni takriban ${reorder} ${mostUrgentStock.unit}${approximateCost !== undefined ? `; gharama ya karibu ${formatTZS(approximateCost)}` : ""}. Makadirio haya hayazingatii muda wa supplier.`)
+        : (!hasReliablePace
+          ? `${mostUrgentStock.currentStock} ${mostUrgentStock.unit} remain versus a minimum of ${mostUrgentStock.minimumStock}. Only ${mostUrgentStock.observedDays || 0} observed days and ${mostUrgentStock.saleDays28d || 0} selling days are not enough to estimate run-out or reorder quantity.`
+          : `Recorded sales over the last 28 days suggest about ${Math.max(0, Math.round(mostUrgentStock.daysOfCoverage!))} days of stock. A 14-day cover is roughly ${reorder} ${mostUrgentStock.unit}${approximateCost !== undefined ? `; estimated cash about ${formatTZS(approximateCost)}` : ""}. This estimate does not include supplier lead time.`),
+      action: lang === "sw" ? (hasReliablePace ? "Fungua Hifadhi ya Bidhaa na agiza tena" : "Kagua bidhaa kwenye Hifadhi") : (hasReliablePace ? "Open inventory and reorder" : "Review product in inventory"),
       href: `/inventory?search=${encodeURIComponent(mostUrgentStock.name)}&action=restock`,
       why: lang === "sw"
-        ? (hasSalesHistory ? `Kipaumbele kinatumia stock, kasi ya mauzo, mapato na faida ya ${formatTZS(marginPerUnit)} kwa unit.` : "Bidhaa zisizo na historia ya mauzo huwekwa chini ya bidhaa ambazo tayari zina mahitaji yaliyothibitishwa.")
-        : (hasSalesHistory ? `Priority combines stock, sales velocity, revenue, and ${formatTZS(marginPerUnit)} margin per unit.` : "Products with no sales history rank below products with proven demand."),
+        ? (hasReliablePace ? `Makadirio yanatumia stock ya sasa na mauzo halisi yaliyobaki baada ya marejesho ndani ya dirisha la siku 28; kuna siku ${mostUrgentStock.saleDays28d} zenye mauzo.` : "Historia ya mauzo haitoshi kutoa utabiri unaoaminika; hakuna kiasi au gharama ya kuagiza kilichokisiwa.")
+        : (hasReliablePace ? `Estimate uses current stock and net recorded units after returns over a 28-day window, with sales on ${mostUrgentStock.saleDays28d} distinct days.` : "Sales history is too sparse for a reliable forecast; no reorder quantity or cash estimate is shown."),
       impact: lang === "sw"
-        ? (!hasSalesHistory ? "Epuka kununua stock ambayo haijathibitisha kuwa inahitajika." : outOfStock ? "Rudisha bidhaa inayouzwa ili mauzo yaanze tena." : "Kulinda mauzo ya bidhaa inayohitajika kabla wiki haijaisha.")
-        : (!hasSalesHistory ? "Avoid buying stock before demand is proven." : outOfStock ? "Restore a sellable item so sales can resume." : "Protect sales from a needed item before the week ends."),
+        ? (!hasReliablePace ? "Thibitisha mahitaji na uangalie historia kabla ya kutumia pesa." : "Tumia makadirio kama kiashiria cha kupanga tu; thibitisha kiasi na muda wa supplier kabla ya kuagiza.")
+        : (!hasReliablePace ? "Check demand and sales history before spending cash." : "Use this estimate only for planning; confirm quantity and supplier lead time before ordering."),
     });
   }
 
@@ -574,21 +612,24 @@ function buildRecommendations({
     const openDebt = debts.debts?.find((debt) => debt.status === "OPEN" || debt.status === "PARTIAL");
     const customer = openDebt?.customerName || openDebt?.customerPhone;
     const debtBalance = openDebt ? Math.max(0, openDebt.amount - openDebt.amountPaid) : debts.summary.totalOwed;
+    const ageDays = openDebt?.createdAt ? Math.max(0, Math.floor((Date.now() - new Date(openDebt.createdAt).getTime()) / 86400000)) : null;
+    const overdueDays = openDebt?.dueDate ? Math.max(0, Math.floor((Date.now() - new Date(openDebt.dueDate).getTime()) / 86400000)) : 0;
+    const debtRank = overdueDays >= 30 || (ageDays || 0) >= 90 ? 95 : overdueDays > 0 || (ageDays || 0) >= 30 ? 91 : 84;
     const debtParams = new URLSearchParams();
     if (openDebt?.customerName) debtParams.set("customer", openDebt.customerName);
     if (openDebt?.customerPhone) debtParams.set("phone", openDebt.customerPhone);
     if (debtBalance) debtParams.set("amount", String(debtBalance));
     items.push({
       id: "debt",
-      rank: 90,
+      rank: debtRank,
       icon: HandCoins,
       tone: "bg-amber-50 text-amber-700",
       title: lang === "sw"
         ? `Fuatilia madeni ya ${formatTZS(debts.summary.totalOwed)}`
         : `Follow up on ${formatTZS(debts.summary.totalOwed)} in unpaid debt`,
       body: lang === "sw"
-        ? customer ? `Anza na ${customer}. ${debts.summary.openCount === 1 ? "Kuna deni 1 ambalo bado halijafungwa." : `Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.`}` : `${debts.summary.openCount === 1 ? "Kuna deni 1 ambalo bado halijafungwa." : `Kuna madeni ${debts.summary.openCount} ambayo bado hayajafungwa.`}`
-        : customer ? `Start with ${customer}. ${debts.summary.openCount} debt records are still open.` : `${debts.summary.openCount} debt records are still open.`,
+        ? `${customer ? `Anza na ${customer}. ` : ""}${debts.summary.openCount === 1 ? "Kuna deni 1 lililo wazi" : `Kuna madeni ${debts.summary.openCount} yaliyo wazi`}${ageDays !== null ? `; rekodi hii ina takriban siku ${ageDays}` : ""}${overdueDays > 0 ? ` na imechelewa siku ${overdueDays}` : ""}. Salio la rekodi hii ni ${formatTZS(debtBalance)}.`
+        : `${customer ? `Start with ${customer}. ` : ""}${debts.summary.openCount} debt records remain open${ageDays !== null ? `; this record is about ${ageDays} days old` : ""}${overdueDays > 0 ? ` and ${overdueDays} days overdue` : ""}. Its balance is ${formatTZS(debtBalance)}.`,
       action: lang === "sw" ? "Fungua madeni na rekodi malipo" : "Open debts and record payment",
       href: `/debts${debtParams.toString() ? `?${debtParams.toString()}` : ""}`,
       why: lang === "sw"
@@ -600,9 +641,10 @@ function buildRecommendations({
     });
   }
 
-  const expenseTrend = getExpenseTrend(expenses?.expenses || []);
+  const expenseTrend = expenses?.trend || getExpenseTrend(expenses?.expenses || []);
   if (expenseTrend.current > 0) {
-    const rose = expenseTrend.previous > 0 && expenseTrend.current > expenseTrend.previous;
+    const enoughHistory = Boolean(expenses?.trend && expenses.trend.currentCount >= 3 && expenses.trend.previousCount >= 3);
+    const rose = enoughHistory && expenseTrend.previous > 0 && expenseTrend.current >= expenseTrend.previous * 1.25;
     const percent = expenseTrend.previous > 0 ? Math.round(((expenseTrend.current - expenseTrend.previous) / expenseTrend.previous) * 100) : null;
     items.push({
       id: "expenses",
@@ -623,30 +665,6 @@ function buildRecommendations({
       impact: lang === "sw"
         ? "Kupunguza gharama zisizo muhimu na kulinda margin."
         : "Reduce unnecessary costs and protect margin.",
-    });
-  }
-
-  const topProduct = allTime?.topProducts?.[0];
-  if (topProduct?.product?.name && topProduct.totalRevenue) {
-    items.push({
-      id: "top-product",
-      rank: 60,
-      icon: TrendingUp,
-      tone: "bg-green-50 text-green-700",
-      title: lang === "sw"
-        ? `Promote ${topProduct.product.name}`
-        : `Promote ${topProduct.product.name}`,
-      body: lang === "sw"
-        ? `Bidhaa hii imeleta ${formatTZS(topProduct.totalRevenue)} kwenye mauzo. Iweke mbele kwenye duka na catalog.`
-        : `This product has generated ${formatTZS(topProduct.totalRevenue)} in sales. Feature it in the shop and catalog.`,
-      action: lang === "sw" ? "Tumia kama bidhaa ya kuvutia wateja" : "Use it as a customer magnet",
-      href: `/inventory?search=${encodeURIComponent(topProduct.product.name)}&action=promote`,
-      why: lang === "sw"
-        ? "Bidhaa inayouza vizuri inaweza kuvuta wateja wanunue bidhaa nyingine pia."
-        : "A strong seller can bring customers in and lift other basket items too.",
-      impact: lang === "sw"
-        ? "Kuongeza basket size kwa kuweka bidhaa inayopendwa mbele."
-        : "Increase basket size by putting a proven seller in front.",
     });
   }
 
@@ -687,24 +705,6 @@ function buildOwnerSummary(recommendations: Recommendation[], lang: "sw" | "en")
     .slice(0, 3)
     .map((item, index) => `${index + 1}. ${item.title}`)
     .join("\n");
-}
-
-function mostUrgStockMinimum(product: { minimumStock: number }) {
-  return product.minimumStock;
-}
-
-function quotationDate(value?: string | null) {
-  if (!value) return Number.MAX_SAFE_INTEGER;
-  const timestamp = new Date(value).getTime();
-  return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
-}
-
-function daysUntil(value: string) {
-  const target = new Date(value);
-  const today = new Date();
-  target.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / 86400000);
 }
 
 function getExpenseTrend(expenses: Array<{ amount: number; spentAt: string }>) {

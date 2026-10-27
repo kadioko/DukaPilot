@@ -90,6 +90,16 @@ interface AdminOverview {
       dismissedRate: number;
       openedRate: number;
     };
+    funnel?: {
+      shown: number;
+      opened: number;
+      markedDone: number;
+      outcomesVerified: number;
+      openedRate: number;
+      markedDoneRate: number;
+      verifiedOutcomeRate: number;
+      interpretation: string;
+    };
     topActions: Array<{ actionKey: string; count: number; title: string; href: string }>;
   };
   pushAnalytics?: {
@@ -1629,15 +1639,15 @@ export default function AdminPage() {
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">Assistant Action Analytics</h2>
-                  <p className="text-xs text-gray-500">Tracks whether AI recommendations are opened, completed, or dismissed.</p>
+                  <p className="text-xs text-gray-500">Separates recommendations shown, opened, marked done, and followed by a measurable record change. A measured change does not prove the assistant caused it.</p>
                 </div>
                 <span className="text-xs text-gray-400">Last 30 days</span>
               </div>
               <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                <MiniMetric label="Tracked actions" value={assistantAnalytics?.summary.total ?? "—"} tone="border-brand-200 bg-brand-50 text-brand-800" />
-                <MiniMetric label="Opened rate" value={assistantAnalytics?.summary.openedRate ?? "—"} tone="border-blue-200 bg-blue-50 text-blue-800" />
-                <MiniMetric label="Completed rate" value={assistantAnalytics?.summary.completedRate ?? "—"} tone="border-green-200 bg-green-50 text-green-800" />
-                <MiniMetric label="Dismissed rate" value={assistantAnalytics?.summary.dismissedRate ?? "—"} tone="border-gray-200 bg-gray-50 text-gray-800" />
+                <MiniMetric label="Recommendations shown" value={assistantAnalytics?.funnel?.shown ?? "—"} tone="border-brand-200 bg-brand-50 text-brand-800" />
+                <MiniMetric label="Opened / shown" value={assistantAnalytics?.funnel ? `${assistantAnalytics.funnel.openedRate}%` : "—"} tone="border-blue-200 bg-blue-50 text-blue-800" />
+                <MiniMetric label="Marked done / shown" value={assistantAnalytics?.funnel ? `${assistantAnalytics.funnel.markedDoneRate}%` : "—"} tone="border-green-200 bg-green-50 text-green-800" />
+                <MiniMetric label="Measured outcomes" value={assistantAnalytics?.funnel?.outcomesVerified ?? "—"} tone="border-gray-200 bg-gray-50 text-gray-800" />
               </div>
               <div className="mt-3 rounded-lg bg-gray-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Top action types</p>

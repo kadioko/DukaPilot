@@ -90,19 +90,23 @@ export default function HelpPage() {
   const aiThinking = [
     [
       lang === "sw" ? "1. Inasoma data" : "1. Reads shop data",
-      lang === "sw" ? "Mauzo, bidhaa, madeni, matumizi, nukuu za bei, maagizo na shughuli za wafanyakazi." : "Sales, stock, debts, expenses, quotations, orders, and staff activity.",
+      lang === "sw" ? "Hutumia rekodi za biashara yako tu ambazo akaunti yako inaruhusiwa kuona." : "It uses your business records only when your account has permission to see them.",
     ],
     [
-      lang === "sw" ? "2. Inatafuta hatari" : "2. Finds risk",
-      lang === "sw" ? "Bidhaa kuisha, deni kukaa muda mrefu, matumizi kupanda, nukuu kuisha muda, au siku bila mauzo." : "Low stock, old debts, rising expenses, expiring quotations, or quiet sales days.",
+      lang === "sw" ? "2. Huonyesha hali ya data" : "2. Shows data status",
+      lang === "sw" ? "Kila sehemu huonyesha muda ilipoangaliwa; hitilafu inaweza kujaribiwa tena bila kuficha sehemu nyingine." : "Each source shows when it was checked; one failed source can be retried without hiding the others.",
     ],
     [
-      lang === "sw" ? "3. Inapanga kipaumbele" : "3. Ranks priority",
-      lang === "sw" ? "Kinachoweza kuathiri fedha, faida au uaminifu wa mteja huja kwanza." : "Anything affecting cash, profit, or customer trust comes first.",
+      lang === "sw" ? "3. Huweka ushahidi na tahadhari" : "3. Qualifies its advice",
+      lang === "sw" ? "Makadirio ya stock hutumia mauzo yaliyorekebishwa kwa returns na huonekana tu historia ikitosha. Deni hupangwa kwa umri; ongezeko la matumizi huhitaji rekodi za kutosha." : "Stock estimates use sales net of recorded returns and appear only with enough history. Debts use age; expense spikes require enough records.",
     ],
     [
-      lang === "sw" ? "4. Inapendekeza hatua" : "4. Suggests action",
-      lang === "sw" ? "Fuatilia deni au amana, agiza bidhaa, punguza gharama, shughulikia agizo, au badilisha nukuu iliyokubaliwa kuwa mauzo." : "Collect a debt or deposit, restock, reduce costs, handle an order, or convert an accepted quotation to a sale.",
+      lang === "sw" ? "4. Jibu kwa rekodi, si kubahatisha" : "4. Answers from records, not guesses",
+      lang === "sw" ? "Muulize DukaPilot kwa Kiswahili au English. Jibu linaunganisha ukurasa husika; halitumii AI ya nje wala kurekodi mauzo, malipo au mabadiliko ya stock." : "Ask DukaPilot in English or Kiswahili. Answers link to the relevant screen, use no external AI service, and cannot record sales, payments, or stock changes.",
+    ],
+    [
+      lang === "sw" ? "5. Hupima kilichobadilika" : "5. Measures what changed",
+      lang === "sw" ? "Kufungua au kuweka hatua kuwa imefanyika si uthibitisho wa matokeo. Mabadiliko yanayopimika hayaonyeshi kuwa msaidizi ndiye aliyoyasababisha. Ushauri wa shamba unabaki kwenye shughuli zilizorekodiwa, si tiba au agronomy." : "Opening or marking an action done is not proof of impact. A measured change does not prove the assistant caused it. Farm guidance stays operational, not medical or agronomic advice.",
     ],
   ];
 

@@ -279,6 +279,7 @@ model Shop {
   offlineSyncEvents              OfflineSyncEvent[]
   cropOperationReceipts          CropOperationReceipt[]
   assistantActions               AssistantAction[]
+  assistantActionEvents          AssistantActionEvent[]
   pushSubscriptions              PushSubscription[]
   notificationPreference         NotificationPreference?
   pushDeliveries                 PushDelivery[]
@@ -616,6 +617,22 @@ model AssistantAction {
   @@index([shopId, status])
   @@index([createdAt])
   @@map("assistant_actions")
+}
+
+model AssistantActionEvent {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  actionKey     String
+  impressionKey String
+  eventType     String
+  measuredValue Int?
+  createdAt     DateTime @default(now())
+
+  @@unique([shopId, impressionKey, eventType])
+  @@index([shopId, eventType, createdAt])
+  @@index([actionKey, createdAt])
+  @@map("assistant_action_events")
 }
 
 model PushSubscription {
