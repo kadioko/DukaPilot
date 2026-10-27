@@ -35,6 +35,9 @@ test("pricing hydrates safely when a phone has a saved English preference", asyn
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/pricing");
 
+  await expect(page.locator('meta[name="format-detection"]')).toHaveAttribute("content", "telephone=no");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.dukapilot.com/pricing");
+  await expect(page).toHaveTitle(/DukaPilot Pricing/);
   await expect(page.getByRole("heading", { name: /Simple Pricing/ })).toBeVisible();
   expect(browserErrors.filter((message) => /hydration|server-rendered html/i.test(message))).toEqual([]);
 });

@@ -27,6 +27,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [{ url: "/marketing/phone-dashboard.png", width: 1200, height: 630, alt: "DukaPilot pricing and dashboard" }],
   },
+  formatDetection: { telephone: false },
 };
 
 export default function PricingLayout({ children }: { children: React.ReactNode }) {
