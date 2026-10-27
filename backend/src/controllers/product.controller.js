@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { Prisma } = require("@prisma/client");
 const crypto = require("node:crypto");
+const { performance } = require("node:perf_hooks");
 const { parse } = require("csv-parse/sync");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { inferBarcodeType, validateBarcode, validateSku, nextInternalBarcode, nextInternalSku } = require("../lib/barcode");
@@ -8,6 +9,7 @@ const { getRequestLanguage } = require("../lib/requestLanguage");
 const { findVisibleSupplier } = require("../lib/supplierAccess");
 const { hasPromotionInput, normalizePromotion } = require("../lib/productPricing");
 const { redactProduct } = require("../lib/productRedaction");
+const { recordRequestPhase } = require("../middleware/requestDiagnostics");
 
 const PRODUCT_IMPORT_MAX_ROWS = 200;
 const PRODUCT_IMPORT_MAX_BYTES = 500_000;
@@ -401,17 +403,22 @@ const get = asyncHandler(async (req, res) => {
 });
 
 const create = asyncHandler(async (req, res) => {
+  const controllerStartedAt = performance.now();
+  const shopResolutionStartedAt = performance.now();
   const shopId = await getShopIdForUser(req.user);
+  recordRequestPhase(req, "product.shopResolution", performance.now() - shopResolutionStartedAt);
   const createRequestId = req.body.createRequestId;
   if (createRequestId !== undefined && !validCreateRequestId(createRequestId)) {
     return res.status(400).json({ error: "Invalid product save retry key" });
   }
   const createRequestHash = createRequestId ? productCreateHash(req.body) : null;
   if (createRequestId) {
+    const idempotencyLookupStartedAt = performance.now();
     const existing = await prisma.product.findFirst({
       where: { shopId, createRequestId },
       include: { supplier: { select: { id: true, name: true, phone: true } } },
     });
+    recordRequestPhase(req, "product.idempotencyPrecheck", performance.now() - idempotencyLookupStartedAt);
     if (existing) {
       if (existing.createRequestHash !== createRequestHash) throw idempotencyConflict();
       return res.status(201).json({ product: redactProduct(existing, req) });
@@ -448,26 +455,34 @@ const create = asyncHandler(async (req, res) => {
   if (generateBarcode && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin, manager, or stock clerk can generate barcodes" });
   if (generateSku && !canGenerateBarcode(req)) return res.status(403).json({ error: "Only an admin, manager, or stock clerk can generate SKUs" });
   if (generateBarcode) {
+    const barcodeSettingsStartedAt = performance.now();
     const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { barcodeGenerationEnabled: true } });
+    recordRequestPhase(req, "product.barcodeSettingsLookup", performance.now() - barcodeSettingsStartedAt);
     if (shop?.barcodeGenerationEnabled === false) return res.status(403).json({ error: "Barcode generation is disabled in settings" });
   }
   if (supplierId) {
+    const supplierLookupStartedAt = performance.now();
     const supplier = await findVisibleSupplier(prisma, String(supplierId), shopId, { select: { id: true } });
+    recordRequestPhase(req, "product.supplierLookup", performance.now() - supplierLookupStartedAt);
     if (!supplier) return res.status(400).json({ error: "Supplier not found in this shop" });
   }
   let product;
+  const transactionStartedAt = performance.now();
   try {
     product = await prisma.$transaction(async (tx) => {
       if (createRequestId) {
+        const transactionIdempotencyStartedAt = performance.now();
         const prior = await tx.product.findFirst({
           where: { shopId, createRequestId },
           include: { supplier: { select: { id: true, name: true, phone: true } } },
         });
+        recordRequestPhase(req, "product.transactionIdempotencyLookup", performance.now() - transactionIdempotencyStartedAt);
         if (prior) {
           if (prior.createRequestHash !== createRequestHash) throw idempotencyConflict();
           return prior;
         }
       }
+      const barcodeSkuChecksStartedAt = performance.now();
       const manufacturerBarcode = checked.value;
       const internalBarcode = generateBarcode ? await nextInternalBarcode(tx, shopId) : null;
       const barcode = internalBarcode || manufacturerBarcode || null;
@@ -480,6 +495,8 @@ const create = asyncHandler(async (req, res) => {
         const duplicateSku = await tx.product.findFirst({ where: { shopId, sku }, select: { id: true } });
         if (duplicateSku) throw Object.assign(new Error("This SKU is already used by another product."), { status: 409, code: "SKU_DUPLICATE" });
       }
+      recordRequestPhase(req, "product.barcodeSkuChecks", performance.now() - barcodeSkuChecksStartedAt);
+      const productInsertStartedAt = performance.now();
       const created = await tx.product.create({
         data: {
           createRequestId: createRequestId || null,
@@ -511,9 +528,11 @@ const create = asyncHandler(async (req, res) => {
         },
         include: { supplier: { select: { id: true, name: true, phone: true } } },
       });
+      recordRequestPhase(req, "product.insert", performance.now() - productInsertStartedAt);
 
       // The product and its opening balance must commit together.
       if (created.currentStock > 0) {
+        const openingMovementStartedAt = performance.now();
         await tx.stockMovement.create({
           data: {
             type: "IN",
@@ -522,6 +541,7 @@ const create = asyncHandler(async (req, res) => {
             productId: created.id,
           },
         });
+        recordRequestPhase(req, "product.openingStockMovement", performance.now() - openingMovementStartedAt);
       }
       return created;
     });
@@ -529,10 +549,12 @@ const create = asyncHandler(async (req, res) => {
     if (createRequestId && error?.code === "P2002") {
       const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(" ") : String(error?.meta?.target || "");
       if (target.includes("createRequestId")) {
+        const recoveryLookupStartedAt = performance.now();
         const existing = await prisma.product.findFirst({
           where: { shopId, createRequestId },
           include: { supplier: { select: { id: true, name: true, phone: true } } },
         });
+        recordRequestPhase(req, "product.idempotencyRecoveryLookup", performance.now() - recoveryLookupStartedAt);
         if (existing) {
           if (existing.createRequestHash !== createRequestHash) throw idempotencyConflict();
           product = existing;
@@ -545,8 +567,11 @@ const create = asyncHandler(async (req, res) => {
     } else {
       throw error;
     }
+  } finally {
+    recordRequestPhase(req, "product.transaction", performance.now() - transactionStartedAt);
   }
 
+  recordRequestPhase(req, "product.controllerTotal", performance.now() - controllerStartedAt);
   res.status(201).json({ product: redactProduct(product, req) });
 });
 

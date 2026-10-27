@@ -1,5 +1,6 @@
 const FRONTEND_URL = (process.env.MONITOR_FRONTEND_URL || "https://www.dukapilot.com").replace(/\/$/, "");
 const API_URL = (process.env.MONITOR_API_URL || "https://dukapilotproduction.up.railway.app").replace(/\/$/, "");
+const crypto = require("node:crypto");
 const LOGIN_PHONE = process.env.MONITOR_LOGIN_PHONE || "+255700000002";
 const LOGIN_PIN = process.env.MONITOR_LOGIN_PIN || "1234";
 const STALE_RAILWAY_API_HOST = ["dukaos", "production.up.railway.app"].join("-");
@@ -69,10 +70,12 @@ async function run() {
       headers: {
         Origin: FRONTEND_URL,
         "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "content-type,x-request-id",
       },
     });
     assert(response.status === 204, `expected 204, got ${response.status}`);
     assert(response.headers.get("access-control-allow-origin") === FRONTEND_URL, "CORS allow-origin mismatch");
+    assert((response.headers.get("access-control-allow-headers") || "").toLowerCase().includes("x-request-id"), "CORS is not allowing request correlation headers");
   });
 
   let sessionCookie = "";
@@ -95,12 +98,22 @@ async function run() {
     assert(payload.summary, "dashboard payload missing summary");
   });
 
-  await check("failed API path stays controlled", async () => {
+  await check("authenticated session profile", async () => {
     const { response, payload } = await request(`${API_URL}/api/auth/me`, {
-      headers: { Authorization: "Bearer invalid-token", Origin: FRONTEND_URL },
+      headers: { Cookie: sessionCookie, Origin: FRONTEND_URL },
+    });
+    assert(response.ok, `session profile expected 2xx, got ${response.status}`);
+    assert(payload.user?.role, "session profile payload missing user role");
+  });
+
+  await check("failed API path stays controlled", async () => {
+    const requestId = crypto.randomUUID();
+    const { response, payload } = await request(`${API_URL}/api/auth/me`, {
+      headers: { Authorization: "Bearer invalid-token", Origin: FRONTEND_URL, "X-Request-ID": requestId },
     });
     assert(response.status === 401, `expected 401, got ${response.status}`);
     assert(payload.error, "401 payload missing error");
+    assert(response.headers.get("x-request-id") === requestId, "API did not echo the request correlation ID");
   });
 }
 

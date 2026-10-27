@@ -56,6 +56,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   const suppliers = [{ id: "sup-1", name: "Jumla Traders", phone: "+255700000001" }];
   let productDeleteAttempts = 0;
   const productCreateRequestKeys: string[] = [];
+  const apiRequestIds: string[] = [];
   let adjustmentRequestKey: string | null = null;
   let adjustmentApplied = false;
   const products = [
@@ -87,10 +88,11 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
       contentType: "application/json",
       body: JSON.stringify({
         user: {
+          id: "user-merchant-1",
           name: "Test Merchant",
           role: "MERCHANT",
           language: "en",
-          shop: { name: "Test Shop" },
+          shop: { id: "shop-1", name: "Test Shop" },
         },
       }),
     });
@@ -137,6 +139,9 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     const body = JSON.parse(route.request().postData() || "{}");
     expect(body.isCatalogVisible).toBe(true);
     expect(body.createRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    const apiRequestId = route.request().headers()["x-request-id"];
+    expect(apiRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    apiRequestIds.push(apiRequestId);
     productCreateRequestKeys.push(body.createRequestId);
     let product = createdProductsByRequestId.get(body.createRequestId);
     if (!product) {
@@ -280,11 +285,17 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
   await expect(page.getByText(/couldn't confirm whether the product was saved/i)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /inventory/i })).toBeVisible();
+  await expect(page.getByLabel(/product name|jina la bidhaa/i)).toHaveValue("Sukari White");
+  await expect(page.getByLabel(/product name|jina la bidhaa/i)).toBeDisabled();
   await page.getByLabel(/^save$|^hifadhi$/i).click();
   await expect(page.getByText("Sukari White")).toBeVisible();
   await expect(page.getByText(/tzs 3,500/i)).toBeVisible();
   expect(productCreateRequestKeys).toHaveLength(2);
   expect(productCreateRequestKeys[1]).toBe(productCreateRequestKeys[0]);
+  expect(apiRequestIds).toHaveLength(2);
+  expect(apiRequestIds[1]).not.toBe(apiRequestIds[0]);
   expect(products.filter((product) => product.name === "Sukari White")).toHaveLength(1);
 
   await page.getByLabel(/actions for sukari white|vitendo vya sukari white/i).click();

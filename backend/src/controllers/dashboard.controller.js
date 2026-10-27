@@ -1,5 +1,6 @@
 const prisma = require("../lib/prisma");
 const { performance } = require("node:perf_hooks");
+const { recordRequestPhase } = require("../middleware/requestDiagnostics");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, lastSevenTanzaniaDays, tanzaniaDateKey } = require("../lib/businessTime");
 const { featureSnapshot } = require("../lib/entitlements");
@@ -110,9 +111,13 @@ const overview = asyncHandler(async (req, res) => {
   const markQueryTiming = (name) => {
     const now = performance.now();
     queryTimings[name] = Math.round(now - timingStartedAt);
+    recordRequestPhase(req, `dashboard.${name}`, now - timingStartedAt);
     timingStartedAt = now;
   };
+  const shopResolutionStartedAt = performance.now();
   const shopId = await getShopIdForUser(req.user);
+  recordRequestPhase(req, "dashboard.shopResolution", performance.now() - shopResolutionStartedAt);
+  timingStartedAt = performance.now();
   const now = new Date();
   const { period = "today" } = req.query;
   const from = startOf(period, now);
@@ -330,6 +335,7 @@ const overview = asyncHandler(async (req, res) => {
   if (durationMs >= 5000) {
     console.warn(JSON.stringify({
       event: "dashboard_overview_slow",
+      requestId: req.requestId,
       durationMs,
       period: ["today", "week", "month", "all"].includes(period) ? period : "other",
       phases: queryTimings,

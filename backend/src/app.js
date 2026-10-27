@@ -44,6 +44,7 @@ const metaWhatsAppWebhookRoutes = require("./routes/metaWhatsAppWebhook.routes")
 const cronRoutes = require("./routes/cron.routes");
 const { apiRateLimiter, publicRateLimiter, statusRateLimiter } = require("./middleware/rateLimit");
 const { auditTrail, setAuditContext } = require("./middleware/audit");
+const { requestDiagnostics } = require("./middleware/requestDiagnostics");
 const prisma = require("./lib/prisma");
 const { redactPublicQuotationToken } = require("./lib/redaction");
 
@@ -85,7 +86,8 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-DukaPilot-Language", "X-DukaPilot-Branch"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-DukaPilot-Language", "X-DukaPilot-Branch", "X-Request-ID"],
+  exposedHeaders: ["X-Request-ID"],
   optionsSuccessStatus: 204,
 };
 
@@ -101,6 +103,7 @@ app.use(helmet({
 }));
 app.use(cors(corsOptions));
 app.options("/{*path}", cors(corsOptions));
+app.use(requestDiagnostics);
 app.use(express.json({
   limit: "1mb",
   verify(req, _res, buffer) {

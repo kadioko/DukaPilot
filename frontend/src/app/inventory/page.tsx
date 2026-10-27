@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ApiError, api, formatTZS, getCurrentSession, type ApiErrorDetail } from "@/lib/api";
+import { ApiError, api, formatTZS, getCurrentSession, selectedBranchId, type ApiErrorDetail } from "@/lib/api";
+import { clearPendingProductCreate, loadPendingProductCreate, savePendingProductCreate } from "@/lib/pendingProductCreate";
 import { t, useLang } from "@/lib/i18n";
 import {
   Plus,
@@ -78,6 +79,58 @@ type StockStatus = "ALL" | "LOW" | "OUT" | "IN_STOCK";
 type ExpiryFilter = "ALL" | "EXPIRING_SOON" | "EXPIRED";
 type ProductUsage = "ALL" | "FOR_SALE" | "INTERNAL";
 type InventoryExportField = "name" | "labelName" | "sku" | "unit" | "buyingPrice" | "sellingPrice" | "wholesalePrice" | "currentStock" | "minimumStock" | "supplier" | "barcode" | "manufacturerBarcode" | "internalBarcode" | "expiryDate" | "doesNotExpire" | "isInternalUse" | "isCatalogVisible";
+
+interface ProductFormState {
+  name: string;
+  labelName: string;
+  sku: string;
+  generateSku: boolean;
+  unit: string;
+  buyingPrice: string;
+  sellingPrice: string;
+  promotionPrice: string;
+  promotionStartsAt: string;
+  promotionEndsAt: string;
+  wholesalePrice: string;
+  wholesaleMinQty: string;
+  currentStock: string;
+  minimumStock: string;
+  supplierId: string;
+  expiryDate: string;
+  doesNotExpire: boolean;
+  isCatalogVisible: boolean;
+  isInternalUse: boolean;
+  barcode: string;
+  barcodeType: string;
+  generateBarcode: boolean;
+}
+
+interface ProductCreateBody extends Record<string, unknown> {
+  createRequestId: string;
+}
+
+const INITIAL_PRODUCT_FORM: ProductFormState = {
+  name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "",
+  promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "", wholesalePrice: "", wholesaleMinQty: "",
+  currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false,
+  isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false,
+};
+
+function productCreateScope(user: { id?: string; staff?: { id?: string }; shop?: { id?: string } }) {
+  const actor = user.staff?.id ? `staff:${user.staff.id}` : user.id ? `user:${user.id}` : null;
+  if (!actor || !user.shop?.id) return null;
+  return `${actor}|${user.shop.id}|${selectedBranchId()}`;
+}
+
+function uncertainProductSaveMessage(lang: string, savedForReload: boolean) {
+  const message = lang === "sw"
+    ? "Muunganisho umekatika na hatujathibitisha kama bidhaa imehifadhiwa. Usibadilishe maelezo; bonyeza Hifadhi tena ili kuthibitisha au kukamilisha uhifadhi huo salama."
+    : "The connection was interrupted and we couldn't confirm whether the product was saved. Don't change the details; press Save again to safely confirm or complete this save.";
+  if (savedForReload) return message;
+  return lang === "sw"
+    ? `${message} Maelezo ya jaribio hayajahifadhiwa kwa kufungua upya ukurasa; acha kichupo hiki wazi.`
+    : `${message} This browser couldn't preserve the retry across a reload; keep this tab open.`;
+}
 
 const INVENTORY_EXPORT_FIELDS: Array<{ key: InventoryExportField; header: string; en: string; sw: string; financial?: boolean; default?: boolean }> = [
   { key: "name", header: "product_name", en: "Product name", sw: "Jina la bidhaa", default: true },
@@ -181,13 +234,7 @@ export default function InventoryPage() {
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [actionMenuProductId, setActionMenuProductId] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "",
-    promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "",
-    wholesalePrice: "", wholesaleMinQty: "",
-    currentStock: "0", minimumStock: "5", supplierId: "",
-    expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false,
-  });
+  const [form, setForm] = useState<ProductFormState>(INITIAL_PRODUCT_FORM);
   const [adjustForm, setAdjustForm] = useState({ type: "IN", quantity: "", note: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -196,6 +243,9 @@ export default function InventoryPage() {
   const adjustRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const createRequestId = useRef<string | null>(null);
   const createPendingUncertain = useRef(false);
+  const pendingCreateBody = useRef<ProductCreateBody | null>(null);
+  const pendingCreateForm = useRef<ProductFormState | null>(null);
+  const productCreateScopeRef = useRef<string | null>(null);
   const [canViewFinancials, setCanViewFinancials] = useState(true);
   const [canManageCatalog, setCanManageCatalog] = useState(false);
   const [canExportInventory, setCanExportInventory] = useState(false);
@@ -294,8 +344,22 @@ export default function InventoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    getCurrentSession<{ user: { role: string; shop?: { category?: string }; staff?: { permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
+    getCurrentSession<{ user: { id?: string; role: string; shop?: { id?: string; category?: string }; staff?: { id?: string; permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
       .then((data) => {
+        const scope = productCreateScope(data.user);
+        productCreateScopeRef.current = scope;
+        if (scope) {
+          const pending = loadPendingProductCreate<ProductFormState, ProductCreateBody>(scope);
+          if (pending) {
+            createRequestId.current = pending.requestId;
+            pendingCreateBody.current = pending.body;
+            pendingCreateForm.current = pending.form;
+            createPendingUncertain.current = true;
+            setForm(pending.form);
+            setError(uncertainProductSaveMessage(lang, true));
+            setShowForm(true);
+          }
+        }
         setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports));
         setCanExportInventory(data.user.role === "ADMIN" || (data.user.role === "MERCHANT" && (!data.user.staff || Boolean(data.user.staff.permissions?.canManageStock))));
         setIsFoodBusiness(["bar", "restaurant"].includes(String(data.user.shop?.category || "").toLowerCase()));
@@ -318,7 +382,9 @@ export default function InventoryPage() {
     setEditProduct(null);
     if (!createPendingUncertain.current) {
       createRequestId.current = null;
-      setForm({ name: "", labelName: "", sku: "", generateSku: false, unit: "pcs", buyingPrice: "", sellingPrice: "", promotionPrice: "", promotionStartsAt: "", promotionEndsAt: "", wholesalePrice: "", wholesaleMinQty: "", currentStock: "0", minimumStock: "5", supplierId: "", expiryDate: "", doesNotExpire: false, isCatalogVisible: true, isInternalUse: false, barcode: "", barcodeType: "", generateBarcode: false });
+      pendingCreateBody.current = null;
+      pendingCreateForm.current = null;
+      setForm(INITIAL_PRODUCT_FORM);
     } else {
       setError(lang === "sw"
         ? "Kuna uhifadhi wa bidhaa ambao haujathibitishwa. Kamilisha au jaribu tena uhifadhi huo kabla ya kuanza bidhaa nyingine."
@@ -388,6 +454,7 @@ export default function InventoryPage() {
     }
     mutationInFlight.current = true;
     setSaving(true);
+    let pendingSavePersisted = false;
     try {
       const sharedBody = {
         name: form.name, labelName: form.labelName || null, sku: form.sku || undefined, generateSku: form.generateSku, unit: form.unit,
@@ -408,11 +475,33 @@ export default function InventoryPage() {
         barcodeType: form.barcodeType || undefined,
         generateBarcode: form.generateBarcode,
       };
-      const body = editProduct ? sharedBody : {
-        ...sharedBody,
-        currentStock: Number(form.currentStock),
-        createRequestId: createRequestId.current || (createRequestId.current = crypto.randomUUID()),
-      };
+      let body: typeof sharedBody | ProductCreateBody = sharedBody;
+      if (!editProduct) {
+        const requestId = createRequestId.current || crypto.randomUUID();
+        createRequestId.current = requestId;
+        const retryBody = createPendingUncertain.current ? pendingCreateBody.current : null;
+        if (createPendingUncertain.current && !retryBody) {
+          setError(lang === "sw"
+            ? "Maelezo ya jaribio salama hayapatikani. Usitume tena kwa sasa; wasiliana na msaada."
+            : "The saved retry details are unavailable. Don't submit this product again yet; contact support.");
+          return;
+        }
+        const createBody: ProductCreateBody = retryBody || {
+          ...sharedBody,
+          currentStock: Number(form.currentStock),
+          createRequestId: requestId,
+        };
+        body = createBody;
+        pendingCreateBody.current = createBody;
+        if (!pendingCreateForm.current || !createPendingUncertain.current) pendingCreateForm.current = { ...form };
+        const scope = productCreateScopeRef.current;
+        pendingSavePersisted = Boolean(scope && savePendingProductCreate(scope, {
+          requestId,
+          form: pendingCreateForm.current,
+          body: createBody,
+          savedAt: Date.now(),
+        }));
+      }
       const response = editProduct
         ? await api.patch<{ product: Product }>(`/products/${editProduct.id}`, body)
         : await api.post<{ product: Product }>("/products", body);
@@ -420,8 +509,11 @@ export default function InventoryPage() {
         setProducts((current) => current.map((product) => product.id === editProduct.id ? response.product : product));
       } else {
         setProducts((current) => [response.product, ...current]);
+        if (productCreateScopeRef.current) clearPendingProductCreate(productCreateScopeRef.current);
         createRequestId.current = null;
         createPendingUncertain.current = false;
+        pendingCreateBody.current = null;
+        pendingCreateForm.current = null;
       }
       setShowForm(false);
       toast(editProduct ? (lang === "sw" ? "Bidhaa imebadilishwa." : "Product updated.") : (lang === "sw" ? "Bidhaa imeongezwa." : "Product added."), "success");
@@ -430,13 +522,27 @@ export default function InventoryPage() {
       if (!editProduct) {
         const uncertain = e instanceof ApiError && (e.failureType === "TIMEOUT" || e.failureType === "NETWORK" || (e.status || 0) >= 500);
         createPendingUncertain.current = uncertain;
-        if (!uncertain) createRequestId.current = null;
+        if (uncertain) {
+          if (pendingCreateForm.current) setForm(pendingCreateForm.current);
+          const scope = productCreateScopeRef.current;
+          if (scope && createRequestId.current && pendingCreateForm.current && pendingCreateBody.current) {
+            pendingSavePersisted = savePendingProductCreate(scope, {
+              requestId: createRequestId.current,
+              form: pendingCreateForm.current,
+              body: pendingCreateBody.current,
+              savedAt: Date.now(),
+            });
+          }
+        } else {
+          if (productCreateScopeRef.current) clearPendingProductCreate(productCreateScopeRef.current);
+          createRequestId.current = null;
+          pendingCreateBody.current = null;
+          pendingCreateForm.current = null;
+        }
       }
       const uncertainCreate = !editProduct && e instanceof ApiError && (e.failureType === "TIMEOUT" || e.failureType === "NETWORK" || (e.status || 0) >= 500);
       setError(uncertainCreate
-        ? (lang === "sw"
-          ? "Muunganisho umekatika na hatujathibitisha kama bidhaa imehifadhiwa. Usianze bidhaa nyingine. Bonyeza Hifadhi tena bila kubadilisha taarifa ili kuthibitisha au kukamilisha jaribio hili salama."
-          : "The connection was interrupted and we couldn't confirm whether the product was saved. Don't start another product entry. Press Save again without changing the details to safely confirm or complete this save.")
+        ? uncertainProductSaveMessage(lang, pendingSavePersisted)
         : e instanceof Error ? e.message : t("common.error", lang));
     } finally {
       setSaving(false);
@@ -995,6 +1101,7 @@ export default function InventoryPage() {
         <Modal title={editProduct ? t("inventory.editTitle", lang) : t("inventory.addTitle", lang)} onClose={() => setShowForm(false)}>
           <div className="space-y-3">
             {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg p-2">{error}</p>}
+            <fieldset disabled={createPendingUncertain.current} className="m-0 min-w-0 space-y-3 border-0 p-0">
             <Field label={t("inventory.nameLabel", lang)}>
               <input aria-label={t("inventory.nameLabel", lang)} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={INPUT} placeholder={t("inventory.namePlaceholder", lang)} />
@@ -1123,13 +1230,14 @@ export default function InventoryPage() {
                 </Field>
               )}
             </div>
+            </fieldset>
 
             <div className="flex gap-2 pt-2">
               <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-lg text-sm font-medium">
                 {t("common.cancel", lang)}
               </button>
               <button aria-label={t("common.save", lang)} onClick={handleSave} disabled={saving} className="flex-1 bg-brand-600 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
-                {saving ? t("inventory.saving", lang) : t("common.save", lang)}
+                {saving ? t("inventory.saving", lang) : createPendingUncertain.current ? (lang === "sw" ? "Thibitisha uhifadhi" : "Confirm save") : t("common.save", lang)}
               </button>
             </div>
           </div>

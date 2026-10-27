@@ -1,7 +1,9 @@
 const jwt = require("jsonwebtoken");
+const { performance } = require("node:perf_hooks");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { getFarmConfiguration } = require("../lib/farmAccess");
+const { recordRequestPhase } = require("./requestDiagnostics");
 
 function readCookieToken(req) {
   const cookieHeader = req.headers.cookie;
@@ -49,14 +51,17 @@ async function authenticate(req, res, next) {
   }
 
   try {
+    const accountLookupStartedAt = performance.now();
     const account = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: { id: true, role: true, sessionVersion: true },
     });
+    recordRequestPhase(req, "auth.accountLookup", performance.now() - accountLookupStartedAt);
     if (!account) return res.status(401).json({ error: "Account access expired" });
     payload.accountRole = account.role;
     payload.role = account.role;
     if (payload.staffId) {
+      const staffLookupStartedAt = performance.now();
       const staff = await prisma.staffMember.findFirst({
         where: { id: payload.staffId, isActive: true },
         select: {
@@ -87,6 +92,7 @@ async function authenticate(req, res, next) {
           shop: { select: { userId: true, parentShopId: true, branchArchived: true, parentShop: { select: { userId: true } } } },
         },
       });
+      recordRequestPhase(req, "auth.staffLookup", performance.now() - staffLookupStartedAt);
       if (!staff || (staff.shop.userId || staff.shop.parentShop?.userId) !== payload.userId) {
         return res.status(401).json({ error: "Staff access expired" });
       }

@@ -29,6 +29,7 @@ export type ApiFailureType = "NETWORK" | "TIMEOUT" | "HTTP" | "INVALID_RESPONSE"
 type ApiFailureReporting = "default" | "background" | "deferred";
 
 export interface ApiRequestContext {
+  requestId: string;
   endpoint: string;
   method: string;
   apiHostname: string;
@@ -92,13 +93,24 @@ function getBaseUrl(): string {
   return normalizeBaseUrl();
 }
 
-function requestContext(baseUrl: string, path: string, method: string): ApiRequestContext {
+function createApiRequestId(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function requestContext(baseUrl: string, path: string, method: string, requestId: string): ApiRequestContext {
   const endpoint = diagnosticEndpoint(path);
   const browserOrigin = typeof window !== "undefined" ? window.location.origin : PROD_API_URL;
   try {
     const target = new URL(baseUrl, browserOrigin);
     const proxy = baseUrl === BROWSER_API_PATH;
     return {
+      requestId,
       endpoint,
       method,
       apiHostname: target.hostname || "same-origin",
@@ -106,7 +118,7 @@ function requestContext(baseUrl: string, path: string, method: string): ApiReque
       transport: proxy ? "same-origin-proxy" : "direct-api",
     };
   } catch {
-    return { endpoint, method, apiHostname: "invalid-url", transport: "direct-api" };
+    return { requestId, endpoint, method, apiHostname: "invalid-url", transport: "direct-api" };
   }
 }
 
@@ -116,6 +128,7 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting
   const status = error.status;
   const failureType = error.failureType || "HTTP";
   const data = {
+    requestId: context.requestId,
     endpoint: context.endpoint,
     method: context.method,
     apiHostname: context.apiHostname,
@@ -267,7 +280,8 @@ async function request<T>(
   reporting: ApiFailureReporting = "default",
 ): Promise<T> {
   const baseUrl = getBaseUrl();
-  const context = requestContext(baseUrl, path, options.method || "GET");
+  const requestId = createApiRequestId();
+  const context = requestContext(baseUrl, path, options.method || "GET", requestId);
   if (["/auth/login", "/auth/logout", "/auth/register"].includes(path) && typeof window !== "undefined") {
     sessionStorage.removeItem(BRANCH_KEY);
     if (path === "/auth/login" || path === "/auth/register") {
@@ -278,6 +292,7 @@ async function request<T>(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-DukaPilot-Language": lang,
+    "X-Request-ID": requestId,
     ...(selectedBranchId() ? { "X-DukaPilot-Branch": selectedBranchId() } : {}),
     ...(options.headers as Record<string, string>),
   };
@@ -300,6 +315,10 @@ async function request<T>(
     throw error;
   } finally {
     clearTimeout(timeoutId);
+  }
+  const responseRequestId = res.headers.get("x-request-id");
+  if (responseRequestId && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(responseRequestId)) {
+    context.requestId = responseRequestId;
   }
 
   // On 401, attempt token refresh once then retry

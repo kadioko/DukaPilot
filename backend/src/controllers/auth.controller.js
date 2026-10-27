@@ -1,6 +1,8 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { performance } = require("node:perf_hooks");
 const prisma = require("../lib/prisma");
+const { recordRequestPhase } = require("../middleware/requestDiagnostics");
 const { issueOtp, verifyOtp, isOtpChannelConfigured, normalizeDeliveryChannel } = require("../services/otp.service");
 const { activePlan, canUseFeature, featureSnapshot } = require("../lib/entitlements");
 const { normalizePhone, phoneLookupValues, isValidPhone } = require("../lib/phone");
@@ -365,11 +367,15 @@ const login = asyncHandler(async (req, res) => {
 });
 
 const me = asyncHandler(async (req, res) => {
+  const profileLookupStartedAt = performance.now();
   const profile = req.user.staffId ? await getStaffProfile(req.user.staffId) : await getProfile(req.user.userId);
+  recordRequestPhase(req, "auth.profileLookup", performance.now() - profileLookupStartedAt);
   if (!profile) return res.status(404).json({ error: "User not found" });
   if (!req.user.staffId && profile.shop && req.user.resolvedShopId && req.user.resolvedShopId !== profile.shop.id) {
     profile.businessShopId = profile.shop.id;
+    const branchProfileStartedAt = performance.now();
     profile.shop = await prisma.shop.findUnique({ where: { id: req.user.resolvedShopId }, select: { id: true, name: true, location: true, district: true, category: true, parentShopId: true, isActive: true, isCatalogPublished: true } });
+    recordRequestPhase(req, "auth.branchProfileLookup", performance.now() - branchProfileStartedAt);
   }
   res.json({ user: profile });
 });
