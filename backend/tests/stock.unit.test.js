@@ -222,6 +222,46 @@ test("stock history is shop-scoped, searchable, filterable, paginated, and uses 
   assert.deepEqual(res.payload.pagination, { page: 2, limit: 30, total: 61, totalPages: 3 });
 });
 
+test("stock history links receipt, supplier returns, reversals, and customer returns without costs", async () => {
+  const product = { id: "product-1", name: "Soap", unit: "pcs", currentStock: 6 };
+  const movement = (id, fields) => ({ id, productId: product.id, product, type: "OUT", quantity: 2, createdAt: new Date(), ...fields });
+  const saleReturn = { shopId: "shop-1", sale: { receiptNumber: 42 }, reversal: { id: "return-fix" } };
+  const rows = [
+    movement("received", { type: "IN", quantity: 5, stockReceiptId: "receipt-1" }),
+    movement("returned", { supplierCreditLine: { supplierCredit: { id: "credit-1", kind: "RETURN", stockReceiptId: "receipt-1", reversalOfId: null, reversal: { id: "credit-fix" } } } }),
+    movement("return-reversed", { type: "IN", supplierCreditLine: { supplierCredit: { id: "credit-fix", kind: "RETURN", stockReceiptId: "receipt-1", reversalOfId: "credit-1", reversal: null } } }),
+    movement("customer-return", { type: "IN", saleReturnItem: { saleReturn } }),
+    movement("receipt-correction", { stockReceiptId: "receipt-1", receiptCorrectionId: "correction-1" }),
+  ];
+  let receiptWhere;
+  let itemWhere;
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    stockMovement: { findMany: async () => rows, count: async () => rows.length },
+    stockReceipt: { findMany: async ({ where }) => { receiptWhere = where; return [{ id: "receipt-1", invoiceNumber: "INV-1", supplier: { id: "supplier-1", name: "Supplier" }, voidedAt: null, stockCorrections: [{ id: "correction-1" }] }]; } },
+    stockReceiptItem: { findMany: async ({ where }) => { itemWhere = where; return [{ stockReceiptId: "receipt-1", productId: product.id, quantity: 5, supplierCreditLines: [{ quantity: 2 }, { quantity: -2 }] }]; } },
+  } };
+  require.cache[shopAccessPath] = { id: shopAccessPath, filename: shopAccessPath, loaded: true, exports: { getShopIdForUser: async () => "shop-1" } };
+  delete require.cache[controllerPath];
+  const res = response();
+  await require(controllerPath).history({ user: { userId: "owner-1" }, query: {} }, res, assert.fail);
+
+  assert.equal(receiptWhere.shopId, "shop-1");
+  assert.equal(itemWhere.stockReceipt.is.shopId, "shop-1");
+  assert.equal(res.payload.movements[0].source, "RECEIPT");
+  assert.deepEqual(res.payload.movements[0].receiptContext, {
+    id: "receipt-1", invoiceNumber: "INV-1", supplier: { id: "supplier-1", name: "Supplier" },
+    receivedQuantity: 5, returnedQuantity: 0, returnReversed: true, corrected: true, reversed: false,
+  });
+  assert.equal(res.payload.movements[1].source, "SUPPLIER_RETURN");
+  assert.equal(res.payload.movements[1].sourceReversed, true);
+  assert.equal(res.payload.movements[2].source, "SUPPLIER_RETURN_REVERSAL");
+  assert.equal(res.payload.movements[3].source, "CUSTOMER_RETURN");
+  assert.equal(res.payload.movements[3].saleReceiptNumber, 42);
+  assert.equal(res.payload.movements[3].sourceReversed, true);
+  assert.equal(res.payload.movements[4].source, "RECEIPT_CORRECTION");
+  assert.equal(JSON.stringify(res.payload).includes("unitCost"), false);
+});
+
 test("stock history rejects impossible dates and unsupported movement types without querying", async () => {
   let queries = 0;
   require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {

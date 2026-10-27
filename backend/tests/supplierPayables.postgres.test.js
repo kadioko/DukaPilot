@@ -26,6 +26,7 @@ require.cache[cachePath] = {
 };
 
 const stockReceiptController = require("../src/controllers/stockReceipt.controller");
+const stockController = require("../src/controllers/stock.controller");
 const orderController = require("../src/controllers/order.controller");
 const supplierPayableController = require("../src/controllers/supplierPayable.controller");
 const cashSessionController = require("../src/controllers/cashSession.controller");
@@ -170,6 +171,19 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
     body: { stockReceiptId: firstReceiptId, requestKey: crypto.randomUUID(), kind: "RETURN", items: [{ stockReceiptItemId: firstReceiptLine.id, quantity: 1 }] },
   });
   assert.equal(secondReturn.statusCode, 201);
+  const stockHistory = await invoke(stockController.history, { user: { userId: user.id }, query: { productId: product.id } });
+  assert.equal(stockHistory.statusCode, 200);
+  const originalReceiptMovement = stockHistory.payload.movements.find((movement) => movement.stockReceiptId === firstReceiptId && movement.source === "RECEIPT");
+  assert.equal(originalReceiptMovement.receiptContext.receivedQuantity, 2);
+  assert.equal(originalReceiptMovement.receiptContext.returnedQuantity, 1);
+  assert.equal(originalReceiptMovement.receiptContext.returnReversed, true);
+  assert.equal(stockHistory.payload.movements.find((movement) => movement.supplierCreditLineId === returned.payload.credit.items[0].id).sourceReversed, true);
+  assert.equal(stockHistory.payload.movements.find((movement) => movement.supplierCreditLineId === reversedCredit.payload.credit.items[0].id).source, "SUPPLIER_RETURN_REVERSAL");
+  assert.equal(stockHistory.payload.movements.find((movement) => movement.supplierCreditLineId === secondReturn.payload.credit.items[0].id).source, "SUPPLIER_RETURN");
+  assert.equal(JSON.stringify(stockHistory.payload).includes("landedUnitCost"), false);
+  const savedReceipt = await invoke(stockReceiptController.get, { user: { userId: user.id }, params: { id: firstReceiptId } });
+  assert.equal(savedReceipt.payload.receipt.items[0].returnedQuantity, 1);
+  assert.equal(savedReceipt.payload.receipt.hasReturnReversal, true);
   const stockBeforeReturnStatusChanges = (await prisma.product.findUnique({ where: { id: product.id } })).currentStock;
   const creditCountBeforeReturnStatusChanges = await prisma.supplierCredit.count({ where: { shopId: root.id } });
   const paymentCountBeforeReturnStatusChanges = await prisma.supplierPayment.count({ where: { shopId: root.id } });
@@ -206,6 +220,8 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
   assert.equal(supplierRefundRetry.payload.reused, true);
 
   activeShopId = branch.id;
+  const branchStockHistory = await invoke(stockController.history, { user: { userId: user.id }, query: { productId: product.id } });
+  assert.equal(branchStockHistory.payload.movements.length, 0);
   const branchReceipts = await invoke(supplierPayableController.receipts, { user: { userId: user.id }, params: { supplierId: supplier.id }, query: {} });
   assert.equal(branchReceipts.statusCode, 200);
   assert.equal(branchReceipts.payload.receipts.length, 0);

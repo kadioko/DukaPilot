@@ -205,7 +205,9 @@ const history = asyncHandler(async (req, res) => {
       where,
       include: {
         product: { select: { id: true, name: true, sku: true, unit: true, currentStock: true } },
-        stockReceipt: { select: { id: true, invoiceNumber: true, supplier: { select: { id: true, name: true } } } },
+        supplierCreditLine: { select: { supplierCredit: { select: { id: true, kind: true, stockReceiptId: true, reversalOfId: true, reversal: { select: { id: true } } } } } },
+        saleReturnItem: { select: { saleReturn: { select: { shopId: true, reversal: { select: { id: true } }, sale: { select: { receiptNumber: true } } } } } },
+        saleReturnReversalItem: { select: { saleReturnItem: { select: { saleReturn: { select: { shopId: true, sale: { select: { receiptNumber: true } } } } } } } },
         reversal: { select: { id: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -215,7 +217,57 @@ const history = asyncHandler(async (req, res) => {
     prisma.stockMovement.count({ where }),
   ]);
 
-  res.json({ movements, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+  const receiptIds = [...new Set(movements.map((movement) => movement.stockReceiptId || movement.supplierCreditLine?.supplierCredit.stockReceiptId).filter(Boolean))];
+  const productIds = [...new Set(movements.map((movement) => movement.productId).filter(Boolean))];
+  const [receipts, receiptItems] = receiptIds.length ? await Promise.all([
+    prisma.stockReceipt.findMany({ where: { shopId, id: { in: receiptIds } }, select: {
+      id: true, invoiceNumber: true, voidedAt: true,
+      supplier: { select: { id: true, name: true } },
+      stockCorrections: { take: 1, select: { id: true } },
+    } }),
+    prisma.stockReceiptItem.findMany({ where: { stockReceiptId: { in: receiptIds }, productId: { in: productIds }, stockReceipt: { is: { shopId } } }, select: {
+      stockReceiptId: true, productId: true, quantity: true,
+      supplierCreditLines: { where: { supplierCredit: { is: { kind: "RETURN" } } }, select: { quantity: true } },
+    } }),
+  ]) : [[], []];
+  const receiptById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
+  const itemByReceiptAndProduct = new Map(receiptItems.map((item) => [`${item.stockReceiptId}:${item.productId}`, item]));
+  const decorated = movements.map((movement) => {
+    const credit = movement.supplierCreditLine?.supplierCredit;
+    const receiptId = movement.stockReceiptId || credit?.stockReceiptId;
+    const receipt = receiptById.get(receiptId);
+    const item = itemByReceiptAndProduct.get(`${receiptId}:${movement.productId}`);
+    const customerReturn = movement.saleReturnItem?.saleReturn;
+    const customerReturnReversal = movement.saleReturnReversalItem?.saleReturnItem.saleReturn;
+    let source = "OTHER";
+    if (credit?.kind === "RETURN") source = credit.reversalOfId ? "SUPPLIER_RETURN_REVERSAL" : "SUPPLIER_RETURN";
+    else if (customerReturnReversal?.shopId === shopId) source = "CUSTOMER_RETURN_REVERSAL";
+    else if (customerReturn?.shopId === shopId) source = "CUSTOMER_RETURN";
+    else if (movement.receiptCorrectionId) source = "RECEIPT_CORRECTION";
+    else if (receipt) source = "RECEIPT";
+    else if (movement.reversalOfId) source = "MANUAL_REVERSAL";
+    else if (movement.manualAdjustment) source = "MANUAL";
+    return {
+      ...movement,
+      supplierCreditLine: undefined,
+      saleReturnItem: undefined,
+      saleReturnReversalItem: undefined,
+      source,
+      sourceReversed: Boolean(credit?.reversal?.id || (customerReturn?.shopId === shopId && customerReturn.reversal?.id)),
+      saleReceiptNumber: customerReturn?.shopId === shopId ? customerReturn.sale.receiptNumber
+        : customerReturnReversal?.shopId === shopId ? customerReturnReversal.sale.receiptNumber : null,
+      receiptContext: receipt ? {
+        id: receipt.id, invoiceNumber: receipt.invoiceNumber, supplier: receipt.supplier,
+        receivedQuantity: item?.quantity ?? null,
+        returnedQuantity: item?.supplierCreditLines.reduce((sum, line) => sum + line.quantity, 0) ?? 0,
+        returnReversed: item?.supplierCreditLines.some((line) => line.quantity < 0) ?? false,
+        corrected: receipt.stockCorrections.length > 0,
+        reversed: Boolean(receipt.voidedAt),
+      } : null,
+    };
+  });
+
+  res.json({ movements: decorated, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
 });
 
 module.exports = { adjust, reverseManualMovement, movements, history };

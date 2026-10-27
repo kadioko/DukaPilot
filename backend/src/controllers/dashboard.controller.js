@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { performance } = require("node:perf_hooks");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, lastSevenTanzaniaDays, tanzaniaDateKey } = require("../lib/businessTime");
 const { featureSnapshot } = require("../lib/entitlements");
@@ -103,6 +104,14 @@ function profitRange(period, fromInput, toInput, now = new Date()) {
 }
 
 const overview = asyncHandler(async (req, res) => {
+  const requestStartedAt = performance.now();
+  let timingStartedAt = requestStartedAt;
+  const queryTimings = {};
+  const markQueryTiming = (name) => {
+    const now = performance.now();
+    queryTimings[name] = Math.round(now - timingStartedAt);
+    timingStartedAt = now;
+  };
   const shopId = await getShopIdForUser(req.user);
   const now = new Date();
   const { period = "today" } = req.query;
@@ -144,6 +153,7 @@ const overview = asyncHandler(async (req, res) => {
       select: { id: true, totalAmount: true, profit: true, paymentMethod: true, createdAt: true },
     }),
   ]);
+  markQueryTiming("baseReads");
 
   const lowStockProducts = lowStockCandidates.filter((p) => p.currentStock > 0);
   const outOfStockProducts = lowStockCandidates.filter((p) => p.currentStock === 0);
@@ -187,6 +197,7 @@ const overview = asyncHandler(async (req, res) => {
     shopId,
     chartDays[0],
   );
+  markQueryTiming("dailyChart");
 
   const dailyMap = {};
   for (const day of chartDays) {
@@ -221,9 +232,10 @@ const overview = asyncHandler(async (req, res) => {
     _count: { id: true },
     orderBy: { _sum: { totalAmount: "desc" } },
   });
+  markQueryTiming("productAndPaymentRankings");
 
-  const { allTimeRows, historyRows, allExpenseAgg } = await dashboardHistory(shopId, async () => {
-    const [allTimeRows, historyRows, allExpenseAgg] = await Promise.all([
+  const { allTimeRows, historyRows, allExpenseAgg, allTimeCostRows } = await dashboardHistory(shopId, async () => {
+    const [allTimeRows, historyRows, allExpenseAgg, allTimeCostRows] = await Promise.all([
       prisma.$queryRawUnsafe(
         `SELECT COALESCE(SUM("totalAmount"), 0)::bigint AS "totalSales",
                 COALESCE(SUM(profit), 0)::bigint AS "totalProfit",
@@ -248,9 +260,11 @@ const overview = asyncHandler(async (req, res) => {
         shopId,
       ),
       prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" } }, _sum: { amount: true }, _count: { id: true } }),
+      costQualityQuery(shopId, null, null),
     ]);
-    return { allTimeRows, historyRows, allExpenseAgg };
+    return { allTimeRows, historyRows, allExpenseAgg, allTimeCostRows };
   });
+  markQueryTiming("historicalCache");
   const totalExpenses = expenseAgg._sum.amount || 0;
   const allTime = allTimeRows[0] || {};
   const allTimeSales = Number(allTime.totalSales || 0);
@@ -258,7 +272,7 @@ const overview = asyncHandler(async (req, res) => {
   const allTimeExpenses = allExpenseAgg._sum.amount || 0;
   const currentRange = from ? { from, to: new Date(now.getTime() + 1) } : null;
   const previousRange = currentRange && period !== "all" ? previousComparableRange(period, currentRange) : null;
-  const [previousSales, previousExpenses, cashCollections, returnSummaryRows, previousReturnSummaryRows, currentCostRows, allTimeCostRows, previousCostRows] = await Promise.all([
+  const [previousSales, previousExpenses, cashCollections, returnSummaryRows, previousReturnSummaryRows, currentCostRows, previousCostRows] = await Promise.all([
     previousRange ? prisma.sale.aggregate({
       where: { shopId, status: "COMPLETED", createdAt: { gte: previousRange.from, lt: previousRange.to } },
       _sum: { totalAmount: true, profit: true },
@@ -290,9 +304,9 @@ const overview = asyncHandler(async (req, res) => {
       shopId, previousRange.from, previousRange.to,
     ) : Promise.resolve(null),
     costQualityQuery(shopId, from, new Date(now.getTime() + 1)),
-    costQualityQuery(shopId, null, null),
     previousRange ? costQualityQuery(shopId, previousRange.from, previousRange.to) : Promise.resolve([]),
   ]);
+  markQueryTiming("financialAggregates");
   const grossProfit = Number(currentCostRows[0]?.knownCostGrossProfit || 0);
   const missingCostSalesRevenue = Number(currentCostRows[0]?.missingCostSalesRevenue || 0);
   const allTimeProfit = Number(allTimeCostRows[0]?.knownCostGrossProfit || 0);
@@ -311,6 +325,16 @@ const overview = asyncHandler(async (req, res) => {
     const previous = comparisonPrevious[key];
     return [key, { current: value, previous, change: value - previous, changePercent: previous === 0 ? null : Number((((value - previous) / Math.abs(previous)) * 100).toFixed(1)) }];
   })) : null;
+
+  const durationMs = Math.round(performance.now() - requestStartedAt);
+  if (durationMs >= 5000) {
+    console.warn(JSON.stringify({
+      event: "dashboard_overview_slow",
+      durationMs,
+      period: ["today", "week", "month", "all"].includes(period) ? period : "other",
+      phases: queryTimings,
+    }));
+  }
 
   res.json({
     period,

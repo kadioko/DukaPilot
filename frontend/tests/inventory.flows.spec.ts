@@ -55,6 +55,7 @@ test("supplier orders still reports a real server failure after authentication",
 test("inventory supports add, edit, and stock adjustment flows", async ({ page }) => {
   const suppliers = [{ id: "sup-1", name: "Jumla Traders", phone: "+255700000001" }];
   let productDeleteAttempts = 0;
+  const productCreateRequestKeys: string[] = [];
   let adjustmentRequestKey: string | null = null;
   let adjustmentApplied = false;
   const products = [
@@ -74,6 +75,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
       supplier: suppliers[0],
     },
   ];
+  const createdProductsByRequestId = new Map<string, (typeof products)[number]>();
 
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
@@ -135,17 +137,26 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     const body = JSON.parse(route.request().postData() || "{}");
     expect(body.isCatalogVisible).toBe(true);
     expect(body.createRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-    products.unshift({
-      id: `prod-${products.length + 1}`,
-      isActive: true,
-      supplier: suppliers.find((item) => item.id === body.supplierId),
-      ...body,
-    });
+    productCreateRequestKeys.push(body.createRequestId);
+    let product = createdProductsByRequestId.get(body.createRequestId);
+    if (!product) {
+      const createdProduct = {
+        id: `prod-${products.length + 1}`,
+        isActive: true,
+        supplier: suppliers.find((item) => item.id === body.supplierId) || suppliers[0]!,
+        ...body,
+      } as NonNullable<(typeof products)[number]>;
+      createdProductsByRequestId.set(body.createRequestId, createdProduct);
+      products.unshift(createdProduct);
+      product = createdProduct;
+      await route.abort("failed");
+      return;
+    }
 
     await route.fulfill({
       status: 201,
       contentType: "application/json",
-      body: JSON.stringify({ product: products[0] }),
+      body: JSON.stringify({ product }),
     });
   });
 
@@ -268,8 +279,13 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/does not expire|haiishi muda/i).check();
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
+  await expect(page.getByText(/couldn't confirm whether the product was saved/i)).toBeVisible();
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
   await expect(page.getByText("Sukari White")).toBeVisible();
   await expect(page.getByText(/tzs 3,500/i)).toBeVisible();
+  expect(productCreateRequestKeys).toHaveLength(2);
+  expect(productCreateRequestKeys[1]).toBe(productCreateRequestKeys[0]);
+  expect(products.filter((product) => product.name === "Sukari White")).toHaveLength(1);
 
   await page.getByLabel(/actions for sukari white|vitendo vya sukari white/i).click();
   await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();

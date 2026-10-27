@@ -428,14 +428,15 @@ export default function InventoryPage() {
       await fetchProducts(true);
     } catch (e: unknown) {
       if (!editProduct) {
-        const uncertain = e instanceof ApiError && (e.code === "TIMEOUT" || e.code === "NETWORK" || (e.status || 0) >= 500);
+        const uncertain = e instanceof ApiError && (e.failureType === "TIMEOUT" || e.failureType === "NETWORK" || (e.status || 0) >= 500);
         createPendingUncertain.current = uncertain;
         if (!uncertain) createRequestId.current = null;
       }
-      setError(e instanceof ApiError && e.code === "TIMEOUT" && !editProduct
+      const uncertainCreate = !editProduct && e instanceof ApiError && (e.failureType === "TIMEOUT" || e.failureType === "NETWORK" || (e.status || 0) >= 500);
+      setError(uncertainCreate
         ? (lang === "sw"
-          ? "Muda wa kusubiri umeisha; huenda bidhaa imehifadhiwa. Usifungue bidhaa mpya. Bonyeza Hifadhi tena bila kubadilisha taarifa ili kuthibitisha au kukamilisha jaribio hili salama."
-          : "The request timed out; the product may already be saved. Don't start a new product entry. Press Save again without changing the details to safely confirm or complete this save.")
+          ? "Muunganisho umekatika na hatujathibitisha kama bidhaa imehifadhiwa. Usianze bidhaa nyingine. Bonyeza Hifadhi tena bila kubadilisha taarifa ili kuthibitisha au kukamilisha jaribio hili salama."
+          : "The connection was interrupted and we couldn't confirm whether the product was saved. Don't start another product entry. Press Save again without changing the details to safely confirm or complete this save.")
         : e instanceof Error ? e.message : t("common.error", lang));
     } finally {
       setSaving(false);

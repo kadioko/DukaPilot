@@ -18,6 +18,10 @@ interface Movement {
   createdAt: string;
   product: { id: string; name: string; sku?: string | null; unit: string; currentStock: number };
   stockReceipt?: { id: string; invoiceNumber?: string | null; supplier?: { id: string; name: string } | null } | null;
+  receiptContext?: { id: string; invoiceNumber?: string | null; supplier?: { id: string; name: string } | null; receivedQuantity: number | null; returnedQuantity: number; returnReversed: boolean; corrected: boolean; reversed: boolean } | null;
+  source?: "RECEIPT" | "RECEIPT_CORRECTION" | "SUPPLIER_RETURN" | "SUPPLIER_RETURN_REVERSAL" | "CUSTOMER_RETURN" | "CUSTOMER_RETURN_REVERSAL" | "MANUAL" | "MANUAL_REVERSAL" | "OTHER";
+  sourceReversed?: boolean;
+  saleReceiptNumber?: number | null;
   manualAdjustment?: boolean;
   reversalOfId?: string | null;
   reversal?: { id: string } | null;
@@ -35,6 +39,21 @@ function formatDate(value: string, lang: string) {
 
 function formatQuantity(value: number) {
   return new Intl.NumberFormat("en-TZ", { maximumFractionDigits: 3 }).format(value);
+}
+
+function sourceLabel(movement: Movement, sw: boolean) {
+  const labels: Record<NonNullable<Movement["source"]>, [string, string]> = {
+    RECEIPT: ["Kupokea stock", "Stock receipt"],
+    RECEIPT_CORRECTION: ["Marekebisho ya risiti", "Receipt correction"],
+    SUPPLIER_RETURN: ["Rejesho kwa supplier", "Supplier return recorded"],
+    SUPPLIER_RETURN_REVERSAL: ["Kurekebisha rejesho kwa supplier", "Supplier return reversal"],
+    CUSTOMER_RETURN: ["Rejesho la mteja", "Customer return"],
+    CUSTOMER_RETURN_REVERSAL: ["Kurekebisha rejesho la mteja", "Customer return reversal"],
+    MANUAL: ["Tukio la mkono", "Manual entry"],
+    MANUAL_REVERSAL: ["Marekebisho ya tukio", "Manual correction"],
+    OTHER: ["Tukio la stock", "Stock movement"],
+  };
+  return labels[movement.source || "OTHER"][sw ? 0 : 1];
 }
 
 function StockHistoryContent() {
@@ -163,9 +182,9 @@ function StockHistoryContent() {
           {correctionError && <p role="alert" className="text-sm text-red-700">{correctionError}</p>}
         </section>}
 
-        {canViewReceipts && movements.some((movement) => movement.stockReceipt) && <section className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2 text-xs text-gray-600">
+        {canViewReceipts && movements.some((movement) => movement.receiptContext) && <section className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2 text-xs text-gray-600">
           <span className="font-semibold">{sw ? "Risiti kwenye ukurasa huu:" : "Receipts on this page:"}</span>
-          {Array.from(new Map(movements.filter((movement) => movement.stockReceipt).map((movement) => [movement.stockReceipt!.id, movement.stockReceipt!])).values()).map((receipt) => <Link key={receipt.id} href={`/receiving?receipt=${encodeURIComponent(receipt.id)}`} className="border border-gray-300 bg-white px-2 py-1 font-semibold text-brand-800 hover:bg-brand-50">{receipt.invoiceNumber || `#${receipt.id.slice(-6)}`}</Link>)}
+          {Array.from(new Map(movements.filter((movement) => movement.receiptContext).map((movement) => [movement.receiptContext!.id, movement.receiptContext!])).values()).map((receipt) => <Link key={receipt.id} href={`/receiving?receipt=${encodeURIComponent(receipt.id)}`} className="border border-gray-300 bg-white px-2 py-1 font-semibold text-brand-800 hover:bg-brand-50">{receipt.invoiceNumber || `#${receipt.id.slice(-6)}`}</Link>)}
         </section>}
 
         <section className="overflow-hidden border border-gray-200 bg-white">
@@ -177,7 +196,7 @@ function StockHistoryContent() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[850px] text-left text-sm">
                 <thead className="bg-gray-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3 font-semibold">{sw ? "Tarehe" : "Date"}</th><th className="px-4 py-3 font-semibold">{sw ? "Bidhaa" : "Product"}</th><th className="px-4 py-3 font-semibold">{sw ? "Aina" : "Type"}</th><th className="px-4 py-3 text-right font-semibold">{sw ? "Kiasi" : "Quantity"}</th><th className="px-4 py-3 text-right font-semibold">{sw ? "Stock sasa" : "Stock now"}</th><th className="px-4 py-3 font-semibold">{sw ? "Chanzo / maelezo" : "Source / note"}</th></tr></thead>
-                <tbody className="divide-y divide-gray-100">{movements.map((movement) => <tr key={movement.id} className="align-top hover:bg-gray-50/70"><td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">{formatDate(movement.createdAt, lang)}</td><td className="px-4 py-3"><Link href={`/inventory?search=${encodeURIComponent(movement.product.name)}`} className="font-semibold text-brand-800 hover:underline">{movement.product.name}</Link>{movement.product.sku && <p className="mt-0.5 text-xs text-gray-500">SKU: {movement.product.sku}</p>}</td><td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${movement.type === "IN" ? "bg-emerald-50 text-emerald-800" : movement.type === "OUT" ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>{movement.type === "IN" ? <ArrowDownToLine className="h-3.5 w-3.5" /> : movement.type === "OUT" ? <ArrowUpFromLine className="h-3.5 w-3.5" /> : <SlidersHorizontal className="h-3.5 w-3.5" />}{labelFor(movement.type)}</span></td><td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">{movement.type === "IN" ? "+" : movement.type === "OUT" ? "−" : ""}{formatQuantity(movement.quantity)} <span className="font-normal text-gray-500">{movement.product.unit}</span>{movement.type === "ADJUSTMENT" && <span className="block text-[10px] font-normal text-gray-500">{sw ? "stock mpya iliyowekwa" : "new set-to level"}</span>}</td><td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">{formatQuantity(movement.product.currentStock)} {movement.product.unit}</td><td className="max-w-sm px-4 py-3 text-xs leading-5 text-gray-600">{movement.stockReceipt?.supplier?.name && <p className="font-medium text-gray-800">{movement.stockReceipt.supplier.name}{movement.stockReceipt.invoiceNumber ? ` · ${sw ? "ankara" : "invoice"} ${movement.stockReceipt.invoiceNumber}` : ""}</p>}{movement.note || <span className="text-gray-400">{sw ? "Hakuna maelezo" : "No note"}</span>}</td></tr>)}</tbody>
+                <tbody className="divide-y divide-gray-100">{movements.map((movement) => <tr key={movement.id} className="align-top hover:bg-gray-50/70"><td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">{formatDate(movement.createdAt, lang)}</td><td className="px-4 py-3"><Link href={`/inventory?search=${encodeURIComponent(movement.product.name)}`} className="font-semibold text-brand-800 hover:underline">{movement.product.name}</Link>{movement.product.sku && <p className="mt-0.5 text-xs text-gray-500">SKU: {movement.product.sku}</p>}</td><td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${movement.type === "IN" ? "bg-emerald-50 text-emerald-800" : movement.type === "OUT" ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>{movement.type === "IN" ? <ArrowDownToLine className="h-3.5 w-3.5" /> : movement.type === "OUT" ? <ArrowUpFromLine className="h-3.5 w-3.5" /> : <SlidersHorizontal className="h-3.5 w-3.5" />}{labelFor(movement.type)}</span></td><td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-gray-900">{movement.type === "IN" ? "+" : movement.type === "OUT" ? "−" : ""}{formatQuantity(movement.quantity)} <span className="font-normal text-gray-500">{movement.product.unit}</span>{movement.type === "ADJUSTMENT" && <span className="block text-[10px] font-normal text-gray-500">{sw ? "stock mpya iliyowekwa" : "new set-to level"}</span>}</td><td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-gray-700">{formatQuantity(movement.product.currentStock)} {movement.product.unit}</td><td className="max-w-sm px-4 py-3 text-xs leading-5 text-gray-600"><p className="font-semibold text-gray-800">{sourceLabel(movement, sw)}</p>{movement.receiptContext && <p>{movement.receiptContext.supplier?.name ? `${movement.receiptContext.supplier.name} · ` : ""}{canViewReceipts ? <Link href={`/receiving?receipt=${encodeURIComponent(movement.receiptContext.id)}`} className="font-semibold text-brand-800 underline">{sw ? "Risiti" : "Receipt"} {movement.receiptContext.invoiceNumber || `#${movement.receiptContext.id.slice(-6)}`}</Link> : <span>{sw ? "Risiti" : "Receipt"} {movement.receiptContext.invoiceNumber || `#${movement.receiptContext.id.slice(-6)}`}</span>}</p>}{movement.saleReceiptNumber != null && <p>{sw ? "Risiti ya mauzo" : "Sale receipt"} #{movement.saleReceiptNumber}</p>}{movement.source === "RECEIPT" && movement.receiptContext?.corrected && <p className="font-medium text-amber-800">{sw ? "Risiti imesahihishwa" : "Receipt corrected"}</p>}{movement.receiptContext?.reversed && <p className="font-medium text-red-700">{sw ? "Risiti imegeuzwa" : "Receipt reversed"}</p>}{movement.source === "RECEIPT" && Boolean(movement.receiptContext?.returnedQuantity) && <p className="font-medium text-amber-800">{sw ? "Rejesho limeandikwa" : "Return recorded"}: {formatQuantity(movement.receiptContext!.returnedQuantity)} / {formatQuantity(movement.receiptContext!.receivedQuantity ?? 0)} {movement.product.unit}</p>}{movement.source === "RECEIPT" && movement.receiptContext?.returnReversed && <p className="font-medium text-gray-700">{sw ? "Marekebisho ya rejesho yapo" : "Return correction recorded"}</p>}{movement.source === "SUPPLIER_RETURN" && movement.sourceReversed && <p className="font-medium text-gray-700">{sw ? "Rejesho hili limegeuzwa" : "This return was reversed"}</p>}{movement.source === "CUSTOMER_RETURN" && movement.sourceReversed && <p className="font-medium text-gray-700">{sw ? "Rejesho hili limesahihishwa" : "This return was corrected"}</p>}{movement.reversal && <p className="font-medium text-gray-700">{sw ? "Tukio limegeuzwa" : "Entry reversed"}</p>}{movement.note || <span className="text-gray-400">{sw ? "Hakuna maelezo" : "No note"}</span>}</td></tr>)}</tbody>
               </table>
             </div>
             <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3">

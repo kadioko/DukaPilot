@@ -72,3 +72,43 @@ test("owner reverses a manual stock-history entry with a reason", async ({ page 
   expect((posted as unknown as { reason: string }).reason).toBe("Counted twice");
   await expect(page.getByText("No stock movements yet.")).toBeVisible();
 });
+
+test("stock history keeps a returned receipt linked and shows the net returned stock", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => { localStorage.setItem("dukapilot_token", "playwright-owner-token"); localStorage.setItem("dukapilot_language", "en"); });
+  const receiptContext = { id: "receipt-1", invoiceNumber: "INV-44", supplier: { id: "supplier-1", name: "Local Supplier" }, receivedQuantity: 5, returnedQuantity: 2, returnReversed: false, corrected: true, reversed: false };
+  const product = { id: "product-1", name: "Soap", unit: "pcs", currentStock: 3 };
+  const receipt = {
+    id: "receipt-1", invoiceNumber: "INV-44", note: null, receivedAt: "2026-10-22T09:00:00.000Z",
+    totalLandedCost: 500, paidAtReceipt: 0, paymentMethod: "CREDIT", transportCost: 0, otherCost: 0,
+    estimatedAllocation: false, supplier: receiptContext.supplier, hasReturnHistory: true, hasReturnReversal: false,
+    items: [{ id: "item-1", quantity: 5, returnedQuantity: 2, landedUnitCost: 100, product }],
+    stockCorrections: [{ id: "correction-1", reason: "Invoice corrected", createdAt: "2026-10-22T11:00:00.000Z", before: { items: [{ id: "item-1", quantity: 5 }], totalLandedCost: 500 }, after: { items: [{ id: "item-1", quantity: 5 }], totalLandedCost: 500 } }],
+  };
+  await page.route("**/*api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^.*?\/(?:_api|api)\//, "/");
+    if (path === "/auth/me") return route.fulfill({ json: { user: { role: "MERCHANT", shop: { name: "Test Shop" } } } });
+    if (path === "/subscription/status") return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    if (path === "/notifications") return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    if (path === "/products/low-stock") return route.fulfill({ json: { products: [], total: 0 } });
+    if (path === "/products") return route.fulfill({ json: { products: [] } });
+    if (path === "/suppliers") return route.fulfill({ json: { suppliers: [] } });
+    if (path === "/stock-receipts") return route.fulfill({ json: { receipts: [receipt] } });
+    if (path === "/stock/movements") return route.fulfill({ json: { movements: [
+      { id: "received", type: "IN", source: "RECEIPT", quantity: 5, note: "Stock receipt INV-44", createdAt: "2026-10-22T09:00:00.000Z", product, receiptContext },
+      { id: "returned", type: "OUT", source: "SUPPLIER_RETURN", quantity: 2, note: "Supplier return", createdAt: "2026-10-22T12:00:00.000Z", product, receiptContext },
+      { id: "customer-return", type: "IN", source: "CUSTOMER_RETURN", saleReceiptNumber: 42, quantity: 1, note: "Customer return", createdAt: "2026-10-22T13:00:00.000Z", product },
+    ], pagination: { page: 1, limit: 50, total: 3, totalPages: 1 } } });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/stock-history");
+  await expect(page.getByText("Supplier return recorded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Return recorded: 2 / 5 pcs")).toBeVisible();
+  await expect(page.getByText("Customer return", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sale receipt #42")).toBeVisible();
+  await page.getByRole("row").filter({ hasText: "Supplier return recorded" }).getByRole("link", { name: "Receipt INV-44" }).click();
+  await expect(page).toHaveURL(/\/receiving\?receipt=receipt-1/);
+  await expect(page.getByText("RETURN RECORDED", { exact: true })).toBeVisible();
+  await expect(page.getByText("Return recorded: 2 / 5 pcs")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

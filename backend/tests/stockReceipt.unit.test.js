@@ -35,6 +35,28 @@ test("zero-cost goods allocate transport by quantity without losing whole TZS", 
   assert.equal(items.reduce((total, item) => total + item.landedTotalCost, 0), 101);
 });
 
+test("saved receipts expose net returned quantities while keeping return history separate", async () => {
+  const receipt = {
+    id: "receipt-1", shopId: "shop-1", requestKey: "private-key", requestHash: "private-hash",
+    items: [{ id: "line-1", quantity: 5, product: { name: "Soap", unit: "pcs" } }],
+    credits: [
+      { reversalOfId: null, items: [{ stockReceiptItemId: "line-1", quantity: 3 }] },
+      { reversalOfId: "return-1", items: [{ stockReceiptItemId: "line-1", quantity: -1 }] },
+    ],
+  };
+  const { get } = loadController({ stockReceipt: { findFirst: async ({ where }) => {
+    assert.deepEqual(where, { id: "receipt-1", shopId: "shop-1" });
+    return receipt;
+  } } });
+  const res = response();
+  await get({ user: { userId: "owner-1" }, params: { id: "receipt-1" } }, res, assert.fail);
+  assert.equal(res.payload.receipt.items[0].returnedQuantity, 2);
+  assert.equal(res.payload.receipt.hasReturnHistory, true);
+  assert.equal(res.payload.receipt.hasReturnReversal, true);
+  assert.equal("credits" in res.payload.receipt, false);
+  assert.equal("requestKey" in res.payload.receipt, false);
+});
+
 test("a retry from an older app version reuses its receipt instead of receiving stock twice", async () => {
   const requestKey = crypto.randomUUID();
   const receivedAt = "2026-10-16T10:00:00.000Z";

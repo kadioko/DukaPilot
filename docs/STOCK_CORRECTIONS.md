@@ -16,6 +16,15 @@ Open **Stock > Stock History**. Select an eligible manual entry on the current p
 
 The **Stock now** column is the product's current balance, not its balance at the historical event. New manual and correction movements also store before/after quantities in the backend ledger.
 
+Supplier returns appear as separate stock-out rows linked to their original
+receiving receipt. The original receipt row remains and shows the net quantity
+returned for that product, plus whether the receipt was corrected or reversed.
+A reversed supplier return has its own stock-in row; it does not erase the
+original return. Customer returns and their corrections have separate labels.
+Only users with Reports permission can open a receiving receipt from Stock
+History; stock-only staff can still see the stock movement without purchase
+costs. "Return recorded" is not proof that the supplier received the goods.
+
 ## Receive Stock
 
 Open a recent receipt under **Stock > Receive Stock** and choose **Correct receipt**. Change a recorded whole-item quantity, invoice number, or note and enter a reason. A zero quantity removes that line's received stock. Setting every line to zero reverses the entire receipt, while leaving its original details and correction history visible. The linked supplier order's received quantities and status are recalculated in the same transaction. Purchase totals and supplier balances use the revised receipt total.

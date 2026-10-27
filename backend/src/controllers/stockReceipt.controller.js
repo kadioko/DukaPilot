@@ -91,14 +91,26 @@ function normalizeItems(rawItems, requireUnitCost = true) {
 
 function publicReceipt(receipt) {
   if (!receipt) return receipt;
-  const { requestKey, requestHash, ...safe } = receipt;
-  return safe;
+  const { requestKey, requestHash, credits = [], ...safe } = receipt;
+  const returnedByItem = new Map();
+  for (const credit of credits) {
+    for (const line of credit.items) {
+      returnedByItem.set(line.stockReceiptItemId, (returnedByItem.get(line.stockReceiptItemId) || 0) + line.quantity);
+    }
+  }
+  return {
+    ...safe,
+    items: receipt.items.map((item) => ({ ...item, returnedQuantity: returnedByItem.get(item.id) || 0 })),
+    hasReturnHistory: credits.length > 0,
+    hasReturnReversal: credits.some((credit) => Boolean(credit.reversalOfId)),
+  };
 }
 
 const receiptInclude = {
   supplier: { select: { id: true, name: true } },
   items: { include: { product: { select: { id: true, name: true, unit: true } } } },
   stockCorrections: { select: { id: true, reason: true, before: true, after: true, createdAt: true }, orderBy: { createdAt: "desc" } },
+  credits: { where: { kind: "RETURN" }, select: { reversalOfId: true, items: { select: { stockReceiptItemId: true, quantity: true } } } },
 };
 
 const list = asyncHandler(async (req, res) => {
@@ -181,7 +193,7 @@ const receive = asyncHandler(async (req, res) => {
     receipt = await prisma.$transaction(async (tx) => {
     const replay = await tx.stockReceipt.findFirst({
       where: { shopId, requestKey },
-      include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+      include: receiptInclude,
     });
     if (replay) {
       if (!matchesRequest(replay)) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
@@ -275,14 +287,14 @@ const receive = asyncHandler(async (req, res) => {
     }
     return tx.stockReceipt.findUnique({
       where: { id: created.id },
-      include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+      include: receiptInclude,
     });
     });
   } catch (error) {
     if (error.code === "P2034") {
       const replay = await prisma.stockReceipt.findFirst({
         where: { shopId, requestKey },
-        include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+        include: receiptInclude,
       });
       if (matchesRequest(replay)) {
         reused = true;
@@ -293,7 +305,7 @@ const receive = asyncHandler(async (req, res) => {
     if (error.code === "P2002") {
       const replay = await prisma.stockReceipt.findFirst({
         where: { shopId, requestKey },
-        include: { supplier: { select: { id: true, name: true } }, items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+        include: receiptInclude,
       });
       if (!replay) throw error;
       if (!matchesRequest(replay)) throw Object.assign(new Error("This receipt retry key was already used for different details"), { status: 409 });
