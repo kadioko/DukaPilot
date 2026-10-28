@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const { startOfTanzaniaMonth, tanzaniaDateKey } = require("../src/lib/businessTime");
 
 const controllerPath = path.resolve(__dirname, "../src/controllers/assistantToday.controller.js");
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
@@ -20,12 +21,15 @@ function makeHandler(payload, error) {
   };
 }
 
-function loadWithMocks({ prisma, overview, assistant } = {}) {
+function loadWithMocks({ prisma, overview, profitAnalytics, assistant } = {}) {
   const originalCache = new Map(mockedPaths.map((file) => [file, require.cache[file]]));
   const safePrisma = prisma || { $queryRaw: async () => [] };
   require.cache[prismaPath] = cachedModule(prismaPath, safePrisma);
   require.cache[shopAccessPath] = cachedModule(shopAccessPath, { getShopIdForUser: async () => "shop-1" });
-  require.cache[dashboardPath] = cachedModule(dashboardPath, { overview: overview || makeHandler({ summary: {} }) });
+  require.cache[dashboardPath] = cachedModule(dashboardPath, {
+    overview: overview || makeHandler({ summary: {} }),
+    profitAnalytics: profitAnalytics || makeHandler({ summary: {} }),
+  });
   require.cache[assistantPath] = cachedModule(assistantPath, assistant || {
     stockSummary: makeHandler({ actions: [] }),
     quotationSummary: makeHandler({ actions: [] }),
@@ -146,6 +150,116 @@ test("Ask answers inventory from the authorized snapshot without external AI or 
     assert.match(askRes.payload.answer.message, /not a purchase order/);
     assert.equal(askRes.payload.answer.privacy.includes("no external AI service"), true);
     assert.equal(writes, 0);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("Ask interprets calendar months in Tanzania time and uses the requested sales range", async () => {
+  let query;
+  const loader = loadWithMocks({
+    profitAnalytics: async (req, res) => {
+      query = req.query;
+      return res.json({ summary: { netSalesRevenue: 210000, salesCount: 4, cashCollected: 160000 }, from: new Date("2026-10-01T21:00:00.000Z"), to: new Date("2026-10-28T09:00:00.000Z") });
+    },
+  });
+  try {
+    const res = response();
+    await loader.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question: "How much sales this month?" } }, res, (error) => { throw error; });
+    assert.equal(query.period, "custom");
+    assert.equal(query.from, tanzaniaDateKey(startOfTanzaniaMonth(new Date())));
+    assert.equal(query.to, tanzaniaDateKey(new Date()));
+    assert.match(res.payload.answer.message, /this month/i);
+    assert.match(res.payload.answer.message, /210,000/);
+    assert.match(res.payload.answer.message, /Cash collected.*160,000/);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("Ask expense questions use the requested month instead of the default seven-day window", async () => {
+  const ranges = [];
+  const monthStart = startOfTanzaniaMonth(new Date());
+  const loader = loadWithMocks({
+    prisma: {
+      expense: {
+        aggregate: async ({ where }) => {
+          ranges.push(where.spentAt);
+          const current = monthStart.getTime();
+          return { _sum: { amount: where.spentAt.gte.getTime() >= current ? 42000 : 18000 }, _count: { id: 4 } };
+        },
+        findMany: async () => [],
+        findFirst: async () => ({ updatedAt: new Date("2026-10-28T08:00:00.000Z") }),
+      },
+    },
+  });
+  try {
+    const res = response();
+    await loader.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question: "What are expenses this month?" } }, res, (error) => { throw error; });
+    assert.equal(ranges.length, 2);
+    assert.equal(tanzaniaDateKey(ranges[0].gte), tanzaniaDateKey(monthStart));
+    assert.match(res.payload.answer.message, /expenses for this month/i);
+    assert.match(res.payload.answer.message, /42,000/);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("month-to-date comparisons use the corresponding prior-month calendar dates", () => {
+  const loader = loadWithMocks();
+  try {
+    const now = new Date("2026-10-28T08:30:00.000Z");
+    const { window } = loader.controller.requestedTimeWindow("expenses this month", "expenses", now);
+    assert.equal(tanzaniaDateKey(window.from), "2026-10-01");
+    assert.equal(tanzaniaDateKey(window.previousFrom), "2026-09-01");
+    assert.equal(tanzaniaDateKey(window.previousTo), "2026-09-28");
+    assert.equal(window.previousTo.getUTCHours(), window.to.getUTCHours());
+  } finally {
+    loader.restore();
+  }
+});
+
+test("calendar-month comparison clamps month-end dates instead of rolling into another month", () => {
+  const loader = loadWithMocks();
+  try {
+    const now = new Date("2026-03-30T21:00:00.000Z");
+    const { window } = loader.controller.requestedTimeWindow("expenses this month", "expenses", now);
+    assert.equal(tanzaniaDateKey(window.previousTo), "2026-02-28");
+    assert.equal(window.previousTo.getUTCHours(), window.to.getUTCHours());
+  } finally {
+    loader.restore();
+  }
+});
+
+test("Ask clarifies unsupported historical questions instead of substituting current data", async () => {
+  let queried = false;
+  const loader = loadWithMocks({ prisma: { $queryRaw: async () => { queried = true; return []; } } });
+  try {
+    const res = response();
+    await loader.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question: "Show stock last month" } }, res, (error) => { throw error; });
+    assert.match(res.payload.answer.message, /date filtering is not supported/i);
+    assert.equal(queried, false);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("Ask clarifies unsupported day ranges and slash-formatted dates without loading today's data", async () => {
+  let queried = false;
+  const loader = loadWithMocks({
+    profitAnalytics: async (_req, res) => {
+      queried = true;
+      return res.json({ summary: { netSalesRevenue: 99000 } });
+    },
+  });
+  try {
+    for (const question of ["How much sales for the last 30 days?", "How much sales on 10/01/2026?"]) {
+      const res = response();
+      await loader.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question } }, res, (error) => { throw error; });
+      assert.match(res.payload.answer.message, /Specify a supported period/i);
+      assert.match(res.payload.answer.privacy, /No business data was queried/i);
+    }
+    assert.equal(queried, false);
   } finally {
     loader.restore();
   }

@@ -17,6 +17,8 @@ interface AssistantAction {
   completedAt?: string | null;
   dismissedAt?: string | null;
   outcomeVerifiedAt?: string | null;
+  snapshotKey: string;
+  events?: Array<{ eventType: string; createdAt: string }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,11 +40,12 @@ export default function AssistantHistoryPage() {
   const lang = useLang();
   const [actions, setActions] = useState<AssistantAction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     api.get<{ actions: AssistantAction[] }>("/assistant/actions?limit=200", lang)
       .then((data) => setActions(data.actions))
-      .catch(console.error)
+      .catch((reason) => setError(reason instanceof Error ? reason.message : (lang === "sw" ? "Historia haikupatikana." : "Action history could not be loaded.")))
       .finally(() => setLoading(false));
   }, [lang]);
 
@@ -83,6 +86,8 @@ export default function AssistantHistoryPage() {
         <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           {loading ? (
             <div className="p-6 text-sm text-gray-500">{lang === "sw" ? "Inapakia..." : "Loading..."}</div>
+          ) : error ? (
+            <div role="alert" className="p-6 text-sm text-red-700">{error}</div>
           ) : actions.length === 0 ? (
             <div className="p-6 text-sm text-gray-500">
               {lang === "sw" ? "Bado hakuna historia. Fungua au kamilisha hatua kwenye AI Assistant." : "No action history yet. Open or complete actions from the AI Assistant."}
@@ -105,11 +110,22 @@ export default function AssistantHistoryPage() {
                           </span>
                         )}
                         <span className="font-mono text-[11px] text-gray-400">{action.actionKey}</span>
+                        <span className="text-xs text-gray-500">{action.snapshotKey}</span>
                       </div>
                       <p className="mt-2 font-semibold text-gray-950">{action.title}</p>
                       <p className="mt-1 text-xs text-gray-500">
                         {lang === "sw" ? "Mwisho kubadilishwa" : "Last updated"} {new Date(action.updatedAt).toLocaleString()}
                       </p>
+                      {action.events && action.events.length > 0 && <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                        {action.events.map((event) => <li key={event.eventType}>
+                          {event.eventType === "SHOWN" ? (lang === "sw" ? "Imeonyeshwa" : "Shown")
+                            : event.eventType === "OPENED" ? (lang === "sw" ? "Imefunguliwa" : "Opened")
+                              : event.eventType === "MARKED_DONE" ? (lang === "sw" ? "Imewekwa imefanyika" : "Marked done")
+                                : event.eventType === "DISMISSED" ? (lang === "sw" ? "Imeondolewa" : "Dismissed")
+                                  : (lang === "sw" ? "Mabadiliko yamepimwa" : "Change measured")}
+                          {" · "}{new Intl.DateTimeFormat(lang === "sw" ? "sw-TZ" : "en-TZ", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Dar_es_Salaam" }).format(new Date(event.createdAt))}
+                        </li>)}
+                      </ol>}
                     </div>
                     <Link href={action.href} className="inline-flex items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
                       {lang === "sw" ? "Fungua" : "Open"}

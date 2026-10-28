@@ -69,10 +69,7 @@ test("completion verifies a debt reduction against the same impression baseline"
   let recordedEvents;
   const impressionKey = todayImpressionKey("debt");
   const loader = loadController({
-    assistantAction: {
-      findUnique: async () => ({ baselineValue: 1000 }),
-      upsert: async (args) => { upsertArgs = args; return { id: "action-1", ...args.create }; },
-    },
+    assistantAction: { upsert: async (args) => { upsertArgs = args; return { id: "action-1", ...args.create }; } },
     assistantActionEvent: {
       findFirst: async (args) => {
         assert.deepEqual(args.where, { shopId: "shop-1", actionKey: "debt", impressionKey, eventType: "SHOWN" });
@@ -106,10 +103,7 @@ test("a missing impression baseline cannot reuse a stale prior action baseline",
   let recordedEvents;
   const impressionKey = todayImpressionKey("debt");
   const loader = loadController({
-    assistantAction: {
-      findUnique: async () => ({ baselineValue: 20000 }),
-      upsert: async (args) => { upsertArgs = args; return { id: "action-3", ...args.create }; },
-    },
+    assistantAction: { upsert: async (args) => { upsertArgs = args; return { id: "action-3", ...args.create }; } },
     assistantActionEvent: { findFirst: async () => null },
     debt: { aggregate: async () => ({ _sum: { amount: 10000, amountPaid: 5000 } }) },
     $transaction: async (callback) => callback({
@@ -120,7 +114,8 @@ test("a missing impression baseline cannot reuse a stale prior action baseline",
   try {
     const res = response();
     await loader.controller.trackAction({ user: {}, body: { actionKey: "debt", impressionKey, title: "Collect debt", href: "/debts", status: "COMPLETED" } }, res, (error) => { throw error; });
-    assert.equal(upsertArgs.create.baselineValue, 5000);
+    assert.equal(upsertArgs.create.baselineValue, null);
+    assert.equal(upsertArgs.create.snapshotKey, impressionKey.slice(0, 10));
     assert.equal(upsertArgs.create.outcomeVerifiedAt, null);
     assert.deepEqual(recordedEvents.map((event) => event.eventType), ["MARKED_DONE"]);
   } finally {
@@ -134,10 +129,7 @@ test("stock outcome measurements are scoped to the recommended product", async (
   const actionKey = "stock-product-7";
   const impressionKey = todayImpressionKey(actionKey);
   const loader = loadController({
-    assistantAction: {
-      findUnique: async () => null,
-      upsert: async (args) => { upsertArgs = args; return { id: "action-2", ...args.create }; },
-    },
+    assistantAction: { upsert: async (args) => { upsertArgs = args; return { id: "action-2", ...args.create }; } },
     assistantActionEvent: { findFirst: async () => ({ measuredValue: 4500 }) },
     product: {
       findFirst: async (query) => {
@@ -169,10 +161,7 @@ test("a deleted or deactivated recommended product is not counted as a restock o
   const actionKey = "stock-product-7";
   const impressionKey = todayImpressionKey(actionKey);
   const loader = loadController({
-    assistantAction: {
-      findUnique: async () => null,
-      upsert: async (args) => { upsertArgs = args; return { id: "action-4", ...args.create }; },
-    },
+    assistantAction: { upsert: async (args) => { upsertArgs = args; return { id: "action-4", ...args.create }; } },
     assistantActionEvent: { findFirst: async () => ({ measuredValue: 0 }) },
     product: { findFirst: async () => null },
     $transaction: async (callback) => callback({
@@ -186,6 +175,34 @@ test("a deleted or deactivated recommended product is not counted as a restock o
     assert.equal(upsertArgs.create.outcomeValue, null);
     assert.equal(upsertArgs.create.outcomeVerifiedAt, null);
     assert.deepEqual(recordedEvents.map((event) => event.eventType), ["MARKED_DONE"]);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("admin top actions count shown events by privacy-safe recommendation category", async () => {
+  const queries = [];
+  const loader = loadController({
+    assistantAction: {
+      count: async () => 5,
+      groupBy: async () => [{ status: "COMPLETED", _count: { id: 2 } }],
+      findMany: async () => [],
+    },
+    $queryRaw: async (parts) => {
+      const query = parts.join("?");
+      queries.push(query);
+      if (query.includes('AS "actionType"')) return [{ actionType: "stock", count: 12 }];
+      return [{ shown: 12, opened: 3, markedDone: 2, verified: 1 }];
+    },
+  });
+  try {
+    const res = response();
+    await loader.controller.adminAnalytics({ query: { days: "30" } }, res, (error) => { throw error; });
+    assert.match(queries.find((query) => query.includes('AS "actionType"')) || "", /'SHOWN'/);
+    assert.deepEqual(res.payload.topActions, [{ actionType: "stock", count: 12, title: "Stock review" }]);
+    assert.equal(res.payload.funnel.shown, 12);
+    assert.equal(res.payload.funnel.openedRate, 25);
+    assert.equal(JSON.stringify(res.payload.topActions).includes("product-7"), false);
   } finally {
     loader.restore();
   }

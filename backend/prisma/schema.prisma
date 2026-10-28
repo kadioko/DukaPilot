@@ -600,6 +600,7 @@ model AssistantAction {
   shopId            String
   shop              Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   actionKey         String
+  snapshotKey       String
   title             String
   href              String
   status            String    @default("OPEN")
@@ -613,8 +614,9 @@ model AssistantAction {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  @@unique([shopId, actionKey])
+  @@unique([shopId, actionKey, snapshotKey])
   @@index([shopId, status])
+  @@index([shopId, snapshotKey])
   @@index([createdAt])
   @@map("assistant_actions")
 }
@@ -630,6 +632,7 @@ model AssistantActionEvent {
   createdAt     DateTime @default(now())
 
   @@unique([shopId, impressionKey, eventType])
+  @@index([createdAt])
   @@index([shopId, eventType, createdAt])
   @@index([actionKey, createdAt])
   @@map("assistant_action_events")

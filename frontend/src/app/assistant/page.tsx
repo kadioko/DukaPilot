@@ -9,20 +9,21 @@ import { useLang } from "@/lib/i18n";
 import { ArrowRight, CheckCircle2, ClipboardCopy, FileText, HandCoins, LoaderCircle, MessageCircle, Package, ReceiptText, RotateCw, Send, ShoppingCart, Sparkles, Sprout, Tractor } from "lucide-react";
 
 interface DashboardData {
-  summary: { totalSales: number; netSales?: number; totalProfit: number; totalExpenses?: number; netProfit?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
+  summary: { totalSales: number; netSales?: number; totalProfit: number; totalExpenses?: number; netProfit?: number; costComplete?: boolean; missingCostSalesRevenue?: number; lowStockCount: number; outOfStockCount: number; pendingOrders: number; salesCount?: number };
   lowStockAlerts?: Array<{ id: string; name: string; currentStock: number; minimumStock: number; unit: string; buyingPrice?: number; sellingPrice?: number; hasReliablePace?: boolean; dailySalesRate?: number; daysOfCoverage?: number; reorderQuantity14d?: number; estimatedReorderCost?: number; saleDays28d?: number; observedDays?: number }>;
   topProducts?: Array<{ product?: { name: string; unit?: string }; totalQuantity?: number; totalRevenue?: number }>;
 }
 
 interface DebtSummary {
   summary: { openCount: number; totalOwed: number };
-  debts?: Array<{ customerName?: string | null; customerPhone: string; amount: number; amountPaid: number; status: string; dueDate?: string | null; createdAt?: string }>;
+  debts?: Array<{ id: string; customerName?: string | null; amount: number; amountPaid: number; status: string; dueDate?: string | null; createdAt?: string }>;
 }
 
 interface ExpenseSummary {
   summary: { total: number; count: number };
   expenses?: Array<{ title: string; amount: number; category: string; spentAt: string }>;
   trend?: { current: number; previous: number; currentCount: number; previousCount: number };
+  timeWindow?: { label: string } | null;
 }
 
 interface Recommendation {
@@ -48,6 +49,8 @@ interface AssistantAction {
   completedAt?: string | null;
   dismissedAt?: string | null;
   outcomeVerifiedAt?: string | null;
+  snapshotKey: string;
+  events?: Array<{ eventType: string; createdAt: string }>;
   updatedAt: string;
 }
 
@@ -117,25 +120,49 @@ function emptyAssistantData(): AssistantSnapshotData {
   return { dashboard: null, debts: null, expenses: null, quotationActions: [], stockActions: [], stockProducts: [], farmActions: [], actions: [] };
 }
 
+function clearAssistantDataSources(data: AssistantSnapshotData, keys: AssistantSourceKey[], preserveActionHistory = false): AssistantSnapshotData {
+  const next = { ...data };
+  if (keys.includes("salesToday")) next.dashboard = null;
+  if (keys.includes("inventory")) { next.stockActions = []; next.stockProducts = []; }
+  if (keys.includes("debts")) next.debts = null;
+  if (keys.includes("expenses")) next.expenses = null;
+  if (keys.includes("quotations")) next.quotationActions = [];
+  if (keys.includes("farm")) next.farmActions = [];
+  if (keys.includes("actionHistory") && !preserveActionHistory) next.actions = [];
+  if (next.dashboard) next.dashboard = { ...next.dashboard, lowStockAlerts: next.stockProducts };
+  return next;
+}
+
 function applySnapshotToData(previous: AssistantSnapshotData, snapshot: AssistantSnapshotResponse): AssistantSnapshotData {
   const next = { ...previous };
-  const ready = (key: AssistantSourceKey) => snapshot.sections[key]?.status === "ready" ? snapshot.sections[key]?.data : null;
-  const today = ready("salesToday")?.dashboard as DashboardData | undefined;
+  const sectionData = (key: AssistantSourceKey) => {
+    const section = snapshot.sections[key];
+    return section?.status === "ready" ? section.data : null;
+  };
+  const clearRestrictedOrUnavailable = (key: AssistantSourceKey) => snapshot.sections[key]?.status === "not_permitted" || snapshot.sections[key]?.status === "unavailable";
+  if (clearRestrictedOrUnavailable("salesToday")) next.dashboard = null;
+  if (clearRestrictedOrUnavailable("inventory")) { next.stockActions = []; next.stockProducts = []; }
+  if (clearRestrictedOrUnavailable("debts")) next.debts = null;
+  if (clearRestrictedOrUnavailable("expenses")) next.expenses = null;
+  if (clearRestrictedOrUnavailable("quotations")) next.quotationActions = [];
+  if (clearRestrictedOrUnavailable("farm")) next.farmActions = [];
+  if (snapshot.sections.actionHistory?.status === "not_permitted") next.actions = [];
+  const today = sectionData("salesToday")?.dashboard as DashboardData | undefined;
   if (today) next.dashboard = today;
-  const inventory = ready("inventory");
+  const inventory = sectionData("inventory");
   if (inventory) {
     next.stockActions = (inventory.actions || []) as StockAssistantAction[];
     next.stockProducts = (inventory.products || []) as AssistantSnapshotData["stockProducts"];
   }
-  const debts = ready("debts");
+  const debts = sectionData("debts");
   if (debts) next.debts = debts as unknown as DebtSummary;
-  const expenses = ready("expenses");
+  const expenses = sectionData("expenses");
   if (expenses) next.expenses = expenses as unknown as ExpenseSummary;
-  const quotations = ready("quotations");
+  const quotations = sectionData("quotations");
   if (quotations) next.quotationActions = (quotations.actions || []) as QuotationAssistantAction[];
-  const farm = ready("farm");
+  const farm = sectionData("farm");
   if (farm) next.farmActions = (farm.actions || []) as FarmAssistantAction[];
-  const historyActions = ready("actionHistory");
+  const historyActions = sectionData("actionHistory");
   if (historyActions) next.actions = (historyActions.actions || []) as AssistantAction[];
   if (next.dashboard) {
     next.dashboard = {
@@ -163,6 +190,8 @@ export default function AssistantPage() {
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [askError, setAskError] = useState("");
   const [asking, setAsking] = useState(false);
+  const [savingActionIds, setSavingActionIds] = useState<Set<string>>(new Set());
+  const [actionSaveErrors, setActionSaveErrors] = useState<Record<string, string>>({});
   const impressionKeys = useRef(new Set<string>());
   const [access, setAccess] = useState<AssistantAccess>({ loaded: false, isStaff: false, canViewReports: false, canManageStock: false, canManageFarm: false, canSell: false });
 
@@ -187,6 +216,7 @@ export default function AssistantPage() {
   async function requestSnapshot(source?: AssistantSourceKey) {
     if (source) setRetryingSources((current) => new Set(current).add(source));
     else setLoadingSnapshot(true);
+    setSnapshotData((current) => clearAssistantDataSources(current, source ? [source] : SOURCE_KEYS, true));
     setSnapshotError("");
     try {
       const path = source ? `/assistant/today?source=${encodeURIComponent(source)}` : "/assistant/today";
@@ -196,6 +226,8 @@ export default function AssistantPage() {
       setSnapshotData((current) => applySnapshotToData(current, data));
     } catch (error) {
       markSourcesUnavailable(source);
+      const failedKeys = source ? [source] : SOURCE_KEYS;
+      setSnapshotData((current) => clearAssistantDataSources(current, failedKeys, true));
       setSnapshotError(error instanceof Error ? error.message : (lang === "sw" ? "Data za msaidizi hazikupatikana." : "Assistant data could not be loaded."));
     } finally {
       if (source) setRetryingSources((current) => { const next = new Set(current); next.delete(source); return next; });
@@ -230,7 +262,10 @@ export default function AssistantPage() {
       } catch (error) {
         if (active) {
           setAccess((current) => ({ ...current, loaded: true }));
-          if (sessionLoaded) markSourcesUnavailable();
+          if (sessionLoaded) {
+            markSourcesUnavailable();
+            setSnapshotData((current) => clearAssistantDataSources(current, SOURCE_KEYS, true));
+          }
           setSnapshotError(error instanceof Error ? error.message : (lang === "sw" ? "Data za msaidizi hazikupatikana." : "Assistant data could not be loaded."));
         }
       } finally {
@@ -249,13 +284,16 @@ export default function AssistantPage() {
     why: lang === "sw" ? "Rekodi sahihi ya POS humsaidia mmiliki kusimamia biashara bila kukupa taarifa za fedha za duka." : "Accurate POS records help the owner run the business without exposing shop financial data to you.",
     impact: lang === "sw" ? "Mauzo yote yanabaki na kumbukumbu sahihi." : "Every sale has a clean record.",
   }] : [];
-  const recommendations = [
+  const allRecommendations = [
     ...(access.canViewReports ? quotationActions.map((item) => ({ ...item, icon: FileText, tone: item.rank >= 90 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii imetolewa na server kwa ruhusa za akaunti yako na data ya nukuu za duka lako." : "This is generated on the server from quotation data your account is allowed to view.", impact: lang === "sw" ? "Kamilisha hatua bila kuchanganya nukuu na mapato yaliyothibitishwa." : "Complete the next step without confusing quotation value with confirmed revenue." })) : []),
     ...(access.canViewReports ? buildRecommendations({ dashboard, debts, expenses, stockProducts: snapshotData.stockProducts, lang }) : []),
     ...(!access.canViewReports ? stockActions.map((item) => ({ ...item, icon: Package, tone: "bg-amber-50 text-amber-700", why: lang === "sw" ? "Hii inaonyesha stock inayohitaji kuangaliwa; haionyeshi mauzo, bei au faida." : "This highlights stock that needs attention; it does not show sales, prices, or profit.", impact: lang === "sw" ? "Tayarisha stock count au mjulishe mwenye duka mapema." : "Prepare a stock count or alert the owner early." })) : []),
     ...farmActions.map((item) => ({ ...item, icon: item.id.startsWith("crop-") ? Sprout : Tractor, tone: item.rank >= 90 ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700", why: lang === "sw" ? "Hii inatokana na rekodi za shamba lako. Haijumuishi ushauri wa afya ya wanyama au kilimo." : "This uses records from your farm. It does not provide animal-health or agronomy advice.", impact: lang === "sw" ? "Rekodi za shamba na stock zinabaki sahihi kabla ya kuuza." : "Keep field records and sellable stock accurate before sales." })),
     ...cashierGuidance,
-  ].sort((a, b) => b.rank - a.rank).slice(0, 5);
+  ].sort((a, b) => b.rank - a.rank);
+  const recommendations = allRecommendations
+    .filter((item) => !snapshotData.actions.some((action) => action.actionKey === item.id && action.snapshotKey === snapshotKey && ["COMPLETED", "DISMISSED"].includes(action.status)))
+    .slice(0, 5);
   const ownerSummary = buildOwnerSummary(recommendations, lang);
   const urgentCount = recommendations.filter((item) => item.rank >= 80).length;
   const actionCount = recommendations.length;
@@ -265,7 +303,7 @@ export default function AssistantPage() {
   useEffect(() => {
     if (!canTrackActions || !snapshotKey || !recommendations.length) return;
     const events = recommendations.flatMap((item) => {
-      const impressionKey = `${snapshotKey}:${item.id}`;
+      const impressionKey = `${snapshotKey}:snapshot:${item.id}`;
       if (impressionKeys.current.has(impressionKey)) return [];
       impressionKeys.current.add(impressionKey);
       return [{ actionKey: item.id, impressionKey }];
@@ -283,19 +321,27 @@ export default function AssistantPage() {
   }
 
   function actionStatus(item: Recommendation) {
-    return actions.find((action) => action.actionKey === item.id);
+    return actions.find((action) => action.actionKey === item.id && action.snapshotKey === snapshotKey);
   }
 
   async function trackRecommendation(item: Recommendation, status: AssistantAction["status"]) {
-    const impressionKey = `${snapshotKey}:${item.id}`;
-    const data = await api.post<{ action: AssistantAction }>("/assistant/actions", {
-      actionKey: item.id,
-      title: item.title,
-      href: item.href,
-      status,
-      impressionKey,
-    }, lang);
-    setSnapshotData((prev) => ({ ...prev, actions: [data.action, ...prev.actions.filter((action) => action.actionKey !== item.id)] }));
+    setSavingActionIds((current) => new Set(current).add(item.id));
+    setActionSaveErrors((current) => ({ ...current, [item.id]: "" }));
+    try {
+      const impressionKey = `${snapshotKey}:snapshot:${item.id}`;
+      const data = await api.post<{ action: AssistantAction }>("/assistant/actions", {
+        actionKey: item.id,
+        title: item.title,
+        href: item.href,
+        status,
+        impressionKey,
+      }, lang);
+      setSnapshotData((prev) => ({ ...prev, actions: [data.action, ...prev.actions.filter((action) => !(action.actionKey === item.id && action.snapshotKey === snapshotKey))] }));
+    } catch (error) {
+      setActionSaveErrors((current) => ({ ...current, [item.id]: error instanceof Error ? error.message : (lang === "sw" ? "Hatua haikuhifadhiwa." : "Action status could not be saved.") }));
+    } finally {
+      setSavingActionIds((current) => { const next = new Set(current); next.delete(item.id); return next; });
+    }
   }
 
   async function submitQuestion(event: FormEvent<HTMLFormElement>) {
@@ -378,11 +424,12 @@ export default function AssistantPage() {
               const label = ({ salesToday: lang === "sw" ? "Mauzo ya leo" : "Today's sales", inventory: lang === "sw" ? "Stock" : "Inventory", debts: lang === "sw" ? "Madeni" : "Debts", expenses: lang === "sw" ? "Matumizi" : "Expenses", quotations: lang === "sw" ? "Nukuu" : "Quotations", farm: lang === "sw" ? "Shamba" : "Farm", actionHistory: lang === "sw" ? "Historia ya hatua" : "Action history" })[key];
               const failed = status.status === "unavailable";
               const restricted = status.status === "not_permitted";
+              const refreshing = loadingSnapshot || retryingSources.has(key);
               return <div key={key} className={`flex min-w-0 items-start justify-between gap-2 rounded-md border px-3 py-2 ${failed ? "border-red-200 bg-red-50" : "border-gray-200 bg-gray-50"}`}>
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-gray-800">{label}</p>
                   <p className={`mt-0.5 text-[11px] ${failed ? "text-red-700" : "text-gray-500"}`}>
-                    {failed ? (lang === "sw" ? "Haikupatikana · Jaribio " : "Unavailable · Tried ") + formatCheckedAt(status.checkedAt, lang) : restricted ? (lang === "sw" ? "Ruhusa inahitajika" : "Access restricted") : (lang === "sw" ? "Imekaguliwa " : "Checked ") + formatCheckedAt(status.checkedAt, lang)}
+                    {refreshing ? (lang === "sw" ? "Inasasisha · Mapendekezo yanasubiri" : "Refreshing · Recommendations paused") : failed ? (lang === "sw" ? "Haipatikani · Mapendekezo yamefichwa · " : "Unavailable · Recommendations hidden · ") + formatCheckedAt(status.checkedAt, lang) : restricted ? (lang === "sw" ? "Ruhusa inahitajika · Data imeondolewa" : "Access restricted · Data cleared") : (lang === "sw" ? "Imekaguliwa " : "Checked ") + formatCheckedAt(status.checkedAt, lang)}
                   </p>
                   {!restricted && status.dataThrough && <p className="mt-0.5 text-[10px] text-gray-500">{lang === "sw" ? "Rekodi hadi" : "Records through"} {formatCheckedAt(status.dataThrough, lang)}</p>}
                 </div>
@@ -483,17 +530,20 @@ export default function AssistantPage() {
                         {item.action}
                         <ArrowRight className="h-4 w-4" />
                       </Link>
+                      {actionSaveErrors[item.id] && <p role="alert" className="w-full text-xs text-red-700">{actionSaveErrors[item.id]}</p>}
                       {canTrackActions && <button
                         type="button"
-                        onClick={() => trackRecommendation(item, "COMPLETED").catch(console.error)}
-                        className="rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-200"
+                        disabled={savingActionIds.has(item.id)}
+                        onClick={() => trackRecommendation(item, "COMPLETED")}
+                        className="rounded-lg bg-green-100 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-200 disabled:opacity-50"
                       >
-                        {lang === "sw" ? "Nimefanya" : "Mark done"}
+                        {savingActionIds.has(item.id) ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Nimefanya" : "Mark done")}
                       </button>}
                       {canTrackActions && <button
                         type="button"
-                        onClick={() => trackRecommendation(item, "DISMISSED").catch(console.error)}
-                        className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200"
+                        disabled={savingActionIds.has(item.id)}
+                        onClick={() => trackRecommendation(item, "DISMISSED")}
+                        className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 disabled:opacity-50"
                       >
                         {lang === "sw" ? "Acha" : "Dismiss"}
                       </button>}
@@ -547,24 +597,33 @@ function buildRecommendations({
   });
   const mostUrgentStock = lowStock[0];
 
-  if ((dashboard?.summary.totalSales || 0) > 0 && (dashboard?.summary.netProfit || 0) < 0) {
+  const knownNetProfit = dashboard?.summary.netProfit || 0;
+  const costComplete = dashboard?.summary.costComplete === true;
+  const missingCostRevenue = dashboard?.summary.missingCostSalesRevenue || 0;
+  if ((dashboard?.summary.totalSales || 0) > 0 && (!costComplete || knownNetProfit < 0)) {
     items.push({
       id: "net-profit",
-      rank: 95,
+      rank: costComplete ? 95 : 74,
       icon: ReceiptText,
-      tone: "bg-red-50 text-red-700",
-      title: lang === "sw" ? "Matumizi yamezidi faida ya leo" : "Expenses are above today's profit",
-      body: lang === "sw"
-        ? `Faida halisi ni ${formatTZS(dashboard?.summary.netProfit || 0)} baada ya matumizi ya ${formatTZS(dashboard?.summary.totalExpenses || 0)}.`
-        : `Net profit is ${formatTZS(dashboard?.summary.netProfit || 0)} after ${formatTZS(dashboard?.summary.totalExpenses || 0)} in expenses.`,
-      action: lang === "sw" ? "Kagua matumizi" : "Review expenses",
-      href: "/expenses?focus=profit",
+      tone: costComplete && knownNetProfit < 0 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800",
+      title: costComplete
+        ? lang === "sw" ? "Matumizi yamezidi faida ya leo" : "Expenses are above today's profit"
+        : lang === "sw" ? "Makadirio ya faida hayajakamilika" : "Profit estimate is incomplete",
+      body: costComplete
+        ? lang === "sw"
+          ? `Faida halisi iliyokokotolewa ni ${formatTZS(knownNetProfit)} baada ya matumizi ya ${formatTZS(dashboard?.summary.totalExpenses || 0)}.`
+          : `Calculated net profit is ${formatTZS(knownNetProfit)} after ${formatTZS(dashboard?.summary.totalExpenses || 0)} in expenses.`
+        : lang === "sw"
+          ? `Makadirio yanayotumia bidhaa zenye gharama inayojulikana ni ${formatTZS(knownNetProfit)} baada ya matumizi. Mauzo ya ${formatTZS(missingCostRevenue)} hayana gharama ya bidhaa iliyorekodiwa, kwa hiyo faida halisi haiwezi kuthibitishwa.`
+          : `The estimate using products with known costs is ${formatTZS(knownNetProfit)} after expenses. Sales revenue of ${formatTZS(missingCostRevenue)} has no recorded product cost, so actual net profit cannot be confirmed.`,
+      action: lang === "sw" ? (costComplete ? "Kagua matumizi" : "Kagua gharama za bidhaa") : (costComplete ? "Review expenses" : "Review product costs"),
+      href: costComplete ? "/expenses?focus=profit" : "/inventory",
       why: lang === "sw"
-        ? "Duka linaweza kuuza lakini bado lisipate faida kama gharama zimepanda."
-        : "A shop can sell well and still lose money when costs rise.",
+        ? costComplete ? "Gharama zote za mauzo yaliyorekodiwa zina data, hivyo hesabu hii inaweza kukaguliwa." : "Bidhaa zisizo na gharama zinaweza kupotosha faida; kamilisha taarifa za gharama kabla ya kuhitimisha matokeo."
+        : costComplete ? "All recorded sales have cost data, so this calculation can be reviewed directly." : "Products with missing costs can distort profit; complete their cost data before drawing a conclusion.",
       impact: lang === "sw"
-        ? "Tambua gharama zinazokula faida na punguza mapema."
-        : "Find costs eating profit and reduce them early.",
+        ? costComplete ? "Tambua gharama zinazokula faida na punguza mapema." : "Boresha usahihi wa faida kwa kurekodi gharama za bidhaa zinazokosekana."
+        : costComplete ? "Find costs eating profit and reduce them early." : "Improve profit accuracy by recording the missing product costs.",
     });
   }
 
@@ -604,15 +663,11 @@ function buildRecommendations({
 
   if (debts?.summary.totalOwed) {
     const openDebt = debts.debts?.find((debt) => debt.status === "OPEN" || debt.status === "PARTIAL");
-    const customer = openDebt?.customerName || openDebt?.customerPhone;
+    const customer = openDebt?.customerName;
     const debtBalance = openDebt ? Math.max(0, openDebt.amount - openDebt.amountPaid) : debts.summary.totalOwed;
     const ageDays = openDebt?.createdAt ? Math.max(0, Math.floor((Date.now() - new Date(openDebt.createdAt).getTime()) / 86400000)) : null;
     const overdueDays = openDebt?.dueDate ? Math.max(0, Math.floor((Date.now() - new Date(openDebt.dueDate).getTime()) / 86400000)) : 0;
     const debtRank = overdueDays >= 30 || (ageDays || 0) >= 90 ? 95 : overdueDays > 0 || (ageDays || 0) >= 30 ? 91 : 84;
-    const debtParams = new URLSearchParams();
-    if (openDebt?.customerName) debtParams.set("customer", openDebt.customerName);
-    if (openDebt?.customerPhone) debtParams.set("phone", openDebt.customerPhone);
-    if (debtBalance) debtParams.set("amount", String(debtBalance));
     items.push({
       id: "debt",
       rank: debtRank,
@@ -625,7 +680,7 @@ function buildRecommendations({
         ? `${customer ? `Anza na ${customer}. ` : ""}${debts.summary.openCount === 1 ? "Kuna deni 1 lililo wazi" : `Kuna madeni ${debts.summary.openCount} yaliyo wazi`}${ageDays !== null ? `; rekodi hii ina takriban siku ${ageDays}` : ""}${overdueDays > 0 ? ` na imechelewa siku ${overdueDays}` : ""}. Salio la rekodi hii ni ${formatTZS(debtBalance)}.`
         : `${customer ? `Start with ${customer}. ` : ""}${debts.summary.openCount} debt records remain open${ageDays !== null ? `; this record is about ${ageDays} days old` : ""}${overdueDays > 0 ? ` and ${overdueDays} days overdue` : ""}. Its balance is ${formatTZS(debtBalance)}.`,
       action: lang === "sw" ? "Fungua madeni na rekodi malipo" : "Open debts and record payment",
-      href: `/debts${debtParams.toString() ? `?${debtParams.toString()}` : ""}`,
+      href: openDebt?.id ? `/debts?focusDebtId=${encodeURIComponent(openDebt.id)}` : "/debts?filter=OUTSTANDING",
       why: lang === "sw"
         ? "Madeni yakikaa muda mrefu hupunguza cash ya kununua stock mpya."
         : "Old debts reduce the cash available to buy new stock.",

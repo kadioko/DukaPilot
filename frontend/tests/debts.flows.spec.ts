@@ -18,6 +18,7 @@ async function mockDebtShop(page: Page) {
     if (path.endsWith("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
     if (path.endsWith("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
     if (path.endsWith("/settings")) return route.fulfill({ json: { settings: { shop: { name: "Amina Shop" } } } });
+    if (path.endsWith("/debts/focus/debt-1")) return route.fulfill({ json: { debt: { id: "debt-1", customerName: "Asha", customerPhone: "+255712345678" } } });
     if (path.includes("/debts/debt-1/payments") && route.request().method() === "POST") {
       submittedPayment = route.request().postDataJSON();
       saved = true;
@@ -58,4 +59,14 @@ test("debt search stays focused through loading and a saved M-Pesa payment remai
   await expect(page.getByText("TZS 2,000").first()).toBeVisible();
   await expect(page.getByText("TZS 3,000").first()).toBeVisible();
   expect(pageErrors).toEqual([]);
+});
+
+test("assistant debt focus opens the existing customer debt without opening the create form", async ({ page }) => {
+  await mockDebtShop(page);
+  await page.goto("/debts?focusDebtId=debt-1");
+
+  await expect(page.getByRole("heading", { name: "Asha" })).toBeVisible();
+  await expect(page.getByText("Recommended debt")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Customer name" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save debt" })).toHaveCount(0);
 });

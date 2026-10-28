@@ -59,6 +59,7 @@ export default function DebtsPage() {
   const paymentInFlight = useRef(new Set<string>());
   const paymentAttempts = useRef<Record<string, { key: string; amount: number; method: PaymentMethod; paymentRef: string }>>({});
   const [assistantPrefill, setAssistantPrefill] = useState(false);
+  const [focusedDebtId, setFocusedDebtId] = useState("");
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -98,11 +99,12 @@ export default function DebtsPage() {
     }
   }
 
-  async function loadCustomerDebts(phone: string, page = 1) {
+  async function loadCustomerDebts(phone: string, page = 1, focusId?: string) {
     const key = customerKey(phone);
     setDetailLoading((current) => ({ ...current, [key]: true }));
     try {
       const query = new URLSearchParams({ page: String(page), limit: "20" });
+      if (focusId) query.set("focusDebtId", focusId);
       const data = await api.get<{ debts: Debt[]; pagination: { hasMore: boolean } }>(`/debts/groups/${encodeURIComponent(phone)}?${query}`, lang);
       setCustomerDebts((current) => ({ ...current, [key]: page === 1 ? data.debts : [...(current[key] || []), ...data.debts.filter((debt) => !(current[key] || []).some((existing) => existing.id === debt.id))] }));
       setHistoryPages((current) => ({ ...current, [key]: page }));
@@ -134,6 +136,24 @@ export default function DebtsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const focusDebtId = params.get("focusDebtId") || "";
+    if (focusDebtId) {
+      setFocusedDebtId(focusDebtId);
+      api.get<{ debt: { id: string; customerName: string | null; customerPhone: string } }>(`/debts/focus/${encodeURIComponent(focusDebtId)}`, lang)
+        .then(async ({ debt }) => {
+          const key = customerKey(debt.customerPhone);
+          setCustomerSearch(debt.customerName || debt.customerPhone);
+          setCustomerFilter("ALL");
+          setCustomerPage(1);
+          setExpandedCustomers((current) => ({ ...current, [key]: true }));
+          await loadCustomerDebts(debt.customerPhone, 1, debt.id);
+        })
+        .catch((error) => {
+          setFocusedDebtId("");
+          toast(error instanceof Error ? error.message : (lang === "sw" ? "Deni halikupatikana." : "Debt record could not be found."), "error");
+        });
+      return;
+    }
     const customerName = params.get("customer") || "";
     const customerPhone = params.get("phone") || "";
     const amount = params.get("amount") || "";
@@ -325,8 +345,9 @@ export default function DebtsPage() {
                 {isExpanded && <div className="divide-y divide-gray-100 bg-gray-50/70">
                   {history.length === 0 && detailLoading[customer.phone] ? <p className="p-4 text-sm text-gray-500">{lang === "sw" ? "Inapakia madeni..." : "Loading debts..."}</p> : history.length === 0 ? <p className="p-4 text-sm text-gray-500">{lang === "sw" ? "Hakuna madeni kwa mteja huyu." : "No debt records for this customer."}</p> : history.map((debt) => {
                     const balance = debt.status === "CANCELLED" ? 0 : Math.max(0, debt.amount - debt.amountPaid);
-                    return <div key={debt.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)] lg:items-center">
+                    return <div key={debt.id} className={`grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)] lg:items-center ${debt.id === focusedDebtId ? "bg-emerald-50 ring-2 ring-inset ring-emerald-300" : ""}`}>
                       <div className="min-w-0">
+                        {debt.id === focusedDebtId && <span className="mb-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">{lang === "sw" ? "Deni lililopendekezwa" : "Recommended debt"}</span>}
                         <p className="text-sm font-semibold text-gray-900">{lang === "sw" ? "Deni" : "Debt"} · {debtAge(debt.createdAt)}</p>
                         <p className="text-xs text-gray-500">{debt.status}{debt.dueDate ? ` · ${lang === "sw" ? "Mwisho" : "Due"} ${new Date(debt.dueDate).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US")}` : ""}</p>
                         {debt.note && <p className="mt-1 break-words text-xs text-gray-600">{debt.note}</p>}

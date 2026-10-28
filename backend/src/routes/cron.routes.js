@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const router = require("express").Router();
 const { runQuotationReminders } = require("../services/quotationReminder.service");
+const { pruneAssistantHistory } = require("../services/assistantAnalyticsRetention.service");
 const { reconcilePending } = require("../services/merchantWallet.service");
 const { reconcilePendingCheckouts } = require("../controllers/subscriptionCheckout.controller");
 
@@ -15,6 +16,11 @@ function authorized(req, secretName) {
 router.post("/quotation-reminders", async (req, res, next) => {
   if (!authorized(req, "QUOTATION_REMINDER_CRON_SECRET")) return res.status(401).json({ error: "Unauthorized cron request" });
   try { res.json(await runQuotationReminders()); } catch (error) { next(error); }
+});
+
+router.post("/assistant-analytics-retention", async (req, res, next) => {
+  if (!authorized(req, "ASSISTANT_ANALYTICS_RETENTION_CRON_SECRET")) return res.status(401).json({ error: "Unauthorized cron request" });
+  try { res.json(await pruneAssistantHistory()); } catch (error) { next(error); }
 });
 
 // nTZS sends signed deposit events, but a delayed webhook must not leave a

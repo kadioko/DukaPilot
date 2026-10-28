@@ -1,0 +1,22 @@
+name: Assistant Analytics Retention
+
+on:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune assistant action history past its retention window
+        env:
+          RETENTION_SECRET: ${{ secrets.ASSISTANT_ANALYTICS_RETENTION_CRON_SECRET }}
+        run: |
+          test -n "$RETENTION_SECRET"
+          curl --fail --silent --show-error --request POST \
+            --header "Authorization: Bearer $RETENTION_SECRET" \
+            https://dukapilotproduction.up.railway.app/api/cron/assistant-analytics-retention

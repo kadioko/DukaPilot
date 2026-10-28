@@ -118,6 +118,16 @@ const customerGroups = asyncHandler(async (req, res) => {
   });
 });
 
+const focusDebt = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const debt = await prisma.debt.findFirst({
+    where: { id: req.params.id, shopId },
+    select: { id: true, customerName: true, customerPhone: true },
+  });
+  if (!debt) return res.status(404).json({ error: "Debt record not found" });
+  res.json({ debt });
+});
+
 const customerDebtHistory = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const phone = normalizePhone(req.params.phone);
@@ -128,14 +138,23 @@ const customerDebtHistory = asyncHandler(async (req, res) => {
     SELECT DISTINCT "customerPhone" AS phone FROM "debts"
     WHERE "shopId" = ${shopId} AND ${customerPhoneSql} = ${phone}
   `;
-  const debts = await prisma.debt.findMany({
-    where: { shopId, customerPhone: { in: variants.map((entry) => entry.phone) } },
+  const where = { shopId, customerPhone: { in: variants.map((entry) => entry.phone) } };
+  const focusDebtId = String(req.query.focusDebtId || "").trim();
+  const focused = focusDebtId ? await prisma.debt.findFirst({
+    where: { ...where, id: focusDebtId },
+    include: { payments: { orderBy: { createdAt: "desc" }, take: 10 } },
+  }) : null;
+  if (focusDebtId && !focused) return res.status(404).json({ error: "Debt record not found for this customer" });
+  const history = await prisma.debt.findMany({
+    where: focused ? { ...where, id: { not: focused.id } } : where,
     include: { payments: { orderBy: { createdAt: "desc" }, take: 10 } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    skip: (page - 1) * limit,
-    take: limit + 1,
+    skip: focused ? Math.max(0, (page - 1) * limit - 1) : (page - 1) * limit,
+    take: (focused && page === 1 ? limit : limit + 1),
   });
-  res.json({ debts: debts.slice(0, limit), pagination: { page, limit, hasMore: debts.length > limit } });
+  const debts = focused && page === 1 ? [focused, ...history.slice(0, limit - 1)] : history.slice(0, limit);
+  const hasMore = focused && page === 1 ? history.length >= limit : history.length > limit;
+  res.json({ debts, pagination: { page, limit, hasMore } });
 });
 
 const customers = asyncHandler(async (req, res) => {
@@ -343,4 +362,4 @@ const remove = asyncHandler(async (req, res) => {
   res.json({ message: "Debt deleted" });
 });
 
-module.exports = { list, customerGroups, customerDebtHistory, customers, create, recordPayment, update, remove };
+module.exports = { list, customerGroups, focusDebt, customerDebtHistory, customers, create, recordPayment, update, remove };

@@ -89,24 +89,24 @@ export default function HelpPage() {
   ];
   const aiThinking = [
     [
-      lang === "sw" ? "1. Inasoma data" : "1. Reads shop data",
+      lang === "sw" ? "1. Inasoma data kwa ruhusa" : "1. Reads permission-checked data",
       lang === "sw" ? "Hutumia rekodi za biashara yako tu ambazo akaunti yako inaruhusiwa kuona." : "It uses your business records only when your account has permission to see them.",
     ],
     [
       lang === "sw" ? "2. Huonyesha hali ya data" : "2. Shows data status",
-      lang === "sw" ? "Kila sehemu huonyesha muda ilipoangaliwa; hitilafu inaweza kujaribiwa tena bila kuficha sehemu nyingine." : "Each source shows when it was checked; one failed source can be retried without hiding the others.",
+      lang === "sw" ? "Kila chanzo huonyesha muda wa ukaguzi na rekodi za mwisho. Chanzo kikishindwa au ruhusa ikikosekana, data yake huondolewa na mapendekezo yake hufichwa; vyanzo vingine vinaendelea." : "Each source shows its check time and latest record time. If it fails or access is denied, its data is cleared and dependent recommendations are hidden; healthy sources remain available.",
     ],
     [
       lang === "sw" ? "3. Huweka ushahidi na tahadhari" : "3. Qualifies its advice",
-      lang === "sw" ? "Makadirio ya stock hutumia mauzo yaliyorekebishwa kwa returns na huonekana tu historia ikitosha. Deni hupangwa kwa umri; ongezeko la matumizi huhitaji rekodi za kutosha." : "Stock estimates use sales net of recorded returns and appear only with enough history. Debts use age; expense spikes require enough records.",
+      lang === "sw" ? "Makadirio ya stock hutumia mauzo baada ya returns na huhitaji historia ya kutosha. Madeni yaliyochelewa hupangwa kwanza; makadirio ya faida huonyesha wazi gharama za bidhaa zinazokosekana." : "Stock estimates use sales net of recorded returns and require enough history. Overdue debts come first; profit estimates disclose missing product costs.",
     ],
     [
       lang === "sw" ? "4. Jibu kwa rekodi, si kubahatisha" : "4. Answers from records, not guesses",
-      lang === "sw" ? "Muulize DukaPilot kwa Kiswahili au English. Jibu linaunganisha ukurasa husika; halitumii AI ya nje wala kurekodi mauzo, malipo au mabadiliko ya stock." : "Ask DukaPilot in English or Kiswahili. Answers link to the relevant screen, use no external AI service, and cannot record sales, payments, or stock changes.",
+      lang === "sw" ? "Muulize kwa Kiswahili au English kuhusu mauzo, faida na matumizi ya leo, wiki, mwezi, robo au mwaka, kipindi kilichopita, siku 7, au tarehe maalumu. Mada zisizounga mkono tarehe huomba ufafanuzi badala ya kutumia leo." : "Ask in English or Kiswahili about sales, profit, and expenses for today, this/last week, month, quarter, year, the last 7 days, or explicit dates. Unsupported historical topics ask for clarification instead of substituting today.",
     ],
     [
       lang === "sw" ? "5. Hupima kilichobadilika" : "5. Measures what changed",
-      lang === "sw" ? "Kufungua au kuweka hatua kuwa imefanyika si uthibitisho wa matokeo. Kwa stock, mfumo huhesabu tu ongezeko la kiasi cha bidhaa hiyo hiyo; kufuta au kuzima bidhaa hakuhesabiki kama kujaza stock. Mabadiliko hayaonyeshi kuwa msaidizi ndiye aliyoyasababisha. Ushauri wa shamba unabaki kwenye shughuli zilizorekodiwa, si tiba au agronomy." : "Opening or marking an action done is not proof of impact. For stock, only an increase in that same product's recorded quantity counts; deleting or deactivating it does not count as restocking. This still does not prove the assistant caused the change. Farm guidance stays operational, not medical or agronomic advice.",
+      lang === "sw" ? "Kufungua au kuweka hatua kuwa imefanyika si uthibitisho wa matokeo. Kila hatua ni ya siku ya biashara ya Tanzania; kuiacha huficha tukio hilo siku hiyo tu. Matokeo yaliyopimwa hayaonyeshi kuwa msaidizi ndiye aliyesababisha mabadiliko. Ushauri wa shamba hutegemea rekodi pekee, si tiba au agronomy." : "Opening or marking an action done is not proof of impact. Each action belongs to a Tanzania business day; dismissing hides only that day's occurrence. A measured change does not prove the assistant caused it. Farm guidance uses records only, not medical or agronomic advice.",
     ],
   ];
 

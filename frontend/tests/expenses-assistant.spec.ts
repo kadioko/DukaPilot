@@ -229,10 +229,88 @@ test("AI keeps inventory guidance visible when sales data fails and retries only
 
   await page.goto("/assistant");
   await expect(page.getByRole("heading", { name: "Kagua kuagiza Unga wa Sembe" })).toBeVisible();
-  await expect(page.getByText("Haikupatikana").first()).toBeVisible();
+  await expect(page.getByText(/Haipatikani.*Mapendekezo yamefichwa/).first()).toBeVisible();
   await page.getByRole("button", { name: "Jaribu tena Mauzo ya leo" }).click();
   await expect.poll(() => retriedUrl).toContain("source=salesToday");
   await expect(page.getByText("Mauzo ya leo").locator("..").getByText(/Imekaguliwa/)).toBeVisible();
+});
+
+test("an unavailable source clears its old recommendation instead of showing stale advice", async ({ page }) => {
+  await mockMerchantShell(page);
+  const snapshot = assistantSnapshot({ quotationActions: [{ id: "quotation-convert-old", rank: 93, href: "/quotations", title: "Badilisha QT-OLD kuwa mauzo", body: "Old quotation data", action: "Fungua" }] });
+  snapshot.sections.quotations.status = "unavailable";
+  delete snapshot.sections.quotations.data;
+  await mockAssistantSnapshot(page, snapshot);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByRole("heading", { name: "Badilisha QT-OLD kuwa mauzo" })).toHaveCount(0);
+  await expect(page.getByText(/Nukuu.*Haipatikani.*Mapendekezo yamefichwa/)).toBeVisible();
+});
+
+test("dismissal is scoped to its Tanzania-day occurrence", async ({ page }) => {
+  await mockMerchantShell(page);
+  const snapshot = assistantSnapshot({ quotationActions: [{ id: "quotation-convert-accepted", rank: 93, href: "/quotations?status=ACCEPTED", title: "Badilisha QT-0042 kuwa mauzo", body: "Asha amekubali kazi.", action: "Fungua nukuu zilizokubaliwa" }] });
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  snapshot.sections.actionHistory.data = { actions: [{ actionKey: "quotation-convert-accepted", snapshotKey: new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Dar_es_Salaam", year: "numeric", month: "2-digit", day: "2-digit" }).format(yesterday), status: "DISMISSED" }] };
+  await mockAssistantSnapshot(page, snapshot);
+
+  await page.goto("/assistant");
+
+  await expect(page.getByRole("heading", { name: "Badilisha QT-0042 kuwa mauzo" })).toBeVisible();
+});
+
+test("action-history outage keeps a saved dismissal hidden while labeling the history unavailable", async ({ page }) => {
+  await mockMerchantShell(page);
+  const snapshot = assistantSnapshot({ quotationActions: [{ id: "quotation-convert-accepted", rank: 93, href: "/quotations?status=ACCEPTED", title: "Badilisha QT-0042 kuwa mauzo", body: "Asha amekubali kazi.", action: "Fungua nukuu zilizokubaliwa" }] });
+  snapshot.sections.actionHistory.data = { actions: [{ actionKey: "quotation-convert-accepted", snapshotKey: snapshot.snapshotKey, status: "DISMISSED" }] };
+  let fullSnapshotCount = 0;
+  await page.route(/\/(?:_api|api)\/assistant\/today(?:\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("source")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ generatedAt: new Date().toISOString(), snapshotKey: snapshot.snapshotKey, sections: { actionHistory: { status: "unavailable", checkedAt: new Date().toISOString() } } }) });
+    fullSnapshotCount += 1;
+    if (fullSnapshotCount === 1) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+    const failedSnapshot = { ...snapshot, sections: { ...snapshot.sections, actionHistory: { status: "unavailable", checkedAt: new Date().toISOString() } } };
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(failedSnapshot) });
+  });
+
+  await page.goto("/assistant");
+  await expect(page.getByRole("heading", { name: "Badilisha QT-0042 kuwa mauzo" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Sasisha zote" }).click();
+
+  await expect(page.getByText("Historia ya hatua").locator("..").getByText(/Haipatikani/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Badilisha QT-0042 kuwa mauzo" })).toHaveCount(0);
+});
+
+test("recommendation save errors are shown inline and do not escape the click handler", async ({ page }) => {
+  await mockMerchantShell(page);
+  await mockAssistantSnapshot(page, assistantSnapshot({ quotationActions: [{ id: "quotation-convert-accepted", rank: 93, href: "/quotations?status=ACCEPTED", title: "Badilisha QT-0042 kuwa mauzo", body: "Asha amekubali kazi.", action: "Fungua nukuu zilizokubaliwa" }] }));
+  await page.route(/\/(?:_api|api)\/assistant\/actions$/, async (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Save failed" }) }));
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.goto("/assistant");
+  await page.getByRole("button", { name: "Acha" }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: /Seva ina tatizo la muda|Save failed|temporarily unavailable/i }).first()).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
+test("profit guidance identifies incomplete cost coverage without asserting a loss", async ({ page }) => {
+  await mockMerchantShell(page);
+  await mockAssistantSnapshot(page, assistantSnapshot({
+    dashboard: {
+      summary: { totalSales: 100000, totalExpenses: 40000, netProfit: 30000, costComplete: false, missingCostSalesRevenue: 25000, lowStockCount: 0, outOfStockCount: 0, pendingOrders: 0, salesCount: 3 },
+      lowStockAlerts: [],
+      topProducts: [],
+    },
+  }));
+
+  await page.goto("/assistant");
+
+  await expect(page.getByRole("heading", { name: "Makadirio ya faida hayajakamilika" })).toBeVisible();
+  await expect(page.getByText(/Mauzo ya TZS 25,000 hayana gharama/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Matumizi yamezidi faida ya leo" })).toHaveCount(0);
 });
 
 test("Ask DukaPilot shows its data source and privacy note", async ({ page }) => {
@@ -251,6 +329,28 @@ test("Ask DukaPilot shows its data source and privacy note", async ({ page }) =>
   await expect(page.getByRole("link", { name: "Fungua rekodi husika" })).toHaveAttribute("href", "/debts");
   await expect(page.getByText(/no external AI service was called/)).toBeVisible();
   await expect(page.getByText(/Chanzo: Debts/)).toBeVisible();
+});
+
+test("Ask sends the requested calendar period and displays its explicit date range", async ({ page }) => {
+  await mockMerchantShell(page);
+  await mockAssistantSnapshot(page, assistantSnapshot());
+  let question = "";
+  await page.route(/\/(?:_api|api)\/assistant\/ask$/, async (route) => {
+    question = route.request().postDataJSON().question;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ answer: { message: "Recorded sales for this month (2026-10-01 to 2026-10-28): TZS 210,000 from 4 sales. Cash collected: TZS 160,000.", href: "/analytics", evidence: [{ source: "Sales", checkedAt: new Date().toISOString() }], privacy: "No external AI service was called." } }),
+    });
+  });
+
+  await page.goto("/assistant");
+  await page.getByLabel("Uliza kuhusu biashara yako").fill("How much sales this month?");
+  await page.getByRole("button", { name: "Uliza" }).click();
+
+  await expect.poll(() => question).toBe("How much sales this month?");
+  await expect(page.getByText(/this month \(2026-10-01 to 2026-10-28\)/)).toBeVisible();
+  await expect(page.getByText(/Cash collected: TZS 160,000/)).toBeVisible();
 });
 
 test("AI prioritizes accepted, deposit, expiring, and expired quotation work without treating it as revenue", async ({ page }) => {

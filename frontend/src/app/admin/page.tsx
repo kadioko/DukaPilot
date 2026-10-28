@@ -100,7 +100,7 @@ interface AdminOverview {
       verifiedOutcomeRate: number;
       interpretation: string;
     };
-    topActions: Array<{ actionKey: string; count: number; title: string; href: string }>;
+    topActions: Array<{ actionType: string; count: number; title: string }>;
   };
   pushAnalytics?: {
     activeDevices: number;
@@ -1656,12 +1656,11 @@ export default function AdminPage() {
                 ) : (
                   <div className="mt-2 grid gap-2 md:grid-cols-2">
                     {assistantAnalytics?.topActions.slice(0, 6).map((action) => (
-                      <div key={action.actionKey} className="rounded-lg bg-white px-3 py-2 text-xs">
+                      <div key={action.actionType} className="rounded-lg bg-white px-3 py-2 text-xs">
                         <div className="flex items-start justify-between gap-2">
                           <p className="font-semibold text-gray-900">{action.title}</p>
                           <span className="rounded-full bg-brand-100 px-2 py-0.5 font-bold text-brand-700">{action.count}</span>
                         </div>
-                        <p className="mt-1 font-mono text-[11px] text-gray-400">{action.actionKey}</p>
                       </div>
                     ))}
                   </div>

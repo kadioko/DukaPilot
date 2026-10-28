@@ -2,6 +2,7 @@ const prisma = require("../lib/prisma");
 const { randomUUID } = require("node:crypto");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { getFarmConfiguration } = require("../lib/farmAccess");
+const { tanzaniaDateKey } = require("../lib/businessTime");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -10,6 +11,21 @@ function asyncHandler(fn) {
 function normalizeStatus(value) {
   const status = String(value || "").toUpperCase();
   return ["OPEN", "OPENED", "COMPLETED", "DISMISSED"].includes(status) ? status : "OPEN";
+}
+
+function parseOccurrence(actionKey, impressionKey, now = new Date()) {
+  const match = String(impressionKey || "").match(/^(\d{4}-\d{2}-\d{2}):(snapshot:)?(.+)$/);
+  if (!match || match[3] !== actionKey) return null;
+  const snapshotKey = match[1];
+  const date = new Date(`${snapshotKey}T12:00:00+03:00`);
+  if (Number.isNaN(date.getTime()) || tanzaniaDateKey(date) !== snapshotKey) return null;
+  const today = tanzaniaDateKey(now);
+  const yesterday = tanzaniaDateKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  return snapshotKey === today || snapshotKey === yesterday ? { snapshotKey } : null;
+}
+
+function isSupportedActionKey(actionKey) {
+  return /^(?:net-profit|debt|expenses|orders|stock-[A-Za-z0-9_-]+|quotation-(?:convert|deposit|expired|expiring)-[A-Za-z0-9_-]+|crop-(?:input|harvest|irrigation|task|weather|review)-[A-Za-z0-9_-]+|farm-[A-Za-z0-9_-]+)$/.test(actionKey);
 }
 
 function quotationDaysUntil(value) {
@@ -193,7 +209,26 @@ const listActions = asyncHandler(async (req, res) => {
     orderBy: { updatedAt: "desc" },
     take: limit,
   });
-  res.json({ actions });
+  const impressionKeys = actions.flatMap((action) => [
+    `${action.snapshotKey}:snapshot:${action.actionKey}`,
+    `${action.snapshotKey}:${action.actionKey}`,
+  ]);
+  const events = impressionKeys.length ? await prisma.assistantActionEvent.findMany({
+    where: { shopId, impressionKey: { in: impressionKeys } },
+    orderBy: { createdAt: "asc" },
+    select: { actionKey: true, impressionKey: true, eventType: true, measuredValue: true, createdAt: true },
+  }) : [];
+  const eventsByKey = new Map();
+  for (const event of events) {
+    const key = `${event.impressionKey}|${event.actionKey}`;
+    eventsByKey.set(key, [...(eventsByKey.get(key) || []), event]);
+  }
+  res.json({ actions: actions.map((action) => ({
+    ...action,
+    events: eventsByKey.get(`${action.snapshotKey}:snapshot:${action.actionKey}|${action.actionKey}`)
+      || eventsByKey.get(`${action.snapshotKey}:${action.actionKey}|${action.actionKey}`)
+      || [],
+  })) });
 });
 
 const trackAction = asyncHandler(async (req, res) => {
@@ -202,33 +237,30 @@ const trackAction = asyncHandler(async (req, res) => {
   const title = String(req.body.title || "").trim();
   const href = String(req.body.href || "").trim();
   const status = normalizeStatus(req.body.status);
-  const impressionKey = String(req.body.impressionKey || `legacy:${tanzaniaDayKey(new Date())}:${actionKey}`).trim().slice(0, 240);
+  const impressionKey = String(req.body.impressionKey || "").trim().slice(0, 240);
+  const occurrence = parseOccurrence(actionKey, impressionKey);
 
   if (!actionKey || actionKey.length > 160 || !title || title.length > 240 || !href || href.length > 500 || !href.startsWith("/") || href.startsWith("//")) {
     return res.status(400).json({ error: "actionKey, title, and href are required" });
   }
-  if (!impressionKey) return res.status(400).json({ error: "Invalid recommendation impression" });
+  if (!isSupportedActionKey(actionKey) || !occurrence) return res.status(400).json({ error: "Invalid recommendation occurrence" });
 
   const now = new Date();
-  const existing = await prisma.assistantAction.findUnique({ where: { shopId_actionKey: { shopId, actionKey } } });
   const measured = await measureAction(shopId, actionKey);
   const shownEvent = await prisma.assistantActionEvent.findFirst({
     where: { shopId, actionKey, impressionKey, eventType: "SHOWN" },
     select: { measuredValue: true },
   });
-  const baselineValue = shownEvent
-    ? shownEvent.measuredValue
-    : impressionKey.startsWith("legacy:")
-      ? existing?.baselineValue ?? measured
-      : measured;
+  const baselineValue = shownEvent?.measuredValue ?? null;
   const verified = status === "COMPLETED" && outcomeVerified(actionKey, baselineValue, measured);
   const eventTypes = status === "OPENED" ? ["OPENED"] : status === "COMPLETED" ? ["MARKED_DONE", ...(verified ? ["OUTCOME_VERIFIED"] : [])] : status === "DISMISSED" ? ["DISMISSED"] : [];
   const action = await prisma.$transaction(async (tx) => {
     const saved = await tx.assistantAction.upsert({
-      where: { shopId_actionKey: { shopId, actionKey } },
+      where: { shopId_actionKey_snapshotKey: { shopId, actionKey, snapshotKey: occurrence.snapshotKey } },
       create: {
         shopId,
         actionKey,
+        snapshotKey: occurrence.snapshotKey,
         title,
         href,
         status,
@@ -280,7 +312,8 @@ const recordImpressions = asyncHandler(async (req, res) => {
   for (const entry of entries) {
     const actionKey = String(entry.actionKey || "").trim();
     const impressionKey = String(entry.impressionKey || "").trim();
-    if (!actionKey || actionKey.length > 160 || impressionKey.length > 240 || ![dateKey, previousDateKey].some((key) => impressionKey.startsWith(`${key}:`))) {
+    const occurrence = parseOccurrence(actionKey, impressionKey);
+    if (!actionKey || actionKey.length > 160 || impressionKey.length > 240 || !isSupportedActionKey(actionKey) || !occurrence || ![dateKey, previousDateKey].includes(occurrence.snapshotKey)) {
       return res.status(400).json({ error: "Invalid recommendation impression" });
     }
     const measuredValue = await measureAction(shopId, actionKey);
@@ -294,26 +327,30 @@ const adminAnalytics = asyncHandler(async (req, res) => {
   const sinceDays = Math.max(1, Math.min(365, Number(req.query.days) || 30));
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
 
-  const [total, statusRows, topRows, recentActions, eventRows] = await Promise.all([
+  const [total, statusRows, topRows, eventRows] = await Promise.all([
     prisma.assistantAction.count({ where: { updatedAt: { gte: since } } }),
     prisma.assistantAction.groupBy({
       by: ["status"],
       where: { updatedAt: { gte: since } },
       _count: { id: true },
     }),
-    prisma.assistantAction.groupBy({
-      by: ["actionKey"],
-      where: { updatedAt: { gte: since } },
-      _count: { id: true },
-      orderBy: { _count: { id: "desc" } },
-      take: 8,
-    }),
-    prisma.assistantAction.findMany({
-      where: { updatedAt: { gte: since } },
-      orderBy: { updatedAt: "desc" },
-      take: 12,
-      include: { shop: { select: { id: true, name: true, user: { select: { name: true, phone: true } } } } },
-    }),
+    prisma.$queryRaw`
+      SELECT CASE
+        WHEN "actionKey" = 'debt' THEN 'debt'
+        WHEN "actionKey" = 'net-profit' THEN 'profit'
+        WHEN "actionKey" = 'expenses' THEN 'expenses'
+        WHEN "actionKey" = 'orders' THEN 'orders'
+        WHEN "actionKey" LIKE 'stock-%' OR "actionKey" LIKE 'staff-stock-%' THEN 'stock'
+        WHEN "actionKey" LIKE 'quotation-%' THEN 'quotations'
+        WHEN "actionKey" LIKE 'crop-%' OR "actionKey" LIKE 'farm-%' THEN 'farm'
+        ELSE 'other'
+      END AS "actionType", COUNT(*)::int AS count
+      FROM assistant_action_events
+      WHERE "eventType" = 'SHOWN' AND "createdAt" >= ${since}
+      GROUP BY "actionType"
+      ORDER BY count DESC, "actionType" ASC
+      LIMIT 8
+    `,
     prisma.$queryRaw`
       WITH impressions AS (
         SELECT "shopId", "impressionKey",
@@ -334,15 +371,6 @@ const adminAnalytics = asyncHandler(async (req, res) => {
   ]);
 
   const statusCounts = Object.fromEntries(statusRows.map((row) => [row.status, row._count.id]));
-  const topActionKeys = topRows.map((row) => row.actionKey);
-  const actionLabels = topActionKeys.length
-    ? await prisma.assistantAction.findMany({
-        where: { actionKey: { in: topActionKeys } },
-        distinct: ["actionKey"],
-        select: { actionKey: true, title: true, href: true },
-      })
-    : [];
-  const labelMap = new Map(actionLabels.map((action) => [action.actionKey, action]));
   const eventCounts = eventRows[0] || {};
   const shown = Number(eventCounts.shown || 0);
   const opened = Number(eventCounts.opened || 0);
@@ -372,12 +400,19 @@ const adminAnalytics = asyncHandler(async (req, res) => {
       interpretation: "Verified outcomes show a measured change after a recommendation was marked done; they do not prove the assistant caused that change.",
     },
     topActions: topRows.map((row) => ({
-      actionKey: row.actionKey,
-      count: row._count.id,
-      title: labelMap.get(row.actionKey)?.title || row.actionKey,
-      href: labelMap.get(row.actionKey)?.href || "",
+      actionType: row.actionType,
+      count: Number(row.count),
+      title: ({
+        debt: "Debt follow-up",
+        profit: "Profit and cost review",
+        expenses: "Expense review",
+        orders: "Order follow-up",
+        stock: "Stock review",
+        quotations: "Quotation follow-up",
+        farm: "Farm operations",
+        other: "Other recommendation",
+      })[row.actionType] || "Other recommendation",
     })),
-    recentActions,
   });
 });
 
@@ -386,4 +421,4 @@ function tanzaniaDayKey(value = new Date()) {
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
 }
 
-module.exports = { listActions, trackAction, recordImpressions, quotationSummary, stockSummary, farmSummary, adminAnalytics };
+module.exports = { listActions, trackAction, recordImpressions, quotationSummary, stockSummary, farmSummary, adminAnalytics, parseOccurrence };
