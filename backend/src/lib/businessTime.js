@@ -20,6 +20,14 @@ function startOfTanzaniaDay(date = new Date()) {
   return new Date(Date.UTC(year, month, day) - TANZANIA_OFFSET_MS);
 }
 
+function endOfTanzaniaDay(date = new Date()) {
+  return new Date(startOfTanzaniaDay(date).getTime() + DAY_MS);
+}
+
+function tanzaniaDayOfMonth(date = new Date()) {
+  return shiftedParts(date).day;
+}
+
 function startOfTanzaniaMonth(date = new Date()) {
   const { year, month } = shiftedParts(date);
   return new Date(Date.UTC(year, month, 1) - TANZANIA_OFFSET_MS);
@@ -42,4 +50,4 @@ function addTanzaniaMonths(date, months) {
   return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + months, 1) - TANZANIA_OFFSET_MS);
 }
 
-module.exports = { startOfTanzaniaDay, startOfTanzaniaWeek, lastSevenTanzaniaDays, startOfTanzaniaMonth, addTanzaniaMonths, tanzaniaDateKey };
+module.exports = { startOfTanzaniaDay, endOfTanzaniaDay, tanzaniaDayOfMonth, startOfTanzaniaWeek, lastSevenTanzaniaDays, startOfTanzaniaMonth, addTanzaniaMonths, tanzaniaDateKey };

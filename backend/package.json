@@ -14,6 +14,7 @@
     "db:seed": "node prisma/seed.js",
     "db:seed-demo-history": "node scripts/seed-demo-history.js",
     "db:seed-demo-showcase": "node scripts/seed-demo-showcase.js",
+    "expenses:diagnose-future": "node scripts/diagnose-future-expenses.js",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

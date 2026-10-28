@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const { startOfTanzaniaMonth, tanzaniaDateKey } = require("../src/lib/businessTime");
+const { startOfTanzaniaMonth, endOfTanzaniaDay, tanzaniaDateKey } = require("../src/lib/businessTime");
 
 const controllerPath = path.resolve(__dirname, "../src/controllers/assistantToday.controller.js");
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
@@ -180,16 +180,16 @@ test("Ask interprets calendar months in Tanzania time and uses the requested sal
 test("Ask expense questions use the requested month instead of the default seven-day window", async () => {
   const ranges = [];
   const monthStart = startOfTanzaniaMonth(new Date());
+  const expectedEnd = endOfTanzaniaDay();
   const loader = loadWithMocks({
     prisma: {
-      expense: {
-        aggregate: async ({ where }) => {
-          ranges.push(where.spentAt);
-          const current = monthStart.getTime();
-          return { _sum: { amount: where.spentAt.gte.getTime() >= current ? 42000 : 18000 }, _count: { id: 4 } };
-        },
-        findMany: async () => [],
-        findFirst: async () => ({ updatedAt: new Date("2026-10-28T08:00:00.000Z") }),
+      $queryRawUnsafe: async (query, ...params) => {
+        if (query.includes("COUNT(*)::int AS count")) {
+          ranges.push({ from: params[1], to: params[2], query });
+          return [{ total: params[1].getTime() >= monthStart.getTime() ? 42000 : 18000, count: 4 }];
+        }
+        if (query.includes("MAX(e.\"updatedAt\")")) return [{ updatedAt: new Date("2026-10-28T08:00:00.000Z") }];
+        return [];
       },
     },
   });
@@ -197,7 +197,9 @@ test("Ask expense questions use the requested month instead of the default seven
     const res = response();
     await loader.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question: "What are expenses this month?" } }, res, (error) => { throw error; });
     assert.equal(ranges.length, 2);
-    assert.equal(tanzaniaDateKey(ranges[0].gte), tanzaniaDateKey(monthStart));
+    assert.equal(tanzaniaDateKey(ranges[0].from), tanzaniaDateKey(monthStart));
+    assert.equal(ranges[0].to.toISOString(), expectedEnd.toISOString());
+    assert.equal(ranges.every((range) => range.query.includes('e."spentAt" < ((date_trunc')), true);
     assert.match(res.payload.answer.message, /expenses for this month/i);
     assert.match(res.payload.answer.message, /42,000/);
   } finally {
@@ -212,7 +214,7 @@ test("month-to-date comparisons use the corresponding prior-month calendar dates
     const { window } = loader.controller.requestedTimeWindow("expenses this month", "expenses", now);
     assert.equal(tanzaniaDateKey(window.from), "2026-10-01");
     assert.equal(tanzaniaDateKey(window.previousFrom), "2026-09-01");
-    assert.equal(tanzaniaDateKey(window.previousTo), "2026-09-28");
+    assert.equal(tanzaniaDateKey(new Date(window.previousTo.getTime() - 1)), "2026-09-28");
     assert.equal(window.previousTo.getUTCHours(), window.to.getUTCHours());
   } finally {
     loader.restore();
@@ -224,7 +226,7 @@ test("calendar-month comparison clamps month-end dates instead of rolling into a
   try {
     const now = new Date("2026-03-30T21:00:00.000Z");
     const { window } = loader.controller.requestedTimeWindow("expenses this month", "expenses", now);
-    assert.equal(tanzaniaDateKey(window.previousTo), "2026-02-28");
+    assert.equal(tanzaniaDateKey(new Date(window.previousTo.getTime() - 1)), "2026-02-28");
     assert.equal(window.previousTo.getUTCHours(), window.to.getUTCHours());
   } finally {
     loader.restore();

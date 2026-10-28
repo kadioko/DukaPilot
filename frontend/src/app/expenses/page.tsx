@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { BarChart3, ChevronDown, Edit3, Filter, PackagePlus, Plus, ReceiptText, Repeat2, Search, Trash2, X } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
@@ -18,6 +18,8 @@ interface Expense {
   note: string | null;
   paymentMethod: string;
   spentAt: string;
+  recurringExpenseId?: string | null;
+  canCorrect?: boolean;
 }
 
 interface RecurringExpense {
@@ -108,11 +110,9 @@ const EMPTY_SUMMARY: ExpenseSummary = {
 };
 
 function localDateValue() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Dar_es_Salaam", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function emptyExpenseForm(): ExpenseForm {
@@ -129,7 +129,13 @@ function formatAmountInput(value: string) {
 }
 
 function toDateLabel(value: string, lang: "sw" | "en") {
-  return new Date(value).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(value).toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { timeZone: "Africa/Dar_es_Salaam", day: "numeric", month: "short", year: "numeric" });
+}
+
+function tanzaniaDateKey(value: string | Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Dar_es_Salaam", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function queryFromFilters(filters: Filters, period: Period) {
@@ -148,11 +154,18 @@ export default function ExpensesPage() {
   const lang = useLang();
   const { toast } = useToast();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [needsReviewExpenses, setNeedsReviewExpenses] = useState<Expense[]>([]);
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
   const [summary, setSummary] = useState<ExpenseSummary>(EMPTY_SUMMARY);
   const [period, setPeriod] = useState<Period>("month");
   const [form, setForm] = useState<ExpenseForm>(emptyExpenseForm);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [confirmActualPayment, setConfirmActualPayment] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<RecurringExpense | null>(null);
+  const [recordingSchedule, setRecordingSchedule] = useState<RecurringExpense | null>(null);
+  const [recurringPaymentDate, setRecurringPaymentDate] = useState(localDateValue);
+  const [scheduleDueDate, setScheduleDueDate] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<Filters>({ search: "", vendor: "", category: "", from: "", to: "" });
@@ -161,6 +174,8 @@ export default function ExpensesPage() {
   const [saving, setSaving] = useState(false);
   const [busyRecurringId, setBusyRecurringId] = useState<string | null>(null);
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
+  const requestKeyRef = useRef<string | null>(null);
+  const recurringRequestKeysRef = useRef(new Map<string, { key: string; spentAt: string; expectedDueDate: string }>());
 
   const filtersActive = Object.values(appliedFilters).some(Boolean);
   const amount = Number(form.amount || 0);
@@ -177,8 +192,9 @@ export default function ExpensesPage() {
   }, [amount, editingExpense, expenses, form.spentAt, form.title, form.vendor]);
 
   async function load(nextFilters = appliedFilters, nextPeriod = period) {
-    const data = await api.get<{ expenses: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
+    const data = await api.get<{ expenses: Expense[]; needsReviewExpenses?: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
     setExpenses(data.expenses);
+    setNeedsReviewExpenses(data.needsReviewExpenses || []);
     setRecurringExpenses(data.recurringExpenses || []);
     setSummary({ ...EMPTY_SUMMARY, ...data.summary, topCategories: data.summary.topCategories || [] });
   }
@@ -197,6 +213,9 @@ export default function ExpensesPage() {
 
   function openAdd(preset?: { title: string; category: string }) {
     setEditingExpense(null);
+    setEditingSchedule(null);
+    setConfirmActualPayment(false);
+    requestKeyRef.current = crypto.randomUUID();
     setDuplicateConfirmed(false);
     setForm({ ...emptyExpenseForm(), title: preset?.title || "", category: preset?.category || "OTHER" });
     setShowForm(true);
@@ -204,6 +223,9 @@ export default function ExpensesPage() {
 
   function openEdit(expense: Expense) {
     setEditingExpense(expense);
+    setEditingSchedule(null);
+    setConfirmActualPayment(false);
+    requestKeyRef.current = null;
     setDuplicateConfirmed(false);
     setForm({
       title: expense.title,
@@ -221,11 +243,18 @@ export default function ExpensesPage() {
   function closeForm() {
     setShowForm(false);
     setEditingExpense(null);
+    setConfirmActualPayment(false);
+    requestKeyRef.current = null;
     setDuplicateConfirmed(false);
   }
 
   async function saveExpense(event: React.FormEvent) {
     event.preventDefault();
+    const isReviewingDate = Boolean(editingExpense && needsReviewExpenses.some((expense) => expense.id === editingExpense.id));
+    if (isReviewingDate && !confirmActualPayment) {
+      toast(lang === "sw" ? "Thibitisha kuwa malipo yalifanyika kweli kabla ya kuhifadhi." : "Confirm this payment really happened before saving.", "error");
+      return;
+    }
     if (!amount) {
       toast(lang === "sw" ? "Weka kiasi sahihi cha TZS." : "Enter a valid TZS amount.", "error");
       return;
@@ -238,15 +267,16 @@ export default function ExpensesPage() {
 
     setSaving(true);
     try {
-      const payload = { ...form, amount };
+      const payload = { ...form, amount, ...(isReviewingDate ? { confirmActualPayment: true } : {}), ...(editingExpense ? {} : { requestKey: requestKeyRef.current || crypto.randomUUID() }) };
+      if (!editingExpense && !requestKeyRef.current) requestKeyRef.current = payload.requestKey as string;
       if (editingExpense) {
         await api.patch(`/expenses/${editingExpense.id}`, payload, lang);
         toast(lang === "sw" ? "Matumizi yamebadilishwa." : "Expense updated.", "success");
       } else {
         await api.post("/expenses", payload, lang);
         toast(form.recurringMonthly
-          ? (lang === "sw" ? "Matumizi yamehifadhiwa na ratiba ya kila mwezi imewekwa." : "Expense saved and monthly schedule created.")
-          : (lang === "sw" ? "Matumizi yamehifadhiwa." : "Expense saved."), "success");
+          ? (lang === "sw" ? `Ratiba imewekwa kwa ${toDateLabel(form.spentAt, lang)}. Hakuna matumizi yaliyorekodiwa; thibitisha malipo yakifanyika.` : `Schedule set for ${toDateLabel(form.spentAt, lang)}. No expense was recorded; confirm payment when it happens.`)
+          : (lang === "sw" ? "Matumizi halisi yamehifadhiwa." : "Actual expense recorded."), "success");
       }
       closeForm();
       await load();
@@ -271,20 +301,52 @@ export default function ExpensesPage() {
     }
   }
 
-  async function recordRecurring(recurringExpense: RecurringExpense) {
-    const confirmed = window.confirm(lang === "sw"
-      ? `Thibitisha malipo ya ${recurringExpense.title} ya ${formatTZS(recurringExpense.amount)}?`
-      : `Record ${recurringExpense.title} for ${formatTZS(recurringExpense.amount)}?`);
-    if (!confirmed) return;
-    setBusyRecurringId(recurringExpense.id);
+  async function recordRecurring(event: React.FormEvent) {
+    event.preventDefault();
+    if (!recordingSchedule || !recurringPaymentDate) return;
+    const expectedDueDate = tanzaniaDateKey(recordingSchedule.nextDueAt);
+    const previousRequest = recurringRequestKeysRef.current.get(recordingSchedule.id);
+    const requestKey = previousRequest?.spentAt === recurringPaymentDate && previousRequest.expectedDueDate === expectedDueDate
+      ? previousRequest.key
+      : crypto.randomUUID();
+    recurringRequestKeysRef.current.set(recordingSchedule.id, { key: requestKey, spentAt: recurringPaymentDate, expectedDueDate });
+    setBusyRecurringId(recordingSchedule.id);
     try {
-      await api.post(`/expenses/recurring/${recurringExpense.id}/record`, { spentAt: localDateValue() }, lang);
-      toast(lang === "sw" ? "Matumizi ya kila mwezi yamehifadhiwa." : "Recurring expense recorded.", "success");
+      await api.post(`/expenses/recurring/${recordingSchedule.id}/record`, { spentAt: recurringPaymentDate, expectedDueAt: expectedDueDate, confirmedPayment: true, requestKey }, lang);
+      recurringRequestKeysRef.current.delete(recordingSchedule.id);
+      setRecordingSchedule(null);
+      toast(lang === "sw" ? "Malipo halisi yamerekodiwa mara moja." : "Actual payment recorded once.", "success");
       await load();
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : (lang === "sw" ? "Matumizi hayakuweza kuhifadhiwa." : "Expense could not be recorded."), "error");
     } finally {
       setBusyRecurringId(null);
+    }
+  }
+
+  function openRecordRecurring(schedule: RecurringExpense) {
+    setRecordingSchedule(schedule);
+    setRecurringPaymentDate(localDateValue());
+  }
+
+  function openScheduleEdit(schedule: RecurringExpense) {
+    setEditingSchedule(schedule);
+    setScheduleDueDate(tanzaniaDateKey(schedule.nextDueAt));
+  }
+
+  async function saveScheduleDate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingSchedule || !scheduleDueDate) return;
+    setSavingSchedule(true);
+    try {
+      await api.patch(`/expenses/recurring/${editingSchedule.id}`, { nextDueAt: scheduleDueDate }, lang);
+      setEditingSchedule(null);
+      toast(lang === "sw" ? "Tarehe ya ratiba imesasishwa; hakuna malipo yaliyorekodiwa." : "Schedule date updated; no payment was recorded.", "success");
+      await load();
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : (lang === "sw" ? "Ratiba haikuweza kusasishwa." : "Schedule could not be updated."), "error");
+    } finally {
+      setSavingSchedule(false);
     }
   }
 
@@ -380,12 +442,35 @@ export default function ExpensesPage() {
           </div>
         )}
 
+        {needsReviewExpenses.length > 0 && (
+          <section className="overflow-hidden border border-amber-300 bg-amber-50" aria-labelledby="future-expenses-heading">
+            <div className="border-b border-amber-200 px-4 py-3">
+              <h2 id="future-expenses-heading" className="text-sm font-semibold text-amber-950">{lang === "sw" ? "Matumizi yanayosubiri uhakiki wa tarehe" : "Expense records needing date review"}</h2>
+              <p className="mt-1 text-xs leading-5 text-amber-900">{lang === "sw" ? "Rekodi hizi ziliwekwa kwa tarehe ya baadaye kuliko siku zilipoundwa, kwa hiyo hazijumuishwi kwenye fedha, ripoti, AI au Daily Close mpaka mmiliki athibitishe. Ikiwa malipo yalifanyika, weka tarehe halisi; ikiwa hayakufanyika, mmiliki anaweza kufuta rekodi baada ya kuthibitisha." : "These entries were dated after the business day they were created, so they stay out of financial totals, reports, AI, and Daily Close until the owner verifies them. If paid, set the actual payment date; if not paid, the owner can delete the entry after confirming."}</p>
+            </div>
+            <div className="divide-y divide-amber-200">
+              {needsReviewExpenses.map((expense) => (
+                <article key={expense.id} className="flex items-center gap-3 p-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-amber-950">{expense.title}</p>
+                    <p className="mt-1 text-xs text-amber-900">{formatTZS(expense.amount)} · {toDateLabel(expense.spentAt, lang)} · {PAYMENT_LABELS[expense.paymentMethod]?.[lang] || expense.paymentMethod}</p>
+                  </div>
+                  {expense.canCorrect && <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => openEdit(expense)} title={lang === "sw" ? "Weka tarehe halisi ya malipo" : "Set actual payment date"} aria-label={lang === "sw" ? `Sahihisha ${expense.title}` : `Correct ${expense.title}`} className="grid h-9 w-9 place-items-center rounded-lg text-amber-900 hover:bg-amber-100"><Edit3 className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => deleteExpense(expense)} title={lang === "sw" ? "Futa rekodi baada ya kuthibitisha" : "Delete after confirmation"} aria-label={lang === "sw" ? `Futa ${expense.title}` : `Delete ${expense.title}`} className="grid h-9 w-9 place-items-center rounded-lg text-amber-900 hover:bg-red-100"><Trash2 className="h-4 w-4" /></button>
+                  </div>}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
         {recurringExpenses.length > 0 && (
           <section className="overflow-hidden rounded-lg border border-blue-200 bg-blue-50" aria-labelledby="recurring-expenses-heading">
             <div className="flex items-center justify-between gap-3 border-b border-blue-100 px-4 py-3">
               <div className="flex min-w-0 items-center gap-2">
                 <Repeat2 className="h-4 w-4 shrink-0 text-blue-700" />
-                <div className="min-w-0"><h2 id="recurring-expenses-heading" className="text-sm font-semibold text-blue-950">{lang === "sw" ? "Matumizi yanayojirudia" : "Recurring expenses"}</h2><p className="text-xs text-blue-800">{lang === "sw" ? "Rekodi malipo halisi, kisha tarehe inayofuata itasogea mwezi mmoja." : "Record the real payment, then the next date moves forward a month."}</p></div>
+                <div className="min-w-0"><h2 id="recurring-expenses-heading" className="text-sm font-semibold text-blue-950">{lang === "sw" ? "Ratiba za matumizi" : "Expense schedules"}</h2><p className="text-xs text-blue-800">{lang === "sw" ? "Ratiba ni ukumbusho tu. Malipo hayarekodiwi moja kwa moja." : "Schedules are reminders only. Payments are never recorded automatically."}</p></div>
               </div>
             </div>
             <div className="divide-y divide-blue-100">
@@ -393,10 +478,11 @@ export default function ExpensesPage() {
                 <div key={recurringExpense.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-gray-950">{recurringExpense.title}</p>
-                    <p className="mt-0.5 text-xs text-blue-900">{formatTZS(recurringExpense.amount)} · {lang === "sw" ? "Inafuata" : "Next"} {toDateLabel(recurringExpense.nextDueAt, lang)}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tanzaniaDateKey(recurringExpense.nextDueAt) < localDateValue() ? "bg-red-100 text-red-800" : tanzaniaDateKey(recurringExpense.nextDueAt) === localDateValue() ? "bg-amber-100 text-amber-900" : "bg-blue-100 text-blue-900"}`}>{tanzaniaDateKey(recurringExpense.nextDueAt) < localDateValue() ? (lang === "sw" ? "Imechelewa" : "Overdue") : tanzaniaDateKey(recurringExpense.nextDueAt) === localDateValue() ? (lang === "sw" ? "Inadaiwa leo" : "Due today") : (lang === "sw" ? "Imepangwa" : "Scheduled")}</span><span className="text-xs text-blue-900">{formatTZS(recurringExpense.amount)} · {toDateLabel(recurringExpense.nextDueAt, lang)}</span></div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <button type="button" onClick={() => recordRecurring(recurringExpense)} disabled={busyRecurringId === recurringExpense.id} className="min-h-9 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{busyRecurringId === recurringExpense.id ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Rekodi sasa" : "Record now")}</button>
+                    <button type="button" onClick={() => openRecordRecurring(recurringExpense)} disabled={busyRecurringId === recurringExpense.id} className="min-h-9 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{busyRecurringId === recurringExpense.id ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Thibitisha imelipwa" : "Confirm paid")}</button>
+                    <button type="button" onClick={() => openScheduleEdit(recurringExpense)} title={lang === "sw" ? "Badilisha tarehe inayofuata" : "Edit next due date"} aria-label={lang === "sw" ? `Badilisha tarehe ya ${recurringExpense.title}` : `Edit ${recurringExpense.title} schedule date`} className="grid h-9 w-9 place-items-center rounded-lg border border-blue-200 text-blue-800 hover:bg-blue-100"><Edit3 className="h-4 w-4" /></button>
                     <button type="button" onClick={() => stopRecurring(recurringExpense)} title={lang === "sw" ? "Sitisha ratiba" : "Stop schedule"} aria-label={lang === "sw" ? `Sitisha ratiba ya ${recurringExpense.title}` : `Stop ${recurringExpense.title} schedule`} className="grid h-9 w-9 place-items-center rounded-lg border border-blue-200 text-blue-800 hover:bg-blue-100"><X className="h-4 w-4" /></button>
                   </div>
                 </div>
@@ -433,7 +519,7 @@ export default function ExpensesPage() {
               {expenses.map((expense) => (
                 <article key={expense.id} className="flex gap-3 p-4">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="font-semibold text-gray-950">{expense.title}</p><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{CATEGORY_LABELS[expense.category]?.[lang] || expense.category}</span><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{PAYMENT_LABELS[expense.paymentMethod]?.[lang] || expense.paymentMethod}</span></div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="font-semibold text-gray-950">{expense.title}</p><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{CATEGORY_LABELS[expense.category]?.[lang] || expense.category}</span><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">{PAYMENT_LABELS[expense.paymentMethod]?.[lang] || expense.paymentMethod}</span>{expense.recurringExpenseId && <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">{lang === "sw" ? "Imerekodiwa" : "Recorded"}</span>}</div>
                     <p className="mt-1 text-xs text-gray-500">{toDateLabel(expense.spentAt, lang)}{expense.vendor ? ` · ${expense.vendor}` : ""}</p>
                     {expense.note && <p className="mt-1 text-sm text-gray-600">{expense.note}</p>}
                   </div>
@@ -446,20 +532,46 @@ export default function ExpensesPage() {
       </div>
 
       {showForm && (
-        <ExpenseModal title={editingExpense ? (lang === "sw" ? "Badilisha matumizi" : "Edit expense") : (lang === "sw" ? "Ongeza matumizi" : "Add expense")} onClose={closeForm}>
+        <ExpenseModal title={editingExpense ? (lang === "sw" ? "Badilisha matumizi" : "Edit expense") : form.recurringMonthly ? (lang === "sw" ? "Panga matumizi ya kurudia" : "Schedule recurring expense") : (lang === "sw" ? "Rekodi matumizi halisi" : "Record an actual expense")} onClose={closeForm}>
           <form onSubmit={saveExpense} className="space-y-4">
+            {editingExpense && needsReviewExpenses.some((expense) => expense.id === editingExpense.id) && <label className="flex items-start gap-2 border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><input type="checkbox" checked={confirmActualPayment} onChange={(event) => setConfirmActualPayment(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700" /><span>{lang === "sw" ? "Nathibitisha kuwa malipo haya yalifanyika kweli. Tarehe hapa chini ni tarehe halisi ya malipo; kurekodi huku kutayaingiza kwenye ripoti." : "I confirm this payment really happened. The date below is the actual payment date; verifying it will include it in financial reports."}</span></label>}
+            {!editingExpense && <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1" role="group" aria-label={lang === "sw" ? "Aina ya matumizi" : "Expense action"}>
+              <button type="button" aria-pressed={!form.recurringMonthly} onClick={() => updateForm("recurringMonthly", false)} className={`min-h-10 rounded-md px-2 text-xs font-semibold ${!form.recurringMonthly ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{lang === "sw" ? "Rekodi matumizi" : "Record expense"}</button>
+              <button type="button" aria-pressed={form.recurringMonthly} onClick={() => updateForm("recurringMonthly", true)} className={`min-h-10 rounded-md px-2 text-xs font-semibold ${form.recurringMonthly ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{lang === "sw" ? "Panga ya kila mwezi" : "Schedule monthly"}</button>
+            </div>}
             <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Jina la matumizi" : "Expense name"}</span><input autoFocus required value={form.title} onChange={(event) => updateForm("title", event.target.value)} className={INPUT} placeholder={lang === "sw" ? "Mfano: Kodi ya mwezi" : "Example: Monthly rent"} /></label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Kiasi (TZS)" : "Amount (TZS)"}</span><input required inputMode="numeric" value={formatAmountInput(form.amount)} onChange={(event) => updateForm("amount", amountInput(event.target.value))} className={INPUT} placeholder="150,000" /><span className="min-h-4 text-xs font-normal text-gray-500">{amount ? formatTZS(amount) : (lang === "sw" ? "Weka kiasi bila desimali" : "Whole TZS only")}</span></label>
               <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Aina" : "Category"}</span><select value={form.category} onChange={(event) => updateForm("category", event.target.value)} className={INPUT}>{categories.map((category) => <option key={category} value={category}>{CATEGORY_LABELS[category][lang]}</option>)}</select></label>
             </div>
             <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Muuzaji (hiari)" : "Vendor (optional)"}</span><input value={form.vendor} onChange={(event) => updateForm("vendor", event.target.value)} className={INPUT} placeholder={lang === "sw" ? "Mfano: TANESCO" : "Example: TANESCO"} /></label>
-            <DateSelect lang={lang} label={lang === "sw" ? "Tarehe ya matumizi" : "Expense date"} required value={form.spentAt} onChange={(spentAt) => updateForm("spentAt", spentAt)} />
-            <fieldset><legend className="mb-2 text-sm font-medium text-gray-700">{lang === "sw" ? "Njia ya malipo" : "Payment method"}</legend><div className="grid grid-cols-3 gap-2">{(["CASH", "MPESA", "BANK"] as const).map((paymentMethod) => <button type="button" key={paymentMethod} onClick={() => updateForm("paymentMethod", paymentMethod)} className={`min-h-10 rounded-lg border px-2 text-xs font-semibold ${form.paymentMethod === paymentMethod ? "border-brand-600 bg-brand-600 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}>{PAYMENT_LABELS[paymentMethod][lang]}</button>)}</div></fieldset>
+            <DateSelect lang={lang} label={form.recurringMonthly ? (lang === "sw" ? "Tarehe ya kwanza ya kulipa" : "First payment due date") : (lang === "sw" ? "Tarehe halisi ya malipo" : "Actual payment date")} required value={form.spentAt} onChange={(spentAt) => updateForm("spentAt", spentAt)} />
+            <fieldset><legend className="mb-2 text-sm font-medium text-gray-700">{form.recurringMonthly ? (lang === "sw" ? "Njia ya malipo inayotarajiwa" : "Expected payment method") : (lang === "sw" ? "Njia ya malipo" : "Payment method")}</legend><div className="grid grid-cols-3 gap-2">{(["CASH", "MPESA", "BANK"] as const).map((paymentMethod) => <button type="button" key={paymentMethod} onClick={() => updateForm("paymentMethod", paymentMethod)} className={`min-h-10 rounded-lg border px-2 text-xs font-semibold ${form.paymentMethod === paymentMethod ? "border-brand-600 bg-brand-600 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}>{PAYMENT_LABELS[paymentMethod][lang]}</button>)}</div></fieldset>
             <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Maelezo (hiari)" : "Note (optional)"}</span><textarea value={form.note} onChange={(event) => updateForm("note", event.target.value)} className={`${INPUT} min-h-20 resize-y`} placeholder={lang === "sw" ? "Mfano: LUKU ya wiki ya kwanza" : "Example: First week's electricity"} /></label>
-            {!editingExpense && <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3"><input type="checkbox" checked={form.recurringMonthly} onChange={(event) => updateForm("recurringMonthly", event.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-600" /><span><span className="block text-sm font-semibold text-blue-950">{lang === "sw" ? "Rudia kila mwezi" : "Repeat monthly"}</span><span className="mt-0.5 block text-xs text-blue-800">{lang === "sw" ? "Tutaweka ratiba, lakini hutarekodi gharama nyingine mpaka uthibitishe malipo yake." : "We will create a schedule, but no future cost is recorded until you confirm its payment."}</span></span></label>}
+            {!editingExpense && form.recurringMonthly && <div className="border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950">{lang === "sw" ? `Malipo ya kwanza yamepangwa ${toDateLabel(form.spentAt, lang)}. Hakuna rekodi ya kifedha itakayoundwa sasa. Ratiba ni ya mwongozo; utathibitisha baada ya kulipa.` : `First payment is scheduled for ${toDateLabel(form.spentAt, lang)}. No financial entry will be created now. The schedule is manual; confirm only after paying.`}</div>}
+            {!editingExpense && !form.recurringMonthly && tanzaniaDateKey(form.spentAt) > localDateValue() && <p className="border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{lang === "sw" ? "Tarehe ya baadaye haiwezi kurekodiwa kama malipo yaliyofanyika. Chagua ratiba ya kila mwezi." : "A future date cannot be recorded as a completed payment. Choose a monthly schedule instead."}</p>}
             {possibleDuplicate && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p className="font-semibold">{lang === "sw" ? "Inaweza kuwa nakala ya rekodi iliyopo" : "This may duplicate an existing record"}</p><p className="mt-1 text-xs text-amber-800">{formatTZS(possibleDuplicate.amount)} · {toDateLabel(possibleDuplicate.spentAt, lang)}{possibleDuplicate.vendor ? ` · ${possibleDuplicate.vendor}` : ""}</p></div>}
-            <div className="flex gap-2 pt-1"><button type="button" onClick={closeForm} className="min-h-11 flex-1 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50">{lang === "sw" ? "Ghairi" : "Cancel"}</button><button type="submit" disabled={saving} className="min-h-11 flex-1 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (possibleDuplicate && !duplicateConfirmed ? (lang === "sw" ? "Thibitisha nakala" : "Confirm duplicate") : (editingExpense ? (lang === "sw" ? "Hifadhi mabadiliko" : "Save changes") : (lang === "sw" ? "Hifadhi" : "Save")))}</button></div>
+            <div className="flex gap-2 pt-1"><button type="button" onClick={closeForm} className="min-h-11 flex-1 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50">{lang === "sw" ? "Ghairi" : "Cancel"}</button><button type="submit" disabled={saving} className="min-h-11 flex-1 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (possibleDuplicate && !duplicateConfirmed ? (lang === "sw" ? "Thibitisha nakala" : "Confirm duplicate") : editingExpense ? (lang === "sw" ? "Hifadhi mabadiliko" : "Save changes") : form.recurringMonthly ? (lang === "sw" ? "Panga ratiba" : "Schedule expense") : (lang === "sw" ? "Rekodi matumizi" : "Record expense"))}</button></div>
+          </form>
+        </ExpenseModal>
+      )}
+
+      {editingSchedule && (
+        <ExpenseModal title={lang === "sw" ? "Badilisha tarehe ya ratiba" : "Edit scheduled due date"} onClose={() => setEditingSchedule(null)}>
+          <form onSubmit={saveScheduleDate} className="space-y-4">
+            <p className="text-sm text-gray-600">{lang === "sw" ? `${editingSchedule.title} · ${formatTZS(editingSchedule.amount)}. Hii hubadilisha tarehe inayotarajiwa tu; haitarekodi malipo.` : `${editingSchedule.title} · ${formatTZS(editingSchedule.amount)}. This changes only the expected due date; it does not record a payment.`}</p>
+            <DateSelect lang={lang} label={lang === "sw" ? "Tarehe inayofuata ya malipo" : "Next payment due date"} required value={scheduleDueDate} onChange={setScheduleDueDate} />
+            <div className="flex gap-2"><button type="button" onClick={() => setEditingSchedule(null)} className="min-h-11 flex-1 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700">{lang === "sw" ? "Ghairi" : "Cancel"}</button><button type="submit" disabled={savingSchedule} className="min-h-11 flex-1 rounded-lg bg-brand-600 text-sm font-semibold text-white disabled:opacity-60">{savingSchedule ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Hifadhi tarehe" : "Save date")}</button></div>
+          </form>
+        </ExpenseModal>
+      )}
+
+      {recordingSchedule && (
+        <ExpenseModal title={lang === "sw" ? "Thibitisha malipo" : "Confirm payment"} onClose={() => setRecordingSchedule(null)}>
+          <form onSubmit={recordRecurring} className="space-y-4">
+            <p className="text-sm text-gray-700">{lang === "sw" ? `Rekodi ${recordingSchedule.title} (${formatTZS(recordingSchedule.amount)}) kama matumizi halisi tu ikiwa imelipwa. Tarehe ya ratiba ni ${toDateLabel(recordingSchedule.nextDueAt, lang)}; malipo hayarekodiwi yenyewe.` : `Record ${recordingSchedule.title} (${formatTZS(recordingSchedule.amount)}) as an actual expense only if it has been paid. Scheduled due date: ${toDateLabel(recordingSchedule.nextDueAt, lang)}. Nothing is posted automatically.`}</p>
+            <DateSelect lang={lang} label={lang === "sw" ? "Tarehe halisi ya malipo" : "Actual payment date"} required value={recurringPaymentDate} onChange={setRecurringPaymentDate} />
+            <div className="flex gap-2"><button type="button" onClick={() => setRecordingSchedule(null)} className="min-h-11 flex-1 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700">{lang === "sw" ? "Sijafanya malipo" : "Not paid"}</button><button type="submit" disabled={busyRecurringId === recordingSchedule.id} className="min-h-11 flex-1 rounded-lg bg-brand-600 text-sm font-semibold text-white disabled:opacity-60">{busyRecurringId === recordingSchedule.id ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (lang === "sw" ? "Nimelipa, rekodi" : "Paid, record expense")}</button></div>
           </form>
         </ExpenseModal>
       )}

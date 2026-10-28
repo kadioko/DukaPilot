@@ -7,6 +7,7 @@ const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
 const entitlementsPath = path.resolve(__dirname, "../src/lib/entitlements.js");
 const dashboardCachePath = path.resolve(__dirname, "../src/services/dashboard-cache.service.js");
 const controllerPath = path.resolve(__dirname, "../src/controllers/dashboard.controller.js");
+const { endOfTanzaniaDay } = require("../src/lib/businessTime");
 
 function response() {
   return {
@@ -21,6 +22,7 @@ test("dashboard caches historical cost quality per shop while recalculating live
   const modulePaths = [prismaPath, shopAccessPath, entitlementsPath, dashboardCachePath, controllerPath];
   const originalModules = new Map(modulePaths.map((modulePath) => [modulePath, require.cache[modulePath]]));
   let allTimeCostReads = 0;
+  const expenseReads = [];
   const history = new Map();
 
   require.cache[prismaPath] = {
@@ -40,6 +42,10 @@ test("dashboard caches historical cost quality per shop while recalculating live
       product: { count: async () => 0, findMany: async () => [] },
       order: { count: async () => 0 },
       $queryRawUnsafe: async (query, ...params) => {
+        if (query.includes("FROM expenses e")) {
+          expenseReads.push({ query, params });
+          return [{ amount: 0n, count: 0 }];
+        }
         if (query.includes('AS "knownCostGrossProfit"')) {
           if (params[1] === null && params[2] === null) allTimeCostReads += 1;
           return [{ knownCostGrossProfit: 0n, missingCostSalesRevenue: 0n, grossReturnedRevenue: 0n, reversedRevenue: 0n, returnedRevenue: 0n }];
@@ -84,6 +90,12 @@ test("dashboard caches historical cost quality per shop while recalculating live
       assert.equal(res.payload.summary.totalProfit, 0);
     }
     assert.equal(allTimeCostReads, 1);
+    assert.equal(expenseReads.length >= 2, true);
+    assert.equal(expenseReads.every(({ query }) => query.includes('e."spentAt" < ((date_trunc') && query.includes("Africa/Dar_es_Salaam")), true);
+    assert.equal(expenseReads[0].params[2].toISOString(), endOfTanzaniaDay().toISOString());
+    assert.equal(expenseReads[0].query.includes('e."spentAt" >= $2'), true);
+    assert.equal(expenseReads[0].query.includes('e."spentAt" < $3'), true);
+    assert.equal(expenseReads[0].params[2].toISOString(), endOfTanzaniaDay().toISOString());
   } finally {
     for (const modulePath of modulePaths) {
       const original = originalModules.get(modulePath);

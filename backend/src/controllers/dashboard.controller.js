@@ -2,7 +2,8 @@ const prisma = require("../lib/prisma");
 const { performance } = require("node:perf_hooks");
 const { recordRequestPhase } = require("../middleware/requestDiagnostics");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, lastSevenTanzaniaDays, tanzaniaDateKey } = require("../lib/businessTime");
+const { startOfTanzaniaDay, endOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, lastSevenTanzaniaDays, tanzaniaDateKey } = require("../lib/businessTime");
+const { occurredExpenseDateSql } = require("../lib/expenseReporting");
 const { featureSnapshot } = require("../lib/entitlements");
 const { dashboardHistory } = require("../services/dashboard-cache.service");
 const TANZANIA_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -104,6 +105,23 @@ function profitRange(period, fromInput, toInput, now = new Date()) {
   return { from, to };
 }
 
+function occurredExpenseRange(range, now = new Date()) {
+  return { from: range.from, to: new Date(Math.min(range.to.getTime(), endOfTanzaniaDay(now).getTime())) };
+}
+
+async function occurredExpenseAggregate(shopId, range) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT COALESCE(SUM(e.amount), 0)::bigint AS amount, COUNT(*)::int AS count
+     FROM expenses e
+     WHERE e."shopId" = $1 AND e.category <> 'STOCK'
+       AND ($2::timestamptz IS NULL OR e."spentAt" >= $2)
+       AND ($3::timestamptz IS NULL OR e."spentAt" < $3)
+       AND ${occurredExpenseDateSql("e")}`,
+    shopId, range?.from || null, range?.to || null,
+  );
+  return { _sum: { amount: Number(rows[0]?.amount || 0) }, _count: { id: Number(rows[0]?.count || 0) } };
+}
+
 const overview = asyncHandler(async (req, res) => {
   const requestStartedAt = performance.now();
   let timingStartedAt = requestStartedAt;
@@ -121,7 +139,9 @@ const overview = asyncHandler(async (req, res) => {
   const now = new Date();
   const { period = "today" } = req.query;
   const from = startOf(period, now);
+  const occurredThrough = endOfTanzaniaDay(now);
   const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from } } : { shopId, status: "COMPLETED" };
+  const expenseRange = { from: from || null, to: occurredThrough };
   const activeProductsWhere = { shopId, isActive: true };
 
   const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCountRows, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
@@ -130,11 +150,7 @@ const overview = asyncHandler(async (req, res) => {
       where: salesWhere,
       _sum: { totalAmount: true, profit: true },
     }),
-    prisma.expense.aggregate({
-      where: salesWhere.createdAt ? { shopId, category: { not: "STOCK" }, spentAt: salesWhere.createdAt } : { shopId, category: { not: "STOCK" } },
-      _sum: { amount: true },
-      _count: { id: true },
-    }),
+    occurredExpenseAggregate(shopId, expenseRange),
     prisma.sale.count({ where: salesWhere }),
     prisma.product.count({ where: activeProductsWhere }),
     prisma.$queryRawUnsafe(
@@ -264,7 +280,7 @@ const overview = asyncHandler(async (req, res) => {
          FROM monthly_sales LEFT JOIN monthly_profit USING (period) ORDER BY monthly_sales.period ASC`,
         shopId,
       ),
-      prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" } }, _sum: { amount: true }, _count: { id: true } }),
+      occurredExpenseAggregate(shopId, { from: null, to: occurredThrough }),
       costQualityQuery(shopId, null, null),
     ]);
     return { allTimeRows, historyRows, allExpenseAgg, allTimeCostRows };
@@ -283,10 +299,7 @@ const overview = asyncHandler(async (req, res) => {
       _sum: { totalAmount: true, profit: true },
       _count: { id: true },
     }) : Promise.resolve(null),
-    previousRange ? prisma.expense.aggregate({
-      where: { shopId, category: { not: "STOCK" }, spentAt: { gte: previousRange.from, lt: previousRange.to } },
-      _sum: { amount: true },
-    }) : Promise.resolve(null),
+    previousRange ? occurredExpenseAggregate(shopId, { from: previousRange.from, to: new Date(Math.min(previousRange.to.getTime(), occurredThrough.getTime())) }) : Promise.resolve(null),
     prisma.$queryRawUnsafe(
       `SELECT
          COALESCE((SELECT SUM(s."totalAmount") FROM sales s WHERE s."shopId" = $1 AND s.status = 'COMPLETED' AND s."paymentMethod" <> 'CREDIT' AND s."quotationId" IS NULL AND ($2::timestamptz IS NULL OR s."createdAt" >= $2) AND s."createdAt" < $3), 0)
@@ -417,6 +430,8 @@ const profitAnalytics = asyncHandler(async (req, res) => {
 
   const duration = range.to.getTime() - range.from.getTime();
   const previousRange = previousComparableRange(period, range);
+  const expenseRange = occurredExpenseRange(range);
+  const previousExpenseRange = previousRange ? occurredExpenseRange(previousRange) : null;
   const days = Math.max(1, Math.ceil(duration / 86400000));
   const group = period === "today" ? "hour" : (period === "year" || days > 92 ? "month" : "day");
   const bucket = group === "hour"
@@ -456,11 +471,11 @@ const profitAnalytics = asyncHandler(async (req, res) => {
          + COALESCE((SELECT SUM(s.\"totalAmount\") FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND NOT EXISTS (SELECT 1 FROM sale_items si WHERE si.\"saleId\" = s.id) AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0))::bigint AS \"missingCostSalesRevenue\",
        (SELECT COUNT(*)::int FROM sales s WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3) AS \"salesCount\",
        COALESCE((SELECT SUM(si.quantity) FROM sales s JOIN sale_items si ON si.\"saleId\" = s.id WHERE s.\"shopId\" = $1 AND s.status = 'COMPLETED' AND s.\"createdAt\" >= $2 AND s.\"createdAt\" < $3), 0)::bigint - COALESCE((SELECT SUM(sri.quantity) FROM sale_return_items sri JOIN sale_returns sr ON sr.id = sri.\"saleReturnId\" WHERE sr.\"shopId\" = $1 AND sr.\"createdAt\" >= $2 AND sr.\"createdAt\" < $3), 0)::bigint + COALESCE((SELECT SUM(sri.quantity) FROM sale_return_item_reversals sri JOIN sale_return_reversals srr ON srr.id = sri.\"reversalId\" WHERE srr.\"shopId\" = $1 AND srr.\"createdAt\" >= $2 AND srr.\"createdAt\" < $3), 0)::bigint AS \"unitsSold\",
-       COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $2 AND e.\"spentAt\" < $3), 0)::bigint AS expenses`;
+       COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $4 AND e.\"spentAt\" < $5 AND ${occurredExpenseDateSql("e")}), 0)::bigint AS expenses`;
 
   const [totalsRows, previousRows, chartRows, returnChartRows, expenseChartRows, salesChartRows, slowProductRows, productRows, productReturnRows, debtAgingRows, collectionRows, salesPaymentRows, topSupplierRows, topCustomerRows, salesByStaffRows, productionAggregate, productionInputRows] = await Promise.all([
-    prisma.$queryRawUnsafe(summaryQuery, shopId, range.from, range.to),
-    previousRange ? prisma.$queryRawUnsafe(summaryQuery, shopId, previousRange.from, previousRange.to) : Promise.resolve([]),
+    prisma.$queryRawUnsafe(summaryQuery, shopId, range.from, range.to, expenseRange.from, expenseRange.to),
+    previousRange ? prisma.$queryRawUnsafe(summaryQuery, shopId, previousRange.from, previousRange.to, previousExpenseRange.from, previousExpenseRange.to) : Promise.resolve([]),
     prisma.$queryRawUnsafe(
       `SELECT to_char(${bucket}, '${label}') AS label,
               to_char(${bucket}, 'YYYY-MM-DD HH24:MI') AS \"sortKey\",
@@ -506,9 +521,9 @@ const profitAnalytics = asyncHandler(async (req, res) => {
     ),
     prisma.$queryRawUnsafe(
       `SELECT to_char(${expenseBucket}, '${label}') AS label, to_char(${expenseBucket}, 'YYYY-MM-DD HH24:MI') AS \"sortKey\", COALESCE(SUM(e.amount), 0)::bigint AS expenses
-       FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $2 AND e.\"spentAt\" < $3
+       FROM expenses e WHERE e.\"shopId\" = $1 AND e.category <> 'STOCK' AND e.\"spentAt\" >= $2 AND e.\"spentAt\" < $3 AND ${occurredExpenseDateSql("e")}
        GROUP BY ${expenseBucket} ORDER BY ${expenseBucket} ASC`,
-      shopId, range.from, range.to,
+      shopId, expenseRange.from, expenseRange.to,
     ),
     prisma.$queryRawUnsafe(
       `WITH sales_by_bucket AS (

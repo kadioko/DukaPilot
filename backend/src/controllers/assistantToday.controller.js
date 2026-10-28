@@ -2,7 +2,8 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { overview, profitAnalytics } = require("./dashboard.controller");
 const { stockSummary, quotationSummary, farmSummary, listActions } = require("./assistant.controller");
-const { startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, addTanzaniaMonths, tanzaniaDateKey } = require("../lib/businessTime");
+const { startOfTanzaniaDay, endOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, addTanzaniaMonths, tanzaniaDateKey } = require("../lib/businessTime");
+const { occurredExpenseDateSql } = require("../lib/expenseReporting");
 
 const SOURCE_KEYS = ["salesToday", "inventory", "debts", "expenses", "quotations", "farm", "actionHistory"];
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -119,7 +120,7 @@ function requestedTimeWindow(question, intent, now = new Date()) {
 
   const type = phrase?.type || (intent === "expenses" ? "last7" : "today");
   let from;
-  let to = new Date(now.getTime() + 1);
+  let to = endOfTanzaniaDay(now);
   let label;
   if (type === "custom") {
     const start = parseLocalDateStart(phrase.fromDate);
@@ -347,21 +348,25 @@ async function loadDebts(shopId) {
 
 async function loadExpenses(shopId, range) {
   const now = new Date();
+  const occurredThrough = endOfTanzaniaDay(now);
   const currentFrom = range?.from || new Date(startOfTanzaniaDay(now).getTime() - 6 * DAY_MS);
-  const currentTo = range?.to || new Date(now.getTime() + 1);
+  const currentTo = new Date(Math.min((range?.to || occurredThrough).getTime(), occurredThrough.getTime()));
   const previousFrom = range?.previousFrom || new Date(currentFrom.getTime() - (currentTo.getTime() - currentFrom.getTime()));
-  const previousTo = range?.previousTo || currentFrom;
-  const [current, previous, recent, latestRecord] = await Promise.all([
-    prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" }, spentAt: { gte: currentFrom, lt: currentTo } }, _sum: { amount: true }, _count: { id: true } }),
-    prisma.expense.aggregate({ where: { shopId, category: { not: "STOCK" }, spentAt: { gte: previousFrom, lt: previousTo } }, _sum: { amount: true }, _count: { id: true } }),
-    prisma.expense.findMany({ where: { shopId, category: { not: "STOCK" }, spentAt: { gte: currentFrom, lt: currentTo } }, select: { amount: true, spentAt: true, updatedAt: true, category: true }, orderBy: { spentAt: "desc" }, take: 100 }),
-    prisma.expense.findFirst({ where: { shopId, category: { not: "STOCK" } }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
+  const previousTo = new Date(Math.min((range?.previousTo || currentFrom).getTime(), occurredThrough.getTime()));
+  const dateWasRecorded = occurredExpenseDateSql("e");
+  const [currentRows, previousRows, recent, latestRecordRows] = await Promise.all([
+    prisma.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0)::bigint AS total, COUNT(*)::int AS count FROM expenses e WHERE e."shopId" = $1 AND e.category <> 'STOCK' AND e."spentAt" >= $2 AND e."spentAt" < $3 AND ${dateWasRecorded}`, shopId, currentFrom, currentTo),
+    prisma.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0)::bigint AS total, COUNT(*)::int AS count FROM expenses e WHERE e."shopId" = $1 AND e.category <> 'STOCK' AND e."spentAt" >= $2 AND e."spentAt" < $3 AND ${dateWasRecorded}`, shopId, previousFrom, previousTo),
+    prisma.$queryRawUnsafe(`SELECT e.amount, e."spentAt", e."updatedAt", e.category FROM expenses e WHERE e."shopId" = $1 AND e.category <> 'STOCK' AND e."spentAt" >= $2 AND e."spentAt" < $3 AND ${dateWasRecorded} ORDER BY e."spentAt" DESC LIMIT 100`, shopId, currentFrom, currentTo),
+    prisma.$queryRawUnsafe(`SELECT MAX(e."updatedAt") AS "updatedAt" FROM expenses e WHERE e."shopId" = $1 AND e.category <> 'STOCK' AND e."spentAt" < $2 AND ${dateWasRecorded}`, shopId, occurredThrough),
   ]);
+  const current = currentRows[0] || { total: 0, count: 0 };
+  const previous = previousRows[0] || { total: 0, count: 0 };
   return {
-    summary: { total: current._sum.amount || 0, count: current._count.id },
+    summary: { total: Number(current.total || 0), count: Number(current.count || 0) },
     expenses: recent,
-    trend: { current: current._sum.amount || 0, previous: previous._sum.amount || 0, currentCount: current._count.id, previousCount: previous._count.id },
-    dataThrough: latestRecord?.updatedAt || null,
+    trend: { current: Number(current.total || 0), previous: Number(previous.total || 0), currentCount: Number(current.count || 0), previousCount: Number(previous.count || 0) },
+    dataThrough: latestRecordRows[0]?.updatedAt || null,
   };
 }
 

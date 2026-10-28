@@ -1361,6 +1361,13 @@ model Expense {
   spentAt       DateTime        @default(now())
   shopId        String
   shop          Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  requestKey    String?
+  requestHash   String?
+  recurringExpenseId String?
+  recurringExpense RecurringExpense? @relation(fields: [recurringExpenseId], references: [id], onDelete: SetNull)
+  recurrenceDueAt DateTime?
+  dateReviewedAt DateTime?
+  dateReviewedById String?
   cashSessionId String?
   cashSession   CashSession?    @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   createdAt     DateTime        @default(now())
@@ -1369,6 +1376,8 @@ model Expense {
   @@index([shopId, spentAt])
   @@index([shopId, category])
   @@index([cashSessionId, paymentMethod])
+  @@unique([shopId, requestKey])
+  @@unique([recurringExpenseId, recurrenceDueAt])
   @@map("expenses")
 }
 
@@ -1381,13 +1390,18 @@ model RecurringExpense {
   note          String?
   paymentMethod PaymentMethod   @default(CASH)
   nextDueAt     DateTime
+  dayOfMonth    Int?
+  requestKey    String?
+  requestHash   String?
   isActive      Boolean         @default(true)
   shopId        String
   shop          Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  expenses      Expense[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
   @@index([shopId, isActive, nextDueAt])
+  @@unique([shopId, requestKey])
   @@map("recurring_expenses")
 }
 

@@ -66,47 +66,53 @@ async function mockAssistantSnapshot(page: Page, snapshot: ReturnType<typeof ass
   await page.route(/\/(?:_api|api)\/assistant\/actions$/, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ actions: [] }) }));
 }
 
-test("expense form records a formatted amount, selected accounting date, and monthly schedule", async ({ page }) => {
+test("expense form schedules a future monthly payment without posting a ledger expense", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await mockMerchantShell(page);
 
-  let submitted: { spentAt?: unknown; amount?: unknown; recurringMonthly?: unknown } = {};
+  let submitted: { spentAt?: unknown; amount?: unknown; recurringMonthly?: unknown; requestKey?: unknown } = {};
+  let schedule: Record<string, unknown> | null = null;
   await page.route("**/*api/expenses*", async (route) => {
     if (route.request().method() === "POST") {
       submitted = route.request().postDataJSON();
+      schedule = { id: "wifi-schedule", title: "Wifi", amount: 49000, category: "UTILITIES", paymentMethod: "MPESA", nextDueAt: "2026-10-30T12:00:00.000Z", dayOfMonth: 30 };
       return route.fulfill({
         status: 201,
         contentType: "application/json",
-        body: JSON.stringify({ expense: { id: "expense-1", ...submitted } }),
+        body: JSON.stringify({ expense: null, recurringExpense: schedule, reused: false }),
       });
     }
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ expenses: [], recurringExpenses: [], summary: { total: 0, count: 0 } }),
+      body: JSON.stringify({ expenses: [], recurringExpenses: schedule ? [schedule] : [], summary: { total: 0, count: 0 } }),
     });
   });
 
   await page.goto("/expenses");
   await expect(page.getByText("Rekodi matumizi yako ya kwanza")).toBeVisible();
   await page.getByRole("button", { name: "Ongeza matumizi" }).click();
-  await page.getByLabel("Jina la matumizi").fill("LUKU ya wiki iliyopita");
-  await page.getByLabel("Kiasi (TZS)").fill("25000");
-  await page.getByLabel("Tarehe ya matumizi: siku").selectOption("29");
-  await page.getByLabel("Tarehe ya matumizi: mwezi").selectOption("07");
-  await page.getByLabel("Tarehe ya matumizi: mwaka").selectOption("2026");
+  await page.getByLabel("Jina la matumizi").fill("Wifi");
+  await page.getByLabel("Kiasi (TZS)").fill("49000");
+  await page.getByRole("button", { name: "Panga ya kila mwezi" }).click();
+  await page.getByLabel("Tarehe ya kwanza ya kulipa: siku").selectOption("30");
+  await page.getByLabel("Tarehe ya kwanza ya kulipa: mwezi").selectOption("10");
+  await page.getByLabel("Tarehe ya kwanza ya kulipa: mwaka").selectOption("2026");
 
   const amountBox = await page.getByLabel("Kiasi (TZS)").boundingBox();
-  const categoryBox = await page.getByLabel("Aina").boundingBox();
+  const categoryBox = await page.locator('[role="dialog"] select').first().boundingBox();
   expect(amountBox).not.toBeNull();
   expect(categoryBox).not.toBeNull();
   expect(amountBox!.x + amountBox!.width).toBeLessThanOrEqual(categoryBox!.x);
 
-  await page.getByText("Rudia kila mwezi").click();
-  await page.getByRole("button", { name: "Hifadhi" }).click();
-  await expect.poll(() => submitted.spentAt).toBe("2026-07-29");
-  expect(submitted.amount).toBe(25000);
+  await expect(page.getByText(/Hakuna rekodi ya kifedha itakayoundwa sasa/)).toBeVisible();
+  await page.getByRole("button", { name: "Panga ratiba" }).click();
+  await expect.poll(() => submitted.spentAt).toBe("2026-10-30");
+  expect(submitted.amount).toBe(49000);
   expect(submitted.recurringMonthly).toBe(true);
+  expect(submitted.requestKey).toMatch(/^[0-9a-f-]{36}$/i);
+  await expect(page.getByText("Wifi").first()).toBeVisible();
+  await expect(page.getByText(/Ratiba imewekwa kwa/)).toBeVisible();
 });
 
 test("expense history filters records and exposes edit and delete actions", async ({ page }) => {

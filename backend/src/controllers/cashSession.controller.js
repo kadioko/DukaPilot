@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
-const { startOfTanzaniaDay } = require("../lib/businessTime");
+const { startOfTanzaniaDay, endOfTanzaniaDay } = require("../lib/businessTime");
+const { occurredExpenseDateSql } = require("../lib/expenseReporting");
 const { cashSessionActorId, findOpenCashSession } = require("../lib/cashSession");
 
 function asyncHandler(fn) {
@@ -17,6 +18,53 @@ function canOpenOwnSession(req) {
 
 function paginationValue(value, fallback, maximum) {
   return Math.min(Math.max(Number(value) || fallback, 1), maximum);
+}
+
+function expenseDateRangeForSession(session, now = new Date()) {
+  const openedAt = session.openedAt || now;
+  const through = session.status === "CLOSED" ? (session.closedAt || session.openedAt) : now;
+  return { gte: startOfTanzaniaDay(openedAt), lt: endOfTanzaniaDay(through || openedAt) };
+}
+
+async function sessionExpenseAggregate(tx, session) {
+  const range = expenseDateRangeForSession(session);
+  if (typeof tx.$queryRawUnsafe !== "function") {
+    return tx.expense.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH", spentAt: range }, _sum: { amount: true }, _count: { id: true } });
+  }
+  const rows = await tx.$queryRawUnsafe(
+    `SELECT COALESCE(SUM(e.amount), 0)::bigint AS amount, COUNT(*)::int AS count
+     FROM expenses e
+     WHERE e."cashSessionId" = $1 AND e."shopId" = $2 AND e."paymentMethod" = 'CASH'
+       AND e."spentAt" >= $3 AND e."spentAt" < $4 AND ${occurredExpenseDateSql("e")}`,
+    session.id, session.shopId, range.gte, range.lt,
+  );
+  return { _sum: { amount: Number(rows[0]?.amount || 0) }, _count: { id: Number(rows[0]?.count || 0) } };
+}
+
+async function sessionExpenseGroups(tx, sessions) {
+  const sessionIds = sessions.map((session) => session.id);
+  if (typeof tx.$queryRawUnsafe !== "function") {
+    return tx.expense.groupBy({
+      by: ["cashSessionId"],
+      where: {
+        cashSessionId: { in: sessionIds },
+        paymentMethod: "CASH",
+        OR: sessions.map((session) => ({ cashSessionId: session.id, spentAt: expenseDateRangeForSession(session) })),
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    });
+  }
+  return tx.$queryRawUnsafe(
+    `SELECT e."cashSessionId", COALESCE(SUM(e.amount), 0)::bigint AS amount, COUNT(*)::int AS count
+     FROM expenses e JOIN cash_sessions cs ON cs.id = e."cashSessionId"
+     WHERE e."cashSessionId" = ANY($1::text[]) AND e."paymentMethod" = 'CASH'
+       AND e."spentAt" >= (date_trunc('day', cs."openedAt" AT TIME ZONE 'Africa/Dar_es_Salaam') AT TIME ZONE 'Africa/Dar_es_Salaam')
+       AND e."spentAt" < ((date_trunc('day', COALESCE(cs."closedAt", $2::timestamptz) AT TIME ZONE 'Africa/Dar_es_Salaam') + interval '1 day') AT TIME ZONE 'Africa/Dar_es_Salaam')
+       AND ${occurredExpenseDateSql("e")}
+     GROUP BY e."cashSessionId"`,
+    sessionIds, new Date(),
+  );
 }
 
 function dateBoundary(value, endExclusive = false) {
@@ -70,7 +118,7 @@ async function summarizeSession(tx, session) {
     tx.saleReturnReversal?.aggregate
       ? tx.saleReturnReversal.aggregate({ where: { cashSessionId: session.id, recoveryMethod: "CASH" }, _sum: { refundRecoveredAmount: true }, _count: { id: true } })
       : Promise.resolve({ _sum: { refundRecoveredAmount: 0 }, _count: { id: 0 } }),
-    tx.expense.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
+    sessionExpenseAggregate(tx, session),
     tx.stockReceipt?.aggregate
       ? tx.stockReceipt.aggregate({ where: { cashSessionId: session.id, paymentMethod: "CASH" }, _sum: { paidAtReceipt: true }, _count: { id: true } })
       : Promise.resolve({ _sum: { totalLandedCost: 0 }, _count: { id: 0 } }),
@@ -153,7 +201,7 @@ async function decorateSessions(tx, sessions) {
     tx.saleReturnReversal?.groupBy
       ? tx.saleReturnReversal.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, recoveryMethod: "CASH" }, _sum: { refundRecoveredAmount: true }, _count: { id: true } })
       : Promise.resolve([]),
-    tx.expense.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { amount: true }, _count: { id: true } }),
+    sessionExpenseGroups(tx, sessions),
     tx.stockReceipt?.groupBy
       ? tx.stockReceipt.groupBy({ by: ["cashSessionId"], where: { cashSessionId: { in: sessionIds }, paymentMethod: "CASH" }, _sum: { paidAtReceipt: true }, _count: { id: true } })
       : Promise.resolve([]),
@@ -202,7 +250,10 @@ async function decorateSessions(tx, sessions) {
   }
   for (const row of expenses) {
     const summary = bySession.get(row.cashSessionId);
-    if (summary) { summary.cashExpenses = row._sum.amount || 0; summary.expenseCount = row._count.id; }
+    if (summary) {
+      summary.cashExpenses = row.amount !== undefined ? Number(row.amount) : (row._sum.amount || 0);
+      summary.expenseCount = row.count !== undefined ? Number(row.count) : row._count.id;
+    }
   }
   for (const row of stockReceipts) {
     const summary = bySession.get(row.cashSessionId);

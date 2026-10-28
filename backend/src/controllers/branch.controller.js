@@ -2,6 +2,8 @@ const crypto = require("node:crypto");
 const prisma = require("../lib/prisma");
 const { getBillingShopIdForUser, getShopIdForUser } = require("../lib/shopAccess");
 const { activePlan, canUseFeature, branchLimit } = require("../lib/entitlements");
+const { endOfTanzaniaDay } = require("../lib/businessTime");
+const { occurredExpenseDateSql } = require("../lib/expenseReporting");
 const { resolveShopContactPhone, normalizeShopContactPhone } = require("../lib/shopContact");
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -104,6 +106,7 @@ const overview = wrap(async (req, res) => {
   const fromInput = String(req.query.from || defaultFrom);
   const toInput = String(req.query.to || today);
   const { from, to } = parseTanzaniaRange(fromInput, toInput);
+  const expenseTo = new Date(Math.min(to.getTime(), endOfTanzaniaDay().getTime()));
   const branches = await prisma.shop.findMany({ where: { OR: [{ id: rootId }, { parentShopId: rootId }] }, select, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   const shopIds = branches.map((b) => b.id);
   const shopPlaceholders = shopIds.map((_, index) => `$${index + 1}`).join(", ");
@@ -113,7 +116,12 @@ const overview = wrap(async (req, res) => {
   const previousRange = { from: new Date(from.getTime() - rangeDuration), to: from };
   const [sales, expenseGroups, debts, saleCosts, previousSales, previousExpenses, previousCosts] = await Promise.all([
     prisma.sale.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, status: "COMPLETED", createdAt: { gte: from, lt: to } }, _sum: { totalAmount: true, profit: true }, _count: { _all: true } }),
-    prisma.expense.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, spentAt: { gte: from, lt: to }, category: { not: "STOCK" } }, _sum: { amount: true } }),
+    prisma.$queryRawUnsafe(
+      `SELECT e."shopId", COALESCE(SUM(e.amount), 0)::bigint AS amount FROM expenses e
+       WHERE e."shopId" = ANY($1::text[]) AND e.category <> 'STOCK' AND e."spentAt" >= $2 AND e."spentAt" < $3 AND ${occurredExpenseDateSql("e")}
+       GROUP BY e."shopId"`,
+      shopIds, from, expenseTo,
+    ),
     prisma.debt.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, status: { in: ["OPEN", "PARTIAL"] } }, _sum: { amount: true, amountPaid: true } }),
     prisma.$queryRawUnsafe(
       `SELECT s.\"shopId\",
@@ -125,7 +133,12 @@ const overview = wrap(async (req, res) => {
       ...shopIds, from, to,
     ),
     prisma.sale.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, status: "COMPLETED", createdAt: { gte: previousRange.from, lt: previousRange.to } }, _sum: { totalAmount: true }, _count: { _all: true } }),
-    prisma.expense.groupBy({ by: ["shopId"], where: { shopId: { in: shopIds }, spentAt: { gte: previousRange.from, lt: previousRange.to }, category: { not: "STOCK" } }, _sum: { amount: true } }),
+    prisma.$queryRawUnsafe(
+      `SELECT e."shopId", COALESCE(SUM(e.amount), 0)::bigint AS amount FROM expenses e
+       WHERE e."shopId" = ANY($1::text[]) AND e.category <> 'STOCK' AND e."spentAt" >= $2 AND e."spentAt" < $3 AND ${occurredExpenseDateSql("e")}
+       GROUP BY e."shopId"`,
+      shopIds, previousRange.from, new Date(Math.min(previousRange.to.getTime(), endOfTanzaniaDay().getTime())),
+    ),
     prisma.$queryRawUnsafe(
       `SELECT s.\"shopId\",
               COALESCE(SUM(si.\"totalPrice\" - si.\"buyingPrice\" * si.quantity) FILTER (WHERE si.\"buyingPrice\" > 0), 0)::bigint AS \"knownCostGrossProfit\"
@@ -139,9 +152,9 @@ const overview = wrap(async (req, res) => {
     const s = sales.find((row) => row.shopId === b.id), e = expenseGroups.find((row) => row.shopId === b.id), d = debts.find((row) => row.shopId === b.id), costs = saleCosts.find((row) => row.shopId === b.id);
     const previousSale = previousSales.find((row) => row.shopId === b.id), previousExpense = previousExpenses.find((row) => row.shopId === b.id), previousCost = previousCosts.find((row) => row.shopId === b.id);
     const grossProfit = Number(costs?.knownCostGrossProfit || 0);
-    const expenses = e?._sum.amount || 0;
+    const expenses = Number(e?.amount || 0);
     const previousGrossProfit = Number(previousCost?.knownCostGrossProfit || 0);
-    const previousExpensesAmount = Number(previousExpense?._sum.amount || 0);
+    const previousExpensesAmount = Number(previousExpense?.amount || 0);
     return {
       ...b,
       sales: s?._sum.totalAmount || 0,
@@ -162,7 +175,7 @@ const overview = wrap(async (req, res) => {
     sales: previousSales.reduce((sum, row) => sum + Number(row._sum.totalAmount || 0), 0),
     saleCount: previousSales.reduce((sum, row) => sum + Number(row._count._all || 0), 0),
     grossProfit: previousCosts.reduce((sum, row) => sum + Number(row.knownCostGrossProfit || 0), 0),
-    expenses: previousExpenses.reduce((sum, row) => sum + Number(row._sum.amount || 0), 0),
+    expenses: previousExpenses.reduce((sum, row) => sum + Number(row.amount || 0), 0),
   };
   previousTotals.netProfit = previousTotals.grossProfit - previousTotals.expenses;
   const currentTotals = rows.reduce((total, row) => ({

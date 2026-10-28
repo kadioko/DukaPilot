@@ -53,6 +53,25 @@ test("daily-close history is paginated, filters closed sessions, and decorates o
   assert.equal(res.payload.sessions[0].summary.supplierRefundsReceived, 500);
 });
 
+test("Daily Close excludes legacy future-dated expense rows even if their due date has arrived", async () => {
+  let expenseQuery;
+  const prismaMock = {
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    $queryRawUnsafe: async (query, ...params) => { expenseQuery = { query, params }; return [{ amount: 0, count: 0 }]; },
+  };
+  const controller = loadController(prismaMock);
+  const summary = await controller.summarizeSession(prismaMock, {
+    id: "session-icy", shopId: "shop-icy", status: "OPEN", openingCash: 0,
+    openedAt: new Date("2026-10-28T06:00:00.000Z"),
+  });
+  assert.equal(summary.cashExpenses, 0);
+  assert.ok(expenseQuery.query.includes("Africa/Dar_es_Salaam"));
+  assert.ok(expenseQuery.query.includes('e."spentAt" < ((date_trunc'));
+  assert.deepEqual(expenseQuery.params.slice(0, 2), ["session-icy", "shop-icy"]);
+});
+
 test("staff daily-close history remains scoped to that staff member", async () => {
   let findManyArgs;
   const prismaMock = {
