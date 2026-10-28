@@ -27,6 +27,9 @@ exited successfully.
    absent, the Windows runner starts Docker Desktop and waits up to two minutes
    for its engine. The backup uses the official `postgres:16-alpine` image and
    pulls it on its first successful run.
+   The scheduled task currently runs in an interactive Windows user session:
+   keep that user signed in for the scheduled time, then check the task result.
+   It is not an unattended, sign-out-proof backup service.
 3. Keep the backup folder in the signed-in Windows user's protected profile or
    on a full-disk-encrypted drive. Do not move archives into Git, a public link,
    WhatsApp, an unprotected USB device, or a shared folder.
