@@ -99,3 +99,32 @@ test("zero-data dashboard recovers from an interrupted read without clipped Swah
   await expect(page.getByText("Hakuna mauzo ya wiki hii bado.").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
 });
+
+test("dashboard shows a retry action after both automatic read attempts fail", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
+  });
+  await page.route("**/*api/auth/me", async (route) => route.fulfill({
+    json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" } } },
+  }));
+  await page.route("**/*api/products/low-stock*", async (route) => route.fulfill({ json: { products: [], total: 0 } }));
+  await page.route("**/*api/subscription/status", async (route) => route.fulfill({ json: { status: "active", daysLeft: 30 } }));
+  await page.route("**/*api/notifications", async (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
+  let dashboardRequests = 0;
+  await page.route("**/*api/dashboard?period=*", async (route) => {
+    dashboardRequests += 1;
+    if (dashboardRequests <= 2) {
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({ json: emptyDashboard });
+  });
+
+  await page.goto("/dashboard");
+
+  await expect(page.getByRole("alert")).toContainText("Dashboard couldn't load");
+  await expect.poll(() => dashboardRequests).toBe(2);
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("No sales recorded for today yet.").first()).toBeVisible();
+  expect(dashboardRequests).toBe(3);
+});

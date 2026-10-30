@@ -57,6 +57,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   let productDeleteAttempts = 0;
   const productCreateRequestKeys: string[] = [];
   const apiRequestIds: string[] = [];
+  const productCreateAttempts = new Map<string, number>();
   let adjustmentRequestKey: string | null = null;
   let adjustmentApplied = false;
   const products = [
@@ -143,6 +144,8 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     expect(apiRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     apiRequestIds.push(apiRequestId);
     productCreateRequestKeys.push(body.createRequestId);
+    const attempts = (productCreateAttempts.get(body.createRequestId) || 0) + 1;
+    productCreateAttempts.set(body.createRequestId, attempts);
     let product = createdProductsByRequestId.get(body.createRequestId);
     if (!product) {
       const createdProduct = {
@@ -154,6 +157,9 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
       createdProductsByRequestId.set(body.createRequestId, createdProduct);
       products.unshift(createdProduct);
       product = createdProduct;
+    }
+    const lostResponses = body.name === "Sukari White" ? 1 : body.name === "Maharage" ? 2 : 0;
+    if (attempts <= lostResponses) {
       await route.abort("failed");
       return;
     }
@@ -284,12 +290,6 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/does not expire|haiishi muda/i).check();
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
-  await expect(page.getByText(/couldn't confirm whether the product was saved/i)).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole("heading", { name: /inventory/i })).toBeVisible();
-  await expect(page.getByLabel(/product name|jina la bidhaa/i)).toHaveValue("Sukari White");
-  await expect(page.getByLabel(/product name|jina la bidhaa/i)).toBeDisabled();
-  await page.getByLabel(/^save$|^hifadhi$/i).click();
   await expect(page.getByText("Sukari White")).toBeVisible();
   await expect(page.getByText(/tzs 3,500/i)).toBeVisible();
   expect(productCreateRequestKeys).toHaveLength(2);
@@ -297,6 +297,25 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   expect(apiRequestIds).toHaveLength(2);
   expect(apiRequestIds[1]).not.toBe(apiRequestIds[0]);
   expect(products.filter((product) => product.name === "Sukari White")).toHaveLength(1);
+
+  await page.getByRole("button", { name: /add product|ongeza bidhaa/i }).click();
+  await page.getByLabel(/product name|jina la bidhaa/i).fill("Maharage");
+  await page.getByLabel(/buying price|bei ya kununua/i).fill("1000");
+  await page.getByLabel(/selling price|bei ya kuuza/i).fill("1500");
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText(/couldn't confirm whether the product was saved/i)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /inventory/i })).toBeVisible();
+  await expect(page.getByLabel(/product name|jina la bidhaa/i)).toHaveValue("Maharage");
+  await expect(page.getByLabel(/product name|jina la bidhaa/i)).toBeDisabled();
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText("Maharage")).toBeVisible();
+  await expect(page.getByText(/tzs 1,500/i)).toBeVisible();
+  expect(productCreateRequestKeys).toHaveLength(5);
+  expect(productCreateRequestKeys.slice(2).every((key) => key === productCreateRequestKeys[2])).toBe(true);
+  expect(apiRequestIds).toHaveLength(5);
+  expect(new Set(apiRequestIds).size).toBe(5);
+  expect(products.filter((product) => product.name === "Maharage")).toHaveLength(1);
 
   await page.getByLabel(/actions for sukari white|vitendo vya sukari white/i).click();
   await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();

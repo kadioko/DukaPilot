@@ -124,6 +124,8 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
   const [role, setRole] = useState<"MERCHANT" | "SUPPLIER">("MERCHANT");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [sessionCheckError, setSessionCheckError] = useState(false);
+  const [sessionCheckRetry, setSessionCheckRetry] = useState(0);
 
   // PIN recovery fields
   const [forgotPhone, setForgotPhone] = useState("");
@@ -202,10 +204,13 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
         else if (user.staff?.permissions?.canManageStock) router.replace("/inventory");
         else if (!user.staff) router.replace("/dashboard");
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        if (cancelled || (error instanceof ApiError && (error.status === 401 || error.status === 404))) return;
+        setSessionCheckError(true);
+      });
 
     return () => { cancelled = true; };
-  }, [initialView, router, searchParams]);
+  }, [initialView, router, searchParams, sessionCheckRetry]);
 
   function resetForms() {
     setError("");
@@ -596,6 +601,19 @@ export function LoginPageContent({ initialView = "login" }: { initialView?: View
               <p className="text-gray-500 text-sm mb-6">
                 {view === "register" ? t("auth.createAccount", lang) : t("auth.enterShop", lang)}
               </p>
+
+              {view === "login" && sessionCheckError && (
+                <div role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <p>{t("auth.connectionError", lang)}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setSessionCheckError(false); setSessionCheckRetry((attempt) => attempt + 1); }}
+                    className="mt-2 font-semibold underline underline-offset-2"
+                  >
+                    {t("common.retry", lang)}
+                  </button>
+                </div>
+              )}
 
               {error && (
                 <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mb-4 text-sm">

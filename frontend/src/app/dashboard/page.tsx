@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { api, formatTZS } from "@/lib/api";
+import { ApiError, api, formatTZS } from "@/lib/api";
 import { t, useLang } from "@/lib/i18n";
 import Link from "next/link";
 import {
@@ -88,14 +88,23 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [period, setPeriod] = useState<"today" | "week" | "month" | "all">("today");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState(0);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
-    api.get<DashboardData>(`/dashboard?period=${period}`)
-      .then(setData)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [period]);
+    setData(null);
+    setLoadError(null);
+    api.get<DashboardData>(`/dashboard?period=${period}`, lang)
+      .then((result) => { if (active) setData(result); })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setLoadError(error instanceof ApiError ? error.message : t("api.error.unavailable", lang));
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [period, retryAttempt, lang]);
 
   if (loading && !data) {
     return (
@@ -103,6 +112,20 @@ export default function DashboardPage() {
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
         </div>
+      </AppShell>
+    );
+  }
+
+  if (loadError && !data) {
+    return (
+      <AppShell>
+        <section className="mx-auto mt-12 max-w-lg rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950" role="alert">
+          <h1 className="text-base font-semibold">{lang === "sw" ? "Muhtasari haujapakia" : "Dashboard couldn't load"}</h1>
+          <p className="mt-2 text-sm">{loadError}</p>
+          <button onClick={() => setRetryAttempt((attempt) => attempt + 1)} className="mt-4 min-h-10 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
+            {t("common.retry", lang)}
+          </button>
+        </section>
       </AppShell>
     );
   }

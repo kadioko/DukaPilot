@@ -33,7 +33,7 @@ import {
   Landmark,
   History,
 } from "lucide-react";
-import { clearToken, api, getCurrentSession, markSessionActive } from "@/lib/api";
+import { ApiError, clearToken, api, getCurrentSession, markSessionActive } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage, type Lang } from "@/lib/i18n";
 import LogoMark from "@/components/brand/LogoMark";
 import ShortcutUsageTracker from "@/components/analytics/ShortcutUsageTracker";
@@ -129,6 +129,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const lang = useLang();
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [sessionUnavailable, setSessionUnavailable] = useState(false);
+  const [sessionRetry, setSessionRetry] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [subscription, setSubscription] = useState<{ daysLeft: number | null; status?: string; isActive?: boolean } | null>(null);
@@ -163,17 +165,27 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    let active = true;
     getCurrentSession<{ user: User }>()
       .then((d) => {
+        if (!active) return;
         markSessionActive();
         setUser(d.user);
         if (d.user.language === "sw" || d.user.language === "en") {
           setAppLanguage(d.user.language);
         }
       })
-      .catch(() => router.push("/"))
-      .finally(() => setAuthLoading(false));
-  }, [router]);
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && (error.status === 401 || error.status === 404)) {
+          router.push("/");
+          return;
+        }
+        setSessionUnavailable(true);
+      })
+      .finally(() => { if (active) setAuthLoading(false); });
+    return () => { active = false; };
+  }, [router, sessionRetry]);
 
   useEffect(() => {
     const syncMenuPreferences = (event: Event) => {
@@ -204,6 +216,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
         .catch(() => {});
     }
   }, [user]);
+
+  if (!authLoading && sessionUnavailable) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+        <section className="w-full max-w-lg rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950" role="alert">
+          <div className="mb-4 flex items-center gap-3">
+            <LogoMark className="h-9 w-9 rounded-lg bg-white" />
+            <h1 className="text-base font-semibold">{lang === "sw" ? "Muunganisho umekatika" : "Connection interrupted"}</h1>
+          </div>
+          <p className="text-sm">{t("auth.connectionError", lang)}</p>
+          <button onClick={() => { setAuthLoading(true); setSessionUnavailable(false); setSessionRetry((attempt) => attempt + 1); }} className="mt-4 min-h-10 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
+            {t("common.retry", lang)}
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   async function handleLogout() {
     try {

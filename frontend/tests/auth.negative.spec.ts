@@ -63,6 +63,67 @@ test("retries a transient login network failure once", async ({ page }) => {
   expect(attempts).toBe(2);
 });
 
+test("keeps a merchant on the current page and offers retry when session lookup is offline", async ({ page }) => {
+  let sessionAttempts = 0;
+  await page.addInitScript(() => {
+    window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
+  });
+  await page.route("**/*api/auth/me", async (route) => {
+    sessionAttempts += 1;
+    if (sessionAttempts <= 2) {
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({ json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" } } } });
+  });
+  await page.route("**/*api/products/low-stock*", async (route) => route.fulfill({ json: { products: [], total: 0 } }));
+  await page.route("**/*api/subscription/status", async (route) => route.fulfill({ json: { daysLeft: 30, status: "active" } }));
+  await page.route("**/*api/notifications", async (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
+  await page.route("**/*api/products/summary", async (route) => route.fulfill({ json: { summary: { total: 0, lowStock: 0, outOfStock: 0, inStock: 0, expiringSoon: 0, expired: 0 } } }));
+  await page.route("**/*api/products?*", async (route) => route.fulfill({ json: { products: [] } }));
+  await page.route("**/*api/suppliers", async (route) => route.fulfill({ json: { suppliers: [] } }));
+
+  await page.goto("/inventory");
+
+  await expect(page).toHaveURL(/\/inventory$/);
+  await expect(page.getByRole("alert")).toContainText("Your sign-in is still saved");
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByRole("heading", { name: /inventory/i })).toBeVisible();
+  expect(sessionAttempts).toBe(3);
+});
+
+test("home page lets a returning merchant retry session detection after a network interruption", async ({ page }) => {
+  let sessionAttempts = 0;
+  await page.addInitScript(() => {
+    window.localStorage.setItem("dukapilot_session_active", "1");
+  });
+  await page.route("**/*api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/auth/me")) {
+      sessionAttempts += 1;
+      if (sessionAttempts <= 2) {
+        await route.abort("failed");
+        return;
+      }
+      await route.fulfill({ json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en" } } });
+      return;
+    }
+    if (path.endsWith("/dashboard")) {
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({ json: {} });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByRole("alert")).toContainText("Your sign-in is still saved");
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expect(sessionAttempts).toBe(3);
+});
+
 test("explains when a phone number has no account and offers registration", async ({ page }) => {
   await page.route("**/*api/auth/login", async (route) => {
     await route.fulfill({

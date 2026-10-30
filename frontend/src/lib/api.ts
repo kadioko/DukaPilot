@@ -412,6 +412,16 @@ export const api = {
       // with the same clientReference; the sync history is the durable signal.
       return retryNetworkRequest<T>(path, options, lang, "deferred", "deferred");
     }
+    if (
+      path === "/products" &&
+      typeof body === "object" && body !== null &&
+      "createRequestId" in body &&
+      typeof body.createRequestId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.createRequestId)
+    ) {
+      // Product creation is server-idempotent; retry a lost response with the same key.
+      return retryNetworkRequest<T>(path, options, lang, "deferred", "default");
+    }
     if (path === "/auth/login") return retryNetworkRequest<T>(path, options, lang, "deferred", "default");
     return request<T>(path, options, lang);
   },
