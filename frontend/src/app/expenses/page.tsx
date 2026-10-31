@@ -161,6 +161,7 @@ export default function ExpensesPage() {
   const [form, setForm] = useState<ExpenseForm>(emptyExpenseForm);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [confirmActualPayment, setConfirmActualPayment] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [editingSchedule, setEditingSchedule] = useState<RecurringExpense | null>(null);
   const [recordingSchedule, setRecordingSchedule] = useState<RecurringExpense | null>(null);
   const [recurringPaymentDate, setRecurringPaymentDate] = useState(localDateValue);
@@ -187,7 +188,7 @@ export default function ExpensesPage() {
       expense.title.trim().toLowerCase() === form.title.trim().toLowerCase()
       && expense.amount === amount
       && (expense.vendor || "").trim().toLowerCase() === form.vendor.trim().toLowerCase()
-      && expense.spentAt.slice(0, 10) === form.spentAt
+      && tanzaniaDateKey(expense.spentAt) === form.spentAt
     )) || null;
   }, [amount, editingExpense, expenses, form.spentAt, form.title, form.vendor]);
 
@@ -207,11 +208,13 @@ export default function ExpensesPage() {
   }, []);
 
   function updateForm<K extends keyof ExpenseForm>(key: K, value: ExpenseForm[K]) {
+    setFormError(null);
     setDuplicateConfirmed(false);
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function openAdd(preset?: { title: string; category: string }) {
+    setFormError(null);
     setEditingExpense(null);
     setEditingSchedule(null);
     setConfirmActualPayment(false);
@@ -222,6 +225,7 @@ export default function ExpensesPage() {
   }
 
   function openEdit(expense: Expense) {
+    setFormError(null);
     setEditingExpense(expense);
     setEditingSchedule(null);
     setConfirmActualPayment(false);
@@ -234,13 +238,14 @@ export default function ExpensesPage() {
       vendor: expense.vendor || "",
       note: expense.note || "",
       paymentMethod: (PAYMENT_LABELS[expense.paymentMethod] ? expense.paymentMethod : "CASH") as ExpenseForm["paymentMethod"],
-      spentAt: expense.spentAt.slice(0, 10),
+      spentAt: tanzaniaDateKey(expense.spentAt),
       recurringMonthly: false,
     });
     setShowForm(true);
   }
 
   function closeForm() {
+    setFormError(null);
     setShowForm(false);
     setEditingExpense(null);
     setConfirmActualPayment(false);
@@ -250,13 +255,14 @@ export default function ExpensesPage() {
 
   async function saveExpense(event: React.FormEvent) {
     event.preventDefault();
+    setFormError(null);
     const isReviewingDate = Boolean(editingExpense && needsReviewExpenses.some((expense) => expense.id === editingExpense.id));
     if (isReviewingDate && !confirmActualPayment) {
-      toast(lang === "sw" ? "Thibitisha kuwa malipo yalifanyika kweli kabla ya kuhifadhi." : "Confirm this payment really happened before saving.", "error");
+      setFormError(lang === "sw" ? "Thibitisha kuwa malipo yalifanyika kweli kabla ya kuhifadhi." : "Confirm this payment really happened before saving.");
       return;
     }
     if (!amount) {
-      toast(lang === "sw" ? "Weka kiasi sahihi cha TZS." : "Enter a valid TZS amount.", "error");
+      setFormError(lang === "sw" ? "Weka kiasi sahihi cha TZS." : "Enter a valid TZS amount.");
       return;
     }
     if (!editingExpense && possibleDuplicate && !duplicateConfirmed) {
@@ -279,9 +285,13 @@ export default function ExpensesPage() {
           : (lang === "sw" ? "Matumizi halisi yamehifadhiwa." : "Actual expense recorded."), "success");
       }
       closeForm();
-      await load();
+      try {
+        await load();
+      } catch {
+        toast(lang === "sw" ? "Matumizi yamehifadhiwa, lakini orodha haijasasishwa. Sasisha ukurasa kuona mabadiliko." : "Expense saved, but the list could not be refreshed. Refresh the page to see the changes.", "warning");
+      }
     } catch (error: unknown) {
-      toast(error instanceof Error ? error.message : (lang === "sw" ? "Matumizi hayakuweza kuhifadhiwa." : "Expense could not be saved."), "error");
+      setFormError(error instanceof Error ? error.message : (lang === "sw" ? "Matumizi hayakuweza kuhifadhiwa." : "Expense could not be saved."));
     } finally {
       setSaving(false);
     }
@@ -446,7 +456,7 @@ export default function ExpensesPage() {
           <section className="overflow-hidden border border-amber-300 bg-amber-50" aria-labelledby="future-expenses-heading">
             <div className="border-b border-amber-200 px-4 py-3">
               <h2 id="future-expenses-heading" className="text-sm font-semibold text-amber-950">{lang === "sw" ? "Matumizi yanayosubiri uhakiki wa tarehe" : "Expense records needing date review"}</h2>
-              <p className="mt-1 text-xs leading-5 text-amber-900">{lang === "sw" ? "Rekodi hizi ziliwekwa kwa tarehe ya baadaye kuliko siku zilipoundwa, kwa hiyo hazijumuishwi kwenye fedha, ripoti, AI au Daily Close mpaka mmiliki athibitishe. Ikiwa malipo yalifanyika, weka tarehe halisi; ikiwa hayakufanyika, mmiliki anaweza kufuta rekodi baada ya kuthibitisha." : "These entries were dated after the business day they were created, so they stay out of financial totals, reports, AI, and Daily Close until the owner verifies them. If paid, set the actual payment date; if not paid, the owner can delete the entry after confirming."}</p>
+              <p className="mt-1 text-xs leading-5 text-amber-900">{lang === "sw" ? "Rekodi hizi zinahitaji uhakiki wa mmiliki; baadhi ziliwekwa kwa tarehe ya baadaye au ziliwekwa hapa na hesabu ya zamani ya tarehe. Hazijumuishwi kwenye ripoti hadi zithibitishwe. Ikiwa malipo yalifanyika, weka tarehe halisi; ikiwa hayakufanyika, mmiliki anaweza kufuta rekodi." : "These entries need owner review: some were dated in the future or flagged by an older date calculation. They stay out of financial reports until verified. If paid, set the actual payment date; if not paid, the owner can delete the entry."}</p>
             </div>
             <div className="divide-y divide-amber-200">
               {needsReviewExpenses.map((expense) => (
@@ -534,7 +544,7 @@ export default function ExpensesPage() {
       {showForm && (
         <ExpenseModal title={editingExpense ? (lang === "sw" ? "Badilisha matumizi" : "Edit expense") : form.recurringMonthly ? (lang === "sw" ? "Panga matumizi ya kurudia" : "Schedule recurring expense") : (lang === "sw" ? "Rekodi matumizi halisi" : "Record an actual expense")} onClose={closeForm}>
           <form onSubmit={saveExpense} className="space-y-4">
-            {editingExpense && needsReviewExpenses.some((expense) => expense.id === editingExpense.id) && <label className="flex items-start gap-2 border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><input type="checkbox" checked={confirmActualPayment} onChange={(event) => setConfirmActualPayment(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700" /><span>{lang === "sw" ? "Nathibitisha kuwa malipo haya yalifanyika kweli. Tarehe hapa chini ni tarehe halisi ya malipo; kurekodi huku kutayaingiza kwenye ripoti." : "I confirm this payment really happened. The date below is the actual payment date; verifying it will include it in financial reports."}</span></label>}
+            {editingExpense && needsReviewExpenses.some((expense) => expense.id === editingExpense.id) && <label className="flex items-start gap-2 border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><input type="checkbox" checked={confirmActualPayment} onChange={(event) => { setConfirmActualPayment(event.target.checked); setFormError(null); }} className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700" /><span>{lang === "sw" ? "Nathibitisha kuwa malipo haya yalifanyika kweli. Tarehe hapa chini ni tarehe halisi ya malipo; kurekodi huku kutayaingiza kwenye ripoti." : "I confirm this payment really happened. The date below is the actual payment date; verifying it will include it in financial reports."}</span></label>}
             {!editingExpense && <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1" role="group" aria-label={lang === "sw" ? "Aina ya matumizi" : "Expense action"}>
               <button type="button" aria-pressed={!form.recurringMonthly} onClick={() => updateForm("recurringMonthly", false)} className={`min-h-10 rounded-md px-2 text-xs font-semibold ${!form.recurringMonthly ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{lang === "sw" ? "Rekodi matumizi" : "Record expense"}</button>
               <button type="button" aria-pressed={form.recurringMonthly} onClick={() => updateForm("recurringMonthly", true)} className={`min-h-10 rounded-md px-2 text-xs font-semibold ${form.recurringMonthly ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{lang === "sw" ? "Panga ya kila mwezi" : "Schedule monthly"}</button>
@@ -551,6 +561,7 @@ export default function ExpensesPage() {
             {!editingExpense && form.recurringMonthly && <div className="border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950">{lang === "sw" ? `Malipo ya kwanza yamepangwa ${toDateLabel(form.spentAt, lang)}. Hakuna rekodi ya kifedha itakayoundwa sasa. Ratiba ni ya mwongozo; utathibitisha baada ya kulipa.` : `First payment is scheduled for ${toDateLabel(form.spentAt, lang)}. No financial entry will be created now. The schedule is manual; confirm only after paying.`}</div>}
             {!editingExpense && !form.recurringMonthly && tanzaniaDateKey(form.spentAt) > localDateValue() && <p className="border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{lang === "sw" ? "Tarehe ya baadaye haiwezi kurekodiwa kama malipo yaliyofanyika. Chagua ratiba ya kila mwezi." : "A future date cannot be recorded as a completed payment. Choose a monthly schedule instead."}</p>}
             {possibleDuplicate && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p className="font-semibold">{lang === "sw" ? "Inaweza kuwa nakala ya rekodi iliyopo" : "This may duplicate an existing record"}</p><p className="mt-1 text-xs text-amber-800">{formatTZS(possibleDuplicate.amount)} · {toDateLabel(possibleDuplicate.spentAt, lang)}{possibleDuplicate.vendor ? ` · ${possibleDuplicate.vendor}` : ""}</p></div>}
+            {formError && <p role="alert" className="border border-red-300 bg-red-50 p-3 text-sm text-red-900">{formError}</p>}
             <div className="flex gap-2 pt-1"><button type="button" onClick={closeForm} className="min-h-11 flex-1 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50">{lang === "sw" ? "Ghairi" : "Cancel"}</button><button type="submit" disabled={saving} className="min-h-11 flex-1 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? (lang === "sw" ? "Inahifadhi..." : "Saving...") : (possibleDuplicate && !duplicateConfirmed ? (lang === "sw" ? "Thibitisha nakala" : "Confirm duplicate") : editingExpense ? (lang === "sw" ? "Hifadhi mabadiliko" : "Save changes") : form.recurringMonthly ? (lang === "sw" ? "Panga ratiba" : "Schedule expense") : (lang === "sw" ? "Rekodi matumizi" : "Record expense"))}</button></div>
           </form>
         </ExpenseModal>

@@ -171,7 +171,7 @@ function capOccurredRange(range, now = new Date()) {
 }
 
 function needsOwnerDateReview(expense) {
-  return !expense.dateReviewedAt && tanzaniaDateKey(expense.spentAt) > tanzaniaDateKey(expense.createdAt);
+  return !expense.dateReviewedAt && (expense.requiresDateReview || tanzaniaDateKey(expense.spentAt) > tanzaniaDateKey(expense.createdAt));
 }
 
 const list = asyncHandler(async (req, res) => {
@@ -384,6 +384,7 @@ const update = asyncHandler(async (req, res) => {
     if (correctingLegacyFutureDate) {
       updateData.dateReviewedAt = new Date();
       updateData.dateReviewedById = req.user.userId || null;
+      updateData.requiresDateReview = false;
     }
     const isCashToday = data.paymentMethod === "CASH" && tanzaniaDateKey(data.spentAt) === tanzaniaDateKey();
     if (!isCashToday) {

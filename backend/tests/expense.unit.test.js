@@ -366,6 +366,22 @@ test("owner cannot release a legacy future-dated expense without explicit paymen
   assert.equal(res.payload.code, "EXPENSE_DATE_REVIEW_CONFIRMATION_REQUIRED");
 });
 
+test("preserved same-day review requires and records owner confirmation", async () => {
+  const existing = { id: "same-day-review", title: "Instagram ads", amount: 165000, category: "MARKETING", paymentMethod: "MPESA", spentAt: new Date("2020-10-30T12:00:00Z"), createdAt: new Date("2020-10-29T21:46:53Z"), dateReviewedAt: null, requiresDateReview: true, cashSessionId: null };
+  let updatedData;
+  const tx = { expense: { findFirst: async () => existing, update: async ({ data }) => { updatedData = data; return { ...existing, ...data }; } } };
+  const controller = loadController({ shop: { findUnique: async () => ({ id: "shop-1" }) }, expense: { findFirst: async () => existing }, $transaction: async (work) => work(tx) });
+  const denied = response();
+  await controller.update({ user: { userId: "owner-1" }, params: { id: existing.id }, body: { spentAt: "2020-10-30" } }, denied);
+  assert.equal(denied.payload.code, "EXPENSE_DATE_REVIEW_CONFIRMATION_REQUIRED");
+  const allowed = response();
+  await controller.update({ user: { userId: "owner-1" }, params: { id: existing.id }, body: { spentAt: "2020-10-30", confirmActualPayment: true } }, allowed);
+  assert.equal(allowed.statusCode, 200);
+  assert.ok(updatedData.dateReviewedAt instanceof Date);
+  assert.equal(updatedData.requiresDateReview, false);
+  assert.equal(updatedData.dateReviewedById, "owner-1");
+});
+
 test("changing a non-cash expense to cash attaches it to the current open drawer", async () => {
   let updatedData;
   const existing = { id: "expense-1", title: "Transport", amount: 1000, category: "TRANSPORT", paymentMethod: "MPESA", spentAt: new Date(), cashSessionId: null };

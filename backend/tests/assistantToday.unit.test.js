@@ -199,7 +199,7 @@ test("Ask expense questions use the requested month instead of the default seven
     assert.equal(ranges.length, 2);
     assert.equal(tanzaniaDateKey(ranges[0].from), tanzaniaDateKey(monthStart));
     assert.equal(ranges[0].to.toISOString(), expectedEnd.toISOString());
-    assert.equal(ranges.every((range) => range.query.includes('e."spentAt" < ((date_trunc')), true);
+    assert.equal(ranges.every((range) => range.query.includes('e."requiresDateReview"') && range.query.includes("AT TIME ZONE 'UTC'")), true);
     assert.match(res.payload.answer.message, /expenses for this month/i);
     assert.match(res.payload.answer.message, /42,000/);
   } finally {

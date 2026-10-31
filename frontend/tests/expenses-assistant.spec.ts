@@ -115,6 +115,62 @@ test("expense form schedules a future monthly payment without posting a ledger e
   await expect(page.getByText(/Ratiba imewekwa kwa/)).toBeVisible();
 });
 
+test("expense date review shows actionable errors and saves confirmed payments on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockMerchantShell(page);
+  const expense = { id: "review-1", title: "Instagram ads (60$)", amount: 165000, category: "MARKETING", vendor: null, note: null, paymentMethod: "MPESA", spentAt: "2026-10-30T12:00:00.000Z", canCorrect: true };
+  const requests: Record<string, unknown>[] = [];
+  let saved = false;
+  await page.route(/\/(?:_api|api)\/expenses(?:\/.*|\?.*)?$/, async (route) => {
+    if (route.request().method() === "PATCH") {
+      requests.push(route.request().postDataJSON());
+      if (requests.length === 1) return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "Payment date rejected" }) });
+      saved = true;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expense }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expenses: saved ? [expense] : [], needsReviewExpenses: saved ? [] : [expense], recurringExpenses: [], summary: { total: saved ? 165000 : 0, count: saved ? 1 : 0 } }) });
+  });
+  await page.goto("/expenses");
+  await page.getByRole("button", { name: "Sahihisha Instagram ads (60$)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Badilisha matumizi" });
+  await dialog.getByRole("button", { name: "Hifadhi mabadiliko" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Thibitisha kuwa malipo yalifanyika kweli");
+  expect(requests).toHaveLength(0);
+  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: "Hifadhi mabadiliko" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Payment date rejected");
+  await expect(dialog.getByRole("button", { name: "Hifadhi mabadiliko" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Hifadhi mabadiliko" }).click();
+  await expect(dialog).toBeHidden();
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toMatchObject({ amount: 165000, paymentMethod: "MPESA", spentAt: "2026-10-30", confirmActualPayment: true });
+  await expect(page.getByText("Instagram ads (60$)")).toBeVisible();
+});
+
+test("a successful expense review stays saved when refreshing the list fails", async ({ page }) => {
+  await mockMerchantShell(page);
+  const expense = { id: "review-1", title: "Instagram ads", amount: 165000, category: "MARKETING", vendor: null, note: null, paymentMethod: "MPESA", spentAt: "2026-10-29T21:30:00.000Z", canCorrect: true };
+  let saved = false;
+  let submitted: Record<string, unknown> | null = null;
+  await page.route(/\/(?:_api|api)\/expenses(?:\/.*|\?.*)?$/, async (route) => {
+    if (route.request().method() === "PATCH") {
+      submitted = route.request().postDataJSON();
+      saved = true;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expense }) });
+    }
+    if (saved) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Refresh failed" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ expenses: [], needsReviewExpenses: [expense], recurringExpenses: [], summary: { total: 0, count: 0 } }) });
+  });
+  await page.goto("/expenses");
+  await page.getByRole("button", { name: "Sahihisha Instagram ads" }).click();
+  const dialog = page.getByRole("dialog", { name: "Badilisha matumizi" });
+  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: "Hifadhi mabadiliko" }).click();
+  await expect(dialog).toBeHidden();
+  expect(submitted).toMatchObject({ spentAt: "2026-10-30", confirmActualPayment: true });
+  await expect(page.getByText(/Matumizi yamehifadhiwa, lakini orodha haijasasishwa/)).toBeVisible();
+});
+
 test("expense history filters records and exposes edit and delete actions", async ({ page }) => {
   await mockMerchantShell(page);
   const expense = { id: "expense-1", title: "LUKU", amount: 25000, category: "UTILITIES", vendor: "TANESCO", note: "Meter 123", paymentMethod: "MPESA", spentAt: "2026-08-10T12:00:00.000Z" };

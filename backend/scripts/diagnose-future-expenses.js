@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const prisma = require("../src/lib/prisma");
+const { needsExpenseDateReviewSql } = require("../src/lib/expenseReporting");
 
 function shopIdArgument() {
   const index = process.argv.indexOf("--shop-id");
@@ -23,8 +24,7 @@ async function main() {
     LEFT JOIN recurring_expenses r
       ON r.id = e."recurringExpenseId" AND r."shopId" = e."shopId"
     WHERE e."shopId" = $1
-      AND e."dateReviewedAt" IS NULL
-      AND e."spentAt" >= ((date_trunc('day', e."createdAt" AT TIME ZONE 'Africa/Dar_es_Salaam') + interval '1 day') AT TIME ZONE 'Africa/Dar_es_Salaam')
+      AND ${needsExpenseDateReviewSql("e")}
     ORDER BY e."createdAt" DESC
     LIMIT 500
   `, shopId);

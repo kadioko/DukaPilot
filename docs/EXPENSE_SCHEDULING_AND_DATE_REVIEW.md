@@ -14,6 +14,8 @@ Expense totals use the expense transaction date (`spentAt`), not a future schedu
 
 Expense records created by the older behavior may have a transaction date after the Tanzania business day on which the record was created. Until an owner verifies the payment, those candidate rows are excluded from expense history totals, dashboard/profit analytics, branch reporting, assistant calculations, and Daily Close, and appear in `Expense records needing date review`. This is deliberately conservative: the date pattern alone does not prove an error, because it could be a legitimate advance payment.
 
+Some same-day records were incorrectly flagged near Tanzania midnight by the earlier timezone calculation. The timezone correction preserves previously flagged records in the review queue rather than automatically counting an unconfirmed payment. The owner must verify an actual payment and its date, or remove an unpaid entry. New records use Tanzania business dates consistently; reaching a due date alone never confirms payment.
+
 ## Read-Only Diagnostic
 
 The diagnostic requires an exact shop ID and performs only a tenant-scoped `SELECT`. It does not modify expenses or schedules and does not print vendor, note, or customer data.

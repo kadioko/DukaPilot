@@ -68,7 +68,7 @@ test("Daily Close excludes legacy future-dated expense rows even if their due da
   });
   assert.equal(summary.cashExpenses, 0);
   assert.ok(expenseQuery.query.includes("Africa/Dar_es_Salaam"));
-  assert.ok(expenseQuery.query.includes('e."spentAt" < ((date_trunc'));
+  assert.ok(expenseQuery.query.includes('e."requiresDateReview"') && expenseQuery.query.includes("AT TIME ZONE 'UTC'"));
   assert.deepEqual(expenseQuery.params.slice(0, 2), ["session-icy", "shop-icy"]);
 });
 

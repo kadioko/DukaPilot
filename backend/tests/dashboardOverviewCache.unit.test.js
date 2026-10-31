@@ -91,7 +91,7 @@ test("dashboard caches historical cost quality per shop while recalculating live
     }
     assert.equal(allTimeCostReads, 1);
     assert.equal(expenseReads.length >= 2, true);
-    assert.equal(expenseReads.every(({ query }) => query.includes('e."spentAt" < ((date_trunc') && query.includes("Africa/Dar_es_Salaam")), true);
+    assert.equal(expenseReads.every(({ query }) => query.includes('e."requiresDateReview"') && query.includes("Africa/Dar_es_Salaam") && query.includes("AT TIME ZONE 'UTC'")), true);
     assert.equal(expenseReads[0].params[2].toISOString(), endOfTanzaniaDay().toISOString());
     assert.equal(expenseReads[0].query.includes('e."spentAt" >= $2'), true);
     assert.equal(expenseReads[0].query.includes('e."spentAt" < $3'), true);
