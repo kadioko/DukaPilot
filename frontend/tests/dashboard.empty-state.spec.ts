@@ -105,7 +105,7 @@ test("dashboard shows a retry action after both automatic read attempts fail", a
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
   });
   await page.route("**/*api/auth/me", async (route) => route.fulfill({
-    json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" } } },
+    json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "sw", shop: { id: "shop-1", name: "Amina Shop" } } },
   }));
   await page.route("**/*api/products/low-stock*", async (route) => route.fulfill({ json: { products: [], total: 0 } }));
   await page.route("**/*api/subscription/status", async (route) => route.fulfill({ json: { status: "active", daysLeft: 30 } }));
@@ -122,9 +122,9 @@ test("dashboard shows a retry action after both automatic read attempts fail", a
 
   await page.goto("/dashboard");
 
-  await expect(page.getByRole("alert")).toContainText("Dashboard couldn't load");
+  await expect(page.getByRole("alert").filter({ hasText: "Muhtasari haujapakia" })).toBeVisible();
   await expect.poll(() => dashboardRequests).toBe(2);
-  await page.getByRole("button", { name: "Retry" }).click();
-  await expect(page.getByText("No sales recorded for today yet.").first()).toBeVisible();
+  await page.getByRole("button", { name: "Jaribu tena" }).click();
+  await expect(page.getByText("Hakuna mauzo ya leo bado.").first()).toBeVisible();
   expect(dashboardRequests).toBe(3);
 });

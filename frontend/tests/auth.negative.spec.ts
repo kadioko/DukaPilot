@@ -67,6 +67,7 @@ test("keeps a merchant on the current page and offers retry when session lookup 
   let sessionAttempts = 0;
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_token", "playwright-merchant-token");
+    window.localStorage.setItem("dukapilot_language", "en");
   });
   await page.route("**/*api/auth/me", async (route) => {
     sessionAttempts += 1;
@@ -86,7 +87,7 @@ test("keeps a merchant on the current page and offers retry when session lookup 
   await page.goto("/inventory");
 
   await expect(page).toHaveURL(/\/inventory$/);
-  await expect(page.getByRole("alert")).toContainText("Your sign-in is still saved");
+  await expect(page.getByRole("alert").filter({ hasText: "Your sign-in is still saved" })).toBeVisible();
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByRole("heading", { name: /inventory/i })).toBeVisible();
   expect(sessionAttempts).toBe(3);
@@ -96,6 +97,7 @@ test("home page lets a returning merchant retry session detection after a networ
   let sessionAttempts = 0;
   await page.addInitScript(() => {
     window.localStorage.setItem("dukapilot_session_active", "1");
+    window.localStorage.setItem("dukapilot_language", "en");
   });
   await page.route("**/*api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -117,7 +119,7 @@ test("home page lets a returning merchant retry session detection after a networ
 
   await page.goto("/");
 
-  await expect(page.getByRole("alert")).toContainText("Your sign-in is still saved");
+  await expect(page.getByRole("alert").filter({ hasText: "Your sign-in is still saved" })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
