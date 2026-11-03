@@ -166,15 +166,19 @@ const PRODUCTS_PER_PAGE = 50;
 function expiryStatus(p: Product, lang: string): { label: string; color: string } | null {
   if (p.doesNotExpire) return { label: lang === "en" ? "Does not expire" : "Haiishi muda", color: "bg-gray-100 text-gray-500" };
   if (!p.expiryDate) return null;
-  const now = new Date();
   const exp = new Date(p.expiryDate);
-  const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const dateKey = (date: Date) => {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Dar_es_Salaam", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day));
+  };
+  const daysLeft = (dateKey(exp) - dateKey(new Date())) / 86400000;
   if (daysLeft < 0) return { label: lang === "en" ? "Expired" : "Imekwisha muda", color: "bg-red-100 text-red-700" };
   if (daysLeft <= 30) return {
     label: lang === "en" ? `Expires in ${daysLeft} days` : `Inaisha siku ${daysLeft}`,
     color: "bg-orange-100 text-orange-700",
   };
-  return { label: exp.toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { day: "2-digit", month: "short", year: "numeric" }), color: "bg-green-100 text-green-700" };
+  return { label: exp.toLocaleDateString(lang === "sw" ? "sw-TZ" : "en-US", { timeZone: "Africa/Dar_es_Salaam", day: "2-digit", month: "short", year: "numeric" }), color: "bg-green-100 text-green-700" };
 }
 
 export default function InventoryPage() {
@@ -246,7 +250,9 @@ export default function InventoryPage() {
   const pendingCreateBody = useRef<ProductCreateBody | null>(null);
   const pendingCreateForm = useRef<ProductFormState | null>(null);
   const productCreateScopeRef = useRef<string | null>(null);
-  const [canViewFinancials, setCanViewFinancials] = useState(true);
+  const [canViewFinancials, setCanViewFinancials] = useState(false);
+  const [canManageInventory, setCanManageInventory] = useState(false);
+  const [canViewSellingPrices, setCanViewSellingPrices] = useState(false);
   const [canManageCatalog, setCanManageCatalog] = useState(false);
   const [canExportInventory, setCanExportInventory] = useState(false);
   const [isFoodBusiness, setIsFoodBusiness] = useState(false);
@@ -336,17 +342,20 @@ export default function InventoryPage() {
   }, [search, stockStatus, expiryFilter, usage, supplierId]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("action") === "add") {
+    if (canManageInventory && params.get("action") === "add") {
       openAdd();
       setForm((current) => ({ ...current, barcode: params.get("barcode") || "" }));
     }
   // Intentional one-time handoff from the POS unknown-barcode prompt.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canManageInventory]);
   useEffect(() => {
-    getCurrentSession<{ user: { id?: string; role: string; shop?: { id?: string; category?: string }; staff?: { id?: string; permissions?: { canViewReports?: boolean; canManageStock?: boolean } } } }>()
+    getCurrentSession<{ user: { id?: string; role: string; shop?: { id?: string; category?: string }; staff?: { id?: string; permissions?: { canViewReports?: boolean; canManageStock?: boolean; canSell?: boolean; canViewSalePrices?: boolean } } } }>()
       .then((data) => {
-        const scope = productCreateScope(data.user);
+        const canManage = data.user.role === "ADMIN" || !data.user.staff || Boolean(data.user.staff.permissions?.canManageStock);
+        setCanManageInventory(canManage);
+        setCanViewSellingPrices(canManage || Boolean(data.user.staff?.permissions?.canSell || data.user.staff?.permissions?.canViewSalePrices || data.user.staff?.permissions?.canViewReports));
+        const scope = canManage ? productCreateScope(data.user) : null;
         productCreateScopeRef.current = scope;
         if (scope) {
           const pending = loadPendingProductCreate<ProductFormState, ProductCreateBody>(scope);
@@ -360,22 +369,18 @@ export default function InventoryPage() {
             setShowForm(true);
           }
         }
-        setCanViewFinancials(data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports));
+        setCanViewFinancials(canManage && (data.user.role !== "MERCHANT" || !data.user.staff || Boolean(data.user.staff.permissions?.canViewReports)));
         setCanExportInventory(data.user.role === "ADMIN" || (data.user.role === "MERCHANT" && (!data.user.staff || Boolean(data.user.staff.permissions?.canManageStock))));
         setIsFoodBusiness(["bar", "restaurant"].includes(String(data.user.shop?.category || "").toLowerCase()));
         setCanManageCatalog(data.user.role === "MERCHANT" && !data.user.staff);
+        if (canManage) api.get<{ suppliers: Supplier[] }>("/suppliers").then((d) => setSuppliers(d.suppliers)).catch((error) => {
+          setSuppliers([]);
+          if (!(error instanceof ApiError && error.status === 401)) {
+            toast(error instanceof Error ? error.message : t("common.error", lang), "error");
+          }
+        });
       })
-      .catch(() => { setCanViewFinancials(false); setCanExportInventory(false); setIsFoodBusiness(false); setCanManageCatalog(false); });
-    // This can race with the shared shell's auth redirect. Handle its rejection
-    // locally so a signed-out visit never becomes an unhandled browser error.
-    api.get<{ suppliers: Supplier[] }>("/suppliers")
-      .then((d) => setSuppliers(d.suppliers))
-      .catch((error) => {
-        setSuppliers([]);
-        if (!(error instanceof ApiError && error.status === 401)) {
-          toast(error instanceof Error ? error.message : t("common.error", lang), "error");
-        }
-      });
+      .catch(() => { setCanViewFinancials(false); setCanManageInventory(false); setCanViewSellingPrices(false); setCanExportInventory(false); setIsFoodBusiness(false); setCanManageCatalog(false); });
   }, [toast, lang]);
 
   function openAdd() {
@@ -894,7 +899,7 @@ export default function InventoryPage() {
                 <option value="INTERNAL">{lang === "sw" ? "Matumizi ya ndani" : "Internal use"}</option>
               </select>
             </label>
-            <label className="min-w-0">
+            {canManageInventory && <label className="min-w-0">
               <span className="sr-only">{t("inventory.supplierFilter", lang)}</span>
               <select
                 value={supplierId}
@@ -905,7 +910,7 @@ export default function InventoryPage() {
                 <option value="">{t("inventory.allSuppliers", lang)}</option>
                 {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
               </select>
-            </label>
+            </label>}
             <label className="min-w-0">
               <span className="sr-only">{t("inventory.expiryFilter", lang)}</span>
               <select
@@ -1017,7 +1022,7 @@ export default function InventoryPage() {
                           <p className="text-xs text-gray-400">{t("inventory.buyingPrice", lang)}</p>
                           <p className="text-sm font-medium text-gray-700">{p.buyingPrice == null ? "-" : formatTZS(p.buyingPrice)}</p>
                         </div>}
-                        {!p.isInternalUse && <div>
+                        {canViewSellingPrices && !p.isInternalUse && <div>
                           <p className="text-xs text-gray-400">{t("inventory.sellingPrice", lang)}</p>
                           <p className="text-sm font-medium text-brand-700">{formatTZS(activePromotionPrice(p))}</p>
                           {activePromotionPrice(p) !== p.sellingPrice && <p className="text-xs text-gray-500"><span className="line-through">{formatTZS(p.sellingPrice)}</span> <span className="font-semibold text-emerald-700">{lang === "sw" ? "OFA" : "SALE"}</span></p>}
@@ -1028,7 +1033,7 @@ export default function InventoryPage() {
                         </div>}
                       </div>
                     </div>
-                    <div className="relative flex flex-shrink-0 items-start gap-2">
+                    {canManageInventory && <div className="relative flex flex-shrink-0 items-start gap-2">
                       <button
                         onClick={() => {
                           setAdjustProduct(p);
@@ -1055,7 +1060,7 @@ export default function InventoryPage() {
                         <button onClick={() => { openEdit(p); setActionMenuProductId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"><Edit2 className="h-4 w-4" />{t("common.edit", lang)}</button>
                         <button onClick={() => { setDeleteProduct(p); setActionMenuProductId(null); }} disabled={saving} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-4 w-4" />{t("inventory.deleteProduct", lang)}</button>
                       </div>}
-                    </div>
+                    </div>}
                   </div>
                 </div>
               );

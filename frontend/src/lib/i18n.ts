@@ -151,6 +151,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "sales.noSales": { sw: "Hakuna mauzo bado", en: "No sales yet" },
   "sales.retail": { sw: "Rejareja", en: "Retail" },
   "sales.wholesale": { sw: "Jumla", en: "Wholesale" },
+  "nav.salePrices": { sw: "Bei za kuuza", en: "Sale prices" },
   "sales.priceMode": { sw: "Aina ya Bei", en: "Price Mode" },
   "sales.wholesaleMinHint": { sw: "Bei ya jumla huanza {n}+", en: "Wholesale from {n}+" },
   "sales.noWholesalePrice": { sw: "Hakuna bei ya jumla", en: "No wholesale price" },

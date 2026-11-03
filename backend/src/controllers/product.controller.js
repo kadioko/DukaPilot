@@ -10,9 +10,15 @@ const { findVisibleSupplier } = require("../lib/supplierAccess");
 const { hasPromotionInput, normalizePromotion } = require("../lib/productPricing");
 const { redactProduct } = require("../lib/productRedaction");
 const { recordRequestPhase } = require("../middleware/requestDiagnostics");
+const { startOfTanzaniaDay } = require("../lib/businessTime");
 
 const PRODUCT_IMPORT_MAX_ROWS = 200;
 const PRODUCT_IMPORT_MAX_BYTES = 500_000;
+
+function expiryWindow(now = new Date()) {
+  const today = startOfTanzaniaDay(now);
+  return { today, end: new Date(today.getTime() + 31 * 86400000) };
+}
 
 function stableJson(value) {
   if (Array.isArray(value)) return value.map(stableJson);
@@ -253,11 +259,7 @@ async function lowStockPage(shopId, {
 }) {
   const term = String(search || "").trim();
   const barcode = term.toUpperCase();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryLimit = new Date(today);
-  expiryLimit.setDate(expiryLimit.getDate() + 30);
-  expiryLimit.setHours(23, 59, 59, 999);
+  const { today, end: expiryLimit } = expiryWindow();
   const stockFilter = includeOutOfStock
     ? Prisma.sql`AND "currentStock" <= "minimumStock"`
     : Prisma.sql`AND "currentStock" > 0 AND "currentStock" <= "minimumStock"`;
@@ -265,7 +267,7 @@ async function lowStockPage(shopId, {
   const usageFilter = usage === "FOR_SALE" ? Prisma.sql`AND "isInternalUse" = false`
     : usage === "INTERNAL" ? Prisma.sql`AND "isInternalUse" = true` : Prisma.empty;
   const expiryFilter = expiryStatus === "EXPIRING_SOON"
-    ? Prisma.sql`AND "doesNotExpire" = false AND "expiryDate" >= ${today} AND "expiryDate" <= ${expiryLimit}`
+    ? Prisma.sql`AND "doesNotExpire" = false AND "expiryDate" >= ${today} AND "expiryDate" < ${expiryLimit}`
     : expiryStatus === "EXPIRED"
       ? Prisma.sql`AND "doesNotExpire" = false AND "expiryDate" < ${today}`
       : Prisma.empty;
@@ -325,18 +327,14 @@ const list = asyncHandler(async (req, res) => {
 
   const where = { shopId, isActive: true };
   if (usage !== "ALL") where.isInternalUse = usage === "INTERNAL";
-  if (req.user.staffId && !req.user.permissions?.canManageStock) where.isInternalUse = false;
+  if (req.user.staffId && !req.user.permissions?.canManageStock && !req.user.permissions?.canViewStock) where.isInternalUse = false;
   if (supplierId) where.supplierId = supplierId;
   if (stockStatus === "OUT") where.currentStock = 0;
   if (stockStatus === "IN_STOCK") where.currentStock = { gt: 0 };
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { today, end: expiryLimit } = expiryWindow();
   if (expiryStatus === "EXPIRING_SOON") {
-    const expiryLimit = new Date(today);
-    expiryLimit.setDate(expiryLimit.getDate() + 30);
-    expiryLimit.setHours(23, 59, 59, 999);
     where.doesNotExpire = false;
-    where.expiryDate = { gte: today, lte: expiryLimit };
+    where.expiryDate = { gte: today, lt: expiryLimit };
   }
   if (expiryStatus === "EXPIRED") {
     where.doesNotExpire = false;
@@ -367,7 +365,7 @@ const list = asyncHandler(async (req, res) => {
       take: limitNumber,
       supplierId,
       expiryStatus,
-      usage: req.user.staffId && !req.user.permissions?.canManageStock ? "FOR_SALE" : usage,
+      usage: req.user.staffId && !req.user.permissions?.canManageStock && !req.user.permissions?.canViewStock ? "FOR_SALE" : usage,
       // Existing notification links intentionally keep showing both low and empty stock.
       includeOutOfStock: stockStatus !== "LOW" || lowStock === "true",
     }));
@@ -387,6 +385,19 @@ const list = asyncHandler(async (req, res) => {
       totalPages: Math.ceil(total / limitNumber),
     },
   });
+});
+
+const listPrices = asyncHandler(async (req, res) => {
+  const shopId = await getShopIdForUser(req.user);
+  const search = String(req.query.search || "").trim().slice(0, 100);
+  const page = Math.max(1, Math.min(100000, Number.parseInt(req.query.page, 10) || 1));
+  const limit = 50;
+  const where = { shopId, isActive: true, isInternalUse: false, ...(search ? { OR: [ { name: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { barcode: { contains: search.toUpperCase() } }, { manufacturerBarcode: { contains: search.toUpperCase() } }, { internalBarcode: { contains: search.toUpperCase() } } ] } : {}) };
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({ where, select: { id: true, name: true, unit: true, sku: true, sellingPrice: true, wholesalePrice: true, wholesaleMinQty: true, promotionPrice: true, promotionStartsAt: true, promotionEndsAt: true }, orderBy: [{ name: "asc" }, { id: "asc" }], skip: (page - 1) * limit, take: limit }),
+    prisma.product.count({ where }),
+  ]);
+  res.json({ products, pagination: { page, total, totalPages: Math.ceil(total / limit) } });
 });
 
 const get = asyncHandler(async (req, res) => {
@@ -577,18 +588,14 @@ const create = asyncHandler(async (req, res) => {
 
 const getSummary = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryLimit = new Date(today);
-  expiryLimit.setDate(expiryLimit.getDate() + 30);
-  expiryLimit.setHours(23, 59, 59, 999);
+  const { today, end: expiryLimit } = expiryWindow();
   const [summary = {}] = await prisma.$queryRaw`
     SELECT
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE "currentStock" > 0 AND "currentStock" <= "minimumStock")::int AS "lowStock",
       COUNT(*) FILTER (WHERE "currentStock" = 0)::int AS "outOfStock",
       COUNT(*) FILTER (WHERE "currentStock" > 0)::int AS "inStock",
-      COUNT(*) FILTER (WHERE "doesNotExpire" = false AND "expiryDate" >= ${today} AND "expiryDate" <= ${expiryLimit})::int AS "expiringSoon",
+      COUNT(*) FILTER (WHERE "doesNotExpire" = false AND "expiryDate" >= ${today} AND "expiryDate" < ${expiryLimit})::int AS "expiringSoon",
       COUNT(*) FILTER (WHERE "doesNotExpire" = false AND "expiryDate" < ${today})::int AS expired
     FROM products
     WHERE "shopId" = ${shopId} AND "isActive" = true`;
@@ -804,4 +811,4 @@ const getLowStock = asyncHandler(async (req, res) => {
   res.json({ products: products.map((product) => redactProduct(product, req)), total, limited: total > products.length });
 });
 
-module.exports = { list, getSummary, get, create, update, importCsv, remove, getLowStock, lowStockPage };
+module.exports = { list, listPrices, getSummary, get, create, update, importCsv, remove, getLowStock, lowStockPage, expiryWindow };

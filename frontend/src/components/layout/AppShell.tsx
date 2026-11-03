@@ -51,6 +51,8 @@ interface User {
     permissions: {
       canSell: boolean;
       canManageStock: boolean;
+      canViewStock: boolean;
+      canViewSalePrices: boolean;
       canManageFarm: boolean;
       canManageStaff: boolean;
       canViewReports: boolean;
@@ -72,7 +74,7 @@ interface NavItem {
   labelKey?: string;
   label?: string;
   icon: typeof LayoutDashboard;
-  permission?: "canSell" | "canManageStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations";
+  permission?: "canSell" | "canManageStock" | "canViewStock" | "canViewSalePrices" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations";
   anyPermissions?: Array<NonNullable<NavItem["permission"]>>;
   allPermissions?: Array<NonNullable<NavItem["permission"]>>;
   feature?: "staff" | "assistant" | "exports";
@@ -85,11 +87,12 @@ const merchantNav: NavItem[] = [
   { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, permission: "canViewReports", group: "overview" },
   { href: "/assistant", labelKey: "nav.assistant", icon: Sparkles, permission: "canUseAssistant", feature: "assistant", group: "ai" },
   { href: "/sales", labelKey: "nav.sales", icon: ShoppingCart, permission: "canSell", group: "sell" },
+  { href: "/sale-prices", labelKey: "nav.salePrices", icon: ReceiptText, permission: "canViewSalePrices", group: "sell" },
   { href: "/daily-close", labelKey: "nav.dailyClose", icon: WalletCards, anyPermissions: ["canSell", "canManageCashSessions"], group: "sell" },
   { href: "/debts", labelKey: "nav.debts", icon: HandCoins, permission: "canSell", group: "sell" },
   { href: "/orders/customers", labelKey: "nav.customerOrders", icon: ShoppingBag, permission: "canSell", group: "sell" },
   { href: "/quotations", labelKey: "nav.quotations", icon: FileText, permission: "canViewQuotations", group: "sell" },
-  { href: "/inventory", labelKey: "nav.inventory", icon: Package, permission: "canManageStock", group: "stock" },
+  { href: "/inventory", labelKey: "nav.inventory", icon: Package, anyPermissions: ["canManageStock", "canViewStock"], group: "stock" },
   { href: "/stock-history", labelKey: "nav.stockHistory", icon: History, permission: "canManageStock", group: "stock" },
   { href: "/receiving", labelKey: "nav.receiving", icon: PackageCheck, permission: "canManageStock", allPermissions: ["canViewReports"], group: "stock" },
   { href: "/supplier-balances", labelKey: "nav.supplierBalances", icon: HandCoins, permission: "canManageStock", allPermissions: ["canViewReports"], group: "stock" },
@@ -140,7 +143,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
     const permissions = user?.staff?.permissions;
     if (permissions?.canSell) return "/sales";
     if (permissions?.canManageCashSessions) return "/daily-close";
-    if (permissions?.canManageStock) return "/inventory";
+    if (permissions?.canManageStock || permissions?.canViewStock) return "/inventory";
+    if (permissions?.canViewSalePrices) return "/sale-prices";
     if (permissions?.canManageFarm) return "/farm";
     return "/settings";
   }
@@ -154,7 +158,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     if (pathname === "/orders" || pathname.startsWith("/orders/")) return permissions.canManageStock && permissions.canViewReports;
     if (pathname === "/daily-close" || pathname.startsWith("/daily-close/")) return permissions.canSell || permissions.canManageCashSessions;
     if (["/sales", "/debts", "/orders/customers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canSell;
-    if (["/inventory", "/stock-history", "/barcodes", "/suppliers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canManageStock;
+    if (pathname === "/sale-prices") return permissions.canViewSalePrices || permissions.canSell;
+    if (pathname === "/inventory" || pathname.startsWith("/inventory/")) return permissions.canManageStock || permissions.canViewStock;
+    if (["/stock-history", "/barcodes", "/suppliers"].some((route) => pathname === route || pathname.startsWith(`${route}/`))) return permissions.canManageStock;
     if (pathname === "/farm" || pathname.startsWith("/farm/") || pathname === "/crops" || pathname.startsWith("/crops/")) return permissions.canManageFarm;
     if (pathname === "/expenses" || pathname.startsWith("/expenses/")) return permissions.canRecordExpenses;
     if (pathname === "/assistant" || pathname.startsWith("/assistant/")) return permissions.canUseAssistant;

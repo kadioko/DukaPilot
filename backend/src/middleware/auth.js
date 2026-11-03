@@ -71,6 +71,8 @@ async function authenticate(req, res, next) {
           shopId: true,
           canSell: true,
           canManageStock: true,
+          canViewStock: true,
+          canViewSalePrices: true,
           canCorrectStock: true,
           canManageStaff: true,
           canViewReports: true,
@@ -109,6 +111,8 @@ async function authenticate(req, res, next) {
       payload.permissions = {
         canSell: staff.canSell,
         canManageStock: staff.canManageStock,
+        canViewStock: staff.canViewStock,
+        canViewSalePrices: staff.canViewSalePrices,
         canCorrectStock: staff.canCorrectStock,
         canManageStaff: staff.canManageStaff,
         canViewReports: staff.canViewReports,

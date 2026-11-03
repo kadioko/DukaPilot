@@ -14,6 +14,21 @@ if (!/localhost|127\.0\.0\.1|dukapilot_test/i.test(databaseUrl)) {
   throw new Error("PostgreSQL integrity tests require an explicitly named local test database");
 }
 
+test("new stock and price viewing permissions default off and remain independent", async (t) => {
+  const suffix = crypto.randomUUID();
+  const user = await prisma.user.create({ data: { phone: `readonly-${suffix}`, pin: "test-pin", name: "Test owner" } });
+  const shop = await prisma.shop.create({ data: { name: "Test shop", location: "Test", userId: user.id, referralCode: `readonly-${suffix}` } });
+  t.after(async () => { await prisma.staffMember.deleteMany({ where: { shopId: shop.id } }); await prisma.shop.delete({ where: { id: shop.id } }); await prisma.user.delete({ where: { id: user.id } }); });
+  const staff = await prisma.staffMember.create({ data: { shopId: shop.id, name: "Read only", role: "CASHIER", canSell: false, canManageStock: false } });
+  assert.equal(staff.canViewStock, false);
+  assert.equal(staff.canViewSalePrices, false);
+  const updated = await prisma.staffMember.update({ where: { id: staff.id }, data: { canViewStock: true } });
+  assert.equal(updated.canViewStock, true);
+  assert.equal(updated.canViewSalePrices, false);
+  assert.equal(updated.canSell, false);
+  assert.equal(updated.canManageStock, false);
+});
+
 test("merchant wallet database accepts subscription debits and rejects unknown transaction kinds", async (t) => {
   const suffix = crypto.randomUUID();
   const user = await prisma.user.create({ data: { phone: `wallet-kind-${suffix}`, pin: "not-a-real-pin", name: "Synthetic wallet owner" } });

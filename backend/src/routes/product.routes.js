@@ -9,9 +9,10 @@ router.use(requireRole("MERCHANT", "ADMIN"));
 router.use(requireActiveSubscription);
 
 // Cashiers need a read-only product catalogue to build and scan POS sales.
-router.get("/", requireAnyPermission("canManageStock", "canSell"), productListValidation, ctrl.list);
-router.get("/summary", requireAnyPermission("canManageStock", "canSell"), ctrl.getSummary);
-router.get("/low-stock", requirePermission("canManageStock"), ctrl.getLowStock);
+router.get("/", requireAnyPermission("canManageStock", "canViewStock", "canSell"), productListValidation, ctrl.list);
+router.get("/summary", requireAnyPermission("canManageStock", "canViewStock", "canSell"), ctrl.getSummary);
+router.get("/low-stock", requireAnyPermission("canManageStock", "canViewStock"), ctrl.getLowStock);
+router.get("/prices", requireAnyPermission("canSell", "canViewSalePrices"), ctrl.listPrices);
 router.get("/:id", requireAnyPermission("canManageStock", "canSell"), ctrl.get);
 router.post("/", requirePermission("canManageStock"), productCreateValidation, ctrl.create);
 router.use(requirePermission("canManageStock"));

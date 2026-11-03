@@ -19,6 +19,12 @@ When an owner adds a staff member, they enter the staff member's phone number. T
 
 The owner can fine-tune permissions per individual after creating them. Deactivating a staff member immediately blocks their next authenticated request and future login.
 
+## Read-Only Access
+
+When creating a staff login, choose **Initial access > Stock view only** for someone who should search inventory and filter low stock, out-of-stock, and expiring products without changing stock or seeing prices. Choose **Price view only** for a searchable **Sale prices** list showing retail and wholesale prices without checkout, buying costs, or stock quantities. These presets select the cashier role and explicitly disable other operational and financial permissions. To configure an existing staff member, enable **View stock only** or **View sale prices** and turn off any other permissions they should not retain. Permissions combine: granting **Sell**, **Stock**, or **Reports** separately adds their normal capabilities. The read-only permissions are off for existing staff until the owner grants them.
+
+Staff with **Sell** see the listed retail and wholesale prices needed to sell, but not buying cost unless they also have **Reports**. The owner's **Settings > Sale prices > Allow price changes at checkout** applies across the business and is off by default. When enabled, a seller can change the unit price for that sale only using comma-formatted whole TZS; it does not change the product or catalog price. Only the owner can change this setting.
+
 To remove a staff login, deactivate the member first, then choose **Delete
 login** and confirm. This removes the login credentials and frees the phone
 number for reuse; it does not erase sales, shift, or audit history. See

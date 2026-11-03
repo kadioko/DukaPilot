@@ -217,6 +217,7 @@ export default function SalesPage() {
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
+  const [emptyPriceDrafts, setEmptyPriceDrafts] = useState<Record<string, boolean>>({});
   const [saleMode, setSaleMode] = useState<"RETAIL" | "WHOLESALE">("RETAIL");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [paymentRef, setPaymentRef] = useState("");
@@ -944,11 +945,12 @@ export default function SalesPage() {
                   key={m}
                   onClick={() => {
                     setSaleMode(m);
+                    setEmptyPriceDrafts({});
                     setCart((prev) => prev.map((i) => ({
                       ...i,
                       unitPrice: m === "WHOLESALE" && i.product.wholesalePrice != null
                         ? i.product.wholesalePrice
-                        : i.product.sellingPrice,
+                        : activePromotionPrice(i.product),
                     })));
                   }}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors min-h-0 ${saleMode === m ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"}`}
@@ -1196,8 +1198,12 @@ export default function SalesPage() {
                                 <CurrencyInput
                                   title={lang === "sw" ? "Bei ya mauzo haya tu" : "Price for this sale only"}
                                   aria-label={`${lang === "sw" ? "Bei ya" : "Unit price for"} ${item.product.name}`}
-                                  value={item.unitPrice}
-                                  onChange={(value) => updatePrice(item.product.id, Number(value) || 0)}
+                                  value={emptyPriceDrafts[item.product.id] ? "" : item.unitPrice}
+                                  onChange={(value) => {
+                                    setEmptyPriceDrafts((drafts) => ({ ...drafts, [item.product.id]: value === "" }));
+                                    if (value !== "") updatePrice(item.product.id, Number(value));
+                                  }}
+                                  onBlur={() => setEmptyPriceDrafts((drafts) => ({ ...drafts, [item.product.id]: false }))}
                                   className="w-24 max-w-full border-b border-dashed border-gray-300 bg-transparent text-base font-bold text-brand-600 focus:outline-none sm:text-xs"
                                 />
                                 {item.unitPrice !== defaultPriceFor(item.product) && <button type="button" onClick={() => updatePrice(item.product.id, defaultPriceFor(item.product))} title={lang === "sw" ? "Rudisha bei ya kawaida" : "Reset listed price"} aria-label={`${lang === "sw" ? "Rudisha bei ya" : "Reset price for"} ${item.product.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center text-brand-700"><RotateCcw className="h-3.5 w-3.5" /></button>}

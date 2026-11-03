@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizeBarcode, nextInternalBarcode, nextInternalSku } = require("../lib/barcode");
+const { redactProduct } = require("../lib/productRedaction");
 
 function asyncHandler(fn) { return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }
 function canManageBarcode(req) { return req.user.role === "ADMIN" || !req.user.staffId || Boolean(req.user.permissions?.canManageStock); }
@@ -40,7 +41,7 @@ const lookup = asyncHandler(async (req, res) => {
   const product = await prisma.product.findFirst({ where: { shopId, isActive: true, OR: [{ barcode }, { manufacturerBarcode: barcode }, { internalBarcode: barcode }] } });
   await prisma.barcodeScan.create({ data: { shopId, barcode, productId: product?.id || null, found: Boolean(product), context: String(req.query.context || "POS").slice(0, 30) } });
   if (!product) return res.status(404).json({ error: "This barcode was not found." });
-  res.json({ product, behavior: { autoAddToCart: shop?.barcodeAutoAddToCart !== false, successSound: shop?.barcodeSuccessSound !== false, vibrate: shop?.barcodeVibrate !== false } });
+  res.json({ product: redactProduct(product, req), behavior: { autoAddToCart: shop?.barcodeAutoAddToCart !== false, successSound: shop?.barcodeSuccessSound !== false, vibrate: shop?.barcodeVibrate !== false } });
 });
 
 const history = asyncHandler(async (req, res) => {

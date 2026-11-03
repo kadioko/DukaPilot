@@ -47,7 +47,11 @@ test("owner enables sale-specific prices and checkout uses the chosen wholesale 
   await page.locator("button").filter({ hasText: product.name }).click();
   const price = page.getByRole("textbox", { name: `Unit price for ${product.name}` });
   await expect(price).toHaveValue("11,000");
+  await price.fill("");
+  await price.blur();
+  await expect(price).toHaveValue("11,000");
   await price.fill("10500");
+  await expect(price).toHaveValue("10,500");
   await expect(page.getByRole("button", { name: `Reset price for ${product.name}` })).toBeVisible();
   await page.getByRole("button", { name: /Complete sale/i }).click();
   await expect.poll(() => savedSale).not.toBeNull();

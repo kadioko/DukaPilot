@@ -214,6 +214,7 @@ See [docs/LAUNCH_PLAYBOOK.md](./docs/LAUNCH_PLAYBOOK.md) for positioning, ad cop
 - All money values are stored as whole Tanzanian shillings (TZS), not floating-point values.
 - Staff permissions are reloaded from the database on every authenticated request; disabling a staff account invalidates access immediately. Staff sessions always remain merchant actors and never inherit platform-admin access from the shop owner.
 - Staff can be configured as a shop attendant: `canSell`, `canManageStock`, and `canRecordExpenses` may be enabled while `canViewReports` remains off. Staff without report access receive redacted buying-cost and profit fields, while owners/managers keep full financial visibility.
+- Staff can instead be given read-only stock access, including low-stock and expiry filters, or read-only retail and wholesale price access without checkout or buying costs. Sellers can view wholesale prices without Reports. Owners control optional per-sale price editing in **Settings > Sale prices**, off by default; changes apply only to that sale. See [Staff Access Guide](docs/STAFF_ACCESS_GUIDE.md).
 - Never commit real secrets to git — keep `DATABASE_URL`, `JWT_SECRET`, and payment credentials in environment variables only.
 - OTP codes expire after 10 minutes and are single-use.
 - NextSMS credentials must be verified separately in production; the production monitor does not send a real OTP. Platform admins can review current credits and recent delivery metadata at `/admin` → **SMS**. See [NextSMS PIN Recovery Setup](./docs/NEXTSMS_PIN_RECOVERY.md).

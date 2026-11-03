@@ -1416,6 +1416,8 @@ model StaffMember {
   role                         StaffRole @default(CASHIER)
   canSell                      Boolean   @default(true)
   canManageStock               Boolean   @default(false)
+  canViewStock                 Boolean   @default(false)
+  canViewSalePrices            Boolean   @default(false)
   canCorrectStock              Boolean   @default(false)
   canManageFarm                Boolean   @default(false)
   canManageStaff               Boolean   @default(false)

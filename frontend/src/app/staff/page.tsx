@@ -12,6 +12,8 @@ interface StaffMember {
   role: string;
   canSell: boolean;
   canManageStock: boolean;
+  canViewStock: boolean;
+  canViewSalePrices: boolean;
   canCorrectStock: boolean;
   canManageFarm: boolean;
   canManageStaff: boolean;
@@ -52,6 +54,7 @@ export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
+  const [accessPreset, setAccessPreset] = useState<"role" | "stock" | "prices">("role");
   const [actionError, setActionError] = useState("");
   const [savingStaffAction, setSavingStaffAction] = useState(false);
   const staffActionLock = useRef(false);
@@ -72,12 +75,21 @@ export default function StaffPage() {
   async function addStaff(event: React.FormEvent) {
     event.preventDefault();
     if (basicLimitReached) return;
-    await api.post("/staff", form, lang);
+    const viewOnly = accessPreset === "role" ? {} : {
+      canSell: false, canManageStock: false, canCorrectStock: false, canManageFarm: false,
+      canManageStaff: false, canViewReports: false, canRecordExpenses: false, canManageCashSessions: false, canUseAssistant: false,
+      canViewQuotations: false, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false,
+      canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false,
+      canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false,
+      canViewStock: accessPreset === "stock", canViewSalePrices: accessPreset === "prices",
+    };
+    await api.post("/staff", { ...form, ...viewOnly, ...(accessPreset === "role" ? {} : { role: "CASHIER" }) }, lang);
     setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
+    setAccessPreset("role");
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canCorrectStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canViewStock" | "canViewSalePrices" | "canCorrectStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     if (staffActionLock.current) return;
     staffActionLock.current = true;
     setSavingStaffAction(true);
@@ -123,6 +135,8 @@ export default function StaffPage() {
   const permissionLabels = {
     canSell: lang === "sw" ? "Kuuza" : "Sell",
     canManageStock: lang === "sw" ? "Bidhaa" : "Stock",
+    canViewStock: lang === "sw" ? "Kuona stock tu" : "View stock only",
+    canViewSalePrices: lang === "sw" ? "Kuona bei za kuuza" : "View sale prices",
     canCorrectStock: lang === "sw" ? "Kusahihisha stock/risiti" : "Correct stock/receipts",
     canManageFarm: lang === "sw" ? "Kusimamia uzalishaji wa shamba" : "Manage farm production",
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
@@ -173,12 +187,15 @@ export default function StaffPage() {
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jina" : "Name"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Simu" : "Phone"}</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" required inputMode="tel" placeholder="07... au +255..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>PIN ({lang === "sw" ? "hiari" : "optional"})</span><input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" inputMode="numeric" maxLength={8} placeholder="1234" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} /></label>
-          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jukumu" : "Role"}</span><select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jukumu" : "Role"}</span><select disabled={accessPreset !== "role"} className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Ruhusa za mwanzo" : "Initial access"}</span><select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={accessPreset} onChange={(e) => { const next = e.target.value as typeof accessPreset; setAccessPreset(next); if (next !== "role") setForm((current) => ({ ...current, role: "CASHIER" })); }}><option value="role">{lang === "sw" ? "Kulingana na jukumu" : "Role defaults"}</option><option value="stock">{lang === "sw" ? "Kuona stock tu" : "Stock view only"}</option><option value="prices">{lang === "sw" ? "Kuona bei tu" : "Price view only"}</option></select></label>
+          {accessPreset === "role" && <>
           <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canRecordExpenses} onChange={(e) => setForm({ ...form, canRecordExpenses: e.target.checked })} />{lang === "sw" ? "Anaweza kurekodi matumizi" : "Can record expenses"}</label>
           <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canManageFarm} onChange={(e) => setForm({ ...form, canManageFarm: e.target.checked })} />{lang === "sw" ? "Anaweza kusimamia shamba" : "Can manage farm"}</label>
           {proAssistantAvailable && <label className="flex min-h-10 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-950"><input type="checkbox" checked={form.canUseAssistant} onChange={(e) => setForm({ ...form, canUseAssistant: e.target.checked })} />{lang === "sw" ? "Anaweza kutumia AI" : "Can use AI"}</label>}
+          </>}
           <button disabled={basicLimitReached} title={basicLimitReached ? (lang === "sw" ? "Basic ina staff 1 active" : "Basic includes 1 active staff member") : undefined} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-400">
             {lang === "sw" ? "Ongeza" : "Add"}
           </button>

@@ -89,12 +89,44 @@ test("stock-only staff do not receive buying or wholesale product prices", async
   const ctrl = loadController(prismaMock);
   const res = createRes();
 
-  await ctrl.list({ user: { userId: "staff-1", staffId: "staff-1", shopId: "shop-1", permissions: { canViewReports: false } }, query: {} }, res);
+  await ctrl.list({ user: { userId: "staff-1", staffId: "staff-1", shopId: "shop-1", permissions: { canManageStock: true, canViewReports: false } }, query: {} }, res);
 
   assert.equal(res.payload.products[0].sellingPrice, 3000);
   assert.equal(res.payload.products[0].buyingPrice, null);
   assert.equal(res.payload.products[0].wholesalePrice, null);
   assert.equal(res.payload.products[0].wholesaleMinQty, null);
+});
+
+test("seller receives wholesale prices but never buying cost", async () => {
+  const { redactProduct } = require("../src/lib/productRedaction");
+  const result = redactProduct({ id: "p", buyingPrice: 1800, sellingPrice: 3000, wholesalePrice: 2500, wholesaleMinQty: 5 }, { user: { staffId: "staff-1", role: "MERCHANT", permissions: { canSell: true } } });
+  assert.equal(result.buyingPrice, null);
+  assert.equal(result.sellingPrice, 3000);
+  assert.equal(result.wholesalePrice, 2500);
+  assert.equal(result.wholesaleMinQty, 5);
+});
+
+test("stock viewer receives stock and expiry but no prices or supplier contacts", async () => {
+  const { redactProduct } = require("../src/lib/productRedaction");
+  const result = redactProduct({ id: "p", name: "Rice", currentStock: 2, minimumStock: 5, expiryDate: new Date("2027-01-01"), buyingPrice: 1800, sellingPrice: 3000, promotionPrice: 2700, wholesalePrice: 2500, supplier: { phone: "private" } }, { user: { staffId: "staff-1", role: "MERCHANT", permissions: { canViewStock: true } } });
+  assert.equal(result.currentStock, 2);
+  assert.equal(result.buyingPrice, null);
+  assert.equal(result.sellingPrice, null);
+  assert.equal(result.wholesalePrice, null);
+  assert.equal(result.promotionPrice, null);
+  assert.equal(result.supplier, undefined);
+});
+
+test("sale price list selects only sale prices from the active staff shop", async () => {
+  let query;
+  const ctrl = loadController({ product: { findMany: async (args) => { query = args; return [{ id: "p", name: "Rice", sellingPrice: 3000, wholesalePrice: 2500 }]; }, count: async () => 1 } });
+  const res = createRes();
+  await ctrl.listPrices({ user: { staffId: "staff-1", shopId: "branch-1", permissions: { canViewSalePrices: true } }, query: { search: "rice" } }, res);
+  assert.equal(query.where.shopId, "branch-1");
+  assert.equal(query.where.isInternalUse, false);
+  assert.equal(query.select.buyingPrice, undefined);
+  assert.equal(query.select.currentStock, undefined);
+  assert.equal(res.payload.products[0].wholesalePrice, 2500);
 });
 
 test("low-stock pagination asks PostgreSQL for one page before loading product details", async () => {
@@ -144,6 +176,13 @@ test("stock filters keep low-stock products separate from out-of-stock products"
   assert.equal(res.payload.pagination.total, 1);
   assert.deepEqual(res.payload.products.map((item) => item.id), ["prod-low"]);
   assert.ok(queries.some(({ values }) => values.some((value) => value?.strings?.join(" ").includes('"currentStock" > 0 AND "currentStock" <= "minimumStock"'))));
+});
+
+test("expiry window follows Tanzania dates across UTC midnight", () => {
+  const { expiryWindow } = loadController({});
+  const window = expiryWindow(new Date("2026-11-02T21:30:00.000Z"));
+  assert.equal(window.today.toISOString(), "2026-11-02T21:00:00.000Z");
+  assert.equal(window.end.toISOString(), "2026-12-03T21:00:00.000Z");
 });
 
 test("out-of-stock filters use an exact zero-stock query and retain supplier filters", async () => {
