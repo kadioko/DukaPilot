@@ -118,9 +118,10 @@ test("expense form schedules a future monthly payment without posting a ledger e
 test("expenses explain an unavailable report and recover through an explicit retry", async ({ page }) => {
   await mockMerchantShell(page);
   let loadAttempts = 0;
+  let allowLoadSuccess = false;
   await page.route(/\/(?:_api|api)\/expenses(?:\?.*)?$/, async (route) => {
     loadAttempts += 1;
-    if (loadAttempts <= 4) return route.abort("failed");
+    if (!allowLoadSuccess) return route.abort("failed");
     return route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -131,8 +132,10 @@ test("expenses explain an unavailable report and recover through an explicit ret
   await page.goto("/expenses");
   const reportError = page.getByRole("alert").filter({ hasText: "Takwimu zinaweza kuwa za zamani au hazipatikani." });
   await expect(reportError).toBeVisible();
+  const failedAttempts = loadAttempts;
+  allowLoadSuccess = true;
   await page.getByRole("button", { name: "Jaribu tena" }).click();
-  await expect.poll(() => loadAttempts).toBe(5);
+  await expect.poll(() => loadAttempts).toBe(failedAttempts + 1);
   await expect(reportError).toHaveCount(0);
   await expect(page.getByText(/150,000/)).toBeVisible();
 });
