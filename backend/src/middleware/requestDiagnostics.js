@@ -8,8 +8,17 @@ function diagnosticRoute(req) {
   if (req.method === "GET" && path === "/api/auth/me") return path;
   if (req.method === "GET" && (path === "/api/dashboard" || path.startsWith("/api/dashboard/"))) return path;
   if (req.method === "POST" && path === "/api/products") return path;
+  if (req.method === "GET" && ["/api/products", "/api/products/summary", "/api/expenses"].includes(path)) return path;
+  if (req.method === "PATCH" && path === "/api/settings/profile") return path;
   return null;
 }
+
+const SLOW_DIAGNOSTIC_ROUTES = new Set([
+  "GET /api/products",
+  "GET /api/products/summary",
+  "GET /api/expenses",
+  "PATCH /api/settings/profile",
+]);
 
 function requestDiagnostics(req, res, next) {
   const incomingId = req.headers?.["x-request-id"];
@@ -27,13 +36,16 @@ function requestDiagnostics(req, res, next) {
     const logTiming = (outcome) => {
       if (logged) return;
       logged = true;
+      const durationMs = Math.round(performance.now() - startedAt);
+      const slowOnly = SLOW_DIAGNOSTIC_ROUTES.has(`${req.method} ${route}`);
+      if (slowOnly && outcome !== "client_disconnected" && res.statusCode < 500 && durationMs < 1500) return;
       console.info(JSON.stringify({
         event: "api_request_timing",
         requestId,
         method: req.method,
         path: route,
         status: res.statusCode,
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs,
         outcome,
         phases: req.requestPhaseTimings,
       }));

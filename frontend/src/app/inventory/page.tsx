@@ -26,6 +26,7 @@ import {
   FileUp,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BarcodeScanner } from "@/components/barcode/BarcodeScanner";
@@ -223,14 +224,8 @@ export default function InventoryPage() {
     total: 0,
     totalPages: 0,
   });
-  const [stockSummary, setStockSummary] = useState<StockSummary>({
-    total: 0,
-    lowStock: 0,
-    outOfStock: 0,
-    inStock: 0,
-    expiringSoon: 0,
-    expired: 0,
-  });
+  const [stockSummary, setStockSummary] = useState<StockSummary | null>(null);
+  const [stockSummaryError, setStockSummaryError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -242,6 +237,7 @@ export default function InventoryPage() {
   const [adjustForm, setAdjustForm] = useState({ type: "IN", quantity: "", note: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [listError, setListError] = useState("");
   const latestLoad = useRef(0);
   const mutationInFlight = useRef(false);
   const adjustRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
@@ -281,14 +277,16 @@ export default function InventoryPage() {
         expiringSoon: Number(data.summary.expiringSoon) || 0,
         expired: Number(data.summary.expired) || 0,
       });
+      setStockSummaryError(false);
     } catch {
-      // The product list remains usable if summary counts are temporarily unavailable.
+      setStockSummaryError(true);
     }
   }, []);
 
   const fetchProducts = useCallback(async (refreshSummary = false) => {
     const requestId = ++latestLoad.current;
     setLoading(true);
+    setListError("");
     try {
       const params = new URLSearchParams();
       if (settledSearch) params.set("search", settledSearch);
@@ -312,10 +310,13 @@ export default function InventoryPage() {
       }
       setProducts(data.products);
       setPagination(nextPagination);
+      setListError("");
       if (refreshSummary) await fetchStockSummary();
     } catch (value: unknown) {
       if (requestId === latestLoad.current) {
-        toast(value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia bidhaa." : "Could not load products."), "error");
+        const message = value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia bidhaa." : "Could not load products.");
+        setListError(message);
+        toast(message, "error");
       }
     } finally {
       if (requestId === latestLoad.current) setLoading(false);
@@ -865,10 +866,10 @@ export default function InventoryPage() {
             aria-label={t("inventory.stockFilters", lang)}
           >
             {[
-              { value: "ALL" as const, label: t("inventory.allProducts", lang), count: stockSummary.total, icon: Package, active: "bg-brand-50 border-brand-300 text-brand-800" },
-              { value: "LOW" as const, label: t("inventory.lowStockCount", lang), count: stockSummary.lowStock, icon: AlertTriangle, active: "bg-amber-50 border-amber-300 text-amber-800" },
-              { value: "OUT" as const, label: t("inventory.outOfStockCount", lang), count: stockSummary.outOfStock, icon: X, active: "bg-red-50 border-red-300 text-red-800" },
-              { value: "IN_STOCK" as const, label: t("inventory.inStock", lang), count: stockSummary.inStock, icon: Package, active: "bg-emerald-50 border-emerald-300 text-emerald-800" },
+              { value: "ALL" as const, label: t("inventory.allProducts", lang), count: stockSummary?.total, icon: Package, active: "bg-brand-50 border-brand-300 text-brand-800" },
+              { value: "LOW" as const, label: t("inventory.lowStockCount", lang), count: stockSummary?.lowStock, icon: AlertTriangle, active: "bg-amber-50 border-amber-300 text-amber-800" },
+              { value: "OUT" as const, label: t("inventory.outOfStockCount", lang), count: stockSummary?.outOfStock, icon: X, active: "bg-red-50 border-red-300 text-red-800" },
+              { value: "IN_STOCK" as const, label: t("inventory.inStock", lang), count: stockSummary?.inStock, icon: Package, active: "bg-emerald-50 border-emerald-300 text-emerald-800" },
             ].map((filter) => {
               const Icon = filter.icon;
               const isSelected = stockStatus === filter.value;
@@ -884,11 +885,21 @@ export default function InventoryPage() {
                 >
                   <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>{filter.label}</span>
-                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-xs font-semibold tabular-nums">{filter.count}</span>
+                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-xs font-semibold tabular-nums">{filter.count ?? "-"}</span>
                 </button>
               );
             })}
           </div>
+
+          {stockSummaryError && (
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <span>{lang === "sw" ? "Takwimu za stock hazipatikani kwa sasa; namba hazionyeshi sifuri." : "Stock counts are unavailable right now; unavailable does not mean zero."}</span>
+              <button type="button" onClick={() => { void fetchStockSummary(); }} className="inline-flex min-h-9 items-center gap-1.5 font-semibold text-amber-950 underline underline-offset-2">
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                {lang === "sw" ? "Jaribu tena" : "Retry"}
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <label className="min-w-0">
@@ -920,8 +931,8 @@ export default function InventoryPage() {
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="ALL">{t("inventory.allExpiry", lang)}</option>
-                <option value="EXPIRING_SOON">{t("inventory.expiringSoon", lang)} ({stockSummary.expiringSoon})</option>
-                <option value="EXPIRED">{t("inventory.expired", lang)} ({stockSummary.expired})</option>
+                <option value="EXPIRING_SOON">{t("inventory.expiringSoon", lang)} ({stockSummary?.expiringSoon ?? "-"})</option>
+                <option value="EXPIRED">{t("inventory.expired", lang)} ({stockSummary?.expired ?? "-"})</option>
               </select>
             </label>
           </div>
@@ -948,6 +959,14 @@ export default function InventoryPage() {
         {/* Product list */}
         {loading ? (
           <div className="text-center py-16 text-gray-400">{t("common.loading", lang)}</div>
+        ) : listError ? (
+          <div role="alert" className="border border-red-200 bg-red-50 px-4 py-5 text-center">
+            <p className="text-sm font-medium text-red-900">{listError}</p>
+            <button type="button" onClick={() => { void fetchProducts(true); }} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md bg-red-700 px-3 py-2 text-sm font-semibold text-white hover:bg-red-800">
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              {lang === "sw" ? "Jaribu tena" : "Retry"}
+            </button>
+          </div>
         ) : products.length === 0 ? (
           <div className="text-center py-16">
             <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { BarChart3, ChevronDown, Edit3, Filter, PackagePlus, Plus, ReceiptText, Repeat2, Search, Trash2, X } from "lucide-react";
+import { BarChart3, ChevronDown, Edit3, Filter, PackagePlus, Plus, ReceiptText, RefreshCw, Repeat2, Search, Trash2, X } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import DateSelect from "@/components/ui/DateSelect";
 import { useToast } from "@/components/ui/Toast";
@@ -173,6 +173,7 @@ export default function ExpensesPage() {
   const [appliedFilters, setAppliedFilters] = useState<Filters>({ search: "", vendor: "", category: "", from: "", to: "" });
   const [assistantFocus, setAssistantFocus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [busyRecurringId, setBusyRecurringId] = useState<string | null>(null);
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
   const requestKeyRef = useRef<string | null>(null);
@@ -193,11 +194,17 @@ export default function ExpensesPage() {
   }, [amount, editingExpense, expenses, form.spentAt, form.title, form.vendor]);
 
   async function load(nextFilters = appliedFilters, nextPeriod = period) {
-    const data = await api.get<{ expenses: Expense[]; needsReviewExpenses?: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
-    setExpenses(data.expenses);
-    setNeedsReviewExpenses(data.needsReviewExpenses || []);
-    setRecurringExpenses(data.recurringExpenses || []);
-    setSummary({ ...EMPTY_SUMMARY, ...data.summary, topCategories: data.summary.topCategories || [] });
+    setLoadError("");
+    try {
+      const data = await api.get<{ expenses: Expense[]; needsReviewExpenses?: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
+      setExpenses(data.expenses);
+      setNeedsReviewExpenses(data.needsReviewExpenses || []);
+      setRecurringExpenses(data.recurringExpenses || []);
+      setSummary({ ...EMPTY_SUMMARY, ...data.summary, topCategories: data.summary.topCategories || [] });
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : (lang === "sw" ? "Matumizi hayakuweza kupakiwa." : "Expenses could not be loaded."));
+      throw error;
+    }
   }
 
   useEffect(() => {
@@ -419,6 +426,16 @@ export default function ExpensesPage() {
             {lang === "sw" ? "Ongeza matumizi" : "Add expense"}
           </button>
         </div>
+
+        {loadError && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            <span>{lang === "sw" ? "Takwimu zinaweza kuwa za zamani au hazipatikani. Jaribu kupakia tena kabla ya kufanya maamuzi." : "These figures may be stale or unavailable. Reload before relying on them."}</span>
+            <button type="button" onClick={() => { void load().catch(() => {}); }} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-red-700 px-3 py-2 font-semibold text-white hover:bg-red-800">
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              {lang === "sw" ? "Jaribu tena" : "Retry"}
+            </button>
+          </div>
+        )}
 
         <section className="border-y border-gray-200 py-3" aria-label={lang === "sw" ? "Chagua kipindi" : "Select period"}>
           <div className="grid grid-cols-4 gap-1 rounded-lg bg-gray-100 p-1">

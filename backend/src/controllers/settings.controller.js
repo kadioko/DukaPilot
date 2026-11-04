@@ -1,6 +1,8 @@
 const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
+const { performance } = require("node:perf_hooks");
 const { getShopIdForUser, getBillingShopIdForUser } = require("../lib/shopAccess");
+const { recordRequestPhase } = require("../middleware/requestDiagnostics");
 
 const VALID_CATEGORIES = new Set(["grocery", "pharmacy", "beauty", "bar", "restaurant", "hardware", "electronics", "clothing", "livestock", "farm", "general"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
@@ -171,8 +173,10 @@ const updateProfile = asyncHandler(async (req, res) => {
   if (!name) return res.status(400).json({ error: "Name cannot be empty" });
   if (name.length > 100) return res.status(400).json({ error: "Name must be 100 characters or less" });
 
+  const updateStartedAt = performance.now();
   if (req.user.staffId) await prisma.staffMember.update({ where: { id: req.user.staffId }, data: { name } });
   else await prisma.user.update({ where: { id: req.user.userId }, data: { name } });
+  recordRequestPhase(req, "settings.profileUpdate", performance.now() - updateStartedAt);
   req.audit = { action: "settings.profile.update", resourceType: req.user.staffId ? "staff" : "user", resourceId: req.user.staffId || req.user.userId, metadata: { name } };
   res.json({ message: "Profile updated", name });
 });

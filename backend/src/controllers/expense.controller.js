@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { performance } = require("node:perf_hooks");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { getRequestLanguage } = require("../lib/requestLanguage");
@@ -6,6 +7,7 @@ const { startOfTanzaniaDay, endOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzan
 const { occurredExpenseDateSql, needsExpenseDateReviewSql } = require("../lib/expenseReporting");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
+const { recordRequestPhase } = require("../middleware/requestDiagnostics");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -225,6 +227,7 @@ const list = asyncHandler(async (req, res) => {
   if (selectedRange.from || selectedRange.to) salesWhere.createdAt = { ...(selectedRange.from ? { gte: selectedRange.from } : {}), ...(selectedRange.to ? { lt: selectedRange.to } : {}) };
 
   const reviewWhere = sqlExpenseWhere(null, { needsReview: true });
+  const queriesStartedAt = performance.now();
   const [expenses, summaryRows, recurringExpenses, sales, previousRows, categoryBreakdown, returnRows, needsReviewExpenses] = await Promise.all([
     prisma.$queryRawUnsafe(`SELECT e.* FROM expenses e WHERE ${selectedWhere.where} ORDER BY e."spentAt" DESC LIMIT 100`, ...selectedWhere.params),
     prisma.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0)::bigint AS total, COUNT(*)::int AS count FROM expenses e WHERE ${selectedWhere.where}`, ...selectedWhere.params),
@@ -254,6 +257,7 @@ const list = asyncHandler(async (req, res) => {
     `,
     prisma.$queryRawUnsafe(`SELECT e.* FROM expenses e WHERE ${reviewWhere.where} ORDER BY e."spentAt" DESC LIMIT 100`, ...reviewWhere.params),
   ]);
+  recordRequestPhase(req, "expenses.parallelQueries", performance.now() - queriesStartedAt);
 
   const summary = summaryRows[0] || { total: 0, count: 0 };
   const total = Number(summary.total || 0);

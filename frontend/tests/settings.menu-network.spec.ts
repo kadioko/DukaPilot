@@ -38,3 +38,41 @@ test("menu preference save retries a transient network failure with the same rep
   expect(payloads[0]).toEqual(payloads[1]);
   expect(payloads[0].hiddenMenuItems).toContain("/assistant");
 });
+
+test("profile name save retries a lost response with the same idempotent update", async ({ page }) => {
+  const payloads: Array<{ name: string }> = [];
+  let profileAttempts = 0;
+
+  await page.addInitScript(() => localStorage.setItem("dukapilot_session_active", "1"));
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/auth/me")) {
+      return route.fulfill({ json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" }, features: { staff: true } } } });
+    }
+    if (url.includes("/settings/profile") && route.request().method() === "PATCH") {
+      profileAttempts += 1;
+      payloads.push(route.request().postDataJSON());
+      if (profileAttempts === 1) return route.abort("failed");
+      return route.fulfill({ json: { message: "Profile updated", name: payloads[1].name } });
+    }
+    if (url.includes("/settings")) {
+      return route.fulfill({ json: { settings: { id: "owner-1", phone: "+255700000001", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop", location: "Dar es Salaam", category: "grocery", isCatalogPublished: true, hiddenMenuItems: [] } } } });
+    }
+    if (url.includes("/barcodes/settings")) return route.fulfill({ json: { settings: {} } });
+    if (url.includes("/push/preferences")) return route.fulfill({ json: { preferences: { lowStock: false, debtDue: false, subscriptionExpiry: false, dailyAssistant: false, privatePreview: true }, subscriptions: [], pushConfigured: false } });
+    if (url.includes("/products/low-stock")) return route.fulfill({ json: { products: [] } });
+    if (url.includes("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    if (url.includes("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/settings");
+  const profileForm = page.locator("form").first();
+  await expect(profileForm.locator("input").first()).toBeVisible();
+  await profileForm.locator("input").first().fill("Amina M.");
+  await profileForm.getByRole("button").click();
+
+  await expect.poll(() => profileAttempts).toBe(2);
+  expect(payloads[0]).toEqual({ name: "Amina M." });
+  expect(payloads[1]).toEqual(payloads[0]);
+});

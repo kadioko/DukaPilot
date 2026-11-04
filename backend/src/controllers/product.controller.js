@@ -358,6 +358,7 @@ const list = asyncHandler(async (req, res) => {
   };
   let products;
   let total;
+  const queryStartedAt = performance.now();
   if (stockStatus === "LOW" || lowStock === "true") {
     ({ products, total } = await lowStockPage(shopId, {
       search,
@@ -375,6 +376,7 @@ const list = asyncHandler(async (req, res) => {
       prisma.product.count({ where }),
     ]);
   }
+  recordRequestPhase(req, "products.pageQuery", performance.now() - queryStartedAt);
 
   res.json({
     products: products.map((product) => redactProduct(product, req)),
@@ -589,6 +591,7 @@ const create = asyncHandler(async (req, res) => {
 const getSummary = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const { today, end: expiryLimit } = expiryWindow();
+  const queryStartedAt = performance.now();
   const [summary = {}] = await prisma.$queryRaw`
     SELECT
       COUNT(*)::int AS total,
@@ -599,6 +602,7 @@ const getSummary = asyncHandler(async (req, res) => {
       COUNT(*) FILTER (WHERE "doesNotExpire" = false AND "expiryDate" < ${today})::int AS expired
     FROM products
     WHERE "shopId" = ${shopId} AND "isActive" = true`;
+  recordRequestPhase(req, "products.summaryQuery", performance.now() - queryStartedAt);
 
   res.json({
     summary: {

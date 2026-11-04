@@ -673,3 +673,29 @@ test("inventory filters stock status, supplier, and expiry without hiding other 
   await expect(page.getByText("Engine Oil")).toBeVisible();
   await expect(page.getByText("Spark Plug")).not.toBeVisible();
 });
+
+test("inventory makes unavailable summary counts explicit and allows recovery", async ({ page }) => {
+  let summaryAttempts = 0;
+  await page.addInitScript(() => localStorage.setItem("dukapilot_token", "playwright-merchant-token"));
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/auth/me")) return route.fulfill({ json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Amina Shop" } } } });
+    if (url.includes("/products/summary")) {
+      summaryAttempts += 1;
+      if (summaryAttempts <= 4) return route.abort("failed");
+      return route.fulfill({ json: { summary: { total: 3, lowStock: 1, outOfStock: 0, inStock: 3, expiringSoon: 0, expired: 0 } } });
+    }
+    if (url.includes("/products?")) return route.fulfill({ json: { products: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } } });
+    if (url.includes("/suppliers")) return route.fulfill({ json: { suppliers: [] } });
+    if (url.includes("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    if (url.includes("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/inventory");
+  await expect(page.getByText("Stock counts are unavailable right now; unavailable does not mean zero.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /All Products.*-/ })).toBeVisible();
+  await page.getByRole("button", { name: "Retry" }).first().click();
+  await expect.poll(() => summaryAttempts).toBe(5);
+  await expect(page.getByRole("button", { name: /All Products.*3/ })).toBeVisible();
+});

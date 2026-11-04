@@ -426,7 +426,7 @@ export const api = {
     return request<T>(path, options, lang);
   },
   patch: <T>(path: string, body: unknown, lang?: Lang) =>
-    path === "/settings/menu"
+    path === "/settings/menu" || path === "/settings/profile"
       ? retryNetworkRequest<T>(path, { method: "PATCH", body: JSON.stringify(body) }, lang, "deferred", "default")
       : request<T>(path, { method: "PATCH", body: JSON.stringify(body) }, lang),
   put: <T>(path: string, body: unknown, lang?: Lang) =>

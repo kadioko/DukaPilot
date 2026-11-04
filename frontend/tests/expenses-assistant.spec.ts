@@ -115,6 +115,28 @@ test("expense form schedules a future monthly payment without posting a ledger e
   await expect(page.getByText(/Ratiba imewekwa kwa/)).toBeVisible();
 });
 
+test("expenses explain an unavailable report and recover through an explicit retry", async ({ page }) => {
+  await mockMerchantShell(page);
+  let loadAttempts = 0;
+  await page.route(/\/(?:_api|api)\/expenses(?:\?.*)?$/, async (route) => {
+    loadAttempts += 1;
+    if (loadAttempts <= 4) return route.abort("failed");
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ expenses: [], needsReviewExpenses: [], recurringExpenses: [], summary: { total: 150000, count: 1, totalSales: 500000, grossProfit: 200000, netProfit: 50000, expensePercentOfSales: 30, topCategories: [] } }),
+    });
+  });
+
+  await page.goto("/expenses");
+  const reportError = page.getByRole("alert").filter({ hasText: "Takwimu zinaweza kuwa za zamani au hazipatikani." });
+  await expect(reportError).toBeVisible();
+  await page.getByRole("button", { name: "Jaribu tena" }).click();
+  await expect.poll(() => loadAttempts).toBe(5);
+  await expect(reportError).toHaveCount(0);
+  await expect(page.getByText(/150,000/)).toBeVisible();
+});
+
 test("expense date review shows actionable errors and saves confirmed payments on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockMerchantShell(page);

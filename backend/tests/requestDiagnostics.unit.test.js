@@ -69,6 +69,37 @@ test("request diagnostics generate a UUID and record client disconnects for moni
 
 test("request diagnostics omit bodies, IDs, queries, and unrelated routes", () => {
   assert.equal(diagnosticRoute({ method: "GET", path: "/api/dashboard", originalUrl: "/api/dashboard?shopId=private" }), "/api/dashboard");
-  assert.equal(diagnosticRoute({ method: "GET", path: "/api/products", originalUrl: "/api/products" }), null);
+  assert.equal(diagnosticRoute({ method: "GET", path: "/api/products", originalUrl: "/api/products?page=1&secret=private" }), "/api/products");
+  assert.equal(diagnosticRoute({ method: "GET", path: "/api/products/summary", originalUrl: "/api/products/summary" }), "/api/products/summary");
+  assert.equal(diagnosticRoute({ method: "GET", path: "/api/expenses", originalUrl: "/api/expenses?period=week" }), "/api/expenses");
+  assert.equal(diagnosticRoute({ method: "PATCH", path: "/api/settings/profile", originalUrl: "/api/settings/profile" }), "/api/settings/profile");
   assert.equal(diagnosticRoute({ method: "POST", path: "/api/products/abc", originalUrl: "/api/products/abc" }), null);
+});
+
+test("slow-read diagnostics omit healthy fast requests but retain failed request timing", () => {
+  const originalInfo = console.info;
+  const entries = [];
+  console.info = (line) => entries.push(JSON.parse(line));
+  try {
+    const fastReq = { method: "GET", path: "/api/expenses", originalUrl: "/api/expenses?period=week", headers: {} };
+    const fastRes = makeResponse();
+    requestDiagnostics(fastReq, fastRes, () => {});
+    fastRes.writableFinished = true;
+    fastRes.emit("finish");
+    assert.equal(entries.length, 0);
+
+    const failedReq = { method: "GET", path: "/api/expenses", originalUrl: "/api/expenses?period=week", headers: {} };
+    const failedRes = makeResponse();
+    requestDiagnostics(failedReq, failedRes, () => {});
+    failedRes.statusCode = 503;
+    failedRes.writableFinished = true;
+    failedRes.emit("finish");
+  } finally {
+    console.info = originalInfo;
+  }
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].path, "/api/expenses");
+  assert.equal(entries[0].status, 503);
+  assert.equal(JSON.stringify(entries).includes("period=week"), false);
 });

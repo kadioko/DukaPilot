@@ -1,6 +1,6 @@
 # Sentry Production Monitoring
 
-Last verified: 2026-08-06
+Last reviewed: 2026-11-04
 
 ## What Sentry Does For DukaPilot
 
@@ -60,6 +60,12 @@ Each API diagnostic includes only:
 - Browser connectivity state, browser language, and application environment.
 
 It must never include request or response bodies, authorization headers, cookies, customer details, sales data, payment references, or secrets. For an API incident, compare the Sentry event timestamp with Railway HTTP logs and Vercel deployment logs before treating it as a backend outage.
+
+For slow or failed requests to `GET /api/products`, `GET /api/products/summary`, `GET /api/expenses`, and `PATCH /api/settings/profile`, the backend logs a timing record only when the request is slow (at least 1.5 seconds), returns a `5xx`, or the client disconnects. Records include the request ID, method, path without query parameters, status, duration, outcome, and safe server-side phase timings. Use the Sentry event's `requestId` to search Railway logs. A matching backend record means the request reached Railway; no matching record suggests it failed earlier in the browser/Vercel/proxy path, but verify the relevant platform logs before concluding.
+
+The inventory page treats missing summary data as unavailable rather than zero and provides an explicit retry. Expense and inventory list failures also provide an in-page retry. Product creation uses a persisted idempotency key and an uncertain-save recovery state; do not ask a merchant to start a second product until the original attempt is confirmed or retried with that same key. Profile-name PATCH retries once with the identical value because setting a name is idempotent.
+
+As of 2026-11-04, the frontend Sentry feed had seven unresolved issue groups with recent production network/timeout events on authentication, inventory, settings, and expenses. Keep them unresolved until correlated with platform logs and a deployed fix has been verified. The backend feed had no unresolved issues with events in the preceding 30 days; this does not establish that every backend request succeeded.
 
 ## Test The Backend Alert
 
