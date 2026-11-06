@@ -158,8 +158,20 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
       products.unshift(createdProduct);
       product = createdProduct;
     }
-    const lostResponses = body.name === "Sukari White" ? 1 : body.name === "Maharage" ? 2 : 0;
+    const lostResponses = body.name === "Sukari White" ? 1 : body.name === "Maharage" ? 3 : 0;
     if (attempts <= lostResponses) {
+      if (body.name === "Maharage" && attempts === 1) {
+        await route.fulfill({ status: 502, contentType: "text/plain", body: "An error occurred with this application. ROUTER_EXTERNAL_TARGET_ERROR\n" });
+        return;
+      }
+      if (body.name === "Maharage" && attempts === 2) {
+        await route.fulfill({ status: 201, contentType: "application/json", body: '{"product":' });
+        return;
+      }
+      if (body.name === "Maharage" && attempts === 3) {
+        await route.fulfill({ status: 201, json: {} });
+        return;
+      }
       await route.abort("failed");
       return;
     }
@@ -309,12 +321,14 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await expect(page.getByLabel(/product name|jina la bidhaa/i)).toHaveValue("Maharage");
   await expect(page.getByLabel(/product name|jina la bidhaa/i)).toBeDisabled();
   await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText(/couldn't confirm whether the product was saved/i)).toBeVisible();
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
   await expect(page.getByText("Maharage")).toBeVisible();
   await expect(page.getByText(/tzs 1,500/i)).toBeVisible();
-  expect(productCreateRequestKeys).toHaveLength(5);
+  expect(productCreateRequestKeys).toHaveLength(6);
   expect(productCreateRequestKeys.slice(2).every((key) => key === productCreateRequestKeys[2])).toBe(true);
-  expect(apiRequestIds).toHaveLength(5);
-  expect(new Set(apiRequestIds).size).toBe(5);
+  expect(apiRequestIds).toHaveLength(6);
+  expect(new Set(apiRequestIds).size).toBe(6);
   expect(products.filter((product) => product.name === "Maharage")).toHaveLength(1);
 
   await page.getByLabel(/actions for sukari white|vitendo vya sukari white/i).click();
@@ -430,6 +444,55 @@ test("inventory search debounces product requests and loads summary independentl
   expect(productQueries.filter((value) => value === "rice")).toHaveLength(1);
   expect(initialSummaryRequests).toBeGreaterThan(0);
   expect(summaryRequests).toBe(initialSummaryRequests);
+});
+
+test("inventory cancels a superseded search and retries a temporary gateway failure", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
+  let releaseOldSearch: (() => void) | undefined;
+  const oldSearchHeld = new Promise<void>((resolve) => { releaseOldSearch = resolve; });
+  let oldSearchStarted = false;
+  let latestAttempts = 0;
+  const failedRequests: string[] = [];
+  page.on("requestfailed", (request) => failedRequests.push(request.url()));
+  await page.route("**/*api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/auth/me")) return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", shop: { name: "Test Shop" } } } });
+    if (url.pathname.endsWith("/products/summary")) return route.fulfill({ json: { summary: { total: 1 } } });
+    if (url.pathname.endsWith("/products")) {
+      const search = url.searchParams.get("search");
+      if (search === "old") {
+        oldSearchStarted = true;
+        await oldSearchHeld;
+        return route.fulfill({ json: { products: [] } }).catch(() => {});
+      }
+      if (search === "rice") {
+        latestAttempts++;
+        if (latestAttempts === 1) return route.fulfill({ status: 502, contentType: "text/plain", body: "ROUTER_EXTERNAL_TARGET_ERROR\n" });
+        return route.fulfill({ json: { products: [{ id: "rice-1", name: "Rice Flour", unit: "kg", currentStock: 4, minimumStock: 1, sellingPrice: 2000, isActive: true }] } });
+      }
+      if (search === "broken") return route.fulfill({ status: 502, contentType: "text/plain", body: "ROUTER_EXTERNAL_TARGET_ERROR\n" });
+      return route.fulfill({ json: { products: [] } });
+    }
+    if (url.pathname.endsWith("/suppliers")) return route.fulfill({ json: { suppliers: [] } });
+    if (url.pathname.endsWith("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    if (url.pathname.endsWith("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    return route.fulfill({ json: {} });
+  });
+  try {
+    await page.goto("/inventory");
+    const search = page.getByRole("textbox", { name: "Search products" });
+    await search.fill("old");
+    await expect.poll(() => oldSearchStarted).toBe(true);
+    await search.fill("rice");
+    await expect(page.getByText("Rice Flour")).toBeVisible();
+    expect(latestAttempts).toBe(2);
+    await expect.poll(() => failedRequests.some((url) => url.includes("search=old"))).toBe(true);
+    await search.fill("broken");
+    await expect(page.getByRole("main").getByRole("alert")).toContainText("DukaPilot has a temporary server problem");
+    await expect(page.getByText("ROUTER_EXTERNAL_TARGET_ERROR")).toHaveCount(0);
+  } finally {
+    releaseOldSearch?.();
+  }
 });
 
 test("inventory shows the real total and lets merchants reach later product pages", async ({ page }) => {

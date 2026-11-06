@@ -239,6 +239,7 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
   const latestLoad = useRef(0);
+  const productLoadController = useRef<AbortController | null>(null);
   const mutationInFlight = useRef(false);
   const adjustRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const createRequestId = useRef<string | null>(null);
@@ -285,6 +286,9 @@ export default function InventoryPage() {
 
   const fetchProducts = useCallback(async (refreshSummary = false) => {
     const requestId = ++latestLoad.current;
+    productLoadController.current?.abort();
+    const controller = new AbortController();
+    productLoadController.current = controller;
     setLoading(true);
     setListError("");
     try {
@@ -296,7 +300,7 @@ export default function InventoryPage() {
       if (expiryFilter !== "ALL") params.set("expiryStatus", expiryFilter);
       if (usage !== "ALL") params.set("usage", usage);
       if (supplierId) params.set("supplierId", supplierId);
-      const data = await api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?${params}`);
+      const data = await api.get<{ products: Product[]; pagination?: ProductPagination }>(`/products?${params}`, lang, controller.signal);
       if (requestId !== latestLoad.current) return;
       const nextPagination = data.pagination || {
         page: currentPage,
@@ -313,17 +317,19 @@ export default function InventoryPage() {
       setListError("");
       if (refreshSummary) await fetchStockSummary();
     } catch (value: unknown) {
-      if (requestId === latestLoad.current) {
+      if (!controller.signal.aborted && requestId === latestLoad.current) {
         const message = value instanceof Error ? value.message : (lang === "sw" ? "Imeshindikana kupakia bidhaa." : "Could not load products.");
         setListError(message);
         toast(message, "error");
       }
     } finally {
-      if (requestId === latestLoad.current) setLoading(false);
+      if (productLoadController.current === controller) productLoadController.current = null;
+      if (!controller.signal.aborted && requestId === latestLoad.current) setLoading(false);
     }
   }, [settledSearch, stockStatus, expiryFilter, usage, supplierId, currentPage, toast, lang, fetchStockSummary]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => () => { latestLoad.current++; productLoadController.current?.abort(); }, []);
   useEffect(() => { fetchStockSummary(); }, [fetchStockSummary]);
   useEffect(() => {
     const timeout = window.setTimeout(() => setSettledSearch(search.trim()), 300);
@@ -510,7 +516,10 @@ export default function InventoryPage() {
       }
       const response = editProduct
         ? await api.patch<{ product: Product }>(`/products/${editProduct.id}`, body)
-        : await api.post<{ product: Product }>("/products", body);
+        : await api.post<{ product: Product }>("/products", body, lang);
+      if (!response?.product?.id) {
+        throw new ApiError(t("auth.error.unexpectedResponse", lang), undefined, 200, undefined, "INVALID_RESPONSE");
+      }
       if (editProduct) {
         setProducts((current) => current.map((product) => product.id === editProduct.id ? response.product : product));
       } else {
@@ -526,7 +535,7 @@ export default function InventoryPage() {
       await fetchProducts(true);
     } catch (e: unknown) {
       if (!editProduct) {
-        const uncertain = e instanceof ApiError && (e.failureType === "TIMEOUT" || e.failureType === "NETWORK" || (e.status || 0) >= 500);
+        const uncertain = e instanceof ApiError && (["TIMEOUT", "NETWORK", "INVALID_RESPONSE"].includes(e.failureType || "") || (e.status || 0) >= 500);
         createPendingUncertain.current = uncertain;
         if (uncertain) {
           if (pendingCreateForm.current) setForm(pendingCreateForm.current);
@@ -546,7 +555,7 @@ export default function InventoryPage() {
           pendingCreateForm.current = null;
         }
       }
-      const uncertainCreate = !editProduct && e instanceof ApiError && (e.failureType === "TIMEOUT" || e.failureType === "NETWORK" || (e.status || 0) >= 500);
+      const uncertainCreate = !editProduct && e instanceof ApiError && (["TIMEOUT", "NETWORK", "INVALID_RESPONSE"].includes(e.failureType || "") || (e.status || 0) >= 500);
       setError(uncertainCreate
         ? uncertainProductSaveMessage(lang, pendingSavePersisted)
         : e instanceof Error ? e.message : t("common.error", lang));

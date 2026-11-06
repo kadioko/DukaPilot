@@ -332,6 +332,50 @@ test("product creation rejects reuse of a retry key with changed details", async
   assert.equal(forwardedError.code, "PRODUCT_CREATE_KEY_CONFLICT");
 });
 
+test("concurrent product retries recover matching saves after barcode or SKU conflicts only", async () => {
+  let savedProduct;
+  const req = {
+    user: { userId: "user-1" },
+    body: { createRequestId: "aa90c06f-5aeb-4b07-9f41-1fa817c84c12", name: "Rice", buyingPrice: 2000, sellingPrice: 3000 },
+  };
+  const first = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findFirst: async () => null },
+    $transaction: async (work) => work({ product: {
+      findFirst: async () => null,
+      create: async ({ data }) => (savedProduct = { id: "prod-original", ...data, supplier: null }),
+    } }),
+  });
+  await first.create(req, createRes());
+
+  for (const code of ["P2002", "BARCODE_DUPLICATE", "SKU_DUPLICATE"]) {
+    let lookups = 0;
+    const conflict = Object.assign(new Error("duplicate"), { code });
+    const retry = loadController({
+      shop: { findUnique: async () => ({ id: "shop-1" }) },
+      product: { findFirst: async ({ where }) => {
+        assert.deepEqual(where, { shopId: "shop-1", createRequestId: req.body.createRequestId });
+        return ++lookups === 1 ? null : savedProduct;
+      } },
+      $transaction: async () => { throw conflict; },
+    });
+    const res = createRes();
+    await retry.create(req, res);
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.payload.product.id, "prod-original");
+  }
+
+  const genuineDuplicate = Object.assign(new Error("duplicate barcode"), { code: "BARCODE_DUPLICATE", status: 409 });
+  const conflictCtrl = loadController({
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    product: { findFirst: async () => null },
+    $transaction: async () => { throw genuineDuplicate; },
+  });
+  let forwardedError;
+  await conflictCtrl.create(req, createRes(), (error) => { forwardedError = error; });
+  assert.equal(forwardedError, genuineDuplicate);
+});
+
 test("repeating a soft product deletion is safe and returns success", async () => {
   const product = { id: "prod-deleted", shopId: "shop-1", isActive: false };
   let updates = 0;

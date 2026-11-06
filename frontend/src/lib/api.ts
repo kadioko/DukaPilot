@@ -35,6 +35,7 @@ export interface ApiRequestContext {
   apiHostname: string;
   upstreamHostname?: string;
   transport: "same-origin-proxy" | "direct-api";
+  gatewayError?: "ROUTER_EXTERNAL_TARGET_ERROR";
 }
 
 export class ApiError extends Error {
@@ -134,6 +135,7 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting
     apiHostname: context.apiHostname,
     upstreamHostname: context.upstreamHostname,
     transport: context.transport,
+    gatewayError: context.gatewayError,
     status,
     networkErrorType: failureType === "NETWORK" ? "fetch-rejected" : undefined,
     timedOut: failureType === "TIMEOUT",
@@ -223,12 +225,12 @@ export function getFriendlyErrorMessage(message: string, lang: Lang): string {
 }
 
 function getHttpErrorMessage(status: number, rawMessage: string, lang: Lang) {
+  if (status >= 500) return t("api.error.temporary", lang);
   const knownMessage = getFriendlyErrorMessage(rawMessage, lang);
   if (knownMessage !== rawMessage) return knownMessage;
   if (status === 401) return t("auth.error.sessionExpired", lang);
   if (status === 403) return t("api.error.permissionDenied", lang);
   if (status === 404) return t("api.error.notFound", lang);
-  if (status >= 500) return t("api.error.temporary", lang);
   return rawMessage;
 }
 
@@ -299,10 +301,15 @@ async function request<T>(
 
   let res: Response;
   const controller = new AbortController();
+  const externalSignal = options.signal;
+  const cancelRequest = () => controller.abort();
+  if (externalSignal?.aborted) cancelRequest();
+  else externalSignal?.addEventListener("abort", cancelRequest, { once: true });
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     res = await fetch(`${baseUrl}${path}`, { ...options, headers, credentials: "include", signal: controller.signal });
   } catch (cause) {
+    if (externalSignal?.aborted) throw new DOMException("Request cancelled", "AbortError");
     const timedOut = isAbortError(cause);
     const error = new ApiError(
       timedOut ? t("api.error.timeout", lang) : t("api.error.unavailable", lang),
@@ -315,6 +322,7 @@ async function request<T>(
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", cancelRequest);
   }
   const responseRequestId = res.headers.get("x-request-id");
   if (responseRequestId && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(responseRequestId)) {
@@ -347,7 +355,17 @@ async function request<T>(
 
   const contentType = res.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
-  const payload = isJson ? await res.json() : await res.text();
+  let payload: string | { error?: string; code?: string; details?: ApiErrorDetail[] } | null;
+  try {
+    payload = isJson ? await res.json() : await res.text();
+  } catch {
+    if (externalSignal?.aborted) throw new DOMException("Request cancelled", "AbortError");
+    const failureType = res.ok ? "INVALID_RESPONSE" : "HTTP";
+    const message = res.ok ? t("auth.error.unexpectedResponse", lang) : getHttpErrorMessage(res.status, "", lang);
+    const error = new ApiError(message, undefined, res.status, context, failureType);
+    reportApiFailure(error, context, reporting);
+    throw error;
+  }
 
   if (!res.ok) {
     const rawMessage =
@@ -355,7 +373,11 @@ async function request<T>(
         ? payload || `Request failed with status ${res.status}`
         : payload?.error || `Request failed with status ${res.status}`;
 
-    const error = new ApiError(getHttpErrorMessage(res.status, rawMessage, lang), typeof payload === "string" ? undefined : payload, res.status, context, "HTTP");
+    if (res.status >= 500 && typeof rawMessage === "string" && rawMessage.includes("ROUTER_EXTERNAL_TARGET_ERROR")) {
+      context.gatewayError = "ROUTER_EXTERNAL_TARGET_ERROR";
+    }
+
+    const error = new ApiError(getHttpErrorMessage(res.status, rawMessage, lang), typeof payload === "string" ? undefined : payload || undefined, res.status, context, "HTTP");
     reportApiFailure(error, context, reporting);
     throw error;
   }
@@ -375,12 +397,14 @@ async function retryNetworkRequest<T>(
   lang: Lang | undefined,
   firstAttemptReporting: ApiFailureReporting,
   retryReporting: ApiFailureReporting,
+  retryGatewayErrors = false,
 ): Promise<T> {
   try {
     return await request<T>(path, options, lang, false, firstAttemptReporting);
   } catch (error) {
-    if (!(error instanceof ApiError) || !["NETWORK", "TIMEOUT"].includes(error.failureType || "")) throw error;
+    if (!(error instanceof ApiError) || !(["NETWORK", "TIMEOUT"].includes(error.failureType || "") || (retryGatewayErrors && [502, 503, 504].includes(error.status || 0)))) throw error;
     await new Promise((resolve) => setTimeout(resolve, 350));
+    if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
     return request<T>(path, options, lang, false, retryReporting);
   }
 }
@@ -391,14 +415,13 @@ async function backgroundRequest<T>(path: string, options: RequestInit = {}, lan
   return retryNetworkRequest<T>(path, options, lang, "background", "background");
 }
 
-async function readRequest<T>(path: string, lang?: Lang): Promise<T> {
-  // A completed GET can safely be retried if its response is lost between the
-  // browser, Vercel's proxy, and Railway. Only report it if that retry fails.
-  return retryNetworkRequest<T>(path, {}, lang, "deferred", "default");
+async function readRequest<T>(path: string, lang?: Lang, signal?: AbortSignal): Promise<T> {
+  // GETs can be retried after a lost response or transient gateway failure.
+  return retryNetworkRequest<T>(path, { signal }, lang, "deferred", "default", true);
 }
 
 export const api = {
-  get: <T>(path: string, lang?: Lang) => readRequest<T>(path, lang),
+  get: <T>(path: string, lang?: Lang, signal?: AbortSignal) => readRequest<T>(path, lang, signal),
   getRecoverable: <T>(path: string, lang?: Lang) => retryNetworkRequest<T>(path, {}, lang, "deferred", "deferred"),
   getBackground: <T>(path: string, lang?: Lang) => backgroundRequest<T>(path, {}, lang),
   postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
@@ -420,7 +443,7 @@ export const api = {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.createRequestId)
     ) {
       // Product creation is server-idempotent; retry a lost response with the same key.
-      return retryNetworkRequest<T>(path, options, lang, "deferred", "default");
+      return retryNetworkRequest<T>(path, options, lang, "deferred", "default", true);
     }
     if (path === "/auth/login") return retryNetworkRequest<T>(path, options, lang, "deferred", "default");
     return request<T>(path, options, lang);

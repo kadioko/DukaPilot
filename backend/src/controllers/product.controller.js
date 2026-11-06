@@ -559,21 +559,16 @@ const create = asyncHandler(async (req, res) => {
       return created;
     });
   } catch (error) {
-    if (createRequestId && error?.code === "P2002") {
-      const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(" ") : String(error?.meta?.target || "");
-      if (target.includes("createRequestId")) {
-        const recoveryLookupStartedAt = performance.now();
-        const existing = await prisma.product.findFirst({
-          where: { shopId, createRequestId },
-          include: { supplier: { select: { id: true, name: true, phone: true } } },
-        });
-        recordRequestPhase(req, "product.idempotencyRecoveryLookup", performance.now() - recoveryLookupStartedAt);
-        if (existing) {
-          if (existing.createRequestHash !== createRequestHash) throw idempotencyConflict();
-          product = existing;
-        } else {
-          throw error;
-        }
+    if (createRequestId && ["P2002", "BARCODE_DUPLICATE", "SKU_DUPLICATE"].includes(error?.code)) {
+      const recoveryLookupStartedAt = performance.now();
+      const existing = await prisma.product.findFirst({
+        where: { shopId, createRequestId },
+        include: { supplier: { select: { id: true, name: true, phone: true } } },
+      });
+      recordRequestPhase(req, "product.idempotencyRecoveryLookup", performance.now() - recoveryLookupStartedAt);
+      if (existing) {
+        if (existing.createRequestHash !== createRequestHash) throw idempotencyConflict();
+        product = existing;
       } else {
         throw error;
       }
