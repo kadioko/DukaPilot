@@ -160,7 +160,7 @@ const farmSummary = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const language = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase() === "en" ? "en" : "sw";
   const configuration = await getFarmConfiguration(shopId);
-  if (!configuration?.isFarm) return res.json({ actions: [] });
+  if (!configuration?.isFarm) return res.json({ actions: [], configuration: { hasCrops: false, hasLivestock: false } });
   const sinceWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const sinceTwoDays = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
   const actions = [];
@@ -198,7 +198,7 @@ const farmSummary = asyncHandler(async (req, res) => {
     for (const alert of weatherWarnings) actions.push({ id: `crop-weather-${alert.id}`, rank: 88, href: "/crops/operations", title: language === "sw" ? "Kagua tahadhari ya shamba" : "Review field warning", body: language === "sw" ? `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Shamba"}: kuna tahadhari iliyorekodiwa. Kagua chanzo na rekodi hali halisi.` : `${alert.cropCycle?.cropName || alert.cropPlot?.name || "Field"}: a warning is recorded. Review its source and the actual field condition.`, action: language === "sw" ? "Fungua mpango wa shamba" : "Open field plan" });
     if (remainingHarvest) actions.push({ id: `crop-review-${remainingHarvest.id}`, rank: 71, href: "/crops", title: language === "sw" ? `Kagua stock ya ${remainingHarvest.outputProduct.name}` : `Review ${remainingHarvest.outputProduct.name} harvest stock`, body: language === "sw" ? `Kuna ${remainingHarvest.remainingQuantity} ${remainingHarvest.outputProduct.unit} kutoka ${remainingHarvest.cropCycle.cropName} ya ${remainingHarvest.cropCycle.plot.name} ambayo bado ipo kwenye stock.` : `${remainingHarvest.remainingQuantity} ${remainingHarvest.outputProduct.unit} from ${remainingHarvest.cropCycle.cropName} in ${remainingHarvest.cropCycle.plot.name} is still in stock.`, action: language === "sw" ? "Kagua Mazao" : "Review Crops" });
   }
-  res.json({ actions: actions.sort((a, b) => b.rank - a.rank) });
+  res.json({ actions: actions.sort((a, b) => b.rank - a.rank), configuration: { hasCrops: Boolean(configuration.hasCrops), hasLivestock: Boolean(configuration.hasLivestock) } });
 });
 
 const listActions = asyncHandler(async (req, res) => {

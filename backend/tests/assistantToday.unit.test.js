@@ -10,7 +10,11 @@ const dashboardPath = path.resolve(__dirname, "../src/controllers/dashboard.cont
 const assistantPath = path.resolve(__dirname, "../src/controllers/assistant.controller.js");
 const purchasePath = path.resolve(__dirname, "../src/controllers/purchaseAnalytics.controller.js");
 const cashSessionPath = path.resolve(__dirname, "../src/controllers/cashSession.controller.js");
-const mockedPaths = [controllerPath, prismaPath, shopAccessPath, dashboardPath, assistantPath, purchasePath, cashSessionPath];
+const productInsightsPath = path.resolve(__dirname, "../src/services/assistantProductInsights.service.js");
+const businessInsightsPath = path.resolve(__dirname, "../src/services/assistantBusinessInsights.service.js");
+const branchPath = path.resolve(__dirname, "../src/controllers/branch.controller.js");
+const farmAccessPath = path.resolve(__dirname, "../src/lib/farmAccess.js");
+const mockedPaths = [controllerPath, prismaPath, shopAccessPath, dashboardPath, assistantPath, purchasePath, cashSessionPath, productInsightsPath, businessInsightsPath, branchPath, farmAccessPath];
 
 function cachedModule(id, exports) {
   return { id, filename: id, loaded: true, exports };
@@ -23,7 +27,7 @@ function makeHandler(payload, error) {
   };
 }
 
-function loadWithMocks({ prisma, overview, profitAnalytics, assistant, purchaseReport, currentCashSession } = {}) {
+function loadWithMocks({ prisma, overview, profitAnalytics, assistant, purchaseReport, currentCashSession, productInsights, businessInsights, branchOverview, farmConfiguration } = {}) {
   const originalCache = new Map(mockedPaths.map((file) => [file, require.cache[file]]));
   const safePrisma = prisma || { $queryRaw: async () => [] };
   require.cache[prismaPath] = cachedModule(prismaPath, safePrisma);
@@ -34,6 +38,10 @@ function loadWithMocks({ prisma, overview, profitAnalytics, assistant, purchaseR
   });
   require.cache[purchasePath] = cachedModule(purchasePath, { report: purchaseReport || makeHandler({ summary: { receiptCount: 0, landedCost: 0 }, suppliers: [] }) });
   require.cache[cashSessionPath] = cachedModule(cashSessionPath, { current: currentCashSession || makeHandler({ session: null }) });
+  require.cache[productInsightsPath] = cachedModule(productInsightsPath, { productInsights: productInsights || (async () => []) });
+  require.cache[businessInsightsPath] = cachedModule(businessInsightsPath, businessInsights || { supplierBalances: async () => [], debtCollections: async () => ({ amount: 0, count: 0 }) });
+  require.cache[branchPath] = cachedModule(branchPath, { overview: branchOverview || makeHandler({ branches: [] }) });
+  require.cache[farmAccessPath] = cachedModule(farmAccessPath, { getFarmConfiguration: farmConfiguration || (async () => ({ isFarm: true, hasCrops: true, hasLivestock: true })) });
   require.cache[assistantPath] = cachedModule(assistantPath, assistant || {
     stockSummary: makeHandler({ actions: [] }),
     quotationSummary: makeHandler({ actions: [] }),
@@ -263,7 +271,147 @@ test("Ask only accesses the current actor's cash shift when allowed", async () =
     await loader.controller.ask({ ...request({ ...actor, permissions: {} }), body: { question: "Is my shift open?" } }, denied, (error) => { throw error; });
     assert.match(denied.payload.answer.message, /permission/i);
     assert.equal(calls, 1);
-    assert.equal(loader.controller.detectIntent("Which team shifts have a difference?"), "unsupported");
+    assert.equal(loader.controller.detectIntent("Which team shifts have a difference?"), "teamShifts");
+  } finally { loader.restore(); }
+});
+
+test("product questions require report access and an explicit tenant-scoped product selection", async () => {
+  let calls = 0;
+  const loader = loadWithMocks({ productInsights: async (shopId, from, to, metric, productId) => {
+    calls += 1;
+    assert.equal(shopId, "shop-1");
+    assert.ok(from < to);
+    if (productId && productId !== "own-product") return [];
+    return [{ id: "own-product", name: "Rice", unit: "kg", units: 4, revenue: 12000, profit: 5000, missing: 0, incompleteProducts: 0 }];
+  } });
+  try {
+    const ask = async (user, body) => { const res = response(); await loader.controller.ask({ ...request(user), body }, res, (error) => { throw error; }); return res.payload.answer; };
+    const denied = await ask({ userId: "owner", staffId: "staff", permissions: { canSell: true } }, { question: "Top products this month" });
+    assert.match(denied.message, /permission/i);
+    assert.equal(calls, 0);
+    const ranking = await ask({ userId: "owner" }, { question: "Top products this month", metric: "units" });
+    assert.match(ranking.message, /Rice: 4 kg/);
+    assert.match(ranking.message, /Returns and reversals/);
+    const missing = await ask({ userId: "owner" }, { question: "Product performance this month" });
+    assert.match(missing.message, /Select a product/);
+    const wrong = await ask({ userId: "owner" }, { question: "Product performance this month", productId: "other-shop-product" });
+    assert.match(wrong.message, /unavailable in this shop/);
+    const selected = await ask({ userId: "owner" }, { question: "Product performance this month", productId: "own-product" });
+    assert.match(selected.message, /12,000/);
+  } finally { loader.restore(); }
+});
+
+test("assistant product and supplier search enforce permissions and tenant-scoped selection", async () => {
+  let calls = 0;
+  const loader = loadWithMocks({ prisma: {
+    product: { findMany: async (query) => { calls += 1; assert.equal(query.where.shopId, "shop-1"); assert.deepEqual(Object.keys(query.select).sort(), ["id", "name", "sku", "unit"]); return []; } },
+    supplier: { findMany: async (query) => { calls += 1; assert.equal(query.where.stockReceipts.some.shopId, "shop-1"); assert.deepEqual(Object.keys(query.select).sort(), ["id", "name"]); return []; } },
+  } });
+  try {
+    const noReports = response();
+    await loader.controller.productOptions(request({ userId: "owner", staffId: "s", permissions: { canManageStock: true } }, { search: "ri" }), noReports, (error) => { throw error; });
+    assert.equal(noReports.statusCode, 403); assert.equal(calls, 0);
+    const noStock = response();
+    await loader.controller.supplierOptions(request({ userId: "owner", staffId: "s", permissions: { canViewReports: true } }, { search: "su" }), noStock, (error) => { throw error; });
+    assert.equal(noStock.statusCode, 403); assert.equal(calls, 0);
+    await loader.controller.productOptions(request({ userId: "owner" }, { search: "ri" }), response(), (error) => { throw error; });
+    await loader.controller.supplierOptions(request({ userId: "owner" }, { search: "su" }), response(), (error) => { throw error; });
+    assert.equal(calls, 2);
+  } finally { loader.restore(); }
+});
+
+test("operational record search is tenant-scoped and does not select prices", async () => {
+  let called = 0;
+  const loader = loadWithMocks({ prisma: {
+    shop: { findUnique: async ({ where }) => { assert.equal(where.id, "shop-1"); return { category: "farm" }; } },
+    product: { findMany: async (query) => { called += 1; assert.equal(query.where.shopId, "shop-1"); assert.deepEqual(Object.keys(query.select).sort(), ["id", "name", "unit"]); return []; } },
+  } });
+  try {
+    const noPermission = response();
+    await loader.controller.operationalOptions(request({ userId: "owner", staffId: "s", permissions: {} }, { kind: "input", search: "feed" }), noPermission, (error) => { throw error; });
+    assert.equal(noPermission.statusCode, 403); assert.equal(called, 0);
+    const allowed = response();
+    await loader.controller.operationalOptions(request({ userId: "owner", staffId: "s", permissions: { canManageFarm: true } }, { kind: "input", search: "feed" }), allowed, (error) => { throw error; });
+    assert.equal(called, 1);
+  } finally { loader.restore(); }
+});
+
+test("supplier balances and debt collections require the relevant permissions and scope", async () => {
+  let balanceCalls = 0; let collectionCalls = 0;
+  const loader = loadWithMocks({ businessInsights: {
+    supplierBalances: async (shop, supplier) => { balanceCalls += 1; assert.equal(shop, "shop-1"); assert.equal(supplier, "supplier-1"); return [{ name: "Test supplier", balance: 3000, olderThan30: 3000 }]; },
+    debtCollections: async (shop) => { collectionCalls += 1; assert.equal(shop, "shop-1"); return { amount: 5000, count: 2 }; },
+  } });
+  try {
+    const ask = async (user, body) => { const res = response(); await loader.controller.ask({ ...request(user), body }, res, (error) => { throw error; }); return res.payload.answer; };
+    const denied = await ask({ userId: "owner", staffId: "s", permissions: { canManageStock: true } }, { question: "How much do I owe this supplier?", supplierId: "supplier-1" });
+    assert.match(denied.message, /permission/i); assert.equal(balanceCalls, 0);
+    const selection = await ask({ userId: "owner" }, { question: "How much do I owe this supplier?" });
+    assert.match(selection.message, /Select a supplier/); assert.equal(balanceCalls, 0);
+    const balance = await ask({ userId: "owner" }, { question: "How much do I owe this supplier?", supplierId: "supplier-1" });
+    assert.match(balance.message, /3,000/); assert.match(balance.message, /not a payment due date/);
+    const collections = await ask({ userId: "owner" }, { question: "How much debt did I collect this week?" });
+    assert.match(collections.message, /5,000/); assert.equal(collectionCalls, 1);
+  } finally { loader.restore(); }
+});
+
+test("team shift discrepancies remain restricted and crop and egg questions use enabled farm operations", async () => {
+  let shiftCalls = 0;
+  const loader = loadWithMocks({ prisma: {
+    cashSession: { findMany: async (query) => { shiftCalls += 1; assert.equal(query.where.shopId, "shop-1"); return [{ openedByName: "Cashier", variance: -2000, closedAt: new Date() }]; } },
+    cropFieldTask: { findMany: async (query) => { assert.equal(query.where.shopId, "shop-1"); return [{ title: "Irrigate field", dueAt: new Date() }]; } },
+    farmProductionBatch: { aggregate: async (query) => { assert.equal(query.where.shopId, "shop-1"); return { _sum: { actualYield: 80, brokenQuantity: 5 }, _count: { id: 1 } }; } },
+  } });
+  try {
+    const ask = async (user, question) => { const res = response(); await loader.controller.ask({ ...request(user), body: { question } }, res, (error) => { throw error; }); return res.payload.answer; };
+    const denied = await ask({ userId: "owner", staffId: "s", permissions: { canSell: true } }, "Which team shifts have a difference this week?");
+    assert.match(denied.message, /permission/i); assert.equal(shiftCalls, 0);
+    const shifts = await ask({ userId: "owner" }, "Which team shifts have a difference this week?");
+    assert.match(shifts.message, /-2,000/);
+    const crops = await ask({ userId: "owner" }, "Which crop tasks are overdue?");
+    assert.match(crops.message, /Irrigate field/);
+    const eggs = await ask({ userId: "owner" }, "How many eggs were collected this week?");
+    assert.match(eggs.message, /80 eggs collected, 5 broken, and 75 good eggs/);
+  } finally { loader.restore(); }
+});
+
+test("farm and restaurant input answers are scoped and omit costs for staff without reports", async () => {
+  let queriedCost = false;
+  const loader = loadWithMocks({ prisma: {
+    shop: { findUnique: async () => ({ category: "restaurant" }) },
+    product: { findFirst: async ({ where }) => where.shopId === "shop-1" && where.id === "input-1" ? { name: "Rice", unit: "kg" } : null },
+    foodPreparationItem: { aggregate: async (query) => { assert.equal(query.where.foodPreparation.shopId, "shop-1"); queriedCost = Boolean(query._sum.totalCost); return { _sum: { quantity: 4, ...(queriedCost ? { totalCost: 6000 } : {}) } }; } },
+    farmProductionItem: { aggregate: async (query) => { assert.equal(query.where.farmProduction.shopId, "shop-1"); queriedCost = Boolean(query._sum.totalCost); return { _sum: { quantity: 1.5, ...(queriedCost ? { totalCost: 3000 } : {}) } }; } },
+  } });
+  try {
+    const ask = async (user, question, operationalRecordId = "input-1") => { const res = response(); await loader.controller.ask({ ...request(user), body: { question, operationalRecordId } }, res, (error) => { throw error; }); return res.payload.answer; };
+    const food = await ask({ userId: "owner", staffId: "staff", permissions: { canManageStock: true } }, "How much ingredient was used this week?");
+    assert.match(food.message, /4 kg/); assert.doesNotMatch(food.message, /cost|6,000/i); assert.equal(queriedCost, false);
+    const feed = await ask({ userId: "owner", staffId: "staff", permissions: { canManageFarm: true } }, "How much feed was used this week?");
+    assert.match(feed.message, /1.5 kg/); assert.doesNotMatch(feed.message, /cost|3,000/i); assert.equal(queriedCost, false);
+    const foreign = await ask({ userId: "owner", staffId: "staff", permissions: { canManageFarm: true } }, "How much feed was used this week?", "another-shop-id");
+    assert.match(foreign.message, /unavailable in this farm/);
+  } finally { loader.restore(); }
+});
+
+test("crop cycle details hide financial calculations from farm staff without reports", async () => {
+  let financeQueried = false;
+  const loader = loadWithMocks({ prisma: {
+    cropCycle: { findFirst: async (query) => { assert.equal(query.where.shopId, "shop-1"); return { id: "cycle-1", cropName: "Beans", plot: { name: "Plot A" } }; } },
+    cropInputUsage: {
+      findMany: async () => [{ title: "Seeds", quantity: 2 }],
+      aggregate: async () => { financeQueried = true; return { _sum: { totalCost: 10000 } }; },
+    },
+    cropHarvestBatch: { groupBy: async (query) => { assert.equal(query.where.shopId, "shop-1"); assert.equal(Boolean(query._sum.realizedRevenue), false); return [{ outputProductId: "output", _sum: { actualYield: 20, remainingQuantity: 12 } }]; } },
+    product: { findMany: async () => [{ id: "output", name: "Beans", unit: "kg" }] },
+  } });
+  try {
+    const res = response();
+    await loader.controller.ask({ ...request({ userId: "owner", staffId: "staff", permissions: { canManageFarm: true } }), body: { question: "Crop cycle summary", operationalRecordId: "cycle-1" } }, res, (error) => { throw error; });
+    assert.match(res.payload.answer.message, /Plot A/);
+    assert.match(res.payload.answer.message, /20 kg/);
+    assert.doesNotMatch(res.payload.answer.message, /profit|TZS|cost/i);
+    assert.equal(financeQueried, false);
   } finally { loader.restore(); }
 });
 
@@ -288,7 +436,7 @@ test("Ask clearly declines unsupported and mixed-topic requests without querying
   let queried = false;
   const loader = loadWithMocks({ profitAnalytics: async (_req, res) => { queried = true; return res.json({ summary: {} }); } });
   try {
-    for (const question of ["Which product sold the most?", "Who is my best customer?", "How do I grow my business?", "How much sales and expenses this month?"]) {
+    for (const question of ["What is the price of a specific product?", "Who is my best customer?", "How do I grow my business?", "How much sales and expenses this month?"]) {
       const res = response();
       await loader.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question } }, res, (error) => { throw error; });
       assert.match(res.payload.answer.message, /cannot answer|one topic at a time/i);

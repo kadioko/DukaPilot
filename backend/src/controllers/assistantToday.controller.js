@@ -4,6 +4,10 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { overview, profitAnalytics } = require("./dashboard.controller");
 const { report: purchaseReport } = require("./purchaseAnalytics.controller");
 const { current: currentCashSession } = require("./cashSession.controller");
+const { productInsights } = require("../services/assistantProductInsights.service");
+const { supplierBalances, debtCollections } = require("../services/assistantBusinessInsights.service");
+const { overview: branchOverview } = require("./branch.controller");
+const { getFarmConfiguration } = require("../lib/farmAccess");
 const { stockSummary, quotationSummary, farmSummary, listActions } = require("./assistant.controller");
 const { startOfTanzaniaDay, endOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, addTanzaniaMonths, tanzaniaDateKey } = require("../lib/businessTime");
 const { occurredExpenseDateSql } = require("../lib/expenseReporting");
@@ -118,7 +122,7 @@ function requestedTimeWindow(question, intent, now = new Date()) {
   if (phrase?.type === "unsupported") {
     return { clarification: "unsupported-period" };
   }
-  if (phrase && !["salesToday", "profit", "expenses", "purchases", "topPurchaseSupplier", "returns", "creditSales"].includes(intent)) {
+  if (phrase && !["salesToday", "profit", "expenses", "purchases", "topPurchaseSupplier", "returns", "creditSales", "productRanking", "productDetail", "supplierRefunds", "debtCollections", "teamShifts", "branchComparison", "foodProduction", "foodInput", "farmInput", "eggProduction"].includes(intent)) {
     return { clarification: intent === "debts" ? "historical-debt" : "historical-topic" };
   }
 
@@ -440,6 +444,22 @@ const today = asyncHandler(async (req, res) => {
 
 function detectIntent(question) {
   const value = question.toLocaleLowerCase();
+  if (/\b(branches|branch comparison|compare branches|matawi|linganisha matawi)\b/.test(value)) return /\b(stock|inventory|bidhaa|hifadhi)\b/.test(value) ? "unsupported" : /\b(compare|comparison|sales|mauzo|linganisha|compare|how did|vipi)\b/.test(value) ? "branchComparison" : "unsupported";
+  if (/\b(shift|shifts|drawer|daily close|zamu|droo)\b/.test(value) && /\b(team|staff|other|all|variance|difference|differences|tofauti|wafanyakazi|zote)\b/.test(value)) return /\b(variance|difference|differences|tofauti)\b/.test(value) ? "teamShifts" : "unsupported";
+  if (/\b(supplier|suppliers|msambazaji|wasambazaji)\b/.test(value) && /\b(refund|refunds|refunded|fedha zilizorejeshwa)\b/.test(value)) return /\b(awaiting|pending|waiting|bado)\b/.test(value) ? "supplierCreditsOwed" : "supplierRefunds";
+  if (/\b(supplier|suppliers|msambazaji|wasambazaji)\b/.test(value) && /\b(balance|balances|owe|owed|owing|deni|madeni|salio|tunadaiwa)\b/.test(value)) return "supplierBalance";
+  if (/\b(debt|debts|madeni|deni)\b/.test(value) && /\b(collect|collected|collections?|payments? received|nilikusanya|tulikusanya|malipo yaliyokusanywa)\b/.test(value)) return "debtCollections";
+  if (/\b(crop|crops|field|shamba|mazao|shambani)\b/.test(value) && /\b(tasks?|majukumu|kazi)\b/.test(value) && /\b(overdue|late|yaliyochelewa|zilizochelewa)\b/.test(value)) return "cropTasks";
+  if (/\b(crop cycle|crop inputs?|crop harvest|cycle (?:summary|costs?|profit)|mzunguko wa mazao|gharama za mzunguko|pembejeo za mzunguko)\b/.test(value)) return "cropDetail";
+  if (/\b(livestock group|animal group|farm group|kundi la mifugo|kundi la shamba)\b/.test(value)) return "livestockGroup";
+  if (/\b(eggs?|mayai|trays?|trei)\b/.test(value) && /\b(stock|inventory|remaining|hifadhi|iliyobaki)\b/.test(value)) return "eggStock";
+  if (/\b(feed|farm input|chakula cha mifugo|pembejeo za ufugaji)\b/.test(value) && /\b(used|usage|consumed|matumizi|kilichotumika)\b/.test(value)) return "farmInput";
+  if (/\b(ingredient|ingredients|kiungo|viungo)\b/.test(value) && /\b(used|usage|consumed|matumizi|vilivyotumika)\b/.test(value)) return "foodInput";
+  if (/\b(eggs?|mayai)\b/.test(value) && /\b(production|produced|collected|broken|uzalishaji|yaliyokusanywa|yaliyovunjika)\b/.test(value)) return /\b(feed|cost|costs|stock|tray|trays|chakula|gharama|trei)\b/.test(value) ? "unsupported" : "eggProduction";
+  if (/\b(prepare|prepared|preparation|cooked|kupikwa|tumeandaa|yaliyopikwa)\b/.test(value) && !/\b(ingredient|ingredients|kiungo|viungo)\b/.test(value)) return "foodProduction";
+  if (/\b(product|products|item|items|bidhaa)\b/.test(value) && /\b(not sold|haven't sold|have not sold|slow.moving|hazikuuza|hazijauzwa)\b/.test(value)) return "slowProducts";
+  if (/\b(product performance|performance of (?:this|the|selected) product|how (?:is|did) (?:this|the|selected) product|utendaji wa bidhaa|bidhaa hii imefanyaje)\b/.test(value)) return "productDetail";
+  if (/\b(best.sell(?:ing|er)?|top.sell(?:ing|er)?|most sold|sold (?:the )?most|sell (?:the )?most|most profitable|highest selling|top products?|best products?|bidhaa (?:inayouzwa|inayouza|iliyouzwa|zinazouzwa) zaidi)\b/.test(value) && /\b(product|products|item|items|bidhaa)\b/.test(value)) return "productRanking";
   if (/\b(shift|drawer|cash session|daily close|zamu|droo)\b/.test(value)) return /\b(team|staff|other|all|variance|difference|tofauti|wafanyakazi|zote)\b/.test(value) ? "unsupported" : "cashSession";
   if (/\b(credit sales?|sales? (?:on|by) credit|mauzo ya mkopo|mauzo kwa mkopo|returns?|refunded|refunds?|marejesho|rejesho)\b/.test(value) && /\b(expenses?|matumizi|gharama)\b/.test(value)) return "ambiguous";
   if (/\b(return|returns|returned|refund|refunds|marejesho|rejesho)\b/.test(value) && /\b(supplier|suppliers|purchase|purchases|msambazaji|wasambazaji|manunuzi)\b/.test(value)) return "unsupported";
@@ -473,6 +493,205 @@ function detectIntent(question) {
   if (matches.length === 1) return matches[0];
   if (/\b(what should i do|what should we do|what next|next action|nifanye nini|tufanye nini|hatua inayofuata)\b/.test(value)) return "overview";
   return "unsupported";
+}
+
+const productOptions = asyncHandler(async (req, res) => {
+  if (!permissionsFor(req.user).reports) return res.status(403).json({ error: "Report access is required" });
+  const shopId = await getShopIdForUser(req.user);
+  const search = String(req.query.search || "").trim().slice(0, 80);
+  if (search.length < 2) return res.json({ products: [] });
+  const products = await prisma.product.findMany({ where: { shopId, OR: [{ name: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }] }, select: { id: true, name: true, sku: true, unit: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 20 });
+  return res.json({ products });
+});
+
+const supplierOptions = asyncHandler(async (req, res) => {
+  const p = permissionsFor(req.user);
+  if (!p.reports || !p.stock) return res.status(403).json({ error: "Stock and report access are required" });
+  const shopId = await getShopIdForUser(req.user);
+  const search = String(req.query.search || "").trim().slice(0, 80);
+  if (search.length < 2) return res.json({ suppliers: [] });
+  const suppliers = await prisma.supplier.findMany({ where: { name: { contains: search, mode: "insensitive" }, stockReceipts: { some: { shopId } } }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 20 });
+  return res.json({ suppliers });
+});
+
+const operationalOptions = asyncHandler(async (req, res) => {
+  const kind = String(req.query.kind || "");
+  const search = String(req.query.search || "").trim().slice(0, 80);
+  const p = permissionsFor(req.user);
+  if (!["crop", "group", "input"].includes(kind)) return res.status(400).json({ error: "Choose a valid record type" });
+  const shopId = await getShopIdForUser(req.user);
+  const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { category: true } });
+  const category = String(shop?.category || "").toLowerCase();
+  const farm = ["farm", "livestock"].includes(category);
+  const food = ["bar", "restaurant"].includes(category);
+  if ((kind === "input" && !((farm && p.farm) || (food && p.stock))) || (kind !== "input" && !(farm && p.farm))) return res.status(403).json({ error: "Access to those records is required" });
+  if (search.length < 2) return res.json({ items: [] });
+  let items;
+  if (kind === "crop") {
+    const cycles = await prisma.cropCycle.findMany({ where: { shopId, OR: [{ cropName: { contains: search, mode: "insensitive" } }, { plot: { name: { contains: search, mode: "insensitive" } } }] }, select: { id: true, cropName: true, plot: { select: { name: true } }, plantedAt: true }, orderBy: [{ plantedAt: "desc" }, { id: "asc" }], take: 20 });
+    items = cycles.map((row) => ({ id: row.id, name: `${row.cropName} · ${row.plot.name} · ${tanzaniaDateKey(row.plantedAt)}` }));
+  } else if (kind === "group") {
+    items = await prisma.farmGroup.findMany({ where: { shopId, name: { contains: search, mode: "insensitive" } }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 20 });
+  } else {
+    items = await prisma.product.findMany({ where: { shopId, isActive: true, name: { contains: search, mode: "insensitive" } }, select: { id: true, name: true, unit: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 20 });
+  }
+  return res.json({ items });
+});
+
+async function answerProductQuestion(req, intent, window, lang) {
+  const sw = lang === "sw";
+  const privacy = sw ? "Jibu limetumia rekodi za DukaPilot pekee; hakuna huduma ya AI ya nje iliyotumika." : "This answer used DukaPilot records only; no external AI service was called.";
+  if (!permissionsFor(req.user).reports) return { message: sw ? "Akaunti hii haina ruhusa ya kuona uchanganuzi wa bidhaa." : "This account does not have permission to view product analytics.", href: "/assistant", evidence: [], privacy };
+  if (intent === "slowProducts") {
+    const shopId = await getShopIdForUser(req.user);
+    const since = new Date(Date.now() - 30 * DAY_MS);
+    const products = await prisma.product.findMany({ where: { shopId, isActive: true, isInternalUse: false, currentStock: { gt: 0 }, saleItems: { none: { sale: { shopId, status: "COMPLETED", createdAt: { gte: since } } } } }, select: { name: true, unit: true, currentStock: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 5 });
+    const items = products.map((product) => `${product.name}: ${product.currentStock} ${product.unit}`).join("; ");
+    const message = items ? (sw ? `Bidhaa zenye stock bila mauzo yaliyokamilika katika siku 30 zilizopita (hadi 5): ${items}. Hii inategemea mauzo yaliyorekodiwa tu.` : `In-stock products without a completed sale in the last 30 days (up to 5): ${items}. This depends on recorded sales only.`) : (sw ? "Hakuna bidhaa yenye stock bila mauzo yaliyokamilika katika siku 30 zilizopita iliyopatikana." : "No in-stock products without a completed sale in the last 30 days were found.");
+    return { message, href: "/analytics/products", evidence: [{ source: sw ? "Bidhaa na mauzo" : "Products and sales", checkedAt: new Date().toISOString(), dataThrough: null }], privacy };
+  }
+  const productId = intent === "productDetail" ? String(req.body?.productId || "").trim().slice(0, 100) : null;
+  if (intent === "productDetail" && !productId) return { message: sw ? "Chagua bidhaa kwenye orodha ya kutafuta bidhaa kisha uliza tena." : "Select a product from the product search, then ask again.", href: "/assistant", evidence: [], privacy };
+  const requestedMetric = String(req.body?.metric || "").toLowerCase();
+  if (requestedMetric && !["units", "revenue", "profit"].includes(requestedMetric)) return { message: sw ? "Chagua kipimo sahihi cha bidhaa." : "Choose a valid product metric.", href: "/assistant", evidence: [], privacy };
+  const question = String(req.body.question || "").toLowerCase();
+  const explicitMetric = /\b(profit|profitable|faida)\b/.test(question) ? "profit" : /\b(revenue|value|mapato|thamani)\b/.test(question) ? "revenue" : /\b(units|quantity|quantities|vitengo)\b/.test(question) ? "units" : "";
+  const metric = explicitMetric || requestedMetric || "units";
+  const shopId = await getShopIdForUser(req.user);
+  const products = await productInsights(shopId, window.from, window.to, metric, productId);
+  const period = `${localizedPeriod(window.label, sw)} (${window.fromDate} ${sw ? "hadi" : "to"} ${window.toDate})`;
+  const evidence = [{ source: sw ? `Bidhaa (${period})` : `Products (${period})`, checkedAt: new Date().toISOString(), dataThrough: null }];
+  if (intent === "productDetail" && !products.length) return { message: sw ? "Bidhaa haipatikani katika duka hili. Chagua nyingine." : "That product is unavailable in this shop. Select another product.", href: "/assistant", evidence: [], privacy };
+  if (!products.length) return { message: sw ? `Hakuna bidhaa zilizounganishwa na mauzo au marejesho ${period}.` : `No linked products had recorded sales or returns ${period}.`, href: "/analytics/products", evidence, privacy };
+  if (metric === "profit" && products[0].incompleteProducts > 0 && intent === "productRanking") return { message: sw ? "Baadhi ya gharama hazijakamilika; siwezi kupanga bidhaa zote kwa faida kwa uhakika. Tumia vitengo au mapato, na kagua gharama." : "Some product costs are missing, so a complete profit ranking is not reliable. Rank by units or revenue and review missing costs.", href: "/analytics/products", evidence, privacy };
+  const format = (product) => `${product.name}: ${product.units.toLocaleString("en-TZ")} ${product.unit}, TZS ${product.revenue.toLocaleString("en-TZ")} ${sw ? "mapato" : "revenue"}${metric === "profit" || intent === "productDetail" ? `, TZS ${product.profit.toLocaleString("en-TZ")} ${sw ? "faida ghafi inayojulikana" : "known-cost gross profit"}` : ""}${product.missing !== 0 ? (sw ? " (baadhi ya gharama hazipo)" : " (some costs missing)") : ""}`;
+  const metricLabel = ({ units: sw ? "vitengo" : "units", revenue: sw ? "mapato" : "revenue", profit: sw ? "faida ghafi" : "gross profit" })[metric];
+  const message = intent === "productDetail" ? `${period}: ${format(products[0])}. ${sw ? "Mauzo na marejesho ni ya kipindi kilichochaguliwa." : "Sales and returns are counted in the period when recorded."}` : `${sw ? "Bidhaa za juu kwa" : "Top linked products by"} ${metricLabel} ${period}: ${products.map(format).join("; ")}. ${sw ? "Marejesho na masahihisho yanahesabiwa kwa tarehe yalivyorekodiwa; bidhaa zisizounganishwa hazijumuishwi." : "Returns and reversals are counted when recorded; unlinked items are excluded."}`;
+  return { message, href: intent === "productDetail" ? `/analytics/products?search=${encodeURIComponent(products[0].name)}` : "/analytics/products", evidence, privacy };
+}
+
+async function answerBusinessQuestion(req, intent, window, lang) {
+  const sw = lang === "sw";
+  const p = permissionsFor(req.user);
+  const allowed = ["supplierBalance", "supplierCreditsOwed", "supplierRefunds"].includes(intent) ? p.reports && p.stock
+    : intent === "debtCollections" ? p.reports && p.debts
+      : intent === "teamShifts" ? !isStaff(req.user) || Boolean(req.user.permissions?.canManageCashSessions)
+        : intent === "branchComparison" ? !isStaff(req.user)
+          : ["foodProduction", "foodInput"].includes(intent) ? p.stock : p.farm;
+  const privacy = sw ? "Jibu limetumia rekodi za DukaPilot pekee; hakuna huduma ya AI ya nje iliyotumika." : "This answer used DukaPilot records only; no external AI service was called.";
+  if (!allowed) return { message: sw ? "Akaunti hii haina ruhusa ya kuona taarifa hizo." : "This account does not have permission to view those records.", href: "/assistant", evidence: [], privacy };
+  const shopId = await getShopIdForUser(req.user);
+  const checkedAt = new Date().toISOString();
+  const period = window ? `${localizedPeriod(window.label, sw)} (${window.fromDate} ${sw ? "hadi" : "to"} ${window.toDate})` : "";
+  let href = "/assistant";
+  let message;
+  let source;
+  if (intent === "supplierBalance" || intent === "supplierCreditsOwed") {
+    const id = String(req.body?.supplierId || "").trim().slice(0, 100) || null;
+    if (!id && /\b(supplier|msambazaji)\b/i.test(req.body.question || "") && !/\b(which|all|list|suppliers|wasambazaji|gani|orodha)\b/i.test(req.body.question || "")) return { message: sw ? "Chagua msambazaji kisha uliza tena." : "Select a supplier, then ask again.", href, evidence: [], privacy };
+    const rows = await supplierBalances(shopId, id, undefined, intent === "supplierCreditsOwed");
+    const details = rows.map((item) => `${item.name}: TZS ${item.balance.toLocaleString("en-TZ")} (${sw ? "risiti zaidi ya siku 30" : "receipts older than 30 days"}: TZS ${item.olderThan30.toLocaleString("en-TZ")})`).join("; ");
+    if (intent === "supplierCreditsOwed") message = rows.length ? (sw ? `Salio hasi la sasa (hadi 5): ${details}. Hili linaweza kutumika kama mkopo au kurejeshwa; mfumo hauwezi kuthibitisha ni rejesho gani linalosubiri kuhamishwa.` : `Current negative supplier balances (up to 5): ${details}. These may be credit or refundable funds; the records do not establish which refunds are awaiting external transfer.`) : (sw ? "Hakuna salio hasi la msambazaji lililopatikana. Mfumo hauwezi kuthibitisha rejesho la nje linalosubiri." : "No negative supplier balances were found. Pending external refunds cannot be verified from these records.");
+    else message = rows.length ? (sw ? `Salio la sasa la wasambazaji (hadi 5): ${details}. Umri wa risiti si tarehe ya malipo; salio hasi ni fedha au mkopo unaodaiwa na biashara.` : `Current supplier balances (up to 5): ${details}. Receipt age is not a payment due date; a negative balance is credit or money owed to the business.`) : (sw ? "Hakuna salio la msambazaji lililopatikana katika biashara hii." : "No matching supplier balance was found in this business.");
+    href = "/supplier-balances"; source = sw ? "Madeni ya wasambazaji" : "Supplier balances";
+  } else if (intent === "supplierRefunds") {
+    const supplierId = String(req.body?.supplierId || "").trim().slice(0, 100);
+    const selected = supplierId ? await prisma.supplier.findFirst({ where: { id: supplierId, stockReceipts: { some: { shopId } } }, select: { name: true } }) : null;
+    if (supplierId && !selected) return { message: sw ? "Msambazaji huyo hapatikani katika biashara hii." : "That supplier is unavailable in this business.", href, evidence: [], privacy };
+    const result = await prisma.supplierPayment.aggregate({ where: { shopId, ...(supplierId ? { supplierId } : {}), kind: "REFUND", paidAt: { gte: window.from, lt: window.to } }, _sum: { amount: true }, _count: { id: true } });
+    const amount = -Number(result._sum.amount || 0);
+    message = sw ? `${period}: marejesho ya fedha kutoka ${selected ? selected.name : "kwa wasambazaji wote"} baada ya masahihisho ni TZS ${amount.toLocaleString("en-TZ")}. Hii ni rekodi ya fedha, si uthibitisho wa uhamisho wa nje au mikopo inayosubiri.` : `${period}: recorded refunds from ${selected ? selected.name : "all suppliers"}, net of reversals, total TZS ${amount.toLocaleString("en-TZ")}. This is a recorded settlement, not verification of an external transfer or a total of pending credits.`;
+    href = "/supplier-balances"; source = sw ? "Malipo ya wasambazaji" : "Supplier settlements";
+  } else if (intent === "debtCollections") {
+    const result = await debtCollections(shopId, window.from, window.to);
+    message = sw ? `${period}: malipo ${result.count} yaliyotumika kwenye madeni yaliyorekodiwa ni TZS ${result.amount.toLocaleString("en-TZ")}. Malipo ya nukuu kabla ya kuwa deni hayajumuishwi; hii si mauzo mapya.` : `${period}: ${result.count} payments applied to recorded debts total TZS ${result.amount.toLocaleString("en-TZ")}. Quotation payments before a debt existed are excluded; this is not new sales revenue.`;
+    href = "/debts"; source = sw ? "Malipo ya madeni" : "Debt payments";
+  } else if (intent === "teamShifts") {
+    const sessions = await prisma.cashSession.findMany({ where: { shopId, status: "CLOSED", closedAt: { gte: window.from, lt: window.to }, variance: { not: 0 } }, select: { openedByName: true, closedAt: true, variance: true }, orderBy: [{ closedAt: "desc" }, { id: "desc" }], take: 5 });
+    const rows = sessions.map((item) => `${item.openedByName}: TZS ${Number(item.variance).toLocaleString("en-TZ")} (${tanzaniaDateKey(item.closedAt)})`).join("; ");
+    message = rows ? (sw ? `Zamu zilizofungwa zenye tofauti ${period} (hadi 5): ${rows}. Tofauti ni cash iliyohesabiwa pungufu au zaidi ya iliyotarajiwa.` : `Closed shifts with a cash difference ${period} (up to 5): ${rows}. The difference is counted cash minus expected cash.`) : (sw ? `Hakuna zamu iliyofungwa yenye tofauti iliyopatikana ${period}.` : `No closed shifts with a recorded difference were found ${period}.`);
+    href = "/daily-close"; source = sw ? "Zamu zilizofungwa" : "Closed shifts";
+  } else if (intent === "branchComparison") {
+    const data = await invoke(branchOverview, req, { from: window.fromDate, to: window.toDate });
+    const rows = (data.branches || []).slice().sort((a, b) => Number(b.sales) - Number(a.sales)).slice(0, 5);
+    message = rows.length ? (sw ? `Mauzo kabla ya marejesho ${period} (matawi 5 ya kwanza): ${rows.map((r) => `${r.name}: TZS ${Number(r.sales).toLocaleString("en-TZ")}`).join("; ")}. Fungua Matawi kwa ulinganisho kamili.` : `Gross sales before returns ${period} (top 5 locations): ${rows.map((r) => `${r.name}: TZS ${Number(r.sales).toLocaleString("en-TZ")}`).join("; ")}. Open Branches for the full comparison.`) : (sw ? "Hakuna matawi yaliyopatikana." : "No locations were found.");
+    href = "/branches"; source = sw ? "Ripoti ya matawi" : "Branch report";
+  } else if (intent === "foodProduction" || intent === "foodInput") {
+    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { category: true } });
+    if (!["bar", "restaurant"].includes(String(shop?.category || "").toLowerCase())) return { message: sw ? "Taarifa hii inapatikana kwa baa na mikahawa inayotumia maandalizi ya chakula." : "This answer is available for bar and restaurant food preparation records.", href, evidence: [], privacy };
+    if (intent === "foodInput") {
+      const id = String(req.body?.operationalRecordId || "").trim().slice(0, 100);
+      if (!id) return { message: sw ? "Chagua kiungo kisha uliza tena." : "Select an ingredient, then ask again.", href, evidence: [], privacy };
+      const product = await prisma.product.findFirst({ where: { id, shopId }, select: { name: true, unit: true } });
+      if (!product) return { message: sw ? "Kiungo hicho hakipatikani katika duka hili." : "That ingredient is unavailable in this shop.", href, evidence: [], privacy };
+      const rows = await prisma.foodPreparationItem.aggregate({ where: { productId: id, foodPreparation: { shopId, preparedAt: { gte: window.from, lt: window.to } } }, _sum: { quantity: true, ...(p.reports ? { totalCost: true } : {}) }, _count: { id: true } });
+      const quantity = Number(rows._sum.quantity || 0);
+      message = sw ? `${period}: ${product.name} iliyotumika katika maandalizi yaliyorekodiwa ni ${quantity} ${product.unit}${p.reports ? `, gharama iliyorekodiwa TZS ${Number(rows._sum.totalCost || 0).toLocaleString("en-TZ")}` : ""}.` : `${period}: recorded preparation used ${quantity} ${product.unit} of ${product.name}${p.reports ? `, with recorded cost TZS ${Number(rows._sum.totalCost || 0).toLocaleString("en-TZ")}` : ""}.`;
+    } else {
+      const batches = await prisma.foodPreparationBatch.findMany({ where: { shopId, preparedAt: { gte: window.from, lt: window.to } }, select: { actualYield: true, wasteQuantity: true, preparedAt: true, outputProduct: { select: { name: true, unit: true } } }, orderBy: [{ preparedAt: "desc" }, { id: "desc" }], take: 5 });
+      const items = batches.map((item) => `${item.outputProduct.name}: ${item.actualYield} ${item.outputProduct.unit} (${tanzaniaDateKey(item.preparedAt)})`).join("; ");
+      message = items ? (sw ? `Maandalizi yaliyorekodiwa ${period} (batch 5 za hivi karibuni): ${items}.` : `Recorded preparations ${period} (up to 5 recent batches): ${items}.`) : (sw ? `Hakuna maandalizi yaliyorekodiwa ${period}.` : `No food preparation was recorded ${period}.`);
+    }
+    href = "/food-preparation"; source = sw ? "Maandalizi ya chakula" : "Food preparation";
+  } else {
+    const config = await getFarmConfiguration(shopId);
+    if (!config?.isFarm || (["cropTasks", "cropDetail"].includes(intent) && !config.hasCrops) || (["eggProduction", "eggStock", "livestockGroup", "farmInput"].includes(intent) && !config.hasLivestock)) return { message: sw ? "Shughuli hiyo haijawashwa kwa biashara hii." : "That farm operation is not enabled for this business.", href, evidence: [], privacy };
+    if (intent === "cropTasks") {
+      const tasks = await prisma.cropFieldTask.findMany({ where: { shopId, status: { in: ["TODO", "IN_PROGRESS"] }, dueAt: { lt: startOfTanzaniaDay() } }, select: { title: true, dueAt: true }, orderBy: [{ dueAt: "asc" }, { id: "asc" }], take: 5 });
+      const items = tasks.map((task) => `${task.title} (${tanzaniaDateKey(task.dueAt)})`).join("; ");
+      message = items ? (sw ? `Kazi za shamba zilizochelewa (hadi 5): ${items}.` : `Overdue crop tasks (up to 5): ${items}.`) : (sw ? "Hakuna kazi ya shamba iliyochelewa iliyorekodiwa." : "No overdue crop tasks are recorded.");
+      href = "/crops/operations"; source = sw ? "Kazi za shamba" : "Crop tasks";
+    } else if (intent === "livestockGroup") {
+      const id = String(req.body?.operationalRecordId || "").trim().slice(0, 100);
+      if (!id) return { message: sw ? "Chagua kundi la mifugo kisha uliza tena." : "Select an animal group, then ask again.", href, evidence: [], privacy };
+      const group = await prisma.farmGroup.findFirst({ where: { id, shopId }, select: { name: true, currentAnimals: true, events: { where: { voidedAt: null }, select: { type: true, quantity: true, occurredAt: true }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 5 } } });
+      if (!group) return { message: sw ? "Kundi hilo halipatikani katika shamba hili." : "That group is unavailable in this farm.", href, evidence: [], privacy };
+      const eventLabels = sw ? { OPENING: "Mwanzo", ADDITION: "Walioongezwa", MORTALITY: "Vifo", CULL: "Walioondolewa", SALE: "Waliozwa", RETURN_REVERSAL: "Marekebisho ya rejesho" } : { OPENING: "Opening", ADDITION: "Added", MORTALITY: "Deaths", CULL: "Culled", SALE: "Sold", RETURN_REVERSAL: "Return correction" };
+      const events = group.events.map((event) => `${eventLabels[event.type] || event.type}: ${event.quantity} (${tanzaniaDateKey(event.occurredAt)})`).join("; ");
+      message = sw ? `${group.name}: wanyama ${group.currentAnimals} kwa sasa. ${events ? `Matukio 5 ya karibuni: ${events}.` : "Hakuna matukio yaliyorekodiwa."}` : `${group.name}: ${group.currentAnimals} animals currently recorded. ${events ? `Up to 5 recent events: ${events}.` : "No events are recorded."}`;
+      href = "/farm"; source = sw ? "Kundi la mifugo" : "Animal group";
+    } else if (intent === "eggStock") {
+      const id = String(req.body?.operationalRecordId || "").trim().slice(0, 100);
+      if (!id) return { message: sw ? "Chagua bidhaa ya mayai au trei kisha uliza tena." : "Select an egg or tray product, then ask again.", href, evidence: [], privacy };
+      const product = await prisma.product.findFirst({ where: { id, shopId, isActive: true }, select: { name: true, unit: true, currentStock: true } });
+      if (!product) return { message: sw ? "Bidhaa hiyo haipatikani katika shamba hili." : "That product is unavailable in this farm.", href, evidence: [], privacy };
+      message = sw ? `Stock ya sasa ya ${product.name}: ${Number(product.currentStock).toLocaleString("en-TZ", { maximumFractionDigits: 3 })} ${product.unit}. Chagua bidhaa nyingine kuona salio lake.` : `Current stock of ${product.name}: ${Number(product.currentStock).toLocaleString("en-TZ", { maximumFractionDigits: 3 })} ${product.unit}. Select another product to see its balance.`;
+      href = "/farm"; source = sw ? "Stock ya shamba" : "Farm stock";
+    } else if (intent === "farmInput") {
+      const id = String(req.body?.operationalRecordId || "").trim().slice(0, 100);
+      if (!id) return { message: sw ? "Chagua chakula au pembejeo kisha uliza tena." : "Select a feed or input product, then ask again.", href, evidence: [], privacy };
+      const product = await prisma.product.findFirst({ where: { id, shopId }, select: { name: true, unit: true } });
+      if (!product) return { message: sw ? "Pembejeo hiyo haipatikani katika shamba hili." : "That input is unavailable in this farm.", href, evidence: [], privacy };
+      const rows = await prisma.farmProductionItem.aggregate({ where: { productId: id, farmProduction: { shopId, producedAt: { gte: window.from, lt: window.to } } }, _sum: { quantity: true, ...(p.reports ? { totalCost: true } : {}) } });
+      const quantity = Number(rows._sum.quantity || 0).toLocaleString("en-TZ", { maximumFractionDigits: 3 });
+      message = sw ? `${period}: ${product.name} iliyotumika kwenye uzalishaji uliorekodiwa ni ${quantity} ${product.unit}${p.reports ? `, gharama TZS ${Number(rows._sum.totalCost || 0).toLocaleString("en-TZ")}` : ""}.` : `${period}: recorded livestock production used ${quantity} ${product.unit} of ${product.name}${p.reports ? `, at recorded cost TZS ${Number(rows._sum.totalCost || 0).toLocaleString("en-TZ")}` : ""}.`;
+      href = "/farm"; source = sw ? "Pembejeo za ufugaji" : "Livestock production inputs";
+    } else if (intent === "cropDetail") {
+      const id = String(req.body?.operationalRecordId || "").trim().slice(0, 100);
+      if (!id) return { message: sw ? "Chagua mzunguko wa mazao kisha uliza tena." : "Select a crop cycle, then ask again.", href, evidence: [], privacy };
+      const cycle = await prisma.cropCycle.findFirst({ where: { id, shopId }, select: { id: true, cropName: true, plot: { select: { name: true } }, ...(p.reports ? { unrecoveredCost: true } : {}) } });
+      if (!cycle) return { message: sw ? "Mzunguko huo haupatikani katika shamba hili." : "That cycle is unavailable in this farm.", href, evidence: [], privacy };
+      const [inputs, inputTotal, harvests] = await Promise.all([
+        prisma.cropInputUsage.findMany({ where: { shopId, cropCycleId: id }, select: { title: true, quantity: true }, orderBy: [{ usedAt: "desc" }, { id: "desc" }], take: 5 }),
+        p.reports ? prisma.cropInputUsage.aggregate({ where: { shopId, cropCycleId: id }, _sum: { totalCost: true } }) : Promise.resolve(null),
+        prisma.cropHarvestBatch.groupBy({ by: ["outputProductId"], where: { shopId, cropCycleId: id }, _sum: { actualYield: true, remainingQuantity: true, wasteQuantity: true, ...(p.reports ? { realizedRevenue: true, realizedCost: true } : {}) }, orderBy: { outputProductId: "asc" } }),
+      ]);
+      const products = await prisma.product.findMany({ where: { shopId, id: { in: harvests.map((item) => item.outputProductId) } }, select: { id: true, name: true, unit: true } });
+      const outputs = harvests.slice(0, 5).map((item) => { const product = products.find((row) => row.id === item.outputProductId); return `${product?.name || "Product"}: ${Number(item._sum.actualYield || 0)} ${product?.unit || ""}, ${sw ? "imebaki" : "remaining"} ${Number(item._sum.remainingQuantity || 0)}`; }).join("; ");
+      const inputText = inputs.map((item) => item.title).join(", ");
+      const revenue = harvests.reduce((sum, item) => sum + Number(item._sum.realizedRevenue || 0), 0);
+      const cost = harvests.reduce((sum, item) => sum + Number(item._sum.realizedCost || 0), 0);
+      const financials = p.reports ? (sw ? ` Gharama za pembejeo TZS ${Number(inputTotal?._sum.totalCost || 0).toLocaleString("en-TZ")}; mapato yaliyotimia TZS ${revenue.toLocaleString("en-TZ")}; faida iliyotimia TZS ${(revenue - cost - Number(cycle.unrecoveredCost || 0)).toLocaleString("en-TZ")}.` : ` Input costs TZS ${Number(inputTotal?._sum.totalCost || 0).toLocaleString("en-TZ")}; realized revenue TZS ${revenue.toLocaleString("en-TZ")}; realized profit TZS ${(revenue - cost - Number(cycle.unrecoveredCost || 0)).toLocaleString("en-TZ")}.`) : "";
+      message = sw ? `${cycle.cropName}, ${cycle.plot.name}, mzunguko mzima. Pembejeo za karibuni: ${inputText || "hakuna"}. Mavuno: ${outputs || "hakuna"}.${financials}` : `${cycle.cropName}, ${cycle.plot.name}, whole cycle. Recent inputs: ${inputText || "none"}. Harvest: ${outputs || "none"}.${financials}`;
+      href = "/crops"; source = sw ? "Mzunguko wa mazao" : "Crop cycle";
+    } else {
+      const rows = await prisma.farmProductionBatch.aggregate({ where: { shopId, type: "EGGS", producedAt: { gte: window.from, lt: window.to } }, _sum: { actualYield: true, brokenQuantity: true }, _count: { id: true } });
+      const collected = Number(rows._sum.actualYield || 0); const broken = Number(rows._sum.brokenQuantity || 0);
+      message = sw ? `${period}: batch ${rows._count.id} zilirekodi mayai ${collected}, yaliyovunjika ${broken}, na mazuri ${collected - broken}. Tray na mayai yaliyobaki kwenye stock yanaweza kutofautiana kutokana na kufunga na mauzo.` : `${period}: ${rows._count.id} batches recorded ${collected} eggs collected, ${broken} broken, and ${collected - broken} good eggs. Current trays and loose-egg stock may differ because of packing and sales.`;
+      href = "/farm"; source = sw ? "Uzalishaji wa mayai" : "Egg production";
+    }
+  }
+  return { message, href, evidence: [{ source, checkedAt, dataThrough: null }], privacy };
 }
 
 const FOLLOW_UP_TOPICS = new Set(["salesToday", "profit", "expenses", "purchases", "returns", "creditSales"]);
@@ -740,6 +959,24 @@ const ask = asyncHandler(async (req, res) => {
             : "Specify a supported period: today, yesterday, this/last week, month, quarter, or year, the last 7 days, or two YYYY-MM-DD dates.";
     return res.json({ answer: { message, href: intent === "debts" ? "/debts" : intent === "expenses" ? "/expenses" : intent === "salesToday" ? "/analytics" : "/assistant", evidence: [], privacy: language === "sw" ? "Jibu hili halikutumia data ya biashara kwa sababu nilihitaji ufafanuzi wa kipindi." : "No business data was queried because the requested period needs clarification." }, generatedAt: new Date().toISOString() });
   }
+  if (["productRanking", "productDetail", "slowProducts"].includes(intent)) {
+    try {
+      const answer = await answerProductQuestion(req, intent, parsedWindow.window, language);
+      return res.json({ answer, generatedAt: new Date().toISOString() });
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "assistant_product_source_unavailable", requestId: req.requestId || null, errorName: error?.name || "Error" }));
+      return res.json({ answer: { message: language === "sw" ? "Uchanganuzi wa bidhaa haupatikani kwa sasa. Jaribu tena." : "Product analytics is unavailable right now. Please try again.", href: "/assistant", evidence: [], privacy: language === "sw" ? "Hakuna huduma ya AI ya nje iliyotumika." : "No external AI service was called." }, generatedAt: new Date().toISOString() });
+    }
+  }
+  if (["supplierBalance", "supplierCreditsOwed", "supplierRefunds", "debtCollections", "teamShifts", "branchComparison", "foodProduction", "foodInput", "cropTasks", "cropDetail", "livestockGroup", "farmInput", "eggProduction", "eggStock"].includes(intent)) {
+    try {
+      const answer = await answerBusinessQuestion(req, intent, parsedWindow.window, language);
+      return res.json({ answer, generatedAt: new Date().toISOString() });
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "assistant_business_source_unavailable", requestId: req.requestId || null, intent, errorName: error?.name || "Error" }));
+      return res.json({ answer: { message: language === "sw" ? "Taarifa hii haipatikani kwa sasa. Jaribu tena baadaye." : "These records are unavailable right now. Please try again.", href: "/assistant", evidence: [], privacy: language === "sw" ? "Hakuna huduma ya AI ya nje iliyotumika." : "No external AI service was called." }, generatedAt: new Date().toISOString() });
+    }
+  }
   if (["cashSession", "expiry", "expiredStock", "scheduledExpenses", "quotations", "purchases", "topPurchaseSupplier", "returns", "creditSales"].includes(intent)) {
     try {
       const answer = await answerOperationalQuestion(req, intent, parsedWindow.window, language);
@@ -759,4 +996,4 @@ const ask = asyncHandler(async (req, res) => {
   res.json({ answer, contextToken, generatedAt: snapshot.generatedAt });
 });
 
-module.exports = { today, ask, loadInventoryEvidence, loadDebts, loadExpenses, loadSnapshot, detectIntent, requestedTimeWindow, askAnswer };
+module.exports = { today, ask, productOptions, supplierOptions, operationalOptions, loadInventoryEvidence, loadDebts, loadExpenses, loadSnapshot, detectIntent, requestedTimeWindow, askAnswer };

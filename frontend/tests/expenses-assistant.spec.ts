@@ -496,6 +496,71 @@ test("Ask carries short-lived context only until the user starts a new conversat
   expect(requests[2].contextToken).toBeUndefined();
 });
 
+test("Ask selects a product and supplier explicitly for authorized reports", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockMerchantShell(page);
+  await mockAssistantSnapshot(page, assistantSnapshot());
+  await page.route(/\/(?:_api|api)\/assistant\/product-options\?.*$/, async (route) => route.fulfill({ json: { products: [{ id: "product-1", name: "Rice", sku: "R1", unit: "kg" }] } }));
+  await page.route(/\/(?:_api|api)\/assistant\/supplier-options\?.*$/, async (route) => route.fulfill({ json: { suppliers: [{ id: "supplier-1", name: "Farm supplier" }] } }));
+  const requests: Array<{ question: string; productId?: string; supplierId?: string; metric?: string }> = [];
+  await page.route(/\/(?:_api|api)\/assistant\/ask$/, async (route) => { requests.push(route.request().postDataJSON()); return route.fulfill({ json: { answer: { message: "Answer saved", href: "/analytics", evidence: [], privacy: "Private" } } }); });
+  await page.goto("/assistant");
+  await page.getByText("Chagua bidhaa au kipimo").click();
+  await page.getByLabel("Tafuta bidhaa au SKU").fill("Rice");
+  await page.getByRole("button", { name: "Tafuta", exact: true }).first().click();
+  await page.getByRole("button", { name: /Rice/ }).click();
+  await page.getByLabel("Panga kwa").selectOption("revenue");
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toMatchObject({ productId: "product-1", metric: "revenue" });
+  await page.getByText("Chagua msambazaji").click();
+  await page.getByLabel("Tafuta msambazaji").fill("Farm");
+  await page.getByRole("button", { name: "Tafuta", exact: true }).last().click();
+  await page.getByRole("button", { name: "Farm supplier" }).click();
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1].supplierId).toBe("supplier-1");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("farm staff can select an operational input without receiving financial controls", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockMerchantShell(page);
+  await page.route("**/*api/auth/me", async (route) => route.fulfill({ json: { user: { name: "Field staff", role: "MERCHANT", language: "sw", shop: { name: "Farm", category: "farm" }, staff: { id: "staff-1", role: "CASHIER", permissions: { canManageFarm: true, canManageStock: false, canViewReports: false, canUseAssistant: true } }, features: { assistant: true } } } }));
+  const snapshot = assistantSnapshot();
+  Object.assign(snapshot.sections.salesToday, { status: "not_permitted", data: undefined });
+  Object.assign(snapshot.sections.inventory, { status: "not_permitted", data: undefined });
+  await mockAssistantSnapshot(page, snapshot);
+  await page.route(/\/(?:_api|api)\/assistant\/operational-options\?.*$/, async (route) => route.fulfill({ json: { items: [{ id: "feed-1", name: "Layer feed" }] } }));
+  let submitted: { operationalRecordId?: string } = {};
+  await page.route(/\/(?:_api|api)\/assistant\/ask$/, async (route) => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { answer: { message: "1.5 kg", href: "/farm", evidence: [], privacy: "Private" } } }); });
+  await page.goto("/assistant");
+  await expect(page.getByText("Chagua bidhaa au kipimo")).toHaveCount(0);
+  await expect(page.getByText("Chagua msambazaji")).toHaveCount(0);
+  await page.getByText("Chagua rekodi ya shughuli").click();
+  await page.getByLabel("Tafuta rekodi").fill("Layer");
+  await page.getByRole("button", { name: "Tafuta", exact: true }).click();
+  await page.getByRole("button", { name: "Layer feed" }).click();
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect(page.getByText("1.5 kg")).toBeVisible();
+  expect(submitted.operationalRecordId).toBe("feed-1");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("crop-only farms see crop questions and not livestock options", async ({ page }) => {
+  await mockMerchantShell(page);
+  await page.route("**/*api/auth/me", async (route) => route.fulfill({ json: { user: { name: "Farmer", role: "MERCHANT", language: "sw", shop: { name: "Farm", category: "farm" }, features: { assistant: true } } } }));
+  const snapshot = assistantSnapshot();
+  snapshot.sections.farm.data = { actions: [], configuration: { hasCrops: true, hasLivestock: false } };
+  await mockAssistantSnapshot(page, snapshot);
+  await page.goto("/assistant");
+  await expect(page.getByRole("button", { name: "Ni kazi gani za shamba zilizochelewa?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mayai yaliyokusanywa wiki hii yalikuwa mangapi?" })).toHaveCount(0);
+  await page.getByText("Chagua rekodi ya shughuli").click();
+  await expect(page.getByRole("option", { name: "Mzunguko wa mazao" })).toHaveCount(1);
+  await expect(page.getByRole("option", { name: "Kundi la mifugo" })).toHaveCount(0);
+});
+
 test("AI prioritizes accepted, deposit, expiring, and expired quotation work without treating it as revenue", async ({ page }) => {
   await mockMerchantShell(page);
   const quoteActions = [

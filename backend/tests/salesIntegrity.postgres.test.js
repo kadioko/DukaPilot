@@ -34,6 +34,8 @@ const expenses = require("../src/controllers/expense.controller");
 const crops = require("../src/controllers/crop.controller");
 const dashboard = require("../src/controllers/dashboard.controller");
 const productPerformance = require("../src/controllers/productPerformance.controller");
+const { productInsights } = require("../src/services/assistantProductInsights.service");
+const { debtCollections } = require("../src/services/assistantBusinessInsights.service");
 
 test.after(async () => prisma.$disconnect());
 
@@ -174,6 +176,42 @@ test("concurrent customer-return retries preserve stock, cumulative limits, roun
   assert.equal(overview.statusCode, 200, JSON.stringify(overview.payload));
   assert.equal(overview.payload.summary.totalSales, 0);
   assert.equal(overview.payload.summary.grossProfit, -500);
+});
+
+test("assistant product ranking applies returns and reversals before ordering and isolates shops", async (t) => {
+  const f = await fixture(t);
+  const other = await prisma.product.create({ data: { shopId: f.shop.id, name: "Second product", buyingPrice: 500, sellingPrice: 1500 } });
+  await prisma.sale.create({ data: { shopId: f.shop.id, paymentMethod: "CASH", totalAmount: 1500, profit: 1000, items: { create: [{ productId: other.id, quantity: 1, unitPrice: 1500, totalPrice: 1500, buyingPrice: 500 }] } } });
+  const returned = await invoke(returns.create, { user: f.user, params: { id: f.sale.id }, body: { reason: "Synthetic return", requestKey: crypto.randomUUID(), refundMethod: "CASH", items: [{ saleItemId: f.sale.items[0].id, quantity: 1, restockQuantity: 1, damagedQuantity: 0 }] } });
+  assert.equal(returned.statusCode, 201, JSON.stringify(returned.payload));
+  const from = new Date(Date.now() - 86400000);
+  const to = new Date(Date.now() + 86400000);
+  let ranked = await productInsights(f.shop.id, from, to, "revenue");
+  assert.equal(ranked[0].id, other.id);
+  assert.equal(ranked[1].id, f.product.id);
+  assert.equal(ranked[1].revenue, 1000);
+  assert.deepEqual(await productInsights("not-this-shop", from, to, "revenue", f.product.id), []);
+  const reversal = await invoke(returns.reverse, { user: f.user, params: { id: f.sale.id, returnId: returned.payload.saleReturn.id }, body: { reason: "Synthetic correction", recoveryMethod: "CASH", requestKey: crypto.randomUUID() } });
+  assert.equal(reversal.statusCode, 201, JSON.stringify(reversal.payload));
+  ranked = await productInsights(f.shop.id, from, to, "revenue");
+  assert.equal(ranked[0].id, f.product.id);
+  assert.equal(ranked[0].revenue, 2000);
+});
+
+test("assistant debt collection totals use original payment dates and do not count pre-conversion quotation payments", async (t) => {
+  const f = await fixture(t, "CREDIT");
+  const now = Date.now();
+  const customer = await prisma.customer.create({ data: { shopId: f.shop.id, name: "Synthetic customer" } });
+  const quote = await prisma.quotation.create({ data: { shopId: f.shop.id, quotationNumber: `Q-${crypto.randomUUID()}`, projectTitle: "Synthetic quote", customerId: customer.id, createdById: f.user.userId, lastEditedById: f.user.userId } });
+  await prisma.sale.update({ where: { id: f.sale.id }, data: { quotationId: quote.id, createdAt: new Date(now - 2 * 86400000) } });
+  const old = await prisma.debtPayment.create({ data: { debtId: f.debt.id, amount: 400, paymentMethod: "MPESA" } });
+  await prisma.quotationPayment.create({ data: { quotationId: quote.id, debtPaymentId: old.id, amount: 400, kind: "PAYMENT", paymentMethod: "MPESA", recordedById: f.user.userId, paidAt: new Date(now - 3 * 86400000) } });
+  await prisma.debtPayment.create({ data: { debtId: f.debt.id, amount: 1000, paymentMethod: "CASH" } });
+  const later = await prisma.debtPayment.create({ data: { debtId: f.debt.id, amount: 300, paymentMethod: "MPESA" } });
+  await prisma.quotationPayment.create({ data: { quotationId: quote.id, debtPaymentId: later.id, amount: 300, kind: "PAYMENT", paymentMethod: "MPESA", recordedById: f.user.userId, paidAt: new Date(now) } });
+  const actual = await debtCollections(f.shop.id, new Date(now - 3600000), new Date(now + 3600000));
+  assert.deepEqual(actual, { amount: 1300, count: 2 });
+  assert.deepEqual(await debtCollections("different-shop", new Date(now - 3600000), new Date(now + 3600000)), { amount: 0, count: 0 });
 });
 
 test("damaged crop returns reduce cycle revenue/profit and an audited reversal restores it", { timeout: 15000 }, async (t) => {

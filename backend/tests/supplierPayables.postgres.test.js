@@ -30,6 +30,7 @@ const stockController = require("../src/controllers/stock.controller");
 const orderController = require("../src/controllers/order.controller");
 const supplierPayableController = require("../src/controllers/supplierPayable.controller");
 const cashSessionController = require("../src/controllers/cashSession.controller");
+const { supplierBalances } = require("../src/services/assistantBusinessInsights.service");
 
 test.after(async () => prisma.$disconnect());
 
@@ -218,6 +219,11 @@ test("supplier purchasing keeps partial stock receipts, payments, returns, retri
   const supplierRefundRetry = await invoke(supplierPayableController.recordRefund, supplierRefundRequest);
   assert.equal(supplierRefundRetry.statusCode, 200);
   assert.equal(supplierRefundRetry.payload.reused, true);
+
+  const canonicalBalances = await invoke(supplierPayableController.list, { user: { userId: user.id }, query: {} });
+  const assistantBalances = await supplierBalances(root.id, supplier.id);
+  assert.equal(assistantBalances[0].balance, canonicalBalances.payload.suppliers.find((row) => row.id === supplier.id).balance);
+  assert.deepEqual(await supplierBalances(branch.id, supplier.id), []);
 
   activeShopId = branch.id;
   const branchStockHistory = await invoke(stockController.history, { user: { userId: user.id }, query: { productId: product.id } });

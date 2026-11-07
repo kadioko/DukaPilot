@@ -85,6 +85,7 @@ interface AssistantAccess {
   loaded: boolean;
   isStaff: boolean;
   isFarm: boolean;
+  isFood: boolean;
   canViewReports: boolean;
   canManageStock: boolean;
   canManageFarm: boolean;
@@ -107,6 +108,7 @@ interface AssistantSnapshotData {
   stockActions: StockAssistantAction[];
   stockProducts: NonNullable<DashboardData["lowStockAlerts"]>;
   farmActions: FarmAssistantAction[];
+  farmCapabilities: { hasCrops: boolean; hasLivestock: boolean } | null;
   actions: AssistantAction[];
 }
 interface AssistantAnswer {
@@ -119,7 +121,7 @@ interface AssistantAnswer {
 const SOURCE_KEYS: AssistantSourceKey[] = ["salesToday", "inventory", "debts", "expenses", "quotations", "farm", "actionHistory"];
 
 function emptyAssistantData(): AssistantSnapshotData {
-  return { dashboard: null, debts: null, expenses: null, quotationActions: [], stockActions: [], stockProducts: [], farmActions: [], actions: [] };
+  return { dashboard: null, debts: null, expenses: null, quotationActions: [], stockActions: [], stockProducts: [], farmActions: [], farmCapabilities: null, actions: [] };
 }
 
 function clearAssistantDataSources(data: AssistantSnapshotData, keys: AssistantSourceKey[], preserveActionHistory = false): AssistantSnapshotData {
@@ -129,7 +131,7 @@ function clearAssistantDataSources(data: AssistantSnapshotData, keys: AssistantS
   if (keys.includes("debts")) next.debts = null;
   if (keys.includes("expenses")) next.expenses = null;
   if (keys.includes("quotations")) next.quotationActions = [];
-  if (keys.includes("farm")) next.farmActions = [];
+  if (keys.includes("farm")) { next.farmActions = []; next.farmCapabilities = null; }
   if (keys.includes("actionHistory") && !preserveActionHistory) next.actions = [];
   if (next.dashboard) next.dashboard = { ...next.dashboard, lowStockAlerts: next.stockProducts };
   return next;
@@ -147,7 +149,7 @@ function applySnapshotToData(previous: AssistantSnapshotData, snapshot: Assistan
   if (clearRestrictedOrUnavailable("debts")) next.debts = null;
   if (clearRestrictedOrUnavailable("expenses")) next.expenses = null;
   if (clearRestrictedOrUnavailable("quotations")) next.quotationActions = [];
-  if (clearRestrictedOrUnavailable("farm")) next.farmActions = [];
+  if (clearRestrictedOrUnavailable("farm")) { next.farmActions = []; next.farmCapabilities = null; }
   if (snapshot.sections.actionHistory?.status === "not_permitted") next.actions = [];
   const today = sectionData("salesToday")?.dashboard as DashboardData | undefined;
   if (today) next.dashboard = today;
@@ -163,7 +165,7 @@ function applySnapshotToData(previous: AssistantSnapshotData, snapshot: Assistan
   const quotations = sectionData("quotations");
   if (quotations) next.quotationActions = (quotations.actions || []) as QuotationAssistantAction[];
   const farm = sectionData("farm");
-  if (farm) next.farmActions = (farm.actions || []) as FarmAssistantAction[];
+  if (farm) { next.farmActions = (farm.actions || []) as FarmAssistantAction[]; next.farmCapabilities = (farm.configuration || null) as AssistantSnapshotData["farmCapabilities"]; }
   const historyActions = sectionData("actionHistory");
   if (historyActions) next.actions = (historyActions.actions || []) as AssistantAction[];
   if (next.dashboard) {
@@ -191,12 +193,29 @@ export default function AssistantPage() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [askContext, setAskContext] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState("");
+  const [productOptions, setProductOptions] = useState<Array<{ id: string; name: string; sku: string | null; unit: string }>>([]);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
+  const [productMetric, setProductMetric] = useState("");
+  const [productSearchError, setProductSearchError] = useState("");
+  const [findingProduct, setFindingProduct] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [supplierOptions, setSupplierOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<{ id: string; name: string } | null>(null);
+  const [supplierSearchError, setSupplierSearchError] = useState("");
+  const [findingSupplier, setFindingSupplier] = useState(false);
+  const [recordKind, setRecordKind] = useState<"crop" | "group" | "input">("input");
+  const [recordSearch, setRecordSearch] = useState("");
+  const [recordOptions, setRecordOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedRecord, setSelectedRecord] = useState<{ id: string; name: string; kind: "crop" | "group" | "input" } | null>(null);
+  const [recordSearchError, setRecordSearchError] = useState("");
+  const [findingRecord, setFindingRecord] = useState(false);
   const [askError, setAskError] = useState("");
   const [asking, setAsking] = useState(false);
   const [savingActionIds, setSavingActionIds] = useState<Set<string>>(new Set());
   const [actionSaveErrors, setActionSaveErrors] = useState<Record<string, string>>({});
   const impressionKeys = useRef(new Set<string>());
-  const [access, setAccess] = useState<AssistantAccess>({ loaded: false, isStaff: false, isFarm: false, canViewReports: false, canManageStock: false, canManageFarm: false, canSell: false, canManageCashSessions: false });
+  const [access, setAccess] = useState<AssistantAccess>({ loaded: false, isStaff: false, isFarm: false, isFood: false, canViewReports: false, canManageStock: false, canManageFarm: false, canSell: false, canManageCashSessions: false });
 
   const dashboard = snapshotData.dashboard;
   const debts = snapshotData.debts;
@@ -251,6 +270,7 @@ export default function AssistantPage() {
           loaded: true,
           isStaff,
           isFarm: ["farm", "livestock"].includes(String(session.user.shop?.category || "").toLowerCase()),
+          isFood: ["bar", "restaurant"].includes(String(session.user.shop?.category || "").toLowerCase()),
           canViewReports: !isStaff || Boolean(permissions?.canViewReports),
           canManageStock: !isStaff || Boolean(permissions?.canManageStock),
           canManageFarm: !isStaff || Boolean(permissions?.canManageFarm),
@@ -356,7 +376,7 @@ export default function AssistantPage() {
     setAskError("");
     setAnswer(null);
     try {
-      const result = await api.post<{ answer: AssistantAnswer; contextToken?: string | null }>("/assistant/ask", { question: question.trim(), ...(askContext ? { contextToken: askContext } : {}) }, lang);
+      const result = await api.post<{ answer: AssistantAnswer; contextToken?: string | null }>("/assistant/ask", { question: question.trim(), ...(askContext ? { contextToken: askContext } : {}), ...(selectedProduct ? { productId: selectedProduct.id } : {}), ...(selectedSupplier ? { supplierId: selectedSupplier.id } : {}), ...(selectedRecord ? { operationalRecordId: selectedRecord.id } : {}), ...(productMetric ? { metric: productMetric } : {}) }, lang);
       setAnswer(result.answer);
       setAskContext(result.contextToken || null);
     } catch (error) {
@@ -365,6 +385,44 @@ export default function AssistantPage() {
     } finally {
       setAsking(false);
     }
+  }
+
+  async function findProducts() {
+    if (productSearch.trim().length < 2 || findingProduct) return;
+    setFindingProduct(true);
+    setProductSearchError("");
+    try {
+      const result = await api.get<{ products: Array<{ id: string; name: string; sku: string | null; unit: string }> }>(`/assistant/product-options?search=${encodeURIComponent(productSearch.trim())}`, lang);
+      setProductOptions(result.products);
+      if (!result.products.length) setProductSearchError(lang === "sw" ? "Hakuna bidhaa zilizopatikana." : "No products found.");
+    } catch (error) {
+      setProductOptions([]);
+      setProductSearchError(error instanceof Error ? error.message : (lang === "sw" ? "Bidhaa hazikupakia." : "Could not load products."));
+    } finally { setFindingProduct(false); }
+  }
+
+  async function findSuppliers() {
+    if (supplierSearch.trim().length < 2 || findingSupplier) return;
+    setFindingSupplier(true); setSupplierSearchError("");
+    try {
+      const result = await api.get<{ suppliers: Array<{ id: string; name: string }> }>(`/assistant/supplier-options?search=${encodeURIComponent(supplierSearch.trim())}`, lang);
+      setSupplierOptions(result.suppliers);
+      if (!result.suppliers.length) setSupplierSearchError(lang === "sw" ? "Hakuna msambazaji aliyepatikana." : "No suppliers found.");
+    } catch (error) {
+      setSupplierOptions([]); setSupplierSearchError(error instanceof Error ? error.message : (lang === "sw" ? "Wasambazaji hawakupakia." : "Could not load suppliers."));
+    } finally { setFindingSupplier(false); }
+  }
+
+  async function findOperationalRecords() {
+    if (recordSearch.trim().length < 2 || findingRecord) return;
+    setFindingRecord(true); setRecordSearchError("");
+    try {
+      const result = await api.get<{ items: Array<{ id: string; name: string }> }>(`/assistant/operational-options?kind=${recordKind}&search=${encodeURIComponent(recordSearch.trim())}`, lang);
+      setRecordOptions(result.items);
+      if (!result.items.length) setRecordSearchError(lang === "sw" ? "Hakuna rekodi zilizopatikana." : "No records found.");
+    } catch (error) {
+      setRecordOptions([]); setRecordSearchError(error instanceof Error ? error.message : (lang === "sw" ? "Rekodi hazikupakia." : "Could not load records."));
+    } finally { setFindingRecord(false); }
   }
 
   return (
@@ -453,7 +511,7 @@ export default function AssistantPage() {
         <section className="rounded-lg border border-brand-200 bg-white p-4" aria-labelledby="ask-dukapilot-heading">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-brand-700" /><h2 id="ask-dukapilot-heading" className="font-semibold text-gray-950">{lang === "sw" ? "Muulize DukaPilot" : "Ask DukaPilot"}</h2></div>
-            {(askContext || answer) && <button type="button" disabled={asking} onClick={() => { setAskContext(null); setQuestion(""); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Mazungumzo mapya" : "New conversation"}</button>}
+            {(askContext || answer) && <button type="button" disabled={asking} onClick={() => { setAskContext(null); setQuestion(""); setAnswer(null); setAskError(""); setSelectedProduct(null); setProductSearch(""); setProductOptions([]); setProductMetric(""); setSelectedSupplier(null); setSupplierSearch(""); setSupplierOptions([]); setSelectedRecord(null); setRecordSearch(""); setRecordOptions([]); }} className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Mazungumzo mapya" : "New conversation"}</button>}
           </div>
           <p className="mt-1 text-xs leading-5 text-gray-500">{lang === "sw" ? "Uliza swali moja kuhusu mada zilizoorodheshwa hapa chini. Majibu hutumia rekodi unazoruhusiwa kuona; hayabadilishi data." : "Ask one question about the topics below. Answers use records your account may view and do not change data."}</p>
           <div className="mt-3" aria-label={lang === "sw" ? "Mifano ya maswali" : "Example questions"}>
@@ -464,21 +522,55 @@ export default function AssistantPage() {
                 { source: "salesToday", en: "What was my profit this week?", sw: "Faida ya wiki hii ni kiasi gani?" },
                 { source: "inventory", en: "Which product may need reordering?", sw: "Ni bidhaa gani inahitaji kuagizwa?" },
                 { source: "debts", en: "How much debt is outstanding?", sw: "Madeni yaliyobaki ni kiasi gani?" },
+                { source: "debts", en: "How much debt did I collect this week?", sw: "Nilikusanya madeni kiasi gani wiki hii?" },
                 { source: "expenses", en: "What were today's expenses?", sw: "Matumizi ya leo ni kiasi gani?" },
                 { source: "inventory", en: "Which products expire in the next 30 days?", sw: "Ni bidhaa gani zinaisha muda siku 30 zijazo?" },
                 { source: "inventory", also: "salesToday", en: "How much stock was received this month?", sw: "Stock iliyopokelewa mwezi huu ni kiasi gani?" },
+                { source: "inventory", also: "salesToday", en: "What are the supplier balances?", sw: "Salio la wasambazaji ni kiasi gani?" },
                 { source: "expenses", en: "What recurring expenses are due?", sw: "Ni ratiba gani za matumizi zinatarajiwa?" },
                 { source: "salesToday", en: "How many credit sales this month?", sw: "Mauzo ya mkopo mwezi huu yalikuwa mangapi?" },
                 { source: "salesToday", en: "How much was refunded this month?", sw: "Marejesho ya mwezi huu ni kiasi gani?" },
+                { source: "salesToday", en: "What were my top products this month?", sw: "Bidhaa zinazouzwa zaidi mwezi huu ni zipi?" },
                 { source: "quotations", en: "Which quotations need follow-up?", sw: "Ni nukuu gani nahitaji kufuatilia?" },
                 { source: "farm", en: "What farm action should I review?", sw: "Ni shughuli gani ya shamba nikague?" },
-              ] as const).filter((example) => (example.source !== "farm" || access.isFarm) && sourceStatuses[example.source] && sourceStatuses[example.source]?.status !== "not_permitted" && (!("also" in example) || (sourceStatuses[example.also] && sourceStatuses[example.also]?.status !== "not_permitted"))).map((example) => {
+                { source: "farm", livestockOnly: true, en: "How many eggs were collected this week?", sw: "Mayai yaliyokusanywa wiki hii yalikuwa mangapi?" },
+                { source: "farm", cropsOnly: true, en: "Which crop tasks are overdue?", sw: "Ni kazi gani za shamba zilizochelewa?" },
+                { source: "inventory", foodOnly: true, en: "What food was prepared today?", sw: "Ni chakula gani tumeandaa leo?" },
+                { source: "salesToday", ownerOnly: true, en: "Compare branch sales this month", sw: "Linganisha mauzo ya matawi mwezi huu" },
+              ] as const).filter((example) => (example.source !== "farm" || access.isFarm) && (!("cropsOnly" in example) || snapshotData.farmCapabilities?.hasCrops) && (!("livestockOnly" in example) || snapshotData.farmCapabilities?.hasLivestock) && (!("foodOnly" in example) || access.isFood) && (!("ownerOnly" in example) || !access.isStaff) && sourceStatuses[example.source] && sourceStatuses[example.source]?.status !== "not_permitted" && (!("also" in example) || (sourceStatuses[example.also] && sourceStatuses[example.also]?.status !== "not_permitted"))).map((example) => {
                 const text = lang === "sw" ? example.sw : example.en;
                 return <button key={example.en} type="button" disabled={asking} onClick={() => { setQuestion(text); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium leading-5 text-gray-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50">{text}</button>;
               })}
               {access.loaded && (access.canSell || access.canManageCashSessions) && <button type="button" disabled={asking} onClick={() => { setQuestion(lang === "sw" ? "Zamu yangu iko wazi?" : "Is my shift open?"); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium leading-5 text-gray-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50">{lang === "sw" ? "Zamu yangu iko wazi?" : "Is my shift open?"}</button>}
+              {access.loaded && access.canManageCashSessions && <button type="button" disabled={asking} onClick={() => { setQuestion(lang === "sw" ? "Ni zamu gani za wafanyakazi zina tofauti wiki hii?" : "Which team shifts have a difference this week?"); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium leading-5 text-gray-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50">{lang === "sw" ? "Ni zamu gani za wafanyakazi zina tofauti wiki hii?" : "Which team shifts have a difference this week?"}</button>}
             </div>
           </div>
+          {access.loaded && access.canViewReports && <details className="mt-3 rounded-md border border-gray-200 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-700">{lang === "sw" ? "Chagua bidhaa au kipimo" : "Select product or ranking metric"}</summary>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <label className="min-w-0 flex-1 text-xs text-gray-600">{lang === "sw" ? "Tafuta bidhaa au SKU" : "Search product or SKU"}<input value={productSearch} onChange={(event) => { setProductSearch(event.target.value); setProductOptions([]); setProductSearchError(""); }} className="mt-1 h-10 w-full rounded-md border border-gray-300 px-3 text-sm" /></label>
+              <button type="button" onClick={findProducts} disabled={findingProduct || productSearch.trim().length < 2} className="mt-auto h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold disabled:opacity-50">{findingProduct ? (lang === "sw" ? "Inatafuta..." : "Searching...") : (lang === "sw" ? "Tafuta" : "Search")}</button>
+            </div>
+            {productSearchError && <p role="status" className="mt-2 text-xs text-gray-600">{productSearchError}</p>}
+            {productOptions.length > 0 && <ul className="mt-2 max-h-44 overflow-y-auto divide-y divide-gray-100 border border-gray-200">{productOptions.map((product) => <li key={product.id}><button type="button" onClick={() => { setSelectedProduct(product); setProductOptions([]); setQuestion(lang === "sw" ? "Utendaji wa bidhaa hii mwezi huu" : "Product performance this month"); setAnswer(null); setAskError(""); }} className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50">{product.name}{product.sku ? ` · ${product.sku}` : ""} <span className="text-xs text-gray-500">{product.unit}</span></button></li>)}</ul>}
+            {selectedProduct && <p className="mt-2 break-words text-xs text-brand-800">{lang === "sw" ? "Bidhaa iliyochaguliwa" : "Selected product"}: <strong>{selectedProduct.name}</strong> <button type="button" onClick={() => setSelectedProduct(null)} className="ml-1 underline">{lang === "sw" ? "Ondoa" : "Clear"}</button></p>}
+            <label className="mt-3 block text-xs text-gray-600">{lang === "sw" ? "Panga kwa" : "Rank by"}<select value={productMetric} onChange={(event) => setProductMetric(event.target.value)} className="mt-1 block h-10 w-full max-w-xs rounded-md border border-gray-300 bg-white px-2 text-sm"><option value="">{lang === "sw" ? "Kutoka kwenye swali" : "From question"}</option><option value="units">{lang === "sw" ? "Vitengo" : "Units"}</option><option value="revenue">{lang === "sw" ? "Mapato" : "Revenue"}</option><option value="profit">{lang === "sw" ? "Faida ghafi" : "Gross profit"}</option></select></label>
+          </details>}
+          {access.loaded && access.canViewReports && access.canManageStock && <details className="mt-2 rounded-md border border-gray-200 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-700">{lang === "sw" ? "Chagua msambazaji" : "Select supplier"}</summary>
+            <div className="mt-3 flex flex-wrap gap-2"><label className="min-w-0 flex-1 text-xs text-gray-600">{lang === "sw" ? "Tafuta msambazaji" : "Search supplier"}<input value={supplierSearch} onChange={(event) => { setSupplierSearch(event.target.value); setSupplierOptions([]); setSupplierSearchError(""); }} className="mt-1 h-10 w-full rounded-md border border-gray-300 px-3 text-sm" /></label><button type="button" onClick={findSuppliers} disabled={findingSupplier || supplierSearch.trim().length < 2} className="mt-auto h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold disabled:opacity-50">{findingSupplier ? (lang === "sw" ? "Inatafuta..." : "Searching...") : (lang === "sw" ? "Tafuta" : "Search")}</button></div>
+            {supplierSearchError && <p role="status" className="mt-2 text-xs text-gray-600">{supplierSearchError}</p>}
+            {supplierOptions.length > 0 && <ul className="mt-2 max-h-44 overflow-y-auto divide-y divide-gray-100 border border-gray-200">{supplierOptions.map((supplier) => <li key={supplier.id}><button type="button" onClick={() => { setSelectedSupplier(supplier); setSupplierOptions([]); setQuestion(lang === "sw" ? "Salio la msambazaji huyu ni kiasi gani?" : "How much do I owe this supplier?"); setAnswer(null); setAskError(""); }} className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50">{supplier.name}</button></li>)}</ul>}
+            {selectedSupplier && <p className="mt-2 break-words text-xs text-brand-800">{lang === "sw" ? "Msambazaji aliyechaguliwa" : "Selected supplier"}: <strong>{selectedSupplier.name}</strong> <button type="button" onClick={() => setSelectedSupplier(null)} className="ml-1 underline">{lang === "sw" ? "Ondoa" : "Clear"}</button></p>}
+          </details>}
+          {access.loaded && ((access.isFarm && access.canManageFarm) || (access.isFood && access.canManageStock)) && <details className="mt-2 rounded-md border border-gray-200 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-700">{lang === "sw" ? "Chagua rekodi ya shughuli" : "Select an operational record"}</summary>
+            <label className="mt-3 block text-xs text-gray-600">{lang === "sw" ? "Aina" : "Type"}<select value={recordKind} onChange={(event) => { setRecordKind(event.target.value as "crop" | "group" | "input"); setSelectedRecord(null); setRecordOptions([]); setRecordSearch(""); }} className="mt-1 block h-10 w-full max-w-xs rounded-md border border-gray-300 bg-white px-2 text-sm"><option value="input">{lang === "sw" ? "Pembejeo au kiungo" : "Input or ingredient"}</option>{access.isFarm && snapshotData.farmCapabilities?.hasCrops && <option value="crop">{lang === "sw" ? "Mzunguko wa mazao" : "Crop cycle"}</option>}{access.isFarm && snapshotData.farmCapabilities?.hasLivestock && <option value="group">{lang === "sw" ? "Kundi la mifugo" : "Animal group"}</option>}</select></label>
+            <div className="mt-3 flex flex-wrap gap-2"><label className="min-w-0 flex-1 text-xs text-gray-600">{lang === "sw" ? "Tafuta rekodi" : "Search records"}<input value={recordSearch} onChange={(event) => { setRecordSearch(event.target.value); setRecordOptions([]); setRecordSearchError(""); }} className="mt-1 h-10 w-full rounded-md border border-gray-300 px-3 text-sm" /></label><button type="button" onClick={findOperationalRecords} disabled={findingRecord || recordSearch.trim().length < 2} className="mt-auto h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold disabled:opacity-50">{findingRecord ? (lang === "sw" ? "Inatafuta..." : "Searching...") : (lang === "sw" ? "Tafuta" : "Search")}</button></div>
+            {recordSearchError && <p role="status" className="mt-2 text-xs text-gray-600">{recordSearchError}</p>}
+            {recordOptions.length > 0 && <ul className="mt-2 max-h-44 overflow-y-auto divide-y divide-gray-100 border border-gray-200">{recordOptions.map((record) => <li key={record.id}><button type="button" onClick={() => { setSelectedRecord({ ...record, kind: recordKind }); setRecordOptions([]); setQuestion(recordKind === "crop" ? (lang === "sw" ? "Mzunguko wa mazao" : "Crop cycle summary") : recordKind === "group" ? (lang === "sw" ? "Kundi la mifugo" : "Livestock group summary") : access.isFarm ? (lang === "sw" ? "Matumizi ya chakula cha mifugo wiki hii" : "How much feed was used this week?") : (lang === "sw" ? "Matumizi ya viungo wiki hii" : "How much ingredient was used this week?")); setAnswer(null); setAskError(""); }} className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50">{record.name}</button></li>)}</ul>}
+            {selectedRecord && <p className="mt-2 break-words text-xs text-brand-800">{lang === "sw" ? "Rekodi iliyochaguliwa" : "Selected record"}: <strong>{selectedRecord.name}</strong> <button type="button" onClick={() => setSelectedRecord(null)} className="ml-1 underline">{lang === "sw" ? "Ondoa" : "Clear"}</button></p>}
+          </details>}
           <form onSubmit={submitQuestion} className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input value={question} onChange={(event) => { setQuestion(event.target.value); setAnswer(null); setAskError(""); }} disabled={asking} maxLength={240} aria-label={lang === "sw" ? "Uliza kuhusu biashara yako" : "Ask about your business"} placeholder={lang === "sw" ? "Mfano: Ni bidhaa gani inahitaji kuagizwa?" : "For example: Which product may need reordering?"} className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100 disabled:opacity-60" />
             <button type="submit" disabled={asking || !question.trim()} className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">

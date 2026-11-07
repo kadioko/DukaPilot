@@ -61,6 +61,40 @@ test("assistant expiry and scheduled expenses stay shop-scoped in PostgreSQL", a
   assert.doesNotMatch(schedule, /Other shop secret reminder/);
 });
 
+test("assistant crop cycle answers isolate shops and hide costs from field staff in PostgreSQL", async (t) => {
+  const suffix = crypto.randomUUID();
+  const user = await prisma.user.create({ data: { phone: `ask-crop-${suffix}`, pin: "test-pin", name: "Test farm owner" } });
+  const shop = await prisma.shop.create({ data: { name: "Ask test farm", location: "Test", category: "farm", userId: user.id, referralCode: `ask-crop-${suffix}` } });
+  const otherUser = await prisma.user.create({ data: { phone: `ask-crop-other-${suffix}`, pin: "test-pin", name: "Other owner" } });
+  const otherShop = await prisma.shop.create({ data: { name: "Other farm", location: "Test", category: "farm", userId: otherUser.id, referralCode: `ask-crop-other-${suffix}` } });
+  await prisma.farmSettings.create({ data: { shopId: shop.id, hasCrops: true } });
+  const plot = await prisma.cropPlot.create({ data: { shopId: shop.id, name: "Plot A" } });
+  const cycle = await prisma.cropCycle.create({ data: { shopId: shop.id, plotId: plot.id, cropName: "Beans", plantedAt: new Date(), unrecoveredCost: 100 } });
+  const product = await prisma.product.create({ data: { shopId: shop.id, name: "Beans output", unit: "kg", buyingPrice: 1000, sellingPrice: 2000 } });
+  await prisma.cropInputUsage.create({ data: { shopId: shop.id, cropCycleId: cycle.id, title: "Seeds", totalCost: 10000 } });
+  await prisma.cropHarvestBatch.create({ data: { shopId: shop.id, cropCycleId: cycle.id, outputProductId: product.id, actualYield: 20, remainingQuantity: 12, realizedRevenue: 16000, realizedCost: 8000 } });
+  t.after(async () => {
+    await prisma.cropHarvestBatch.deleteMany({ where: { shopId: shop.id } });
+    await prisma.cropInputUsage.deleteMany({ where: { shopId: shop.id } });
+    await prisma.cropCycle.deleteMany({ where: { shopId: shop.id } });
+    await prisma.cropPlot.deleteMany({ where: { shopId: shop.id } });
+    await prisma.shop.deleteMany({ where: { id: { in: [shop.id, otherShop.id] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [user.id, otherUser.id] } } });
+  });
+  async function answer(actor) {
+    const req = { user: actor, query: {}, headers: { "x-dukapilot-language": "en" }, body: { question: "Crop cycle summary", operationalRecordId: cycle.id } };
+    const res = { status() { return this; }, json(body) { this.body = body; return this; } };
+    await askAssistant(req, res, (error) => { throw error; });
+    return res.body.answer.message;
+  }
+  const staff = await answer({ userId: user.id, staffId: "test-staff", shopId: shop.id, permissions: { canManageFarm: true } });
+  assert.match(staff, /Beans.*Plot A/); assert.match(staff, /20 kg/); assert.doesNotMatch(staff, /TZS|profit/i);
+  const owner = await answer({ userId: user.id, resolvedShopId: shop.id });
+  assert.match(owner, /10,000/); assert.match(owner, /7,900/);
+  const foreign = await answer({ userId: otherUser.id, resolvedShopId: otherShop.id });
+  assert.doesNotMatch(foreign, /Plot A|10,000/);
+});
+
 test("merchant wallet database accepts subscription debits and rejects unknown transaction kinds", async (t) => {
   const suffix = crypto.randomUUID();
   const user = await prisma.user.create({ data: { phone: `wallet-kind-${suffix}`, pin: "not-a-real-pin", name: "Synthetic wallet owner" } });
