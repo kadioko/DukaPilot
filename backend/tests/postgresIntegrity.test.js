@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const prisma = require("../src/lib/prisma");
 const { anonymizeMerchantAccount } = require("../src/services/accountDeletion.service");
 const { queueForShop } = require("../src/services/push.service");
+const { ask: askAssistant } = require("../src/controllers/assistantToday.controller");
 
 test.after(async () => {
   await prisma.$disconnect();
@@ -27,6 +28,37 @@ test("new stock and price viewing permissions default off and remain independent
   assert.equal(updated.canViewSalePrices, false);
   assert.equal(updated.canSell, false);
   assert.equal(updated.canManageStock, false);
+});
+
+test("assistant expiry and scheduled expenses stay shop-scoped in PostgreSQL", async (t) => {
+  const suffix = crypto.randomUUID();
+  const ownerA = await prisma.user.create({ data: { phone: `ask-a-${suffix}`, pin: "test-pin", name: "Test owner A" } });
+  const ownerB = await prisma.user.create({ data: { phone: `ask-b-${suffix}`, pin: "test-pin", name: "Test owner B" } });
+  const shopA = await prisma.shop.create({ data: { name: "Ask test A", location: "Test", userId: ownerA.id, referralCode: `ask-a-${suffix}` } });
+  const shopB = await prisma.shop.create({ data: { name: "Ask test B", location: "Test", userId: ownerB.id, referralCode: `ask-b-${suffix}` } });
+  t.after(async () => { await prisma.shop.deleteMany({ where: { id: { in: [shopA.id, shopB.id] } } }); await prisma.user.deleteMany({ where: { id: { in: [ownerA.id, ownerB.id] } } }); });
+  const due = new Date(Date.now() + 2 * 86400000);
+  await prisma.product.createMany({ data: [
+    { name: "Own expiry product", shopId: shopA.id, buyingPrice: 100, sellingPrice: 200, expiryDate: due },
+    { name: "Other shop secret product", shopId: shopB.id, buyingPrice: 100, sellingPrice: 200, expiryDate: due },
+  ] });
+  await prisma.recurringExpense.createMany({ data: [
+    { title: "Own reminder", amount: 49000, shopId: shopA.id, nextDueAt: due },
+    { title: "Other shop secret reminder", amount: 12345, shopId: shopB.id, nextDueAt: due },
+  ] });
+  async function answer(question) {
+    const req = { user: { userId: ownerA.id, resolvedShopId: shopA.id }, query: {}, headers: { "x-dukapilot-language": "en" }, body: { question } };
+    const res = { status() { return this; }, json(body) { this.body = body; return this; } };
+    await askAssistant(req, res, (error) => { throw error; });
+    return res.body.answer.message;
+  }
+  const expiry = await answer("Which products expire in the next 30 days?");
+  assert.match(expiry, /Own expiry product/);
+  assert.doesNotMatch(expiry, /Other shop secret product/);
+  const schedule = await answer("What recurring expenses are due?");
+  assert.match(schedule, /Own reminder/);
+  assert.match(schedule, /not confirmed payments/);
+  assert.doesNotMatch(schedule, /Other shop secret reminder/);
 });
 
 test("merchant wallet database accepts subscription debits and rejects unknown transaction kinds", async (t) => {

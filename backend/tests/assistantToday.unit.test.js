@@ -8,7 +8,9 @@ const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const shopAccessPath = path.resolve(__dirname, "../src/lib/shopAccess.js");
 const dashboardPath = path.resolve(__dirname, "../src/controllers/dashboard.controller.js");
 const assistantPath = path.resolve(__dirname, "../src/controllers/assistant.controller.js");
-const mockedPaths = [controllerPath, prismaPath, shopAccessPath, dashboardPath, assistantPath];
+const purchasePath = path.resolve(__dirname, "../src/controllers/purchaseAnalytics.controller.js");
+const cashSessionPath = path.resolve(__dirname, "../src/controllers/cashSession.controller.js");
+const mockedPaths = [controllerPath, prismaPath, shopAccessPath, dashboardPath, assistantPath, purchasePath, cashSessionPath];
 
 function cachedModule(id, exports) {
   return { id, filename: id, loaded: true, exports };
@@ -21,15 +23,17 @@ function makeHandler(payload, error) {
   };
 }
 
-function loadWithMocks({ prisma, overview, profitAnalytics, assistant } = {}) {
+function loadWithMocks({ prisma, overview, profitAnalytics, assistant, purchaseReport, currentCashSession } = {}) {
   const originalCache = new Map(mockedPaths.map((file) => [file, require.cache[file]]));
   const safePrisma = prisma || { $queryRaw: async () => [] };
   require.cache[prismaPath] = cachedModule(prismaPath, safePrisma);
-  require.cache[shopAccessPath] = cachedModule(shopAccessPath, { getShopIdForUser: async () => "shop-1" });
+  require.cache[shopAccessPath] = cachedModule(shopAccessPath, { getShopIdForUser: async (user) => user.shopId || "shop-1" });
   require.cache[dashboardPath] = cachedModule(dashboardPath, {
     overview: overview || makeHandler({ summary: {} }),
     profitAnalytics: profitAnalytics || makeHandler({ summary: {} }),
   });
+  require.cache[purchasePath] = cachedModule(purchasePath, { report: purchaseReport || makeHandler({ summary: { receiptCount: 0, landedCost: 0 }, suppliers: [] }) });
+  require.cache[cashSessionPath] = cachedModule(cashSessionPath, { current: currentCashSession || makeHandler({ session: null }) });
   require.cache[assistantPath] = cachedModule(assistantPath, assistant || {
     stockSummary: makeHandler({ actions: [] }),
     quotationSummary: makeHandler({ actions: [] }),
@@ -174,6 +178,160 @@ test("Ask interprets calendar months in Tanzania time and uses the requested sal
     assert.match(res.payload.answer.message, /Cash collected.*160,000/);
   } finally {
     loader.restore();
+  }
+});
+
+test("Ask recognizes supported English and Kiswahili wording without mixing topics", () => {
+  const loader = loadWithMocks();
+  try {
+    const { detectIntent } = loader.controller;
+    for (const question of ["Mauzo ya mwezi huu ni kiasi gani?", "Nimeuza kiasi gani leo?", "How much cash collected this week?"]) assert.equal(detectIntent(question), "salesToday");
+    for (const question of ["Faida ya wiki hii ni kiasi gani?", "Gharama ya bidhaa zilizouzwa leo ni kiasi gani?", "What is my profit on sales?"]) assert.equal(detectIntent(question), "profit");
+    assert.equal(detectIntent("Ni bidhaa gani inahitaji kuagizwa?"), "inventory");
+    assert.equal(detectIntent("Which product may need reordering?"), "inventory");
+    assert.equal(detectIntent("Madeni yaliyobaki ni kiasi gani?"), "debts");
+    assert.equal(detectIntent("Matumizi ya leo ni kiasi gani?"), "expenses");
+    assert.equal(detectIntent("Ni shughuli gani ya shamba nikague?"), "farm");
+    assert.equal(detectIntent("Ni bidhaa gani zinaisha muda siku 30 zijazo?"), "expiry");
+    assert.equal(detectIntent("Ni ratiba gani za matumizi zinatarajiwa?"), "scheduledExpenses");
+    assert.equal(detectIntent("Stock iliyopokelewa mwezi huu ni kiasi gani?"), "purchases");
+    assert.equal(detectIntent("Mauzo ya mkopo mwezi huu yalikuwa mangapi?"), "creditSales");
+    assert.equal(detectIntent("Which quotations need follow-up?"), "quotations");
+    assert.equal(detectIntent("How much sales and expenses this month?"), "ambiguous");
+  } finally { loader.restore(); }
+});
+
+test("Ask reports received-stock landed cost, not an expense or payment, and enforces stock and report permissions", async () => {
+  let calls = 0;
+  const loader = loadWithMocks({ purchaseReport: async (req, res) => { calls += 1; assert.equal(req.query.period, "custom"); return res.json({ summary: { receiptCount: 2, landedCost: 65000 }, suppliers: [] }); } });
+  try {
+    const denied = response();
+    await loader.controller.ask({ ...request({ userId: "owner", staffId: "staff", permissions: { canManageStock: true, canViewReports: false } }), body: { question: "How much stock was received this month?" } }, denied, (error) => { throw error; });
+    assert.match(denied.payload.answer.message, /permission/i);
+    assert.equal(calls, 0);
+    const permitted = response();
+    await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "How much stock was received this month?" } }, permitted, (error) => { throw error; });
+    assert.equal(calls, 1);
+    assert.match(permitted.payload.answer.message, /65,000/);
+    assert.match(permitted.payload.answer.message, /not the amount paid or an operating expense/);
+  } finally { loader.restore(); }
+});
+
+test("Ask scopes expiry and scheduled expense queries to the current shop without treating reminders as payments", async () => {
+  const scopes = [];
+  const loader = loadWithMocks({ prisma: {
+    product: { findMany: async (query) => { scopes.push(query.where.shopId); return [{ name: "Milk", expiryDate: new Date("2026-11-10T12:00:00Z") }]; } },
+    recurringExpense: { findMany: async (query) => { scopes.push(query.where.shopId); return [{ title: "Wifi", amount: 49000, nextDueAt: new Date("2026-11-10T12:00:00Z") }]; } },
+  } });
+  try {
+    const expiry = response();
+    await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "Which products expire in the next 30 days?" } }, expiry, (error) => { throw error; });
+    assert.match(expiry.payload.answer.message, /Milk/);
+    const schedule = response();
+    await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "What recurring expenses are due?" } }, schedule, (error) => { throw error; });
+    assert.match(schedule.payload.answer.message, /49,000/);
+    assert.match(schedule.payload.answer.message, /not confirmed payments/);
+    assert.deepEqual(scopes, ["shop-1", "shop-1"]);
+  } finally { loader.restore(); }
+});
+
+test("Ask distinguishes credit sales and return values from refunds and debt balances", async () => {
+  const loader = loadWithMocks({ profitAnalytics: async (_req, res) => res.json({ summary: { salesReturns: 9000, salesReturnReversals: 2000, refunds: 5000, refundRecoveries: 1000 }, salesPaymentBreakdown: [{ paymentMethod: "CREDIT", salesCount: 3, amount: 25000 }] }) });
+  try {
+    const credit = response();
+    await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "How many credit sales this month?" } }, credit, (error) => { throw error; });
+    assert.match(credit.payload.answer.message, /3 sales/);
+    assert.match(credit.payload.answer.message, /neither cash collected nor the current debt balance/);
+    const returns = response();
+    await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "How much was refunded this month?" } }, returns, (error) => { throw error; });
+    assert.match(returns.payload.answer.message, /7,000/);
+    assert.match(returns.payload.answer.message, /5,000/);
+    assert.match(returns.payload.answer.message, /1,000/);
+  } finally { loader.restore(); }
+});
+
+test("Ask only accesses the current actor's cash shift when allowed", async () => {
+  let calls = 0;
+  const loader = loadWithMocks({ currentCashSession: async (req, res) => { calls += 1; assert.equal(req.user.staffId, "staff-1"); return res.json({ session: { summary: { expectedCash: 12000 } }, sessions: [{ summary: { expectedCash: 999999 } }] }); } });
+  try {
+    const actor = { userId: "owner", staffId: "staff-1", permissions: { canSell: true } };
+    const res = response();
+    await loader.controller.ask({ ...request(actor), body: { question: "What is expected in my cash drawer?" } }, res, (error) => { throw error; });
+    assert.match(res.payload.answer.message, /12,000/);
+    assert.doesNotMatch(res.payload.answer.message, /999,999/);
+    const denied = response();
+    await loader.controller.ask({ ...request({ ...actor, permissions: {} }), body: { question: "Is my shift open?" } }, denied, (error) => { throw error; });
+    assert.match(denied.payload.answer.message, /permission/i);
+    assert.equal(calls, 1);
+    assert.equal(loader.controller.detectIntent("Which team shifts have a difference?"), "unsupported");
+  } finally { loader.restore(); }
+});
+
+test("overdue debt answers use Tanzania day boundaries and display only permitted records", () => {
+  const loader = loadWithMocks();
+  try {
+    const today = new Date(`${tanzaniaDateKey(new Date())}T00:00:00+03:00`);
+    const snapshot = { sections: { debts: { status: "ready", checkedAt: new Date().toISOString(), data: { summary: { openCount: 2, totalOwed: 12000 }, debts: [
+      { customerName: "Past due", amount: 10000, amountPaid: 3000, dueDate: new Date(today.getTime() - 86400000) },
+      { customerName: "Due today", amount: 5000, amountPaid: 0, dueDate: today },
+    ] } } } };
+    const answer = loader.controller.askAnswer("debts", snapshot, "en", "Which debts are overdue?");
+    assert.match(answer.message, /Past due: TZS 7,000/);
+    assert.doesNotMatch(answer.message, /Due today/);
+    const denied = loader.controller.askAnswer("debts", { sections: { debts: { status: "not_permitted" } } }, "en", "Who owes me?");
+    assert.match(denied.message, /permission/);
+    assert.doesNotMatch(denied.message, /Past due/);
+  } finally { loader.restore(); }
+});
+
+test("Ask clearly declines unsupported and mixed-topic requests without querying business data", async () => {
+  let queried = false;
+  const loader = loadWithMocks({ profitAnalytics: async (_req, res) => { queried = true; return res.json({ summary: {} }); } });
+  try {
+    for (const question of ["Which product sold the most?", "Who is my best customer?", "How do I grow my business?", "How much sales and expenses this month?"]) {
+      const res = response();
+      await loader.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question } }, res, (error) => { throw error; });
+      assert.match(res.payload.answer.message, /cannot answer|one topic at a time/i);
+      assert.match(res.payload.answer.message, /Try:/);
+      assert.deepEqual(res.payload.answer.evidence, []);
+    }
+    assert.equal(queried, false);
+  } finally { loader.restore(); }
+});
+
+test("period follow-ups are signed and cannot cross business, branch, or staff identity", async () => {
+  const oldSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "test-context-secret";
+  let calls = 0;
+  const loader = loadWithMocks({ profitAnalytics: async (_req, res) => { calls += 1; return res.json({ summary: { salesCount: 1, netSalesRevenue: 12000 } }); } });
+  try {
+    const ask = async (user, question, contextToken) => {
+      const res = response();
+      await loader.controller.ask({ ...request(user), body: { question, contextToken } }, res, (error) => { throw error; });
+      return res.payload;
+    };
+    const first = await ask({ userId: "owner-1", shopId: "shop-1" }, "Sales this month");
+    assert.ok(first.contextToken);
+    const followUp = await ask({ userId: "owner-1", shopId: "shop-1" }, "And last month?", first.contextToken);
+    assert.match(followUp.answer.message, /last month/i);
+    assert.equal(calls, 2);
+    for (const user of [{ userId: "owner-2", shopId: "shop-1" }, { userId: "owner-1", shopId: "shop-2" }, { userId: "owner-1", shopId: "shop-1", staffId: "staff-1", permissions: { canViewReports: true } }]) {
+      const result = await ask(user, "And last month?", first.contextToken);
+      assert.match(result.answer.message, /cannot answer/i);
+    }
+    const tampered = await ask({ userId: "owner-1", shopId: "shop-1" }, "And last month?", `${first.contextToken}x`);
+    assert.match(tampered.answer.message, /cannot answer/i);
+    const otherRequest = await ask({ userId: "owner-1", shopId: "shop-1" }, "What about last month and my customers?", first.contextToken);
+    assert.match(otherRequest.answer.message, /cannot answer/i);
+    assert.equal(calls, 2);
+    const staff = { userId: "owner-1", shopId: "shop-1", staffId: "staff-1", permissions: { canViewReports: true } };
+    const staffAnswer = await ask(staff, "Sales this month");
+    const revoked = await ask({ ...staff, permissions: { canViewReports: false } }, "And last month?", staffAnswer.contextToken);
+    assert.match(revoked.answer.message, /permission/i);
+    assert.equal(calls, 3);
+  } finally {
+    loader.restore();
+    if (oldSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = oldSecret;
   }
 });
 

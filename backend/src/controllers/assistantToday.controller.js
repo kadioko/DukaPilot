@@ -1,6 +1,9 @@
 const prisma = require("../lib/prisma");
+const crypto = require("crypto");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { overview, profitAnalytics } = require("./dashboard.controller");
+const { report: purchaseReport } = require("./purchaseAnalytics.controller");
+const { current: currentCashSession } = require("./cashSession.controller");
 const { stockSummary, quotationSummary, farmSummary, listActions } = require("./assistant.controller");
 const { startOfTanzaniaDay, endOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzaniaMonth, addTanzaniaMonths, tanzaniaDateKey } = require("../lib/businessTime");
 const { occurredExpenseDateSql } = require("../lib/expenseReporting");
@@ -25,6 +28,7 @@ function permissionsFor(user) {
     farm: !isStaff(user) || Boolean(permissions.canManageFarm),
     debts: !isStaff(user) || Boolean(permissions.canSell),
     expenses: !isStaff(user) || Boolean(permissions.canRecordExpenses),
+    cashSession: !isStaff(user) || Boolean(permissions.canSell || permissions.canManageCashSessions),
     quotations: !isStaff(user) || Boolean(permissions.canViewReports || permissions.canViewQuotationCosts),
   };
 }
@@ -114,7 +118,7 @@ function requestedTimeWindow(question, intent, now = new Date()) {
   if (phrase?.type === "unsupported") {
     return { clarification: "unsupported-period" };
   }
-  if (phrase && !["salesToday", "profit", "expenses"].includes(intent)) {
+  if (phrase && !["salesToday", "profit", "expenses", "purchases", "topPurchaseSupplier", "returns", "creditSales"].includes(intent)) {
     return { clarification: intent === "debts" ? "historical-debt" : "historical-topic" };
   }
 
@@ -217,7 +221,7 @@ async function runSection(sections, key, allowed, loader, req) {
 
 async function invoke(handler, req, query = {}) {
   const sectionReq = Object.create(req);
-  sectionReq.query = { ...req.query, ...query };
+  sectionReq.query = { ...query };
   let statusCode = 200;
   let payload;
   const res = {
@@ -436,16 +440,142 @@ const today = asyncHandler(async (req, res) => {
 
 function detectIntent(question) {
   const value = question.toLocaleLowerCase();
-  if (/\b(stock|inventory|restock|reorder|run out|bidhaa|hifadhi|agiza|kuisha)\b/.test(value)) return "inventory";
-  if (/\b(debt|debts|owed|collection|madeni|deni|dai)\b/.test(value)) return "debts";
-  if (/\b(gross profit|net profit|profit margin|profit|faida|cogs|cost of goods sold)\b/.test(value)) return "profit";
-  if (/\b(expense|expenses|cost|spending|gharama|matumizi)\b/.test(value)) return "expenses";
-  if (/\b(farm|crop|harvest|livestock|shamba|mazao|mavuno|ufugaji)\b/.test(value)) return "farm";
-  if (/\b(sale|sales|revenue|mauzo|mapato)\b/.test(value)) return "salesToday";
-  return "overview";
+  if (/\b(shift|drawer|cash session|daily close|zamu|droo)\b/.test(value)) return /\b(team|staff|other|all|variance|difference|tofauti|wafanyakazi|zote)\b/.test(value) ? "unsupported" : "cashSession";
+  if (/\b(credit sales?|sales? (?:on|by) credit|mauzo ya mkopo|mauzo kwa mkopo|returns?|refunded|refunds?|marejesho|rejesho)\b/.test(value) && /\b(expenses?|matumizi|gharama)\b/.test(value)) return "ambiguous";
+  if (/\b(return|returns|returned|refund|refunds|marejesho|rejesho)\b/.test(value) && /\b(supplier|suppliers|purchase|purchases|msambazaji|wasambazaji|manunuzi)\b/.test(value)) return "unsupported";
+  if (/\b(?:when|lini)\b.*\b(?:received|receive|purchased|kupokea|ilipokelewa)\b/.test(value)) return "unsupported";
+  if (/\b(supplier returns?|return(?:ed)? to (?:a |the )?supplier|marejesho kwa (?:muuzaji|msambazaji)|deni la msambazaji|supplier (?:balance|balances|credit)|owe (?:a |the )?supplier)\b/.test(value)) return "unsupported";
+  if (/\b(expir(?:e|es|ing|y|ed)|near expiry|muda wa matumizi|zinazoisha muda|zinaisha muda|inaisha muda|zilizoisha muda)\b/.test(value) && /\b(stock|inventory|product|products|bidhaa|hifadhi)\b/.test(value)) return /\b(expired|zilizoisha muda)\b/.test(value) ? "expiredStock" : "expiry";
+  if (/\b(recurring|scheduled|schedule|ratiba|ya kila mwezi)\b/.test(value) && /\b(expense|expenses|payment|payments|matumizi|malipo)\b/.test(value)) return "scheduledExpenses";
+  if (/\b(quotation|quotations|quote|quotes|nukuu)\b/.test(value)) return "quotations";
+  if (/\b(purchase|purchases|purchased|buy|bought|stock (?:was )?received|stock receipts?|receive stock|manunuzi|nunua|nilinunua|tulinunua|stock iliyopokelewa)\b/.test(value)) {
+    if (/\b(supplier|suppliers|msambazaji|wasambazaji)\b/.test(value)) return /\b(most|highest|top|zaidi)\b/.test(value) ? "topPurchaseSupplier" : "unsupported";
+    return "purchases";
+  }
+  if (/\b(returns?|returned|refunds?|refunded|marejesho|rejesho|rejeshwa)\b/.test(value)) return "returns";
+  if (/\b(credit sales?|sales? (?:on|by) credit|mauzo ya mkopo|mauzo kwa mkopo)\b/.test(value)) return "creditSales";
+  if (/\b(who owes|which debts? (?:are |is )?overdue|overdue debts?|wateja gani.*(?:deni|madeni)|madeni.*(?:yamechelewa|yaliyochelewa))\b/.test(value)) return "debts";
+  // Rankings and individual record lookups need their own queries; a topic
+  // summary would look like an answer but could mislead the merchant.
+  if (/\b(best.sell(?:ing|er)?|top.sell(?:ing|er)?|most sold|sold (?:the )?most|most profitable|highest selling|top products?|best products?|best customers?|top customers?|customers?|mteja|wateja|debt (?:for|of|from)|deni la|bei gani|bidhaa (?:inayouzwa|inayouza|iliyotumika|iliyouzwa) zaidi)\b/i.test(value)) return "unsupported";
+  const matches = [];
+  if (/\b(stock|inventory|restock(?:ing)?|reorder(?:ing)?|run out|bidhaa|hifadhi|agiza|kuisha|kuagiza)\b/.test(value)) matches.push("inventory");
+  if (/\b(debt|debts|owed|collection|madeni|deni|dai|nadaiwa|tunaidaiwa|tunaidai)\b/.test(value)) matches.push("debts");
+  if (/\b(gross profit|net profit|profit margin|profit|profits|faida|cogs|cost of goods sold|gharama ya bidhaa zilizouzwa)\b/.test(value)) matches.push("profit");
+  if (/\b(expense|expenses|cost|costs|spending|gharama|matumizi|nimetumia|tulilipa)\b/.test(value)) matches.push("expenses");
+  if (/\b(farm|crop|harvest|livestock|shamba|mazao|mavuno|ufugaji)\b/.test(value)) matches.push("farm");
+  if (/\b(sale|sales|revenue|cash collected|money collected|mauzo|mapato|nimeuza|tumeuza|tuliuza)\b/.test(value)) matches.push("salesToday");
+  if (matches.includes("profit")) {
+    const other = matches.filter((item) => !["profit", "expenses", "salesToday"].includes(item) && !(item === "inventory" && /gharama ya bidhaa zilizouzwa/.test(value)));
+    return other.length ? "ambiguous" : "profit";
+  }
+  if (matches.length > 1) return "ambiguous";
+  if (matches.length === 1) return matches[0];
+  if (/\b(what should i do|what should we do|what next|next action|nifanye nini|tufanye nini|hatua inayofuata)\b/.test(value)) return "overview";
+  return "unsupported";
 }
 
-function askAnswer(intent, snapshot, lang) {
+const FOLLOW_UP_TOPICS = new Set(["salesToday", "profit", "expenses", "purchases", "returns", "creditSales"]);
+function isPeriodFollowUp(question) {
+  return /^(?:(?:and|what about|how about|na|je)\s+)?(?:today|yesterday|this week|last week|this month|last month|this quarter|last quarter|this year|last year|the last 7 days|leo|jana|wiki hii|wiki iliyopita|mwezi huu|mwezi uliopita|robo hii|robo iliyopita|mwaka huu|mwaka uliopita)\s*[?.!]*$/i.test(question.trim());
+}
+
+function contextSignature(payload, scope, secret) {
+  return crypto.createHmac("sha256", secret).update(`dukapilot-ask-context-v1\n${payload}\n${JSON.stringify(scope)}`).digest("hex");
+}
+
+async function createFollowUpContext(req, intent) {
+  if (!FOLLOW_UP_TOPICS.has(intent) || !process.env.JWT_SECRET || !req.user?.userId) return null;
+  const scope = [await getShopIdForUser(req.user), req.user.userId, req.user.staffId || null];
+  const payload = Buffer.from(JSON.stringify({ topic: intent, createdAt: Date.now() })).toString("base64url");
+  return `${payload}.${contextSignature(payload, scope, process.env.JWT_SECRET)}`;
+}
+
+async function readFollowUpContext(req, token) {
+  if (!process.env.JWT_SECRET || !req.user?.userId || typeof token !== "string" || token.length > 512) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2 || !/^[a-f0-9]{64}$/.test(parts[1])) return null;
+  const scope = [await getShopIdForUser(req.user), req.user.userId, req.user.staffId || null];
+  const expected = Buffer.from(contextSignature(parts[0], scope, process.env.JWT_SECRET), "hex");
+  const received = Buffer.from(parts[1], "hex");
+  if (!crypto.timingSafeEqual(expected, received)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    if (!FOLLOW_UP_TOPICS.has(data.topic) || !Number.isFinite(data.createdAt) || data.createdAt > Date.now() || Date.now() - data.createdAt > 30 * 60 * 1000) return null;
+    return data.topic;
+  } catch { return null; }
+}
+
+async function answerOperationalQuestion(req, intent, window, lang) {
+  const sw = lang === "sw";
+  const permissions = permissionsFor(req.user);
+  const allowed = intent === "cashSession" ? permissions.cashSession
+    : ["expiry", "expiredStock"].includes(intent) ? permissions.stock
+    : intent === "scheduledExpenses" ? permissions.reports && permissions.expenses
+      : intent === "quotations" ? permissions.quotations
+      : ["purchases", "topPurchaseSupplier"].includes(intent) ? permissions.reports && permissions.stock
+          : permissions.reports;
+  const href = ({ cashSession: "/daily-close", expiry: "/inventory", expiredStock: "/inventory", scheduledExpenses: "/expenses", quotations: "/quotations", purchases: "/analytics/purchases", topPurchaseSupplier: "/analytics/purchases", returns: "/analytics", creditSales: "/analytics" })[intent];
+  const privacy = sw ? "Jibu limetumia rekodi za DukaPilot pekee; hakuna huduma ya AI ya nje iliyotumika." : "This answer used DukaPilot records only; no external AI service was called.";
+  if (!allowed) return { message: sw ? "Akaunti hii haina ruhusa ya kuona taarifa hizo. Muombe mmiliki aangalie ruhusa zako." : "This account does not have permission to view those records. Ask the owner to review your access.", href: "/assistant", evidence: [], privacy };
+  const shopId = await getShopIdForUser(req.user);
+  const checkedAt = new Date().toISOString();
+  let message;
+  let source;
+  if (intent === "cashSession") {
+    const data = await invoke(currentCashSession, req);
+    const session = data.session;
+    message = session ? (sw ? `Zamu yako iko wazi. Cash inayotarajiwa kwenye droo ni TZS ${Number(session.summary.expectedCash).toLocaleString("en-TZ")}; hesabu fedha halisi kabla ya kufunga. Kiasi hiki si jumla ya mauzo yote.` : `Your shift is open. Expected cash in your drawer is TZS ${Number(session.summary.expectedCash).toLocaleString("en-TZ")}; count the actual cash before closing. This is not total sales.`) : (sw ? "Huna zamu ya cash iliyo wazi kwa akaunti hii." : "This account has no open cash shift.");
+    source = sw ? "Zamu yako" : "Your cash shift";
+  } else if (intent === "expiry" || intent === "expiredStock") {
+    const start = startOfTanzaniaDay();
+    const end = new Date(start.getTime() + 31 * DAY_MS);
+    const products = await prisma.product.findMany({ where: { shopId, isActive: true, doesNotExpire: false, expiryDate: intent === "expiredStock" ? { lt: start } : { gte: start, lt: end } }, select: { name: true, expiryDate: true }, orderBy: [{ expiryDate: "asc" }, { id: "asc" }], take: 5 });
+    const items = products.map((item) => `${item.name} (${tanzaniaDateKey(item.expiryDate)})`).join(", ");
+    if (intent === "expiredStock") message = products.length ? (sw ? `Bidhaa zenye tarehe iliyoisha (za kwanza ${products.length}): ${items}. Kagua kila batch.` : `Products with a recorded past expiry date (first ${products.length}): ${items}. Check individual batches.`) : (sw ? "Hakuna bidhaa yenye tarehe iliyorekodiwa kuwa imeisha." : "No products have a recorded past expiry date.");
+    else message = products.length ? (sw ? `Bidhaa zinazoisha muda katika siku 30 zijazo (za kwanza ${products.length}): ${items}. Tarehe hizi zinategemea rekodi za bidhaa, si kila batch.` : `Products expiring in the next 30 days (first ${products.length}): ${items}. Dates are product records, not necessarily individual batches.`) : (sw ? "Hakuna bidhaa yenye tarehe iliyorekodiwa ndani ya siku 30 zijazo. Bidhaa bila tarehe haziwezi kukaguliwa." : "No products have a recorded expiry in the next 30 days. Products without an expiry date cannot be checked.");
+    source = sw ? "Tarehe za bidhaa" : "Product expiry dates";
+  } else if (intent === "scheduledExpenses") {
+    const end = new Date(startOfTanzaniaDay().getTime() + 31 * DAY_MS);
+    const schedules = await prisma.recurringExpense.findMany({ where: { shopId, isActive: true, nextDueAt: { lt: end } }, select: { title: true, amount: true, nextDueAt: true }, orderBy: [{ nextDueAt: "asc" }, { id: "asc" }], take: 5 });
+    const items = schedules.map((item) => `${item.title}: TZS ${Number(item.amount).toLocaleString("en-TZ")} (${tanzaniaDateKey(item.nextDueAt)})`).join(", ");
+    message = schedules.length ? (sw ? `Ratiba zilizochelewa au zinazotarajiwa ndani ya siku 30 (za kwanza ${schedules.length}): ${items}. Hizi ni vikumbusho, si malipo yaliyothibitishwa.` : `Overdue or due in the next 30 days (first ${schedules.length}): ${items}. These are reminders, not confirmed payments.`) : (sw ? "Hakuna ratiba iliyochelewa au inayotarajiwa ndani ya siku 30 zijazo." : "No schedules are overdue or due in the next 30 days.");
+    source = sw ? "Ratiba za matumizi" : "Expense schedules";
+  } else if (intent === "quotations") {
+    const data = await invoke(quotationSummary, req);
+    const titles = (data.actions || []).slice(0, 3).map((item) => item.title).join("; ");
+    message = titles ? (sw ? `Hatua za nukuu za kukagua: ${titles}. Nukuu si mauzo mpaka ibadilishwe.` : `Quotation actions to review: ${titles}. A quotation is not a sale until converted.`) : (sw ? "Hakuna hatua ya nukuu iliyopatikana kwenye rekodi zilizokaguliwa." : "No quotation follow-up action was found in the records checked.");
+    source = sw ? "Nukuu" : "Quotations";
+  } else if (intent === "purchases" || intent === "topPurchaseSupplier") {
+    const data = await invoke(purchaseReport, req, { period: "custom", from: window.fromDate, to: window.toDate, page: "1", pageSize: "1" });
+    const amount = Number(data.summary?.landedCost || 0).toLocaleString("en-TZ");
+    const period = localizedPeriod(window.label, sw);
+    if (intent === "topPurchaseSupplier") {
+      const supplier = data.suppliers?.[0];
+      message = supplier ? (sw ? `${period}: ${supplier.id === "__unassigned__" ? "Risiti bila msambazaji" : supplier.name} ina gharama kubwa zaidi ya stock iliyopokelewa, TZS ${Number(supplier.amount).toLocaleString("en-TZ")}. Hii ni kabla ya marejesho na mikopo; si kiasi kilicholipwa.` : `${period}: ${supplier.id === "__unassigned__" ? "Receipts without a supplier" : supplier.name} had the highest recorded received-stock landed cost, TZS ${Number(supplier.amount).toLocaleString("en-TZ")}. This is before returns and credits, not the amount paid.`) : (sw ? `Hakuna risiti za stock zilizopokelewa ${period}.` : `No stock receipts were recorded ${period}.`);
+    } else message = sw ? `Stock iliyopokelewa ${period}: risiti ${data.summary.receiptCount}, gharama iliyorekodiwa TZS ${amount}, pamoja na gharama za usafiri na nyingine. Hiki si kiasi kilicholipwa wala matumizi ya uendeshaji; marejesho na mikopo ya wasambazaji huonyeshwa kando.` : `Stock received ${period}: ${data.summary.receiptCount} receipts, recorded landed cost TZS ${amount}, including transport and other costs. This is not the amount paid or an operating expense; supplier returns and credits are shown separately.`;
+    source = sw ? "Ripoti ya manunuzi" : "Purchase analytics";
+  } else {
+    const data = await invoke(profitAnalytics, req, { period: "custom", from: window.fromDate, to: window.toDate });
+    const period = localizedPeriod(window.label, sw);
+    if (intent === "creditSales") {
+      const credit = (data.salesPaymentBreakdown || []).find((item) => item.paymentMethod === "CREDIT");
+      const count = Number(credit?.salesCount || 0);
+      const amount = Number(credit?.amount || 0).toLocaleString("en-TZ");
+      message = sw ? `${period}: mauzo ${count} yaliwekwa kwa njia ya mkopo, jumla TZS ${amount} kabla ya marejesho. Hii si fedha iliyokusanywa au salio la sasa la madeni.` : `${period}: ${count} sales were recorded with the credit payment method, totalling TZS ${amount} before returns. This is neither cash collected nor the current debt balance.`;
+    } else {
+      const summary = data.summary || {};
+      const netReturns = Number(summary.salesReturns || 0) - Number(summary.salesReturnReversals || 0);
+      const refunds = Number(summary.refunds || 0);
+      const recovered = Number(summary.refundRecoveries || 0);
+      message = sw ? `${period}: thamani ya marejesho baada ya masahihisho ni TZS ${netReturns.toLocaleString("en-TZ")}; fedha zilizorejeshwa ni TZS ${refunds.toLocaleString("en-TZ")} na zilizorejeshwa dukani baada ya masahihisho ni TZS ${recovered.toLocaleString("en-TZ")}. Thamani ya bidhaa si lazima iwe sawa na fedha iliyolipwa.` : `${period}: returned sale value after reversals is TZS ${netReturns.toLocaleString("en-TZ")}; refunds paid total TZS ${refunds.toLocaleString("en-TZ")}, and TZS ${recovered.toLocaleString("en-TZ")} was recovered on return reversals. Returned value is not necessarily cash paid.`;
+    }
+    source = sw ? "Uchanganuzi wa mauzo" : "Sales analytics";
+  }
+  return { message, href, evidence: [{ source, checkedAt, dataThrough: null }], privacy };
+}
+
+function askAnswer(intent, snapshot, lang, question = "") {
   const sw = lang === "sw";
   const get = (key) => snapshot.sections[key]?.status === "ready" ? snapshot.sections[key].data : null;
   const evidence = [];
@@ -487,12 +617,18 @@ function askAnswer(intent, snapshot, lang) {
     if (!data && snapshot.sections.debts?.status === "not_permitted") message = sw ? "Akaunti hii haina ruhusa ya kuona madeni." : "This account does not have permission to view debts.";
     else if (!data) message = sw ? "Taarifa za madeni hazipatikani kwa sasa. Jaribu tena chanzo cha madeni." : "Debt data could not be loaded. Retry the debt source.";
     else if (!data.summary.openCount) message = sw ? "Hakuna deni lililo wazi lililorekodiwa." : "There are no open debts recorded.";
-    else {
+    else if (/\b(who owes|which debts? (?:are |is )?overdue|overdue debts?|wateja gani.*(?:deni|madeni)|madeni.*(?:yamechelewa|yaliyochelewa))\b/i.test(question)) {
+      const overdue = /\b(overdue|yamechelewa|yaliyochelewa)\b/i.test(question);
+      const list = (data.debts || []).filter((debt) => !overdue || (debt.dueDate && new Date(debt.dueDate) < startOfTanzaniaDay())).slice(0, 5);
+      const items = list.map((debt) => `${debt.customerName || (sw ? "Mteja bila jina" : "Unnamed customer")}: TZS ${Math.max(0, Number(debt.amount) - Number(debt.amountPaid)).toLocaleString("en-TZ")}`).join("; ");
+      message = list.length ? (sw ? `${overdue ? "Madeni yaliyochelewa" : "Madeni yaliyo wazi"} (rekodi za kwanza ${list.length}): ${items}. Fungua Madeni kwa orodha kamili.` : `${overdue ? "Overdue debts" : "Open debts"} (first ${list.length} records): ${items}. Open Debts for the complete list.`) : (sw ? "Hakuna rekodi ya deni inayolingana iliyopatikana." : "No matching debt records were found.");
+      href = "/debts";
+    } else {
       const oldest = data.debts?.[0];
       const ageDays = oldest ? Math.max(0, Math.floor((Date.now() - new Date(oldest.createdAt).getTime()) / DAY_MS)) : null;
       message = sw
-        ? `Madeni ${data.summary.openCount} yako wazi, jumla ya salio TZS ${Number(data.summary.totalOwed).toLocaleString("en-TZ")}.${ageDays !== null ? ` Rekodi ya zamani zaidi kwenye orodha ina takriban siku ${ageDays}.` : ""} Hii ni salio lililorekodiwa, si uthibitisho wa malipo yaliyopokelewa.`
-        : `${data.summary.openCount} debt records remain open, with TZS ${Number(data.summary.totalOwed).toLocaleString("en-TZ")} outstanding.${ageDays !== null ? ` The oldest listed record is about ${ageDays} days old.` : ""} This is the recorded balance, not confirmation of cash received.`;
+        ? `Madeni ${data.summary.openCount} yako wazi, jumla ya salio TZS ${Number(data.summary.totalOwed).toLocaleString("en-TZ")}.${ageDays !== null ? ` Deni la kwanza kwa kipaumbele lina takriban siku ${ageDays} tangu lirekodiwe.` : ""} Hii ni salio lililorekodiwa, si uthibitisho wa malipo yaliyopokelewa.`
+        : `${data.summary.openCount} debt records remain open, with TZS ${Number(data.summary.totalOwed).toLocaleString("en-TZ")} outstanding.${ageDays !== null ? ` The first prioritized debt was recorded about ${ageDays} days ago.` : ""} This is the recorded balance, not confirmation of cash received.`;
       href = "/debts";
     }
     addEvidence("debts", sw ? "Madeni" : "Debts");
@@ -569,9 +705,23 @@ function askAnswer(intent, snapshot, lang) {
 const ask = asyncHandler(async (req, res) => {
   const question = String(req.body?.question || "").trim().slice(0, 240);
   if (!question) return res.status(400).json({ error: "Enter a question" });
-  const intent = detectIntent(question);
-  const parsedWindow = requestedTimeWindow(question, intent);
+  let intent = detectIntent(question);
+  if (intent === "unsupported" && isPeriodFollowUp(question)) intent = await readFollowUpContext(req, req.body?.contextToken) || "unsupported";
   const language = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase() === "en" ? "en" : "sw";
+  if (intent === "unsupported" || intent === "ambiguous") {
+    const message = language === "sw"
+      ? (intent === "ambiguous" ? "Swali hili lina mada zaidi ya moja. Tafadhali uliza mada moja kwa wakati." : "Bado siwezi kujibu swali hilo kwa usahihi.") + " Jaribu: 'Mauzo ya mwezi huu ni kiasi gani?', 'Matumizi ya leo ni kiasi gani?', au 'Ni bidhaa gani inahitaji kuagizwa?'"
+      : (intent === "ambiguous" ? "That question has more than one topic. Please ask about one topic at a time." : "I cannot answer that question accurately yet.") + " Try: 'How much were sales this month?', 'What were today's expenses?', or 'Which product may need reordering?'";
+    return res.json({ answer: { message, href: "/assistant", evidence: [], privacy: language === "sw" ? "Hakuna data ya biashara iliyotumika kwa jibu hili." : "No business data was used for this answer." }, generatedAt: new Date().toISOString() });
+  }
+  if (["cashSession", "expiry", "expiredStock", "scheduledExpenses", "quotations"].includes(intent)) {
+    const withoutThirtyDays = question.replace(/\b(?:in |within |the )?next (?:30|thirty) days\b|\bsiku (?:30|thelathini) zijazo\b/ig, "");
+    if (periodPhrase(withoutThirtyDays)) {
+      return res.json({ answer: { message: language === "sw" ? "Kwa sasa naweza kuonyesha hali ya sasa tu; kwa tarehe za bidhaa na ratiba natumia siku 30 zijazo. Uliza bila kipindi kingine." : "For now I can show current status only; expiry and schedules use the next 30 days. Please ask without another date range.", href: "/assistant", evidence: [], privacy: language === "sw" ? "Hakuna data ya biashara iliyotumika kwa jibu hili." : "No business data was used for this answer." }, generatedAt: new Date().toISOString() });
+    }
+  }
+  const parsedWindow = requestedTimeWindow(question, intent);
+  if (["cashSession", "expiry", "expiredStock", "scheduledExpenses", "quotations"].includes(intent)) delete parsedWindow.clarification;
   if (parsedWindow.clarification) {
     const message = language === "sw"
       ? parsedWindow.clarification === "historical-debt"
@@ -590,11 +740,23 @@ const ask = asyncHandler(async (req, res) => {
             : "Specify a supported period: today, yesterday, this/last week, month, quarter, or year, the last 7 days, or two YYYY-MM-DD dates.";
     return res.json({ answer: { message, href: intent === "debts" ? "/debts" : intent === "expenses" ? "/expenses" : intent === "salesToday" ? "/analytics" : "/assistant", evidence: [], privacy: language === "sw" ? "Jibu hili halikutumia data ya biashara kwa sababu nilihitaji ufafanuzi wa kipindi." : "No business data was queried because the requested period needs clarification." }, generatedAt: new Date().toISOString() });
   }
+  if (["cashSession", "expiry", "expiredStock", "scheduledExpenses", "quotations", "purchases", "topPurchaseSupplier", "returns", "creditSales"].includes(intent)) {
+    try {
+      const answer = await answerOperationalQuestion(req, intent, parsedWindow.window, language);
+      const contextToken = answer.evidence.length ? await createFollowUpContext(req, intent) : null;
+      return res.json({ answer, contextToken, generatedAt: new Date().toISOString() });
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "assistant_question_source_unavailable", requestId: req.requestId || null, intent, errorName: error?.name || "Error" }));
+      return res.json({ answer: { message: language === "sw" ? "Taarifa hii haipatikani kwa sasa. Jaribu tena baadaye." : "These records are unavailable right now. Please try again.", href: "/assistant", evidence: [], privacy: language === "sw" ? "Hakuna huduma ya AI ya nje iliyotumika." : "No external AI service was called." }, generatedAt: new Date().toISOString() });
+    }
+  }
   const sources = intent === "overview"
     ? ["salesToday", "inventory", "debts", "expenses", "quotations", "farm"]
     : [intent === "profit" ? "salesToday" : intent];
   const snapshot = await loadSnapshot(req, sources, { timeWindow: parsedWindow.window });
-  res.json({ answer: askAnswer(intent, snapshot, language), generatedAt: snapshot.generatedAt });
+  const answer = askAnswer(intent, snapshot, language, question);
+  const contextToken = answer.evidence.length ? await createFollowUpContext(req, intent) : null;
+  res.json({ answer, contextToken, generatedAt: snapshot.generatedAt });
 });
 
 module.exports = { today, ask, loadInventoryEvidence, loadDebts, loadExpenses, loadSnapshot, detectIntent, requestedTimeWindow, askAnswer };
