@@ -84,10 +84,12 @@ interface FarmAssistantAction {
 interface AssistantAccess {
   loaded: boolean;
   isStaff: boolean;
+  isFarm: boolean;
   canViewReports: boolean;
   canManageStock: boolean;
   canManageFarm: boolean;
   canSell: boolean;
+  canManageCashSessions: boolean;
 }
 
 type AssistantSourceKey = "salesToday" | "inventory" | "debts" | "expenses" | "quotations" | "farm" | "actionHistory";
@@ -188,12 +190,13 @@ export default function AssistantPage() {
   const [copied, setCopied] = useState(false);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
+  const [askContext, setAskContext] = useState<string | null>(null);
   const [askError, setAskError] = useState("");
   const [asking, setAsking] = useState(false);
   const [savingActionIds, setSavingActionIds] = useState<Set<string>>(new Set());
   const [actionSaveErrors, setActionSaveErrors] = useState<Record<string, string>>({});
   const impressionKeys = useRef(new Set<string>());
-  const [access, setAccess] = useState<AssistantAccess>({ loaded: false, isStaff: false, canViewReports: false, canManageStock: false, canManageFarm: false, canSell: false });
+  const [access, setAccess] = useState<AssistantAccess>({ loaded: false, isStaff: false, isFarm: false, canViewReports: false, canManageStock: false, canManageFarm: false, canSell: false, canManageCashSessions: false });
 
   const dashboard = snapshotData.dashboard;
   const debts = snapshotData.debts;
@@ -240,17 +243,19 @@ export default function AssistantPage() {
     let sessionLoaded = false;
     async function loadAssistant() {
       try {
-        const session = await getCurrentSession<{ user: { shop?: { category?: string | null }; staff?: { permissions?: { canSell?: boolean; canManageStock?: boolean; canManageFarm?: boolean; canViewReports?: boolean } } } }>();
+        const session = await getCurrentSession<{ user: { shop?: { category?: string | null }; staff?: { permissions?: { canSell?: boolean; canManageCashSessions?: boolean; canManageStock?: boolean; canManageFarm?: boolean; canViewReports?: boolean } } } }>();
         sessionLoaded = true;
         const isStaff = Boolean(session.user.staff);
         const permissions = session.user.staff?.permissions;
         const nextAccess = {
           loaded: true,
           isStaff,
+          isFarm: ["farm", "livestock"].includes(String(session.user.shop?.category || "").toLowerCase()),
           canViewReports: !isStaff || Boolean(permissions?.canViewReports),
           canManageStock: !isStaff || Boolean(permissions?.canManageStock),
           canManageFarm: !isStaff || Boolean(permissions?.canManageFarm),
           canSell: !isStaff || Boolean(permissions?.canSell),
+          canManageCashSessions: !isStaff || Boolean(permissions?.canManageCashSessions),
         };
         if (!active) return;
         setAccess(nextAccess);
@@ -349,10 +354,13 @@ export default function AssistantPage() {
     if (!question.trim() || asking) return;
     setAsking(true);
     setAskError("");
+    setAnswer(null);
     try {
-      const result = await api.post<{ answer: AssistantAnswer }>("/assistant/ask", { question: question.trim() }, lang);
+      const result = await api.post<{ answer: AssistantAnswer; contextToken?: string | null }>("/assistant/ask", { question: question.trim(), ...(askContext ? { contextToken: askContext } : {}) }, lang);
       setAnswer(result.answer);
+      setAskContext(result.contextToken || null);
     } catch (error) {
+      setAskContext(null);
       setAskError(error instanceof Error ? error.message : (lang === "sw" ? "Swali halikujibiwa. Jaribu tena." : "The question could not be answered. Try again."));
     } finally {
       setAsking(false);
@@ -443,13 +451,36 @@ export default function AssistantPage() {
         </section>
 
         <section className="rounded-lg border border-brand-200 bg-white p-4" aria-labelledby="ask-dukapilot-heading">
-          <div className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5 text-brand-700" />
-            <h2 id="ask-dukapilot-heading" className="font-semibold text-gray-950">{lang === "sw" ? "Muulize DukaPilot" : "Ask DukaPilot"}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-brand-700" /><h2 id="ask-dukapilot-heading" className="font-semibold text-gray-950">{lang === "sw" ? "Muulize DukaPilot" : "Ask DukaPilot"}</h2></div>
+            {(askContext || answer) && <button type="button" disabled={asking} onClick={() => { setAskContext(null); setQuestion(""); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Mazungumzo mapya" : "New conversation"}</button>}
           </div>
-          <p className="mt-1 text-xs leading-5 text-gray-500">{lang === "sw" ? "Majibu hutumia rekodi unazoruhusiwa kuona. Hayaandiki wala kubadilisha mauzo, malipo au stock." : "Answers use records your account may view. They never create or change sales, payments, or stock."}</p>
+          <p className="mt-1 text-xs leading-5 text-gray-500">{lang === "sw" ? "Uliza swali moja kuhusu mada zilizoorodheshwa hapa chini. Majibu hutumia rekodi unazoruhusiwa kuona; hayabadilishi data." : "Ask one question about the topics below. Answers use records your account may view and do not change data."}</p>
+          <div className="mt-3" aria-label={lang === "sw" ? "Mifano ya maswali" : "Example questions"}>
+            <p className="text-xs font-semibold text-gray-700">{lang === "sw" ? "Jaribu kuuliza" : "Try asking"}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {([
+                { source: "salesToday", en: "How much were sales this month?", sw: "Mauzo ya mwezi huu ni kiasi gani?" },
+                { source: "salesToday", en: "What was my profit this week?", sw: "Faida ya wiki hii ni kiasi gani?" },
+                { source: "inventory", en: "Which product may need reordering?", sw: "Ni bidhaa gani inahitaji kuagizwa?" },
+                { source: "debts", en: "How much debt is outstanding?", sw: "Madeni yaliyobaki ni kiasi gani?" },
+                { source: "expenses", en: "What were today's expenses?", sw: "Matumizi ya leo ni kiasi gani?" },
+                { source: "inventory", en: "Which products expire in the next 30 days?", sw: "Ni bidhaa gani zinaisha muda siku 30 zijazo?" },
+                { source: "inventory", also: "salesToday", en: "How much stock was received this month?", sw: "Stock iliyopokelewa mwezi huu ni kiasi gani?" },
+                { source: "expenses", en: "What recurring expenses are due?", sw: "Ni ratiba gani za matumizi zinatarajiwa?" },
+                { source: "salesToday", en: "How many credit sales this month?", sw: "Mauzo ya mkopo mwezi huu yalikuwa mangapi?" },
+                { source: "salesToday", en: "How much was refunded this month?", sw: "Marejesho ya mwezi huu ni kiasi gani?" },
+                { source: "quotations", en: "Which quotations need follow-up?", sw: "Ni nukuu gani nahitaji kufuatilia?" },
+                { source: "farm", en: "What farm action should I review?", sw: "Ni shughuli gani ya shamba nikague?" },
+              ] as const).filter((example) => (example.source !== "farm" || access.isFarm) && sourceStatuses[example.source] && sourceStatuses[example.source]?.status !== "not_permitted" && (!("also" in example) || (sourceStatuses[example.also] && sourceStatuses[example.also]?.status !== "not_permitted"))).map((example) => {
+                const text = lang === "sw" ? example.sw : example.en;
+                return <button key={example.en} type="button" disabled={asking} onClick={() => { setQuestion(text); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium leading-5 text-gray-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50">{text}</button>;
+              })}
+              {access.loaded && (access.canSell || access.canManageCashSessions) && <button type="button" disabled={asking} onClick={() => { setQuestion(lang === "sw" ? "Zamu yangu iko wazi?" : "Is my shift open?"); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium leading-5 text-gray-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50">{lang === "sw" ? "Zamu yangu iko wazi?" : "Is my shift open?"}</button>}
+            </div>
+          </div>
           <form onSubmit={submitQuestion} className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={240} aria-label={lang === "sw" ? "Uliza kuhusu biashara yako" : "Ask about your business"} placeholder={lang === "sw" ? "Mfano: Ni bidhaa gani inahitaji kuagizwa?" : "For example: Which product may need reordering?"} className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100" />
+            <input value={question} onChange={(event) => { setQuestion(event.target.value); setAnswer(null); setAskError(""); }} disabled={asking} maxLength={240} aria-label={lang === "sw" ? "Uliza kuhusu biashara yako" : "Ask about your business"} placeholder={lang === "sw" ? "Mfano: Ni bidhaa gani inahitaji kuagizwa?" : "For example: Which product may need reordering?"} className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100 disabled:opacity-60" />
             <button type="submit" disabled={asking || !question.trim()} className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
               {asking ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{lang === "sw" ? "Uliza" : "Ask"}
             </button>
@@ -457,7 +488,7 @@ export default function AssistantPage() {
           {askError && <p role="alert" className="mt-2 text-sm text-red-700">{askError}</p>}
           {answer && <div className="mt-3 rounded-md bg-brand-50 p-3" aria-live="polite">
             <p className="text-sm leading-6 text-gray-800">{answer.message}</p>
-            <Link href={answer.href} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-800">{lang === "sw" ? "Fungua rekodi husika" : "Open relevant records"}<ArrowRight className="h-3.5 w-3.5" /></Link>
+            {answer.href !== "/assistant" && <Link href={answer.href} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-800">{lang === "sw" ? "Fungua rekodi husika" : "Open relevant records"}<ArrowRight className="h-3.5 w-3.5" /></Link>}
             {answer.evidence.length > 0 && <p className="mt-2 text-[11px] text-gray-600">{lang === "sw" ? "Chanzo" : "Source"}: {answer.evidence.map((item) => `${item.source} (${formatCheckedAt(item.checkedAt, lang)})`).join(" · ")}</p>}
             <p className="mt-1 text-[11px] text-gray-500">{answer.privacy}</p>
           </div>}

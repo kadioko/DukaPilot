@@ -440,6 +440,62 @@ test("Ask sends the requested calendar period and displays its explicit date ran
   await expect(page.getByText(/Cash collected: TZS 160,000/)).toBeVisible();
 });
 
+test("Ask offers permitted examples and clears a previous answer when a new question fails", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockMerchantShell(page);
+  const snapshot = assistantSnapshot();
+  Object.assign(snapshot.sections.farm, { status: "not_permitted", data: undefined });
+  await mockAssistantSnapshot(page, snapshot);
+  let attempts = 0;
+  await page.route(/\/(?:_api|api)\/assistant\/ask$/, async (route) => {
+    attempts += 1;
+    return attempts === 1
+      ? route.fulfill({ json: { answer: { message: "First answer", href: "/analytics", evidence: [], privacy: "Private" } } })
+      : route.fulfill({ status: 500, json: { error: "Temporary failure" } });
+  });
+  await page.goto("/assistant");
+  const field = page.getByLabel("Uliza kuhusu biashara yako");
+  const example = page.getByRole("button", { name: "Mauzo ya mwezi huu ni kiasi gani?" });
+  await expect(example).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ni shughuli gani ya shamba nikague?" })).toHaveCount(0);
+  await example.click();
+  await expect(field).toHaveValue("Mauzo ya mwezi huu ni kiasi gani?");
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect(page.getByText("First answer")).toBeVisible();
+  await field.fill("Matumizi ya leo ni kiasi gani?");
+  await expect(page.getByText("First answer")).toHaveCount(0);
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /tatizo la muda/i })).toBeVisible();
+  await expect(page.getByText("First answer")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("Ask carries short-lived context only until the user starts a new conversation", async ({ page }) => {
+  await mockMerchantShell(page);
+  await mockAssistantSnapshot(page, assistantSnapshot());
+  const requests: Array<{ question: string; contextToken?: string }> = [];
+  await page.route(/\/(?:_api|api)\/assistant\/ask$/, async (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({ json: { answer: { message: `Answer ${requests.length}`, href: "/analytics", evidence: [], privacy: "Private" }, contextToken: "signed-context" } });
+  });
+  await page.goto("/assistant");
+  const field = page.getByLabel("Uliza kuhusu biashara yako");
+  await field.fill("Mauzo ya mwezi huu?");
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect(page.getByText("Answer 1")).toBeVisible();
+  await field.fill("Na mwezi uliopita?");
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect(page.getByText("Answer 2")).toBeVisible();
+  expect(requests[1].contextToken).toBe("signed-context");
+  await page.getByRole("button", { name: "Mazungumzo mapya" }).click();
+  await expect(field).toHaveValue("");
+  await expect(page.getByText("Answer 2")).toHaveCount(0);
+  await field.fill("Mauzo ya leo?");
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect(page.getByText("Answer 3")).toBeVisible();
+  expect(requests[2].contextToken).toBeUndefined();
+});
+
 test("AI prioritizes accepted, deposit, expiring, and expired quotation work without treating it as revenue", async ({ page }) => {
   await mockMerchantShell(page);
   const quoteActions = [

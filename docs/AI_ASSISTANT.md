@@ -12,13 +12,36 @@ Slow assistant sources log `assistant_source_timing` with the request ID, source
 
 ## Ask DukaPilot
 
-`POST /api/assistant/ask` accepts a short English or Kiswahili question and routes it to a supported topic: sales/revenue, profit, expenses, inventory, debts, or farm operations. It returns a concise answer, an in-app destination, check time/source evidence, and a privacy note.
+`POST /api/assistant/ask` accepts a short English or Kiswahili question and routes it to a supported topic. In addition to sales, profit, expenses, low stock, debts and farm actions, it can summarize received purchase costs, the supplier with the highest received-stock cost, credit-method sales, customer return values and refunds, recorded product expiry dates, upcoming expense schedules and quotation actions. It returns a concise answer, an in-app destination, check time/source evidence, and a privacy note.
 
 Sales, profit, and expense questions support these Tanzania-local periods: today, yesterday, this/last week, this/last month, this/last quarter, this/last year, the last 7 calendar days, and explicit date ranges in `YYYY-MM-DD` format. “This” periods run from the calendar period's start through the end of the current business day in Africa/Dar_es_Salaam. Future-dated, unverified legacy expense rows and unrecorded recurring schedules are excluded. Expense comparisons use the equivalent dates in the previous calendar period where applicable; custom ranges compare with the preceding range of equal duration. Expenses default to the last 7 calendar days when no period is stated. Sales and profit default to today.
 
 For a date period Ask cannot support for a topic (such as historical stock, farm, or debt balances), or for ambiguous/invalid dates, it asks for clarification rather than substituting today's data. Debt answers describe current outstanding balances only. Sales revenue is kept distinct from cash collected. Profit answers disclose incomplete cost coverage and show uncosted sales revenue; they do not present partial cost data as a complete profit result.
 
-Unsupported questions receive a safe summary of supported topics rather than invented advice. Ask is not a general-purpose language model and does not make writes.
+Ask is not a general-purpose language model: it uses topic and date patterns and does not make writes. Ask one topic at a time. The page offers example questions for sources the account is allowed to access; farm examples appear only for farm categories. For example:
+
+- "How much were sales this month?" / "Mauzo ya mwezi huu ni kiasi gani?"
+- "What was my profit this week?" / "Faida ya wiki hii ni kiasi gani?"
+- "Which product may need reordering?" / "Ni bidhaa gani inahitaji kuagizwa?"
+- "How much debt is outstanding?" / "Madeni yaliyobaki ni kiasi gani?"
+- "Who owes me money?" or "Which debts are overdue?" (up to five current debt records, with the full list in Debts)
+- "What were today's expenses?" / "Matumizi ya leo ni kiasi gani?"
+- "What farm action should I review?" / "Ni shughuli gani ya shamba nikague?"
+- "How much stock was received this month?" / "Stock iliyopokelewa mwezi huu ni kiasi gani?"
+- "How many credit sales this month?" / "Mauzo ya mkopo mwezi huu yalikuwa mangapi?"
+- "Which products expire in the next 30 days?" / "Ni bidhaa gani zinaisha muda siku 30 zijazo?"
+- "What recurring expenses are due?" / "Ni ratiba gani za matumizi zinatarajiwa?"
+- "How much was refunded this month?" / "Marejesho ya mwezi huu ni kiasi gani?"
+- "Which quotations need follow-up?" / "Ni nukuu gani nahitaji kufuatilia?"
+- "Is my shift open?" / "Zamu yangu iko wazi?"
+
+Answers are summaries, not individual product or customer lookups. For example, product rankings and an individual customer's debt are not yet supported in Ask; use Analytics or Debts for those. Unrecognized or mixed-topic questions receive a clarification and examples instead of a generic recommendation being presented as the answer. A new question clears the previous answer, including when the new request fails. A source marked unavailable should be retried; an access restriction needs an owner to review permissions. An empty source or zero is not, by itself, a diagnosis of why a question was misunderstood.
+
+For sales, profit, expenses, purchases, credit sales and customer returns, a short period-only follow-up such as "And last month?" uses the prior topic. This is not a full chat history: the browser keeps a signed, 30-minute topic token in component memory only, and **New conversation** clears it. The token is bound to the authenticated account, staff identity and selected branch. The server rechecks current permissions and business scope for every answer. No customer or financial records are included in the token. Expiry and scheduled-expense summaries use the next 30 days (plus overdue schedules); they are not arbitrary date-range reports. Expiry reflects product-level dates, not guaranteed lot-level dates; schedules are not paid transactions. Purchase totals are received landed costs before supplier returns and credits, not cash paid or operating expenses. Customer returns distinguish return value, paid refunds and refund recoveries.
+
+The current-shift answer uses the existing Daily Close calculations and displays only the requesting actor's open shift and expected drawer cash; it is not total sales. Team-shift discrepancy questions remain unsupported.
+
+Not yet implemented as Ask answers: product rankings or named-product performance, named or overdue supplier balances, named-customer debt lookup and debt collection totals, per-category expense changes, supplier return/refund settlement, team-shift discrepancies, cross-branch comparisons, food preparation details, crop task and cycle detail, livestock production/feed detail, or general free-form model answers. Use the existing relevant screens until these receive independently verified, permission-scoped query paths and tests.
 
 ## Recommendation Rules
 
