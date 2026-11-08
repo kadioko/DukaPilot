@@ -1,0 +1,13 @@
+[
+  { "language": "en", "question": "Sales last week?", "intent": "salesToday", "period": "last week" },
+  { "language": "sw", "question": "Mauzo ya mwezi huu ni kiasi gani?", "intent": "salesToday", "period": "this month" },
+  { "language": "mixed", "question": "Mauzo ya last week?", "intent": "salesToday", "period": "last week" },
+  { "language": "typo", "question": "Mauza ya last week", "intent": "salesToday", "period": "last week" },
+  { "language": "sw", "question": "Bidhaa gani haijatembea?", "intent": "slowProducts" },
+  { "language": "mixed", "question": "Matumizi by category mwezi huu", "intent": "expenseCategories", "period": "this month" },
+  { "language": "sw", "question": "Makusanyo ya M-Pesa wiki hii", "intent": "collectionsByPaymentMethod", "period": "this week" },
+  { "language": "en", "question": "Sales via M-Pesa last month", "intent": "salesByPaymentMethod", "period": "last month" },
+  { "language": "en", "question": "Which branches have low stock?", "intent": "branchStockComparison" },
+  { "language": "sw", "question": "Nilikusanya madeni wiki hii", "intent": "debtCollections", "period": "this week" },
+  { "language": "en", "question": "How much did I make?", "intent": "ambiguous" }
+]

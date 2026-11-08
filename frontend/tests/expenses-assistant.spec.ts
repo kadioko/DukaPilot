@@ -440,6 +440,25 @@ test("Ask sends the requested calendar period and displays its explicit date ran
   await expect(page.getByText(/Cash collected: TZS 160,000/)).toBeVisible();
 });
 
+test("Ask shows a retry action when its business source is unavailable", async ({ page }) => {
+  await mockMerchantShell(page);
+  await mockAssistantSnapshot(page, assistantSnapshot());
+  let attempts = 0;
+  await page.route(/\/(?:_api|api)\/assistant\/ask$/, async (route) => {
+    attempts += 1;
+    return route.fulfill({ json: { answer: { message: "Purchase analytics is unavailable right now. Please try again.", href: "/assistant", evidence: [], privacy: "No external AI service was called.", retryable: attempts === 1 } } });
+  });
+
+  await page.goto("/assistant");
+  const question = page.getByLabel("Uliza kuhusu biashara yako");
+  await question.fill("How much stock was received this month?");
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Jaribu tena" })).toBeVisible();
+  await page.getByRole("button", { name: "Jaribu tena" }).click();
+  await expect.poll(() => attempts).toBe(2);
+  await expect(page.getByRole("button", { name: "Jaribu tena" })).toHaveCount(0);
+});
+
 test("Ask offers permitted examples and clears a previous answer when a new question fails", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockMerchantShell(page);
@@ -521,6 +540,37 @@ test("Ask selects a product and supplier explicitly for authorized reports", asy
   await expect.poll(() => requests.length).toBe(2);
   expect(requests[1].supplierId).toBe("supplier-1");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("customer search uses a POST body and keeps customer details out of the Ask question", async ({ page }) => {
+  await mockMerchantShell(page);
+  await mockAssistantSnapshot(page, assistantSnapshot());
+  const lookupRequests: Array<{ method: string; url: string; search: string }> = [];
+  await page.route(/\/(?:_api|api)\/assistant\/customer-options$/, async (route) => {
+    const request = route.request();
+    lookupRequests.push({ method: request.method(), url: request.url(), search: request.postDataJSON().search });
+    return route.fulfill({ json: { customers: [{ customerDebtId: "debt-123", name: "Amina Test", phoneLast4: "1234", outstanding: 27000, openCount: 2 }] } });
+  });
+  const askRequests: Array<{ question: string; customerDebtId?: string }> = [];
+  await page.route(/\/(?:_api|api)\/assistant\/ask$/, async (route) => {
+    askRequests.push(route.request().postDataJSON());
+    return route.fulfill({ json: { answer: { message: "Amina Test: TZS 27,000 outstanding.", href: "/debts", evidence: [], privacy: "Private" } } });
+  });
+
+  await page.goto("/assistant");
+  await page.getByText("Tafuta mteja mwenye deni").click();
+  await page.getByLabel("Jina au simu").fill("Amina Test");
+  await page.getByRole("button", { name: "Tafuta", exact: true }).last().click();
+  await page.getByRole("button", { name: /Amina Test/ }).click();
+  await page.getByRole("button", { name: "Uliza", exact: true }).click();
+
+  await expect.poll(() => lookupRequests.length).toBe(1);
+  expect(lookupRequests[0]).toMatchObject({ method: "POST", search: "Amina Test" });
+  expect(lookupRequests[0].url).not.toContain("Amina");
+  await expect.poll(() => askRequests.length).toBe(1);
+  expect(askRequests[0].customerDebtId).toBe("debt-123");
+  expect(askRequests[0].question).not.toContain("Amina");
+  expect(askRequests[0].question).not.toContain("1234");
 });
 
 test("farm staff can select an operational input without receiving financial controls", async ({ page }) => {

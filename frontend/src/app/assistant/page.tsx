@@ -116,7 +116,9 @@ interface AssistantAnswer {
   href: string;
   evidence: Array<{ source: string; checkedAt: string; dataThrough?: string | null }>;
   privacy: string;
+  retryable?: boolean;
 }
+interface AssistantFollowUp { topic: string; period: string; paymentMethod?: string }
 
 const SOURCE_KEYS: AssistantSourceKey[] = ["salesToday", "inventory", "debts", "expenses", "quotations", "farm", "actionHistory"];
 
@@ -193,6 +195,7 @@ export default function AssistantPage() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [askContext, setAskContext] = useState<string | null>(null);
+  const [followUpDisplay, setFollowUpDisplay] = useState<AssistantFollowUp | null>(null);
   const [productSearch, setProductSearch] = useState("");
   const [productOptions, setProductOptions] = useState<Array<{ id: string; name: string; sku: string | null; unit: string }>>([]);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
@@ -204,6 +207,11 @@ export default function AssistantPage() {
   const [selectedSupplier, setSelectedSupplier] = useState<{ id: string; name: string } | null>(null);
   const [supplierSearchError, setSupplierSearchError] = useState("");
   const [findingSupplier, setFindingSupplier] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerOptions, setCustomerOptions] = useState<Array<{ customerDebtId: string; name: string; phoneLast4: string; outstanding: number; openCount: number }>>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<{ customerDebtId: string; name: string; phoneLast4: string } | null>(null);
+  const [customerSearchError, setCustomerSearchError] = useState("");
+  const [findingCustomer, setFindingCustomer] = useState(false);
   const [recordKind, setRecordKind] = useState<"crop" | "group" | "input">("input");
   const [recordSearch, setRecordSearch] = useState("");
   const [recordOptions, setRecordOptions] = useState<Array<{ id: string; name: string }>>([]);
@@ -369,18 +377,18 @@ export default function AssistantPage() {
     }
   }
 
-  async function submitQuestion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitQuestion(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (!question.trim() || asking) return;
     setAsking(true);
     setAskError("");
     setAnswer(null);
     try {
-      const result = await api.post<{ answer: AssistantAnswer; contextToken?: string | null }>("/assistant/ask", { question: question.trim(), ...(askContext ? { contextToken: askContext } : {}), ...(selectedProduct ? { productId: selectedProduct.id } : {}), ...(selectedSupplier ? { supplierId: selectedSupplier.id } : {}), ...(selectedRecord ? { operationalRecordId: selectedRecord.id } : {}), ...(productMetric ? { metric: productMetric } : {}) }, lang);
+      const result = await api.post<{ answer: AssistantAnswer; contextToken?: string | null; followUp?: AssistantFollowUp | null }>("/assistant/ask", { question: question.trim(), ...(askContext ? { contextToken: askContext } : {}), ...(selectedProduct ? { productId: selectedProduct.id } : {}), ...(selectedSupplier ? { supplierId: selectedSupplier.id } : {}), ...(selectedCustomer ? { customerDebtId: selectedCustomer.customerDebtId } : {}), ...(selectedRecord ? { operationalRecordId: selectedRecord.id } : {}), ...(productMetric ? { metric: productMetric } : {}) }, lang);
       setAnswer(result.answer);
       setAskContext(result.contextToken || null);
+      setFollowUpDisplay(result.followUp || null);
     } catch (error) {
-      setAskContext(null);
       setAskError(error instanceof Error ? error.message : (lang === "sw" ? "Swali halikujibiwa. Jaribu tena." : "The question could not be answered. Try again."));
     } finally {
       setAsking(false);
@@ -411,6 +419,18 @@ export default function AssistantPage() {
     } catch (error) {
       setSupplierOptions([]); setSupplierSearchError(error instanceof Error ? error.message : (lang === "sw" ? "Wasambazaji hawakupakia." : "Could not load suppliers."));
     } finally { setFindingSupplier(false); }
+  }
+
+  async function findCustomers() {
+    if (customerSearch.trim().length < 2 || findingCustomer) return;
+    setFindingCustomer(true); setCustomerSearchError("");
+    try {
+      const result = await api.post<{ customers: Array<{ customerDebtId: string; name: string; phoneLast4: string; outstanding: number; openCount: number }> }>("/assistant/customer-options", { search: customerSearch.trim() }, lang);
+      setCustomerOptions(result.customers);
+      if (!result.customers.length) setCustomerSearchError(lang === "sw" ? "Hakuna mteja mwenye deni lililo wazi aliyepatikana." : "No customer with an open balance was found.");
+    } catch (error) {
+      setCustomerOptions([]); setCustomerSearchError(error instanceof Error ? error.message : (lang === "sw" ? "Wateja hawakupakia." : "Could not load customers."));
+    } finally { setFindingCustomer(false); }
   }
 
   async function findOperationalRecords() {
@@ -511,9 +531,10 @@ export default function AssistantPage() {
         <section className="rounded-lg border border-brand-200 bg-white p-4" aria-labelledby="ask-dukapilot-heading">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-brand-700" /><h2 id="ask-dukapilot-heading" className="font-semibold text-gray-950">{lang === "sw" ? "Muulize DukaPilot" : "Ask DukaPilot"}</h2></div>
-            {(askContext || answer) && <button type="button" disabled={asking} onClick={() => { setAskContext(null); setQuestion(""); setAnswer(null); setAskError(""); setSelectedProduct(null); setProductSearch(""); setProductOptions([]); setProductMetric(""); setSelectedSupplier(null); setSupplierSearch(""); setSupplierOptions([]); setSelectedRecord(null); setRecordSearch(""); setRecordOptions([]); }} className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Mazungumzo mapya" : "New conversation"}</button>}
+            {(askContext || answer) && <button type="button" disabled={asking} onClick={() => { setAskContext(null); setFollowUpDisplay(null); setQuestion(""); setAnswer(null); setAskError(""); setSelectedProduct(null); setProductSearch(""); setProductOptions([]); setProductMetric(""); setSelectedSupplier(null); setSupplierSearch(""); setSupplierOptions([]); setSelectedCustomer(null); setCustomerSearch(""); setCustomerOptions([]); setSelectedRecord(null); setRecordSearch(""); setRecordOptions([]); }} className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50">{lang === "sw" ? "Mazungumzo mapya" : "New conversation"}</button>}
           </div>
           <p className="mt-1 text-xs leading-5 text-gray-500">{lang === "sw" ? "Uliza swali moja kuhusu mada zilizoorodheshwa hapa chini. Majibu hutumia rekodi unazoruhusiwa kuona; hayabadilishi data." : "Ask one question about the topics below. Answers use records your account may view and do not change data."}</p>
+          {followUpDisplay && <p className="mt-2 text-xs font-medium text-brand-800">{lang === "sw" ? "Muktadha unaotumika" : "Following up on"}: {({ salesToday: lang === "sw" ? "Mauzo" : "Sales", profit: lang === "sw" ? "Faida" : "Profit", expenses: lang === "sw" ? "Matumizi" : "Expenses", expenseCategories: lang === "sw" ? "Matumizi kwa aina" : "Expenses by category", purchases: lang === "sw" ? "Manunuzi" : "Purchases", returns: lang === "sw" ? "Marejesho" : "Returns", creditSales: lang === "sw" ? "Mauzo ya mkopo" : "Credit sales", debtCollections: lang === "sw" ? "Makusanyo ya madeni" : "Debt collections", salesByPaymentMethod: lang === "sw" ? "Mauzo kwa njia ya malipo" : "Sales by payment method", collectionsByPaymentMethod: lang === "sw" ? "Makusanyo kwa njia ya malipo" : "Collections by payment method", unitsSold: lang === "sw" ? "Vitengo vilivyouzwa" : "Units sold", productRanking: lang === "sw" ? "Bidhaa za juu" : "Product ranking", productDetail: lang === "sw" ? "Utendaji wa bidhaa" : "Product performance", slowProducts: lang === "sw" ? "Bidhaa zisizotembea" : "Slow-moving products", teamShifts: lang === "sw" ? "Tofauti za zamu" : "Team shift differences", branchComparison: lang === "sw" ? "Ulinganisho wa matawi" : "Branch comparison", branchStockComparison: lang === "sw" ? "Stock za matawi" : "Branch stock" } as Record<string, string>)[followUpDisplay.topic] || followUpDisplay.topic} · {followUpDisplay.period}{followUpDisplay.paymentMethod ? " · " + (({ CASH: lang === "sw" ? "Taslimu" : "Cash", MPESA: "M-Pesa", TIGOPESA: "Tigo Pesa", AIRTEL_MONEY: "Airtel Money", HALOPESA: "HaloPesa", BANK: lang === "sw" ? "Benki" : "Bank", CREDIT: lang === "sw" ? "Mkopo" : "Credit" } as Record<string, string>)[followUpDisplay.paymentMethod] || followUpDisplay.paymentMethod) : ""}</p>}
           <div className="mt-3" aria-label={lang === "sw" ? "Mifano ya maswali" : "Example questions"}>
             <p className="text-xs font-semibold text-gray-700">{lang === "sw" ? "Jaribu kuuliza" : "Try asking"}</p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -524,6 +545,7 @@ export default function AssistantPage() {
                 { source: "debts", en: "How much debt is outstanding?", sw: "Madeni yaliyobaki ni kiasi gani?" },
                 { source: "debts", en: "How much debt did I collect this week?", sw: "Nilikusanya madeni kiasi gani wiki hii?" },
                 { source: "expenses", en: "What were today's expenses?", sw: "Matumizi ya leo ni kiasi gani?" },
+                { source: "expenses", en: "Expenses by category this month", sw: "Matumizi kwa aina mwezi huu" },
                 { source: "inventory", en: "Which products expire in the next 30 days?", sw: "Ni bidhaa gani zinaisha muda siku 30 zijazo?" },
                 { source: "inventory", also: "salesToday", en: "How much stock was received this month?", sw: "Stock iliyopokelewa mwezi huu ni kiasi gani?" },
                 { source: "inventory", also: "salesToday", en: "What are the supplier balances?", sw: "Salio la wasambazaji ni kiasi gani?" },
@@ -537,6 +559,7 @@ export default function AssistantPage() {
                 { source: "farm", cropsOnly: true, en: "Which crop tasks are overdue?", sw: "Ni kazi gani za shamba zilizochelewa?" },
                 { source: "inventory", foodOnly: true, en: "What food was prepared today?", sw: "Ni chakula gani tumeandaa leo?" },
                 { source: "salesToday", ownerOnly: true, en: "Compare branch sales this month", sw: "Linganisha mauzo ya matawi mwezi huu" },
+                { source: "salesToday", ownerOnly: true, en: "Which branches have low stock?", sw: "Ni matawi gani yana stock ya chini?" },
               ] as const).filter((example) => (example.source !== "farm" || access.isFarm) && (!("cropsOnly" in example) || snapshotData.farmCapabilities?.hasCrops) && (!("livestockOnly" in example) || snapshotData.farmCapabilities?.hasLivestock) && (!("foodOnly" in example) || access.isFood) && (!("ownerOnly" in example) || !access.isStaff) && sourceStatuses[example.source] && sourceStatuses[example.source]?.status !== "not_permitted" && (!("also" in example) || (sourceStatuses[example.also] && sourceStatuses[example.also]?.status !== "not_permitted"))).map((example) => {
                 const text = lang === "sw" ? example.sw : example.en;
                 return <button key={example.en} type="button" disabled={asking} onClick={() => { setQuestion(text); setAnswer(null); setAskError(""); }} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium leading-5 text-gray-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50">{text}</button>;
@@ -563,6 +586,14 @@ export default function AssistantPage() {
             {supplierOptions.length > 0 && <ul className="mt-2 max-h-44 overflow-y-auto divide-y divide-gray-100 border border-gray-200">{supplierOptions.map((supplier) => <li key={supplier.id}><button type="button" onClick={() => { setSelectedSupplier(supplier); setSupplierOptions([]); setQuestion(lang === "sw" ? "Salio la msambazaji huyu ni kiasi gani?" : "How much do I owe this supplier?"); setAnswer(null); setAskError(""); }} className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50">{supplier.name}</button></li>)}</ul>}
             {selectedSupplier && <p className="mt-2 break-words text-xs text-brand-800">{lang === "sw" ? "Msambazaji aliyechaguliwa" : "Selected supplier"}: <strong>{selectedSupplier.name}</strong> <button type="button" onClick={() => setSelectedSupplier(null)} className="ml-1 underline">{lang === "sw" ? "Ondoa" : "Clear"}</button></p>}
           </details>}
+          {access.loaded && access.canSell && <details className="mt-2 rounded-md border border-gray-200 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-700">{lang === "sw" ? "Tafuta mteja mwenye deni" : "Find a customer with debt"}</summary>
+            <p className="mt-2 text-xs leading-5 text-gray-500">{lang === "sw" ? "Tafuta hapa kwa jina au simu. Swali litakalotumwa kwa msaidizi halitakuwa na jina wala namba ya mteja." : "Search here by name or phone. The question sent to the assistant will not contain the customer's name or phone number."}</p>
+            <div className="mt-3 flex flex-wrap gap-2"><label className="min-w-0 flex-1 text-xs text-gray-600">{lang === "sw" ? "Jina au simu" : "Name or phone"}<input value={customerSearch} onChange={(event) => { setCustomerSearch(event.target.value); setCustomerOptions([]); setSelectedCustomer(null); setCustomerSearchError(""); }} className="mt-1 h-10 w-full rounded-md border border-gray-300 px-3 text-sm" /></label><button type="button" onClick={findCustomers} disabled={findingCustomer || customerSearch.trim().length < 2} className="mt-auto h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold disabled:opacity-50">{findingCustomer ? (lang === "sw" ? "Inatafuta..." : "Searching...") : (lang === "sw" ? "Tafuta" : "Search")}</button></div>
+            {customerSearchError && <p role="status" className="mt-2 text-xs text-gray-600">{customerSearchError}</p>}
+            {customerOptions.length > 0 && <ul className="mt-2 max-h-44 overflow-y-auto divide-y divide-gray-100 border border-gray-200">{customerOptions.map((customer) => <li key={customer.customerDebtId}><button type="button" onClick={() => { setSelectedCustomer(customer); setCustomerOptions([]); setQuestion(lang === "sw" ? "Mteja huyu anadaiwa kiasi gani kwa sasa?" : "How much does this customer currently owe?"); setAnswer(null); setAskError(""); }} className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"><span className="font-medium">{customer.name || (lang === "sw" ? "Mteja" : "Customer")}</span><span className="ml-2 text-xs text-gray-500">{lang === "sw" ? "simu inayoishia " : "phone ending "}{customer.phoneLast4} · {customer.openCount} {lang === "sw" ? "madeni wazi" : "open debts"} · {formatTZS(customer.outstanding)}</span></button></li>)}</ul>}
+            {selectedCustomer && <p className="mt-2 break-words text-xs text-brand-800">{lang === "sw" ? "Mteja aliyechaguliwa" : "Selected customer"}: <strong>{selectedCustomer.name || (lang === "sw" ? "Mteja" : "Customer")}</strong> ···{selectedCustomer.phoneLast4} <button type="button" onClick={() => setSelectedCustomer(null)} className="ml-1 underline">{lang === "sw" ? "Ondoa" : "Clear"}</button></p>}
+          </details>}
           {access.loaded && ((access.isFarm && access.canManageFarm) || (access.isFood && access.canManageStock)) && <details className="mt-2 rounded-md border border-gray-200 px-3 py-2">
             <summary className="cursor-pointer text-sm font-semibold text-gray-700">{lang === "sw" ? "Chagua rekodi ya shughuli" : "Select an operational record"}</summary>
             <label className="mt-3 block text-xs text-gray-600">{lang === "sw" ? "Aina" : "Type"}<select value={recordKind} onChange={(event) => { setRecordKind(event.target.value as "crop" | "group" | "input"); setSelectedRecord(null); setRecordOptions([]); setRecordSearch(""); }} className="mt-1 block h-10 w-full max-w-xs rounded-md border border-gray-300 bg-white px-2 text-sm"><option value="input">{lang === "sw" ? "Pembejeo au kiungo" : "Input or ingredient"}</option>{access.isFarm && snapshotData.farmCapabilities?.hasCrops && <option value="crop">{lang === "sw" ? "Mzunguko wa mazao" : "Crop cycle"}</option>}{access.isFarm && snapshotData.farmCapabilities?.hasLivestock && <option value="group">{lang === "sw" ? "Kundi la mifugo" : "Animal group"}</option>}</select></label>
@@ -580,8 +611,9 @@ export default function AssistantPage() {
           {askError && <p role="alert" className="mt-2 text-sm text-red-700">{askError}</p>}
           {answer && <div className="mt-3 rounded-md bg-brand-50 p-3" aria-live="polite">
             <p className="text-sm leading-6 text-gray-800">{answer.message}</p>
+            {answer.retryable && <button type="button" disabled={asking} onClick={() => void submitQuestion()} className="mt-2 inline-flex items-center gap-1 rounded-md border border-brand-300 bg-white px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"><RotateCw className={`h-3.5 w-3.5 ${asking ? "animate-spin" : ""}`} />{asking ? (lang === "sw" ? "Inajaribu tena..." : "Retrying...") : (lang === "sw" ? "Jaribu tena" : "Retry answer")}</button>}
             {answer.href !== "/assistant" && <Link href={answer.href} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-800">{lang === "sw" ? "Fungua rekodi husika" : "Open relevant records"}<ArrowRight className="h-3.5 w-3.5" /></Link>}
-            {answer.evidence.length > 0 && <p className="mt-2 text-[11px] text-gray-600">{lang === "sw" ? "Chanzo" : "Source"}: {answer.evidence.map((item) => `${item.source} (${formatCheckedAt(item.checkedAt, lang)})`).join(" · ")}</p>}
+            {answer.evidence.length > 0 && <div className="mt-2 text-[11px] text-gray-600">{answer.evidence.map((item) => <p key={item.source + item.checkedAt}>{lang === "sw" ? "Chanzo" : "Source"}: {item.source} · {lang === "sw" ? "imekaguliwa" : "checked"} {formatCheckedAt(item.checkedAt, lang)}{item.dataThrough ? " · " + (lang === "sw" ? "rekodi ya karibuni " : "latest record ") + formatCheckedAt(item.dataThrough, lang) : ""}</p>)}</div>}
             <p className="mt-1 text-[11px] text-gray-500">{answer.privacy}</p>
           </div>}
         </section>

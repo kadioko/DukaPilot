@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const fs = require("node:fs");
 const { startOfTanzaniaMonth, endOfTanzaniaDay, tanzaniaDateKey } = require("../src/lib/businessTime");
 
 const controllerPath = path.resolve(__dirname, "../src/controllers/assistantToday.controller.js");
@@ -197,7 +198,8 @@ test("Ask recognizes supported English and Kiswahili wording without mixing topi
   const loader = loadWithMocks();
   try {
     const { detectIntent } = loader.controller;
-    for (const question of ["Mauzo ya mwezi huu ni kiasi gani?", "Nimeuza kiasi gani leo?", "How much cash collected this week?"]) assert.equal(detectIntent(question), "salesToday");
+    for (const question of ["Mauzo ya mwezi huu ni kiasi gani?", "Nimeuza kiasi gani leo?"]) assert.equal(detectIntent(question), "salesToday");
+    assert.equal(detectIntent("How much cash collected this week?"), "collectionsByPaymentMethod");
     for (const question of ["Faida ya wiki hii ni kiasi gani?", "Gharama ya bidhaa zilizouzwa leo ni kiasi gani?", "What is my profit on sales?"]) assert.equal(detectIntent(question), "profit");
     assert.equal(detectIntent("Ni bidhaa gani inahitaji kuagizwa?"), "inventory");
     assert.equal(detectIntent("Which product may need reordering?"), "inventory");
@@ -210,6 +212,27 @@ test("Ask recognizes supported English and Kiswahili wording without mixing topi
     assert.equal(detectIntent("Mauzo ya mkopo mwezi huu yalikuwa mangapi?"), "creditSales");
     assert.equal(detectIntent("Which quotations need follow-up?"), "quotations");
     assert.equal(detectIntent("How much sales and expenses this month?"), "ambiguous");
+    assert.equal(detectIntent("Mauza ya last week"), "salesToday");
+    assert.equal(detectIntent("Bidhaa gani haijatembea?"), "slowProducts");
+    assert.equal(detectIntent("What were expenses by category this month?"), "expenseCategories");
+    assert.equal(detectIntent("Ni zamu za wafanyakazi zenye pungufu wiki hii?"), "teamShifts");
+    assert.equal(detectIntent("Which branches have low stock?"), "branchStockComparison");
+    assert.equal(detectIntent("How much did I make?"), "ambiguous");
+    assert.equal(detectIntent("How much sales and cash collected this week?"), "ambiguous");
+  } finally { loader.restore(); }
+});
+
+test("synthetic bilingual question corpus keeps intent and period parsing stable", () => {
+  const loader = loadWithMocks();
+  try {
+    const examples = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures/assistant-question-corpus.json"), "utf8"));
+    for (const example of examples) {
+      assert.equal(loader.controller.detectIntent(example.question), example.intent, example.question);
+      if (example.period) {
+        const parsed = loader.controller.requestedTimeWindow(example.question, example.intent, new Date("2026-11-08T09:00:00.000Z"));
+        assert.equal(parsed.window?.label, example.period, example.question);
+      }
+    }
   } finally { loader.restore(); }
 });
 
@@ -232,6 +255,7 @@ test("Ask reports received-stock landed cost, not an expense or payment, and enf
 test("Ask scopes expiry and scheduled expense queries to the current shop without treating reminders as payments", async () => {
   const scopes = [];
   const loader = loadWithMocks({ prisma: {
+    $queryRawUnsafe: async (_query, shopId) => { scopes.push(shopId); return [{ matchingCount: 1, expiryTracked: 3, missingDates: 2, neverExpiresCount: 1, updatedAt: new Date() }]; },
     product: { findMany: async (query) => { scopes.push(query.where.shopId); return [{ name: "Milk", expiryDate: new Date("2026-11-10T12:00:00Z") }]; } },
     recurringExpense: { findMany: async (query) => { scopes.push(query.where.shopId); return [{ title: "Wifi", amount: 49000, nextDueAt: new Date("2026-11-10T12:00:00Z") }]; } },
   } });
@@ -243,7 +267,7 @@ test("Ask scopes expiry and scheduled expense queries to the current shop withou
     await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "What recurring expenses are due?" } }, schedule, (error) => { throw error; });
     assert.match(schedule.payload.answer.message, /49,000/);
     assert.match(schedule.payload.answer.message, /not confirmed payments/);
-    assert.deepEqual(scopes, ["shop-1", "shop-1"]);
+    assert.deepEqual(scopes, ["shop-1", "shop-1", "shop-1"]);
   } finally { loader.restore(); }
 });
 
@@ -362,7 +386,7 @@ test("supplier balances and debt collections require the relevant permissions an
 test("team shift discrepancies remain restricted and crop and egg questions use enabled farm operations", async () => {
   let shiftCalls = 0;
   const loader = loadWithMocks({ prisma: {
-    cashSession: { findMany: async (query) => { shiftCalls += 1; assert.equal(query.where.shopId, "shop-1"); return [{ openedByName: "Cashier", variance: -2000, closedAt: new Date() }]; } },
+    cashSession: { findMany: async (query) => { shiftCalls += 1; assert.equal(query.where.shopId, "shop-1"); return [{ openedByName: "Cashier", variance: -2000, closedAt: new Date() }]; }, count: async () => 1 },
     cropFieldTask: { findMany: async (query) => { assert.equal(query.where.shopId, "shop-1"); return [{ title: "Irrigate field", dueAt: new Date() }]; } },
     farmProductionBatch: { aggregate: async (query) => { assert.equal(query.where.shopId, "shop-1"); return { _sum: { actualYield: 80, brokenQuantity: 5 }, _count: { id: 1 } }; } },
   } });
@@ -663,5 +687,159 @@ test("external AI provider errors fall back to the local clarification without e
     assert.deepEqual(res.payload.answer.evidence, []);
   } finally {
     loader.restore();
+  }
+});
+
+test("source failures are identified as retryable rather than represented as zero", async () => {
+  const direct = loadWithMocks({ purchaseReport: async () => { throw new Error("database unavailable"); } });
+  try {
+    const res = response();
+    await direct.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question: "How much stock was received this month?" } }, res, (error) => { throw error; });
+    assert.equal(res.payload.answer.retryable, true);
+    assert.match(res.payload.answer.message, /unavailable/i);
+  } finally { direct.restore(); }
+
+  const snapshotFailure = loadWithMocks({ profitAnalytics: makeHandler(null, new Error("dashboard unavailable")) });
+  try {
+    const res = response();
+    await snapshotFailure.controller.ask({ ...request({ userId: "owner-1", language: "en" }), body: { question: "How much were sales today?" } }, res, (error) => { throw error; });
+    assert.equal(res.payload.answer.retryable, true);
+    assert.match(res.payload.answer.message, /retry/i);
+  } finally { snapshotFailure.restore(); }
+});
+
+test("expense-category answers compare real operating expenses and exclude stock receipts", async () => {
+  const calls = [];
+  const loader = loadWithMocks({ prisma: { $queryRawUnsafe: async (sql, ...params) => {
+    calls.push({ sql, params });
+    return [{ category: "UTILITIES", amount: calls.length === 1 ? 49000 : 20000, count: 1, updatedAt: new Date("2026-11-07T09:00:00Z") }];
+  } } });
+  try {
+    const denied = response();
+    await loader.controller.ask({ ...request({ userId: "owner", staffId: "staff", permissions: { canRecordExpenses: true } }), body: { question: "Expenses by category this month" } }, denied, (error) => { throw error; });
+    assert.match(denied.payload.answer.message, /permission/i);
+    assert.equal(calls.length, 0);
+    const allowed = response();
+    await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "Matumizi kwa aina mwezi huu" } }, allowed, (error) => { throw error; });
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(({ sql, params }) => sql.includes("category <> 'STOCK'") && sql.includes('e."requiresDateReview"') && params[0] === "shop-1"));
+    assert.match(allowed.payload.answer.message, /49,000/);
+    assert.match(allowed.payload.answer.message, /20,000/);
+    assert.match(allowed.payload.answer.message, /Schedules are reminders/);
+  } finally { loader.restore(); }
+});
+
+test("customer debt picker is tenant-scoped and exposes only a masked phone suffix", async () => {
+  let rawCalls = 0;
+  const loader = loadWithMocks({ prisma: { $queryRawUnsafe: async (sql, shopId, nameSearch) => {
+    rawCalls += 1;
+    assert.equal(shopId, "shop-1");
+    assert.equal(nameSearch, "%Amina%");
+    assert.match(sql, /right\(g\.phone, 4\)/);
+    assert.match(sql, /g\."matchesName" OR \(\$3 <> '' AND \(/);
+    assert.doesNotMatch(sql, /SELECT .*customerPhone/i);
+    return [{ customerDebtId: "debt-current", name: "Amina", phoneLast4: "1234", outstanding: 27000n, openCount: 2 }];
+  } } });
+  try {
+    const denied = response();
+    await loader.controller.customerOptions({ ...request({ userId: "owner", staffId: "staff", permissions: {} }), body: { search: "Amina" } }, denied, (error) => { throw error; });
+    assert.equal(denied.statusCode, 403);
+    assert.equal(rawCalls, 0);
+    const allowed = response();
+    await loader.controller.customerOptions({ ...request({ userId: "owner", staffId: "staff", permissions: { canSell: true } }), body: { search: "Amina" } }, allowed, (error) => { throw error; });
+    assert.equal(allowed.payload.customers[0].phoneLast4, "1234");
+    assert.equal(allowed.payload.customers[0].outstanding, 27000);
+    assert.equal(JSON.stringify(allowed.payload).includes("+255712341234"), false);
+  } finally { loader.restore(); }
+});
+
+test("selected customer debt totals include repeated debts only inside the current shop", async () => {
+  const loader = loadWithMocks({ prisma: {
+    debt: { findFirst: async ({ where }) => {
+      assert.equal(where.id, "debt-selected");
+      assert.equal(where.shopId, "shop-1");
+      return { id: "debt-selected", customerName: "Amina", customerPhone: "+255712341234", updatedAt: new Date() };
+    } },
+    $queryRawUnsafe: async (sql, shopId, phone) => {
+      assert.equal(shopId, "shop-1");
+      assert.equal(phone, "+255712341234");
+      assert.match(sql, /d\."shopId" = \$1/);
+      return [{ openCount: 2, outstanding: 27000n, overdue: 7000n, updatedAt: new Date() }];
+    },
+  } });
+  try {
+    const result = response();
+    await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "How much does this customer currently owe?", customerDebtId: "debt-selected" } }, result, (error) => { throw error; });
+    assert.match(result.payload.answer.message, /Amina: 2 debts are open/);
+    assert.match(result.payload.answer.message, /27,000 outstanding/);
+    assert.match(result.payload.answer.message, /7,000 are past their recorded due dates/);
+  } finally { loader.restore(); }
+});
+
+test("branch stock comparison excludes internal-use items and is unavailable to staff", async () => {
+  let queries = 0;
+  const loader = loadWithMocks({ prisma: {
+    shop: {
+      findUnique: async ({ where }) => ({ id: where.id, category: "retail" }),
+      findMany: async ({ where }) => {
+        assert.equal(where.OR[0].id, "root-shop");
+        return [{ id: "root-shop", name: "Main shop" }, { id: "branch-1", name: "Town branch" }];
+      },
+    },
+    $queryRawUnsafe: async (sql, ...shopIds) => {
+      queries += 1;
+      assert.deepEqual(shopIds, ["root-shop", "branch-1"]);
+      assert.match(sql, /"isInternalUse" = FALSE/);
+      return [
+        { shopId: "root-shop", productCount: 4, lowStockCount: 1, outOfStockCount: 0, updatedAt: new Date() },
+        { shopId: "branch-1", productCount: 3, lowStockCount: 0, outOfStockCount: 2, updatedAt: new Date() },
+      ];
+    },
+  } });
+  try {
+    const denied = response();
+    await loader.controller.ask({ ...request({ userId: "owner", staffId: "cashier", businessShopId: "root-shop", permissions: { canManageStock: true } }), body: { question: "Which branches have low stock?" } }, denied, (error) => { throw error; });
+    assert.match(denied.payload.answer.message, /permission/i);
+    assert.equal(queries, 0);
+    const allowed = response();
+    await loader.controller.ask({ ...request({ userId: "owner", businessShopId: "root-shop" }), body: { question: "Which branches have low stock?" } }, allowed, (error) => { throw error; });
+    assert.match(allowed.payload.answer.message, /Town branch: 3 sellable products, 0 low, 2 out/);
+    assert.equal(queries, 1);
+  } finally { loader.restore(); }
+});
+
+test("follow-ups retain a signed payment-method filter and period", async () => {
+  const oldSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "test-followup-secret";
+  const queries = [];
+  const loader = loadWithMocks({ profitAnalytics: async (req, res) => {
+    queries.push({ from: req.query.from, to: req.query.to, method: req.body.paymentMethod });
+    return res.json({ salesPaymentBreakdown: [{ paymentMethod: "MPESA", salesCount: 2, amount: 18000 }, { paymentMethod: "CASH", salesCount: 1, amount: 5000 }], collectionBreakdown: [] });
+  } });
+  try {
+    const ask = async (question, contextToken) => {
+      const res = response();
+      await loader.controller.ask({ ...request({ userId: "owner-1", shopId: "shop-1" }), body: { question, ...(contextToken ? { contextToken } : {}) } }, res, (error) => { throw error; });
+      return res.payload;
+    };
+    const first = await ask("Sales via M-Pesa this month");
+    assert.match(first.answer.message, /M-Pesa: 2 sales/);
+    assert.ok(first.contextToken);
+    const previous = await ask("And last month?", first.contextToken);
+    assert.match(previous.answer.message, /last month/);
+    assert.match(previous.answer.message, /M-Pesa: 2 sales/);
+    assert.equal(queries[1].method, "MPESA");
+    assert.notEqual(queries[0].from, queries[1].from);
+    const cash = await ask("And cash?", previous.contextToken);
+    assert.match(cash.answer.message, /Cash: 1 sales/);
+    assert.equal(queries[2].method, "CASH");
+    const cashLastMonth = await ask("What about cash last month?", first.contextToken);
+    assert.match(cashLastMonth.answer.message, /last month/);
+    assert.match(cashLastMonth.answer.message, /Cash: 1 sales/);
+    assert.equal(queries[3].method, "CASH");
+    assert.notEqual(queries[0].from, queries[3].from);
+  } finally {
+    loader.restore();
+    if (oldSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = oldSecret;
   }
 });

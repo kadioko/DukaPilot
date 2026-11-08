@@ -14,6 +14,7 @@ router.get("/today", todayCtrl.today);
 router.post("/ask", todayCtrl.ask);
 router.get("/product-options", requirePermission("canViewReports"), todayCtrl.productOptions);
 router.get("/supplier-options", requirePermission("canViewReports"), requirePermission("canManageStock"), todayCtrl.supplierOptions);
+router.post("/customer-options", requirePermission("canSell"), todayCtrl.customerOptions);
 router.get("/operational-options", todayCtrl.operationalOptions);
 router.get("/stock", requirePermission("canManageStock"), ctrl.stockSummary);
 router.get("/farm", requirePermission("canManageFarm"), ctrl.farmSummary);
