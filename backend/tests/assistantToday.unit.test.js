@@ -14,7 +14,9 @@ const productInsightsPath = path.resolve(__dirname, "../src/services/assistantPr
 const businessInsightsPath = path.resolve(__dirname, "../src/services/assistantBusinessInsights.service.js");
 const branchPath = path.resolve(__dirname, "../src/controllers/branch.controller.js");
 const farmAccessPath = path.resolve(__dirname, "../src/lib/farmAccess.js");
-const mockedPaths = [controllerPath, prismaPath, shopAccessPath, dashboardPath, assistantPath, purchasePath, cashSessionPath, productInsightsPath, businessInsightsPath, branchPath, farmAccessPath];
+const entitlementsPath = path.resolve(__dirname, "../src/lib/entitlements.js");
+const cloudflareAiPath = path.resolve(__dirname, "../src/services/cloudflareAi.service.js");
+const mockedPaths = [controllerPath, prismaPath, shopAccessPath, dashboardPath, assistantPath, purchasePath, cashSessionPath, productInsightsPath, businessInsightsPath, branchPath, farmAccessPath, entitlementsPath, cloudflareAiPath];
 
 function cachedModule(id, exports) {
   return { id, filename: id, loaded: true, exports };
@@ -27,11 +29,11 @@ function makeHandler(payload, error) {
   };
 }
 
-function loadWithMocks({ prisma, overview, profitAnalytics, assistant, purchaseReport, currentCashSession, productInsights, businessInsights, branchOverview, farmConfiguration } = {}) {
+function loadWithMocks({ prisma, overview, profitAnalytics, assistant, purchaseReport, currentCashSession, productInsights, businessInsights, branchOverview, farmConfiguration, canUseFeature, cloudflareAi } = {}) {
   const originalCache = new Map(mockedPaths.map((file) => [file, require.cache[file]]));
   const safePrisma = prisma || { $queryRaw: async () => [] };
   require.cache[prismaPath] = cachedModule(prismaPath, safePrisma);
-  require.cache[shopAccessPath] = cachedModule(shopAccessPath, { getShopIdForUser: async (user) => user.shopId || "shop-1" });
+  require.cache[shopAccessPath] = cachedModule(shopAccessPath, { getShopIdForUser: async (user) => user.shopId || "shop-1", getBillingShopIdForUser: async (user) => user.businessShopId || "shop-root" });
   require.cache[dashboardPath] = cachedModule(dashboardPath, {
     overview: overview || makeHandler({ summary: {} }),
     profitAnalytics: profitAnalytics || makeHandler({ summary: {} }),
@@ -42,6 +44,8 @@ function loadWithMocks({ prisma, overview, profitAnalytics, assistant, purchaseR
   require.cache[businessInsightsPath] = cachedModule(businessInsightsPath, businessInsights || { supplierBalances: async () => [], debtCollections: async () => ({ amount: 0, count: 0 }) });
   require.cache[branchPath] = cachedModule(branchPath, { overview: branchOverview || makeHandler({ branches: [] }) });
   require.cache[farmAccessPath] = cachedModule(farmAccessPath, { getFarmConfiguration: farmConfiguration || (async () => ({ isFarm: true, hasCrops: true, hasLivestock: true })) });
+  require.cache[entitlementsPath] = cachedModule(entitlementsPath, { canUseFeature: canUseFeature || (() => true) });
+  require.cache[cloudflareAiPath] = cachedModule(cloudflareAiPath, cloudflareAi || { CONSENT_VERSION: "test-v1", isConfigured: () => false, answerQuestion: async () => ({ ok: false, reason: "NOT_CONFIGURED" }) });
   require.cache[assistantPath] = cachedModule(assistantPath, assistant || {
     stockSummary: makeHandler({ actions: [] }),
     quotationSummary: makeHandler({ actions: [] }),
@@ -580,6 +584,83 @@ test("assistant source retry rejects unknown sections", async () => {
     await loader.controller.today({ ...request({ userId: "owner-1" }, { source: "customers" }) }, res, (error) => { throw error; });
     assert.equal(res.statusCode, 400);
     assert.match(res.payload.error, /Unknown assistant source/);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("external AI aggregate allowlist excludes every raw record and product name", () => {
+  const loader = loadWithMocks();
+  try {
+    const summary = loader.controller.externalAggregateSnapshot({ sections: {
+      salesToday: { status: "ready", data: { analytics: { salesCount: 2, netSalesRevenue: 40000, cashCollected: 20000, costComplete: true, grossProfit: 10000, expenses: 3000, netProfit: 7000 }, recentSales: [{ customerName: "Private customer" }] } },
+      inventory: { status: "ready", data: { lowStockCount: 1, outOfStockCount: 0, products: [{ name: "Private product", buyingPrice: 10 }] } },
+      debts: { status: "ready", data: { summary: { openCount: 1, totalOwed: 9000 }, debts: [{ customerName: "Private debtor" }] } },
+      expenses: { status: "ready", data: { summary: { total: 2500, count: 1 }, expenses: [{ title: "Private expense" }] } },
+      quotations: { status: "ready", data: { actions: [{ customerName: "Private quote" }] } },
+      farm: { status: "ready", data: { actions: [{ plot: "Private plot" }], configuration: { hasCrops: true, hasLivestock: false } } },
+    } }, "grocery", "this month");
+    const serialized = JSON.stringify(summary);
+    for (const privateValue of ["Private customer", "Private product", "Private debtor", "Private expense", "Private quote", "Private plot", "buyingPrice"]) assert.equal(serialized.includes(privateValue), false);
+    assert.equal(summary.sales.netRevenue, 40000);
+    assert.equal(summary.profit.netProfit, 7000);
+    assert.equal(summary.stock.lowStockCount, 1);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("external AI selects only the relevant aggregate sections and never loads unrelated business data", () => {
+  const loader = loadWithMocks();
+  try {
+    assert.deepEqual(loader.controller.externalSourcesForQuestion("How much were expenses this month?"), ["expenses"]);
+    assert.deepEqual(loader.controller.externalSourcesForQuestion("What were sales and profit this week?"), ["salesToday"]);
+    assert.deepEqual(loader.controller.externalSourcesForQuestion("Mayai na ufugaji"), ["farm"]);
+    assert.deepEqual(loader.controller.externalSourcesForQuestion("How much do I owe this supplier?"), []);
+    assert.deepEqual(loader.controller.externalSourcesForQuestion("Tell me a joke"), []);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("external AI requires current primary-owner consent and sends no shop data for general questions", async () => {
+  let modelCalls = 0;
+  let sentContext;
+  const shop = { id: "shop-root", userId: "owner-1", parentShopId: null, category: "grocery", externalAiEnabled: false, externalAiConsentAt: null, externalAiConsentVersion: null, plan: "PRO", subscriptionEndsAt: new Date(Date.now() + 86400000) };
+  const loader = loadWithMocks({
+    prisma: { shop: { findUnique: async ({ select }) => select.category ? shop : { externalAiEnabled: shop.externalAiEnabled, externalAiConsentVersion: shop.externalAiConsentVersion } }, $queryRaw: async () => [] },
+    cloudflareAi: { CONSENT_VERSION: "test-v1", isConfigured: () => true, answerQuestion: async (_shopId, _question, context) => { modelCalls += 1; sentContext = context; return { ok: true, text: "A light joke." }; } },
+  });
+  try {
+    const staffResult = await loader.controller.askExternalAi({ user: { userId: "owner-1", staffId: "staff-1", role: "MERCHANT" } }, "Tell me a joke", "en");
+    assert.equal(staffResult, null);
+    const unconsented = await loader.controller.askExternalAi({ user: { userId: "owner-1", role: "MERCHANT", resolvedShopId: "shop-root" } }, "Tell me a joke", "en");
+    assert.equal(unconsented, null);
+    assert.equal(modelCalls, 0);
+    shop.externalAiEnabled = true;
+    shop.externalAiConsentAt = new Date();
+    shop.externalAiConsentVersion = "test-v1";
+    const consented = await loader.controller.askExternalAi({ user: { userId: "owner-1", role: "MERCHANT", resolvedShopId: "shop-root" } }, "Tell me a joke", "en");
+    assert.equal(consented.ok, true);
+    assert.deepEqual(sentContext, {});
+    assert.equal(modelCalls, 1);
+  } finally {
+    loader.restore();
+  }
+});
+
+test("external AI provider errors fall back to the local clarification without exposing records", async () => {
+  const shop = { id: "shop-root", userId: "owner-1", parentShopId: null, category: "grocery", externalAiEnabled: true, externalAiConsentAt: new Date(), externalAiConsentVersion: "test-v1", plan: "PRO", subscriptionEndsAt: new Date(Date.now() + 86400000) };
+  const loader = loadWithMocks({
+    prisma: { shop: { findUnique: async ({ select }) => select.category ? shop : { externalAiEnabled: true, externalAiConsentVersion: "test-v1" } }, $queryRaw: async () => [] },
+    cloudflareAi: { CONSENT_VERSION: "test-v1", isConfigured: () => true, answerQuestion: async () => ({ ok: false, reason: "UNAVAILABLE" }) },
+  });
+  try {
+    const res = response();
+    await loader.controller.ask({ ...request({ userId: "owner-1", role: "MERCHANT", language: "en", resolvedShopId: "shop-root" }), body: { question: "Explain how rainbows form" } }, res, (error) => { throw error; });
+    assert.match(res.payload.answer.message, /External AI is temporarily unavailable/i);
+    assert.match(res.payload.answer.privacy, /Fell back to the local assistant/i);
+    assert.deepEqual(res.payload.answer.evidence, []);
   } finally {
     loader.restore();
   }

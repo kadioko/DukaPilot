@@ -1,10 +1,18 @@
 # DukaPilot Assistant
 
-The assistant is a permission-aware, deterministic operational helper. Its recommendations and Ask answers use DukaPilot records; questions are not sent to an external AI provider, and Ask cannot create or change sales, payments, stock, debts, or farm records.
+The assistant combines permission-aware, deterministic answers with optional Cloudflare Workers AI for questions the local rules cannot answer. External AI is off by default and only the primary business owner can enable it in Settings. Ask cannot create or change sales, payments, stock, debts, or farm records.
 
-## External Provider Preparation
+## Optional Conversational AI
 
-The backend contains an isolated Cloudflare Workers AI connectivity helper that sends only a fixed synthetic prompt. It is not exposed by any route, called by Ask, or enabled by adding credentials. Production credentials belong only in Railway backend variables `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_API_TOKEN`; never use frontend `NEXT_PUBLIC_` variables or commit them. The connection is not ready for merchant use: owner opt-in and revocation, permission-scoped data minimization, privacy disclosures, durable shared usage limits, safe fallback, and end-to-end tests must be implemented before activating it. Do not send customer or shop data to the provider until those safeguards are in place.
+Only questions the deterministic assistant classifies as unsupported can use the external model. Supported questions continue to use the existing local answer and evidence path. Ambiguous questions and unsupported date ranges continue to ask for clarification. General questions send only the typed question; business questions select only the relevant aggregate sections from the current branch, and each section is still permission-checked on the backend. The summary contains aggregate figures plus the business category and requested period; raw records, customer/supplier/product/staff names, and transaction text are not included. Topics without a supported aggregate source send no business summary. The typed question is sent after detectable phone numbers and email addresses are redacted, so users must not type names or other private information. DukaPilot does not persist prompts, responses, or conversation transcripts.
+
+The primary owner can revoke consent at any time from Settings, including when the plan or provider configuration is unavailable. Consent is stored on the parent business with a timestamp and disclosure version; a future disclosure-version change requires renewed consent. Staff and branch users cannot enable external AI themselves. Staff may still use supported local answers under their existing assistant and data permissions; unsupported questions fall back locally.
+
+The backend sends requests directly to the fixed Cloudflare Workers AI REST endpoint using `@cf/openai/gpt-oss-20b`. Credentials belong only in Railway backend variables `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_API_TOKEN`; never use frontend `NEXT_PUBLIC_` variables or commit credentials. Requests time out after 10 seconds, have a 240-character question limit and 300-token output limit, and are capped at 10 requests per business and 50 across the production account per Tanzania business day. Counts are stored without prompts or response text and old count rows are removed after 30 days. Cloudflare's current Workers AI pricing lists a 10,000-Neuron daily free allocation; DukaPilot's caps are a separate safeguard, and account-wide AI usage can consume that allocation. Monitor the Cloudflare AI dashboard and billing settings. The app uses no Cloudflare AI Gateway, storage, or prompt logging.
+
+If Cloudflare is unavailable, rate-limited, or the quota is reached, the user sees an availability/limit notice and the local assistant remains available. The model is prompted not to invent business figures, give medical/veterinary/pesticide treatment, or claim it performed an action; generated text remains advisory and should be checked against DukaPilot records. The system does not send a model answer for supported factual queries.
+
+Cloudflare documents zero data retention for the selected `gpt-oss-20b` model and states that Workers AI customer content is not used to train models; review [model details](https://developers.cloudflare.com/workers-ai/models/gpt-oss-20b/) and [Cloudflare Workers AI data usage](https://developers.cloudflare.com/workers-ai/platform/data-usage/) for current terms. Review [pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/) because free allocation, account-wide usage, and billing terms can change. The public DukaPilot privacy policy and the in-app consent notice disclose this optional transfer.
 
 ## Data Loading And Freshness
 
@@ -22,7 +30,7 @@ Sales, profit, and expense questions support these Tanzania-local periods: today
 
 For a date period Ask cannot support for a topic (such as historical stock, farm, or debt balances), or for ambiguous/invalid dates, it asks for clarification rather than substituting today's data. Debt answers describe current outstanding balances only. Sales revenue is kept distinct from cash collected. Profit answers disclose incomplete cost coverage and show uncosted sales revenue; they do not present partial cost data as a complete profit result.
 
-Ask is not a general-purpose language model: it uses topic and date patterns and does not make writes. Ask one topic at a time. The page offers example questions for sources the account is allowed to access; farm examples appear only for farm categories. For example:
+Ask uses topic and date patterns for trusted record answers and a general-purpose model only for unsupported questions after owner opt-in. Ask one topic at a time. The page offers example questions for sources the account is allowed to access; farm examples appear only for farm categories. For example:
 
 - "How much were sales this month?" / "Mauzo ya mwezi huu ni kiasi gani?"
 - "What was my profit this week?" / "Faida ya wiki hii ni kiasi gani?"
@@ -49,7 +57,7 @@ The current-shift answer uses the existing Daily Close calculations and displays
 
 For questions about a pending supplier refund, Ask can show current negative supplier balances, but it cannot tell whether the business and supplier agreed to a refund or future credit, or verify an external transfer. Ask can list up to five in-stock products with no completed sale in the last 30 days, based on recorded sales.
 
-Not yet implemented as Ask answers: named-customer debt lookup, supplier-return delivery tracking or pending-refund attribution, contractual supplier due-date aging, per-category expense changes, branch stock comparisons, general free-form model answers, or medical/agronomic diagnosis. Supplier refund answers show net recorded cash or mobile-money settlements and corrections, not pending claims. Use the relevant existing screens for unsupported detail.
+Not yet implemented as deterministic Ask answers: named-customer debt lookup, supplier-return delivery tracking or pending-refund attribution, contractual supplier due-date aging, per-category expense changes, and branch stock comparisons. Owner-enabled Cloudflare AI can explain general questions, but it does not have access to named records and must not be treated as a source of unverified shop-specific facts or medical/agronomic diagnosis. Supplier refund answers show net recorded cash or mobile-money settlements and corrections, not pending claims. Use the relevant existing screens for unsupported detail.
 
 ## Recommendation Rules
 
@@ -76,7 +84,7 @@ Event rows store only the recommendation key, event type, occurrence/impression 
 
 ## Deployment And Verification
 
-Migration `20261028001000_assistant_recommendation_occurrences` adds the daily occurrence identity to assistant actions. Apply it through the normal Railway migration deployment before serving the matching backend release or frontend. Then configure the retention secret before treating the scheduled cleanup as active. The backend uses Prisma's generated client; run `npm run db:generate` after schema changes.
+Migration `20261108001000_assistant_external_ai` adds owner consent fields and the privacy-safe daily usage counters. Railway applies it at backend startup through `scripts/migrate-and-start.js`; verify migration success before serving the updated frontend. The existing `20261028001000_assistant_recommendation_occurrences` migration must also be applied for recommendation history. Keep `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_API_TOKEN` only in Railway backend variables. The backend uses Prisma's generated client; run `npm run db:generate` after schema changes.
 
 Verify with:
 
@@ -86,4 +94,4 @@ npm run db:generate
 npm run test:assistant
 ```
 
-Also run the frontend typecheck, focused assistant/debt Playwright tests, production build, and the normal CI suite before release. In production, verify source-specific failure/retry, staff permission redaction, period-aware bilingual Ask answers, per-day dismissal, exact debt focus, and impression-based admin counts. Do not mark an action outcome verified based only on a click or a manual completion.
+Also run the frontend typecheck, focused assistant/debt Playwright tests, production build, and the normal CI suite before release. In production, verify the backend reports external AI available in Settings, enable it as the primary owner, ask an unsupported general question and a business-summary question, confirm a provider outage/quota fallback remains useful, then revoke consent and confirm no more external request is made. Do not include names or personal details in test prompts. Verify source-specific failure/retry, staff permission redaction, period-aware bilingual Ask answers, per-day dismissal, exact debt focus, and impression-based admin counts. Do not mark an action outcome verified based only on a click or a manual completion.

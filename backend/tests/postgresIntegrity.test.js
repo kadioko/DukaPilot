@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const prisma = require("../src/lib/prisma");
 const { anonymizeMerchantAccount } = require("../src/services/accountDeletion.service");
 const { queueForShop } = require("../src/services/push.service");
+const { reserveDailyUsage, SHOP_DAILY_LIMIT, ACCOUNT_DAILY_LIMIT } = require("../src/services/cloudflareAi.service");
 const { ask: askAssistant } = require("../src/controllers/assistantToday.controller");
 
 test.after(async () => {
@@ -28,6 +29,33 @@ test("new stock and price viewing permissions default off and remain independent
   assert.equal(updated.canViewSalePrices, false);
   assert.equal(updated.canSell, false);
   assert.equal(updated.canManageStock, false);
+});
+
+test("external AI daily caps are atomic under PostgreSQL concurrency and isolated by shop", async (t) => {
+  const suffix = crypto.randomUUID();
+  const dateKey = "2098-11-08";
+  const owners = await Promise.all(Array.from({ length: 6 }, (_, index) => prisma.user.create({ data: { phone: `ai-cap-${index}-${suffix}`, pin: "test-pin", name: `AI quota owner ${index}` } })));
+  const shops = await Promise.all(owners.map((owner, index) => prisma.shop.create({ data: { name: `AI quota shop ${index}`, location: "Test", userId: owner.id, referralCode: `ai-cap-${index}-${suffix}` } })));
+  t.after(async () => {
+    await prisma.assistantAiUsage.deleteMany({ where: { usageDate: new Date(`${dateKey}T00:00:00.000Z`), scopeKey: { in: ["account", ...shops.map((shop) => `shop:${shop.id}`)] } } });
+    await prisma.shop.deleteMany({ where: { id: { in: shops.map((shop) => shop.id) } } });
+    await prisma.user.deleteMany({ where: { id: { in: owners.map((owner) => owner.id) } } });
+  });
+
+  const firstShopResults = await Promise.all(Array.from({ length: SHOP_DAILY_LIMIT + 2 }, () => reserveDailyUsage(shops[0].id, dateKey)));
+  assert.equal(firstShopResults.filter((result) => result.allowed).length, SHOP_DAILY_LIMIT);
+  assert.equal(firstShopResults.filter((result) => result.reason === "SHOP_LIMIT").length, 2);
+
+  for (const shop of shops.slice(1, 5)) {
+    for (let request = 0; request < SHOP_DAILY_LIMIT; request += 1) {
+      assert.equal((await reserveDailyUsage(shop.id, dateKey)).allowed, true);
+    }
+  }
+  assert.equal(SHOP_DAILY_LIMIT * 5, ACCOUNT_DAILY_LIMIT);
+  const accountLimited = await reserveDailyUsage(shops[5].id, dateKey);
+  assert.deepEqual(accountLimited, { allowed: false, reason: "ACCOUNT_LIMIT" });
+  const finalShopUsage = await prisma.assistantAiUsage.findUnique({ where: { scopeKey_usageDate: { scopeKey: `shop:${shops[5].id}`, usageDate: new Date(`${dateKey}T00:00:00.000Z`) } } });
+  assert.equal(finalShopUsage, null);
 });
 
 test("assistant expiry and scheduled expenses stay shop-scoped in PostgreSQL", async (t) => {

@@ -4,7 +4,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
-import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode, Share2, Tags } from "lucide-react";
+import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode, Share2, Tags, Sparkles } from "lucide-react";
 import NotificationSettings from "@/components/notifications/NotificationSettings";
 
 interface UserSettings {
@@ -14,6 +14,7 @@ interface UserSettings {
   role: string;
   language: string;
   isStaff?: boolean;
+  externalAi?: { available: boolean; enabled: boolean; canManage: boolean; consentAt?: string | null; dailyLimit: number };
   shop?: {
     id: string;
     name: string;
@@ -112,6 +113,9 @@ export default function SettingsPage() {
   const [pricingSaving, setPricingSaving] = useState(false);
   const [pricingError, setPricingError] = useState("");
   const [pricingMsg, setPricingMsg] = useState("");
+  const [externalAiSaving, setExternalAiSaving] = useState(false);
+  const [externalAiError, setExternalAiError] = useState("");
+  const [externalAiMsg, setExternalAiMsg] = useState("");
 
   useEffect(() => {
     setCatalogOrigin(window.location.origin);
@@ -180,6 +184,22 @@ export default function SettingsPage() {
       setPricingError(error instanceof Error ? error.message : (lang === "sw" ? "Bei haikuhifadhiwa." : "Could not save sale pricing."));
     } finally {
       setPricingSaving(false);
+    }
+  }
+
+  async function updateExternalAi(enabled: boolean) {
+    if (!settings?.externalAi?.canManage || externalAiSaving) return;
+    setExternalAiSaving(true);
+    setExternalAiError("");
+    setExternalAiMsg("");
+    try {
+      const result = await api.patch<{ externalAi: NonNullable<UserSettings["externalAi"]> }>("/settings/external-ai", { enabled }, lang);
+      setSettings((current) => current ? { ...current, externalAi: result.externalAi } : current);
+      setExternalAiMsg(lang === "sw" ? (enabled ? "Umeruhusu Cloudflare AI kwa biashara hii." : "Cloudflare AI imezimwa.") : (enabled ? "Cloudflare AI is enabled for this business." : "Cloudflare AI is turned off."));
+    } catch (error) {
+      setExternalAiError(error instanceof Error ? error.message : (lang === "sw" ? "Mpangilio haukuhifadhiwa." : "Could not save this setting."));
+    } finally {
+      setExternalAiSaving(false);
     }
   }
 
@@ -499,6 +519,23 @@ export default function SettingsPage() {
             {pricingSaving && <p role="status" className="text-xs text-gray-600">{lang === "sw" ? "Inahifadhi..." : "Saving..."}</p>}
             {pricingMsg && <SuccessBanner msg={pricingMsg} />}
             {pricingError && <p role="alert" className="text-sm text-red-700">{pricingError}</p>}
+          </SectionCard>
+        )}
+
+        {settings?.role === "MERCHANT" && settings.externalAi?.canManage && (
+          <SectionCard title={lang === "sw" ? "AI ya mazungumzo" : "Conversational AI"} icon={<Sparkles className="h-4 w-4" />}>
+            <label className="flex min-h-12 items-start justify-between gap-4">
+              <span>
+                <span className="block text-sm font-semibold text-gray-900">{lang === "sw" ? "Ruhusu maswali yasiyojibiwa na msaidizi wa ndani kwenda Cloudflare AI" : "Allow unsupported questions to use Cloudflare AI"}</span>
+                <span className="mt-1 block text-xs leading-5 text-gray-600">{lang === "sw" ? `Ukiwasha, maswali tu ambayo msaidizi wa ndani hawezi kujibu hutumwa Cloudflare AI; maswali yanayoungwa mkono hubaki ndani ya DukaPilot. Swali linalotumwa hukaguliwa na kuondolewa namba za simu/barua pepe zinazotambulika; usiandike majina au taarifa binafsi. Kwa maswali ya biashara, muhtasari mdogo wenye jumla, aina ya biashara na kipindi kutoka sehemu ulizoruhusiwa unaweza pia kutumwa. Rekodi ghafi au majina kutoka kwenye hifadhidata hayaongezwi. Mmiliki anaweza kuzima wakati wowote. Kikomo cha DukaPilot ni maswali ${settings.externalAi.dailyLimit} kwa biashara na 50 kwa akaunti ya uzalishaji kwa siku; kikomo na masharti ya malipo ya Cloudflare hutegemea mpango wa akaunti yako.` : `Only questions the local assistant cannot answer are sent to Cloudflare AI; supported factual questions stay in DukaPilot. Detectable phone numbers and email addresses are redacted from the question; do not enter names or personal details. Business questions may also include a small summary with totals, business type, and period from sections you are allowed to access. DukaPilot does not attach raw records or names. The owner can turn this off anytime. DukaPilot caps usage at ${settings.externalAi.dailyLimit} questions per shop and 50 across production per day; Cloudflare limits and billing depend on your account plan.`}</span>
+                <a href="https://developers.cloudflare.com/workers-ai/platform/pricing/" target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-brand-700 underline">{lang === "sw" ? "Kikomo cha matumizi cha Cloudflare" : "Cloudflare usage and pricing"}</a>
+              </span>
+              <input type="checkbox" checked={settings.externalAi.enabled} disabled={(!settings.externalAi.available && !settings.externalAi.enabled) || externalAiSaving} onChange={(event) => updateExternalAi(event.target.checked)} aria-label={lang === "sw" ? "Washa Cloudflare AI" : "Enable Cloudflare AI"} className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-brand-600 disabled:opacity-50" />
+            </label>
+            {!settings.externalAi.available && <p className="text-xs leading-5 text-amber-800">{lang === "sw" ? "AI ya nje haipatikani. Msaidizi wa ndani ataendelea kufanya kazi." : "External AI is unavailable. The local assistant will continue to work."}</p>}
+            {externalAiSaving && <p role="status" className="text-xs text-gray-600">{lang === "sw" ? "Inahifadhi..." : "Saving..."}</p>}
+            {externalAiMsg && <SuccessBanner msg={externalAiMsg} />}
+            {externalAiError && <p role="alert" className="text-sm text-red-700">{externalAiError}</p>}
           </SectionCard>
         )}
 

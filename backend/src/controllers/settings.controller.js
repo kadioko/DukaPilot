@@ -3,6 +3,8 @@ const bcrypt = require("bcryptjs");
 const { performance } = require("node:perf_hooks");
 const { getShopIdForUser, getBillingShopIdForUser } = require("../lib/shopAccess");
 const { recordRequestPhase } = require("../middleware/requestDiagnostics");
+const { canUseFeature } = require("../lib/entitlements");
+const cloudflareAi = require("../services/cloudflareAi.service");
 
 const VALID_CATEGORIES = new Set(["grocery", "pharmacy", "beauty", "bar", "restaurant", "hardware", "electronics", "clothing", "livestock", "farm", "general"]);
 const VALID_LANGUAGES = new Set(["en", "sw"]);
@@ -14,6 +16,20 @@ function normalizeText(value) {
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+async function externalAiSettings(user) {
+  const businessShopId = await getBillingShopIdForUser(user);
+  if (!businessShopId) return { available: false, enabled: false, canManage: false, consentAt: null, dailyLimit: cloudflareAi.SHOP_DAILY_LIMIT };
+  const shop = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { id: true, userId: true, parentShopId: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, externalAiEnabled: true, externalAiConsentAt: true, externalAiConsentVersion: true } });
+  const canManage = Boolean(!user.staffId && user.role === "MERCHANT" && shop?.userId === user.userId && !shop.parentShopId);
+  return {
+    available: canManage && canUseFeature(shop, "ASSISTANT") && cloudflareAi.isConfigured(),
+    enabled: canManage && shop.externalAiEnabled === true && shop.externalAiConsentVersion === cloudflareAi.CONSENT_VERSION,
+    canManage,
+    consentAt: canManage ? shop.externalAiConsentAt : null,
+    dailyLimit: cloudflareAi.SHOP_DAILY_LIMIT,
+  };
 }
 
 // GET /api/settings — return current user + shop/supplier profile
@@ -34,7 +50,7 @@ const getSettings = asyncHandler(async (req, res) => {
     if (!staff) return res.status(404).json({ error: "Staff member not found" });
     const businessShopId = await getBillingShopIdForUser(req.user);
     const business = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { allowVariableSalePrices: true } });
-    return res.json({ settings: { ...staff, isStaff: true, shop: { ...staff.shop, allowVariableSalePrices: business?.allowVariableSalePrices === true } } });
+    return res.json({ settings: { ...staff, isStaff: true, externalAi: { available: false, enabled: false, canManage: false, consentAt: null, dailyLimit: cloudflareAi.SHOP_DAILY_LIMIT }, shop: { ...staff.shop, allowVariableSalePrices: business?.allowVariableSalePrices === true } } });
   }
   const user = await prisma.user.findUnique({
     where: { id: req.user.userId },
@@ -58,7 +74,27 @@ const getSettings = asyncHandler(async (req, res) => {
     const business = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { allowVariableSalePrices: true } });
     user.shop.allowVariableSalePrices = business?.allowVariableSalePrices === true;
   }
+  user.externalAi = await externalAiSettings(req.user);
   res.json({ settings: user });
+});
+
+const updateExternalAiConsent = asyncHandler(async (req, res) => {
+  if (req.user.staffId || req.user.role !== "MERCHANT" || typeof req.body?.enabled !== "boolean") {
+    return res.status(403).json({ error: "Only the primary business owner can manage external AI consent" });
+  }
+  const businessShopId = await getBillingShopIdForUser(req.user);
+  const shop = businessShopId ? await prisma.shop.findUnique({ where: { id: businessShopId }, select: { id: true, userId: true, parentShopId: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true } }) : null;
+  if (!shop || shop.userId !== req.user.userId || shop.parentShopId) return res.status(403).json({ error: "Only the primary business owner can manage external AI consent" });
+  if (req.body.enabled && !canUseFeature(shop, "ASSISTANT")) return res.status(403).json({ error: "Ask DukaPilot AI requires an active assistant feature" });
+  if (req.body.enabled && !cloudflareAi.isConfigured()) return res.status(503).json({ error: "External AI is not configured. The local assistant remains available." });
+  const enabled = req.body.enabled;
+  const updated = await prisma.shop.update({ where: { id: shop.id }, data: {
+    externalAiEnabled: enabled,
+    externalAiConsentAt: enabled ? new Date() : null,
+    externalAiConsentVersion: enabled ? cloudflareAi.CONSENT_VERSION : null,
+  }, select: { externalAiEnabled: true, externalAiConsentAt: true } });
+  req.audit = { action: enabled ? "settings.external_ai.consent" : "settings.external_ai.revoke", resourceType: "shop", resourceId: shop.id, metadata: { enabled, consentVersion: enabled ? cloudflareAi.CONSENT_VERSION : null } };
+  res.json({ externalAi: { ...updated, available: canUseFeature(shop, "ASSISTANT") && cloudflareAi.isConfigured(), enabled: updated.externalAiEnabled, canManage: true, dailyLimit: cloudflareAi.SHOP_DAILY_LIMIT } });
 });
 
 // PATCH /api/settings/shop — update shop details (merchant only)
@@ -181,4 +217,4 @@ const updateProfile = asyncHandler(async (req, res) => {
   res.json({ message: "Profile updated", name });
 });
 
-module.exports = { getSettings, updateShop, updateMenuPreferences, updateSalePricing, updateLanguage, changePin, updateProfile };
+module.exports = { getSettings, updateShop, updateMenuPreferences, updateSalePricing, updateExternalAiConsent, updateLanguage, changePin, updateProfile };

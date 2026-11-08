@@ -280,6 +280,7 @@ model Shop {
   cropOperationReceipts          CropOperationReceipt[]
   assistantActions               AssistantAction[]
   assistantActionEvents          AssistantActionEvent[]
+  assistantAiUsage                AssistantAiUsage[]
   pushSubscriptions              PushSubscription[]
   notificationPreference         NotificationPreference?
   pushDeliveries                 PushDelivery[]
@@ -325,6 +326,9 @@ model Shop {
   isActive                       Boolean                         @default(true)
   isCatalogPublished             Boolean                         @default(true)
   allowVariableSalePrices        Boolean                         @default(false)
+  externalAiEnabled              Boolean                         @default(false)
+  externalAiConsentAt            DateTime?
+  externalAiConsentVersion        String?
   hiddenMenuItems                String[]                        @default([])
   isDemo                         Boolean                         @default(false)
   onboardingStatus               OnboardingStatus                @default(NEW)
@@ -636,6 +640,21 @@ model AssistantActionEvent {
   @@index([shopId, eventType, createdAt])
   @@index([actionKey, createdAt])
   @@map("assistant_action_events")
+}
+
+model AssistantAiUsage {
+  id            String   @id @default(cuid())
+  shopId        String?
+  shop          Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  scopeKey      String
+  usageDate     DateTime @db.Date
+  requestCount  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([scopeKey, usageDate])
+  @@index([usageDate])
+  @@map("assistant_ai_usage")
 }
 
 model PushSubscription {

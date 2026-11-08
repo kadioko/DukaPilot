@@ -1,6 +1,8 @@
 const prisma = require("../lib/prisma");
 const crypto = require("crypto");
-const { getShopIdForUser } = require("../lib/shopAccess");
+const { getShopIdForUser, getBillingShopIdForUser } = require("../lib/shopAccess");
+const { canUseFeature } = require("../lib/entitlements");
+const cloudflareAi = require("../services/cloudflareAi.service");
 const { overview, profitAnalytics } = require("./dashboard.controller");
 const { report: purchaseReport } = require("./purchaseAnalytics.controller");
 const { current: currentCashSession } = require("./cashSession.controller");
@@ -921,6 +923,71 @@ function askAnswer(intent, snapshot, lang, question = "") {
   return { message, href, evidence, privacy: sw ? "Jibu limetumia rekodi za DukaPilot pekee; hakuna huduma ya AI ya nje iliyotumika." : "This answer used DukaPilot records only; no external AI service was called." };
 }
 
+function numeric(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function externalAggregateSnapshot(snapshot, category, periodLabel) {
+  const readyData = (key) => snapshot.sections[key]?.status === "ready" ? snapshot.sections[key].data || {} : null;
+  const salesSource = readyData("salesToday");
+  const sales = salesSource?.analytics || salesSource?.dashboard?.summary;
+  const inventory = readyData("inventory");
+  const debts = readyData("debts");
+  const expenses = readyData("expenses");
+  const quotations = readyData("quotations");
+  const farm = readyData("farm");
+  const summary = { businessCategory: category, period: periodLabel || "today" };
+  if (sales) {
+    summary.sales = { count: numeric(sales.salesCount), netRevenue: numeric(sales.netSalesRevenue ?? sales.netSales ?? sales.totalSales) };
+    if (sales.cashCollected !== undefined) summary.sales.cashCollected = numeric(sales.cashCollected);
+    if (sales.costComplete === true) {
+      summary.profit = { costComplete: true, grossProfit: numeric(sales.grossProfit ?? sales.totalProfit), expenses: numeric(sales.expenses ?? sales.totalExpenses), netProfit: numeric(sales.netProfit) };
+    } else if (sales.costComplete === false) summary.profit = { costComplete: false, uncostedRevenue: numeric(sales.missingCostSalesRevenue) };
+  }
+  if (inventory) summary.stock = { lowStockCount: numeric(inventory.lowStockCount ?? inventory.summary?.lowStockCount), outOfStockCount: numeric(inventory.outOfStockCount ?? inventory.summary?.outOfStockCount) };
+  if (debts) summary.debts = { openCount: numeric(debts.summary?.openCount), outstandingTotal: numeric(debts.summary?.totalOwed) };
+  if (expenses) summary.expenses = { total: numeric(expenses.summary?.total), count: numeric(expenses.summary?.count) };
+  if (quotations) summary.quotationActions = { count: Array.isArray(quotations.actions) ? quotations.actions.length : 0 };
+  if (farm) summary.farmActions = { count: Array.isArray(farm.actions) ? farm.actions.length : 0, cropEnabled: farm.configuration?.hasCrops === true, livestockEnabled: farm.configuration?.hasLivestock === true };
+  return summary;
+}
+
+function externalSourcesForQuestion(question) {
+  const value = String(question || "").toLocaleLowerCase();
+  const sources = new Set();
+  if (/\b(sales?|revenue|profit|mauzo|mapato|faida)\b/.test(value)) sources.add("salesToday");
+  if (/\b(stock|inventory|product|products|item|items|bidhaa|hifadhi)\b/.test(value)) sources.add("inventory");
+  if (/\b(debt|debts|madeni|deni)\b/.test(value)) sources.add("debts");
+  if (/\b(expense|expenses|spending|matumizi)\b/.test(value)) sources.add("expenses");
+  if (/\b(quotation|quotations|quote|nukuu)\b/.test(value)) sources.add("quotations");
+  if (/\b(farm|crop|crops|livestock|feed|egg|eggs|harvest|shamba|mazao|mifugo|ufugaji|mayai|kuku|chakula|trei)\b/.test(value)) sources.add("farm");
+  return [...sources];
+}
+
+async function askExternalAi(req, question, language) {
+  if (req.user.staffId || req.user.role !== "MERCHANT") return null;
+  const businessShopId = await getBillingShopIdForUser(req.user);
+  if (!businessShopId) return null;
+  const shop = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { id: true, userId: true, parentShopId: true, category: true, externalAiEnabled: true, externalAiConsentAt: true, externalAiConsentVersion: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true } });
+  if (!shop || shop.userId !== req.user.userId || shop.parentShopId || shop.externalAiEnabled !== true || !shop.externalAiConsentAt || shop.externalAiConsentVersion !== cloudflareAi.CONSENT_VERSION || !canUseFeature(shop, "ASSISTANT")) return null;
+  if (!cloudflareAi.isConfigured()) return { ok: false, reason: "NOT_CONFIGURED" };
+  const requested = requestedTimeWindow(question, "salesToday");
+  if (requested.clarification) return null;
+  const sources = externalSourcesForQuestion(question);
+  const snapshot = sources.length ? await loadSnapshot(req, sources, { timeWindow: requested.window }) : null;
+  const context = snapshot ? externalAggregateSnapshot(snapshot, shop.category, requested.window?.label || "today") : {};
+  const currentConsent = await prisma.shop.findUnique({ where: { id: businessShopId }, select: { externalAiEnabled: true, externalAiConsentVersion: true } });
+  if (!currentConsent?.externalAiEnabled || currentConsent.externalAiConsentVersion !== cloudflareAi.CONSENT_VERSION) return null;
+  const result = await cloudflareAi.answerQuestion(shop.id, question, context);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  const dataTimes = snapshot ? Object.values(snapshot.sections).map((section) => new Date(section.dataThrough || 0).getTime()).filter(Number.isFinite) : [];
+  const newestDataTime = dataTimes.filter((time) => time > 0).reduce((latest, time) => Math.max(latest, time), 0);
+  const dataThrough = newestDataTime ? new Date(newestDataTime).toISOString() : null;
+  return { ok: true, answer: { message: result.text, href: "/assistant", evidence: snapshot ? [{ source: "DukaPilot aggregate snapshot", checkedAt: snapshot.generatedAt, dataThrough }] : [], privacy: language === "sw" ? (snapshot ? "Swali lako na muhtasari wa jumla wenye namba pekee vilitumwa kwa Cloudflare AI; DukaPilot haikuongeza majina au rekodi ghafi." : "Swali lako lilitumwa kwa Cloudflare AI; hakuna data ya biashara iliyotumwa." ) : (snapshot ? "Your question and a numeric aggregate summary were sent to Cloudflare AI; DukaPilot did not attach names or raw records." : "Your question was sent to Cloudflare AI; no business data was included." ) } };
+}
+
 const ask = asyncHandler(async (req, res) => {
   const question = String(req.body?.question || "").trim().slice(0, 240);
   if (!question) return res.status(400).json({ error: "Enter a question" });
@@ -928,10 +995,27 @@ const ask = asyncHandler(async (req, res) => {
   if (intent === "unsupported" && isPeriodFollowUp(question)) intent = await readFollowUpContext(req, req.body?.contextToken) || "unsupported";
   const language = String(req.headers?.["x-dukapilot-language"] || req.user.language || "sw").toLowerCase() === "en" ? "en" : "sw";
   if (intent === "unsupported" || intent === "ambiguous") {
+    let externalResult = null;
+    if (intent === "unsupported") {
+      try {
+        externalResult = await askExternalAi(req, question, language);
+      } catch (error) {
+        console.warn(JSON.stringify({ event: "assistant_external_ai_failed", requestId: req.requestId || null, errorName: error?.name || "Error" }));
+      }
+      if (externalResult?.ok) return res.json({ answer: externalResult.answer, generatedAt: new Date().toISOString() });
+    }
+    const limitMessage = ["SHOP_LIMIT", "ACCOUNT_LIMIT", "LIMITED"].includes(externalResult?.reason)
+      ? (language === "sw" ? "Kikomo cha matumizi ya AI cha leo kimefikiwa." : "Today's AI usage allowance has been reached.")
+      : externalResult?.reason
+        ? (language === "sw" ? "AI ya nje haipatikani kwa sasa; msaidizi wa ndani bado unaweza kutumika." : "External AI is temporarily unavailable; local assistant answers are still available.")
+        : "";
     const message = language === "sw"
-      ? (intent === "ambiguous" ? "Swali hili lina mada zaidi ya moja. Tafadhali uliza mada moja kwa wakati." : "Bado siwezi kujibu swali hilo kwa usahihi.") + " Jaribu: 'Mauzo ya mwezi huu ni kiasi gani?', 'Matumizi ya leo ni kiasi gani?', au 'Ni bidhaa gani inahitaji kuagizwa?'"
-      : (intent === "ambiguous" ? "That question has more than one topic. Please ask about one topic at a time." : "I cannot answer that question accurately yet.") + " Try: 'How much were sales this month?', 'What were today's expenses?', or 'Which product may need reordering?'";
-    return res.json({ answer: { message, href: "/assistant", evidence: [], privacy: language === "sw" ? "Hakuna data ya biashara iliyotumika kwa jibu hili." : "No business data was used for this answer." }, generatedAt: new Date().toISOString() });
+      ? `${limitMessage ? `${limitMessage} ` : ""}${intent === "ambiguous" ? "Swali hili lina mada zaidi ya moja. Tafadhali uliza mada moja kwa wakati." : "Bado siwezi kujibu swali hilo kwa usahihi."} Jaribu: 'Mauzo ya mwezi huu ni kiasi gani?', 'Matumizi ya leo ni kiasi gani?', au 'Ni bidhaa gani inahitaji kuagizwa?'`
+      : `${limitMessage ? `${limitMessage} ` : ""}${intent === "ambiguous" ? "That question has more than one topic. Please ask about one topic at a time." : "I cannot answer that question accurately yet."} Try: 'How much were sales this month?', 'What were today's expenses?', or 'Which product may need reordering?'`;
+    const privacy = externalResult
+      ? language === "sw" ? "Jibu limerudi kwenye msaidizi wa ndani; hakuna mabadiliko yaliyofanywa." : "Fell back to the local assistant; no records were changed."
+      : language === "sw" ? "Hakuna data ya biashara iliyotumwa kwa AI ya nje." : "No business data was sent to external AI.";
+    return res.json({ answer: { message, href: "/assistant", evidence: [], privacy }, generatedAt: new Date().toISOString() });
   }
   if (["cashSession", "expiry", "expiredStock", "scheduledExpenses", "quotations"].includes(intent)) {
     const withoutThirtyDays = question.replace(/\b(?:in |within |the )?next (?:30|thirty) days\b|\bsiku (?:30|thelathini) zijazo\b/ig, "");
@@ -996,4 +1080,4 @@ const ask = asyncHandler(async (req, res) => {
   res.json({ answer, contextToken, generatedAt: snapshot.generatedAt });
 });
 
-module.exports = { today, ask, productOptions, supplierOptions, operationalOptions, loadInventoryEvidence, loadDebts, loadExpenses, loadSnapshot, detectIntent, requestedTimeWindow, askAnswer };
+module.exports = { today, ask, productOptions, supplierOptions, operationalOptions, loadInventoryEvidence, loadDebts, loadExpenses, loadSnapshot, detectIntent, requestedTimeWindow, askAnswer, externalAggregateSnapshot, externalSourcesForQuestion, askExternalAi };
