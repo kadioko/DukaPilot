@@ -260,7 +260,7 @@ Do not optimize for signups alone. Optimize for activated shops and paid convers
 - Shared mobile IPs. Avoid repeated production login tests; use local unit/browser tests and one controlled production monitor.
 - Monitoring noise. Keep expected validation and authentication `4xx` responses out of Sentry so genuine production exceptions remain visible.
 - SMS delivery. Check **Admin Dashboard > SMS** after any PIN-recovery issue; confirm credits are available and distinguish provider delivery status from an unregistered or inactive DukaPilot phone number.
-- Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows without receiving buying costs, margins, shop-wide profit, or AI report data.
+- Shop attendant access: enable Sell, Stock, and Record expenses; keep Reports disabled. Verify the attendant can operate daily workflows and review expenses without receiving buying costs, sales totals, sales-to-expense ratios, margins, shop-wide profit, or AI report data.
 
 ## Current Launch Gate
 

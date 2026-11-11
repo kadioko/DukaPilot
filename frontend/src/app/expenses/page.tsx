@@ -57,10 +57,10 @@ type Period = "today" | "week" | "month" | "all";
 interface ExpenseSummary {
   total: number;
   count: number;
-  totalSales: number;
-  grossProfit: number;
-  netProfit: number;
-  expensePercentOfSales: number | null;
+  totalSales?: number;
+  grossProfit?: number;
+  netProfit?: number;
+  expensePercentOfSales?: number | null;
   previousTotal: number | null;
   changeAmount: number | null;
   changePercent: number | null;
@@ -157,6 +157,7 @@ export default function ExpensesPage() {
   const [needsReviewExpenses, setNeedsReviewExpenses] = useState<Expense[]>([]);
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
   const [summary, setSummary] = useState<ExpenseSummary>(EMPTY_SUMMARY);
+  const [canViewFinancialInsights, setCanViewFinancialInsights] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
   const [form, setForm] = useState<ExpenseForm>(emptyExpenseForm);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -195,13 +196,17 @@ export default function ExpensesPage() {
 
   async function load(nextFilters = appliedFilters, nextPeriod = period) {
     setLoadError("");
+    setCanViewFinancialInsights(false);
     try {
-      const data = await api.get<{ expenses: Expense[]; needsReviewExpenses?: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
+      const data = await api.get<{ expenses: Expense[]; needsReviewExpenses?: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary; canViewFinancialInsights?: boolean }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
       setExpenses(data.expenses);
       setNeedsReviewExpenses(data.needsReviewExpenses || []);
       setRecurringExpenses(data.recurringExpenses || []);
       setSummary({ ...EMPTY_SUMMARY, ...data.summary, topCategories: data.summary.topCategories || [] });
+      setCanViewFinancialInsights(data.canViewFinancialInsights === true);
     } catch (error) {
+      setSummary(EMPTY_SUMMARY);
+      setCanViewFinancialInsights(false);
       setLoadError(error instanceof Error ? error.message : (lang === "sw" ? "Matumizi hayakuweza kupakiwa." : "Expenses could not be loaded."));
       throw error;
     }
@@ -443,11 +448,13 @@ export default function ExpensesPage() {
           </div>
         </section>
 
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label={lang === "sw" ? "Muhtasari wa matumizi" : "Expense overview"}>
+        <section className={`grid gap-3 sm:grid-cols-2 ${canViewFinancialInsights ? "lg:grid-cols-4" : "lg:grid-cols-2"}`} aria-label={lang === "sw" ? "Muhtasari wa matumizi" : "Expense overview"}>
           <Metric label={lang === "sw" ? `Matumizi: ${periodLabel}` : `Expenses: ${periodLabel}`} value={formatTZS(summary.total)} tone="amber" note={`${summary.count} ${lang === "sw" ? "rekodi" : "records"}`} />
           <Metric label={lang === "sw" ? "Tofauti na kipindi kilichopita" : "Compared with previous period"} value={summary.changeAmount == null ? "-" : formatTZS(Math.abs(summary.changeAmount))} tone={summary.changeAmount != null && changeIsIncrease ? "red" : "green"} note={summary.changeAmount == null ? (lang === "sw" ? "Hakuna ulinganisho wa muda wote" : "No all-time comparison") : `${changeIsIncrease ? (lang === "sw" ? "Imeongezeka" : "Increased") : (lang === "sw" ? "Imepungua" : "Decreased")}${summary.changePercent == null ? "" : ` ${Math.abs(summary.changePercent).toFixed(0)}%`}`} />
-          <Metric label={lang === "sw" ? "Matumizi kwa mauzo" : "Expenses of sales"} value={summary.expensePercentOfSales == null ? "-" : `${summary.expensePercentOfSales.toFixed(1)}%`} tone="gray" note={summary.totalSales > 0 ? `${formatTZS(summary.totalSales)} ${lang === "sw" ? "mauzo" : "sales"}` : (lang === "sw" ? "Hakuna mauzo kwenye kipindi hiki" : "No sales this period")} />
-          <Metric label={lang === "sw" ? "Faida baada ya matumizi" : "Net profit after expenses"} value={formatTZS(summary.netProfit)} tone={summary.netProfit < 0 ? "red" : "green"} note={`${formatTZS(summary.grossProfit)} ${lang === "sw" ? "faida kabla ya matumizi" : "gross profit"}`} />
+          {canViewFinancialInsights && <>
+            <Metric label={lang === "sw" ? "Matumizi kwa mauzo" : "Expenses of sales"} value={summary.expensePercentOfSales == null ? "-" : `${summary.expensePercentOfSales.toFixed(1)}%`} tone="gray" note={(summary.totalSales || 0) > 0 ? `${formatTZS(summary.totalSales || 0)} ${lang === "sw" ? "mauzo" : "sales"}` : (lang === "sw" ? "Hakuna mauzo kwenye kipindi hiki" : "No sales this period")} />
+            <Metric label={lang === "sw" ? "Faida baada ya matumizi" : "Net profit after expenses"} value={formatTZS(summary.netProfit || 0)} tone={(summary.netProfit || 0) < 0 ? "red" : "green"} note={`${formatTZS(summary.grossProfit || 0)} ${lang === "sw" ? "faida kabla ya matumizi" : "gross profit"}`} />
+          </>}
         </section>
 
         <section className="border-y border-gray-200 py-4" aria-labelledby="expense-category-heading">
@@ -462,9 +469,9 @@ export default function ExpensesPage() {
 
         {assistantFocus && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p className="font-semibold">{assistantFocus === "profit"
+            <p className="font-semibold">{assistantFocus === "profit" && canViewFinancialInsights
               ? (lang === "sw" ? "DukaPilot imekufungua kukagua matumizi dhidi ya faida." : "DukaPilot opened expenses so you can review profit pressure.")
-              : (lang === "sw" ? "DukaPilot imekufungua kwenye ukaguzi wa matumizi ya wiki." : "DukaPilot opened your weekly expense review.")}</p>
+              : (lang === "sw" ? "DukaPilot imekufungua kwenye rekodi za matumizi." : "DukaPilot opened your expense records.")}</p>
             <p className="mt-1 text-xs text-amber-800">{lang === "sw" ? "Angalia gharama kubwa, rekodi zilizokosekana, na matumizi yanayoweza kupunguzwa." : "Check large costs, missing records, and expenses that can be reduced."}</p>
           </div>
         )}

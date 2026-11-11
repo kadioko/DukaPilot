@@ -244,6 +244,7 @@ test("expense overview follows the selected period and shows profit pressure", a
       body: JSON.stringify({
         expenses: [],
         recurringExpenses: [],
+        canViewFinancialInsights: true,
         summary: {
           total: 25000,
           count: 2,
@@ -269,6 +270,56 @@ test("expense overview follows the selected period and shows profit pressure", a
 
   await page.getByRole("button", { name: "Wiki" }).click();
   await expect.poll(() => expenseRequests.some((url) => url.includes("period=week"))).toBe(true);
+});
+
+test("staff with Record expenses see expense data only, never sales or profit figures", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/*api/auth/me", async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ user: {
+      name: "Icy Lush Staff",
+      role: "MERCHANT",
+      language: "en",
+      shop: { name: "Icy Lush" },
+      staff: { role: "CASHIER", permissions: { canSell: false, canManageStock: false, canViewStock: false, canViewSalePrices: false, canManageFarm: false, canManageStaff: false, canViewReports: false, canRecordExpenses: true, canManageCashSessions: false, canUseAssistant: false, canViewQuotations: false } },
+      features: { staff: true, assistant: false, exports: false },
+    } }),
+  }));
+  await page.route("**/*api/products/low-stock*", async (route) => route.fulfill({ json: { products: [], total: 0 } }));
+  await page.route("**/*api/subscription/status", async (route) => route.fulfill({ json: { status: "active", daysLeft: 30 } }));
+  await page.route("**/*api/notifications", async (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
+  await page.route(/\/(?:_api|api)\/expenses(?:\?.*)?$/, async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      expenses: [],
+      recurringExpenses: [],
+      canViewFinancialInsights: false,
+      summary: {
+        total: 64000,
+        count: 3,
+        previousTotal: 20000,
+        changeAmount: 44000,
+        changePercent: 220,
+        topCategories: [{ category: "UTILITIES", total: 60000 }],
+        totalSales: 400000,
+        grossProfit: 200000,
+        netProfit: 136000,
+        expensePercentOfSales: 16,
+        salesCount: 8,
+      },
+    }),
+  }));
+
+  await page.goto("/expenses");
+
+  await expect(page.getByText(/64,000/)).toBeVisible();
+  await expect(page.getByText(/44,000/)).toBeVisible();
+  await expect(page.getByText("Utilities")).toBeVisible();
+  await expect(page.getByText("Expenses of sales")).toHaveCount(0);
+  await expect(page.getByText("Net profit after expenses")).toHaveCount(0);
+  await expect(page.getByText(/400,000|200,000|136,000/)).toHaveCount(0);
 });
 
 test("AI ranks proven demand above an out-of-stock product with zero sales", async ({ page }) => {

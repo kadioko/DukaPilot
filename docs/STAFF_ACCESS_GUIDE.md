@@ -19,6 +19,8 @@ When an owner adds a staff member, they enter the staff member's phone number. T
 
 The owner can fine-tune permissions per individual after creating them. Deactivating a staff member immediately blocks their next authenticated request and future login.
 
+**Record expenses** is separate from **Reports**. Staff with only Record expenses can view and enter expense records, expense totals, period comparisons, and spending categories. They do not receive sales totals, sales-to-expense ratios, gross or net profit, or other report analytics. The API omits those fields and skips the sales/profit queries unless the user is the owner or has Reports. Grant Reports only when the staff member should see business-wide financial performance.
+
 ## Read-Only Access
 
 When creating a staff login, choose **Initial access > Stock view only** for someone who should search inventory and filter low stock, out-of-stock, and expiring products without changing stock or seeing prices. Choose **Price view only** for a searchable **Sale prices** list showing retail and wholesale prices without checkout, buying costs, or stock quantities. These presets select the cashier role and explicitly disable other operational and financial permissions. To configure an existing staff member, enable **View stock only** or **View sale prices** and turn off any other permissions they should not retain. Permissions combine: granting **Sell**, **Stock**, or **Reports** separately adds their normal capabilities. The read-only permissions are off for existing staff until the owner grants them.
@@ -40,7 +42,7 @@ Sales History can be searched by receipt number, customer name, or phone, and fi
 
 Each cashier's shift is a separate drawer. If an owner also sells, the owner opens a separate shift; the two cash totals never mix. Owners can always view and close every active team shift. An owner may also tick **Manage team shifts** for a trusted manager; that permission reveals all team shifts and permits review/close after the manager physically counts that staff drawer. It can work without **Sell**, but that supervisor cannot open a personal sales drawer unless **Sell** is also enabled. It does not grant business reports, stock, staff administration, or other permissions by itself.
 
-Cashiers without **Reports** still do not receive buying cost, profit, margin, or shop-wide financial analytics.
+Staff without **Reports** still do not receive buying cost, sales totals, profit, margin, or shop-wide financial analytics, even if they have **Record expenses**. Expense-only figures are available so authorized staff can record and review expenses.
 The detailed **Analytics > Purchases** report is also report-protected; do not
 grant it to a cashier who should not see business financial data.
 Recording stock receipts exposes supplier purchase costs and landed unit costs,

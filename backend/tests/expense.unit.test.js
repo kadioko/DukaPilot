@@ -215,6 +215,7 @@ test("expense list applies search, vendor, category, and date range filters", as
   await controller.list(req, res);
 
   assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.canViewFinancialInsights, true);
   const expenseQuery = sqlCalls.find(({ query }) => query.includes("SELECT e.* FROM expenses e WHERE") && query.includes('e."spentAt" >= $'));
   assert.ok(expenseQuery);
   assert.match(expenseQuery.query, /e\.category = \$2/);
@@ -248,12 +249,69 @@ test("expense overview excludes legacy stock entries and reports sales-based met
   await controller.list(req, res);
 
   assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.canViewFinancialInsights, true);
   assert.equal(expenseQueries.every(({ query }) => query.includes("e.category <> 'STOCK'") && query.includes("Africa/Dar_es_Salaam")), true);
   assert.deepEqual(salesWhere, { shopId: "shop-1", status: "COMPLETED", createdAt: { lt: endOfTanzaniaDay() } });
   assert.equal(res.payload.summary.expensePercentOfSales, 15);
   assert.equal(res.payload.summary.netProfit, 25000);
   assert.equal(res.payload.summary.previousTotal, null);
   assert.deepEqual(res.payload.summary.topCategories, [{ category: "UTILITIES", total: 10000 }, { category: "RENT", total: 5000 }]);
+});
+
+test("expense-only staff receive expense figures but no sales or profit analytics", async () => {
+  const sqlQueries = [];
+  let salesQueried = false;
+  let returnsQueried = false;
+  const controller = loadController({
+    $queryRawUnsafe: async (query) => {
+      sqlQueries.push(query);
+      if (query.includes("COUNT(*)::int AS count")) return [{ total: 64000n, count: 3 }];
+      if (query.includes("GROUP BY e.category")) return [{ category: "UTILITIES", total: 60000n }];
+      return [];
+    },
+    $queryRaw: async () => { returnsQueried = true; throw new Error("return analytics must not be queried for expense-only staff"); },
+    recurringExpense: { findMany: async () => [] },
+    sale: { aggregate: async () => { salesQueried = true; throw new Error("sales analytics must not be queried for expense-only staff"); } },
+  });
+  const res = response();
+
+  await controller.list({
+    user: { userId: "owner-1", shopId: "shop-1", staffId: "staff-1", role: "MERCHANT", permissions: { canRecordExpenses: true, canViewReports: false } },
+    query: { period: "today" },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.canViewFinancialInsights, false);
+  assert.equal(res.payload.summary.total, 64000);
+  assert.equal(res.payload.summary.count, 3);
+  assert.equal(res.payload.summary.topCategories[0].total, 60000);
+  for (const field of ["totalSales", "grossProfit", "netProfit", "expensePercentOfSales", "salesCount"]) {
+    assert.equal(Object.hasOwn(res.payload.summary, field), false, `${field} must not be returned to expense-only staff`);
+  }
+  assert.equal(salesQueried, false);
+  assert.equal(returnsQueried, false);
+  assert.equal(sqlQueries.some((query) => query.includes("return_events")), false);
+});
+
+test("staff with Reports permission retain financial insights on the expense screen", async () => {
+  const controller = loadController({
+    $queryRawUnsafe: async (query) => query.includes("COUNT(*)::int AS count") ? [{ total: 10000n, count: 1 }] : [],
+    $queryRaw: async () => [{ returnedRevenue: 0n, returnedProfit: 0n }],
+    recurringExpense: { findMany: async () => [] },
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 100000, profit: 40000 }, _count: { id: 5 } }) },
+  });
+  const res = response();
+
+  await controller.list({
+    user: { userId: "owner-1", shopId: "shop-1", staffId: "staff-1", role: "MERCHANT", permissions: { canRecordExpenses: true, canViewReports: true } },
+    query: { period: "today" },
+  }, res);
+
+  assert.equal(res.payload.canViewFinancialInsights, true);
+  assert.equal(res.payload.summary.totalSales, 100000);
+  assert.equal(res.payload.summary.grossProfit, 40000);
+  assert.equal(res.payload.summary.netProfit, 30000);
+  assert.equal(res.payload.summary.salesCount, 5);
 });
 
 test("expense profit pressure includes dated customer returns and keeps damaged goods as a cost", async () => {

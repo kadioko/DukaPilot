@@ -176,8 +176,13 @@ function needsOwnerDateReview(expense) {
   return !expense.dateReviewedAt && (expense.requiresDateReview || tanzaniaDateKey(expense.spentAt) > tanzaniaDateKey(expense.createdAt));
 }
 
+function canViewFinancialInsights(user) {
+  return user.role === "ADMIN" || !user.staffId || Boolean(user.permissions?.canViewReports);
+}
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const mayViewFinancialInsights = canViewFinancialInsights(req.user);
   const window = periodWindow(req.query.period);
   if (!window) return validationError(req, res, "Period must be today, week, month, or all", "Kipindi kiwe Leo, Wiki, Mwezi, au Muda wote", "INVALID_EXPENSE_PERIOD");
   const category = String(req.query.category || "").toUpperCase();
@@ -232,10 +237,12 @@ const list = asyncHandler(async (req, res) => {
     prisma.$queryRawUnsafe(`SELECT e.* FROM expenses e WHERE ${selectedWhere.where} ORDER BY e."spentAt" DESC LIMIT 100`, ...selectedWhere.params),
     prisma.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0)::bigint AS total, COUNT(*)::int AS count FROM expenses e WHERE ${selectedWhere.where}`, ...selectedWhere.params),
     prisma.recurringExpense.findMany({ where: { shopId, isActive: true, category: { not: LEGACY_STOCK_CATEGORY } }, orderBy: { nextDueAt: "asc" }, take: 20 }),
-    prisma.sale.aggregate({ where: salesWhere, _sum: { totalAmount: true, profit: true }, _count: { id: true } }),
+    mayViewFinancialInsights
+      ? prisma.sale.aggregate({ where: salesWhere, _sum: { totalAmount: true, profit: true }, _count: { id: true } })
+      : Promise.resolve(null),
     previousWhere ? prisma.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0)::bigint AS total FROM expenses e WHERE ${previousWhere.where}`, ...previousWhere.params) : Promise.resolve(null),
     prisma.$queryRawUnsafe(`SELECT e.category, COALESCE(SUM(e.amount), 0)::bigint AS total FROM expenses e WHERE ${selectedWhere.where} GROUP BY e.category ORDER BY total DESC LIMIT 3`, ...selectedWhere.params),
-    prisma.$queryRaw`
+    mayViewFinancialInsights ? prisma.$queryRaw`
       WITH return_events AS (
         SELECT sr."createdAt" AS occurred_at, sri."totalAmount" AS revenue,
           sri."totalAmount" - sri."buyingPrice" * sri."restockQuantity" AS profit_reduction
@@ -254,34 +261,40 @@ const list = asyncHandler(async (req, res) => {
       FROM return_events
       WHERE (${selectedRange.from}::timestamptz IS NULL OR occurred_at >= ${selectedRange.from})
         AND (${selectedRange.to}::timestamptz IS NULL OR occurred_at < ${selectedRange.to})
-    `,
+    ` : Promise.resolve(null),
     prisma.$queryRawUnsafe(`SELECT e.* FROM expenses e WHERE ${reviewWhere.where} ORDER BY e."spentAt" DESC LIMIT 100`, ...reviewWhere.params),
   ]);
   recordRequestPhase(req, "expenses.parallelQueries", performance.now() - queriesStartedAt);
 
-  const summary = summaryRows[0] || { total: 0, count: 0 };
-  const total = Number(summary.total || 0);
-  const totalSales = (sales._sum.totalAmount || 0) - Number(returnRows[0]?.returnedRevenue || 0);
-  const grossProfit = (sales._sum.profit || 0) - Number(returnRows[0]?.returnedProfit || 0);
+  const expenseSummary = summaryRows[0] || { total: 0, count: 0 };
+  const total = Number(expenseSummary.total || 0);
   const previousTotal = Number(previousRows?.[0]?.total || 0);
+  const summary = {
+    total,
+    count: Number(expenseSummary.count || 0),
+    previousTotal: previousWhere ? previousTotal : null,
+    changeAmount: previousWhere ? total - previousTotal : null,
+    changePercent: previousWhere && previousTotal > 0 ? ((total - previousTotal) / previousTotal) * 100 : null,
+    topCategories: categoryBreakdown.map((item) => ({ category: item.category, total: Number(item.total || 0) })),
+  };
+  if (mayViewFinancialInsights) {
+    const totalSales = (sales._sum.totalAmount || 0) - Number(returnRows[0]?.returnedRevenue || 0);
+    const grossProfit = (sales._sum.profit || 0) - Number(returnRows[0]?.returnedProfit || 0);
+    Object.assign(summary, {
+      totalSales,
+      grossProfit,
+      netProfit: grossProfit - total,
+      expensePercentOfSales: totalSales > 0 ? (total / totalSales) * 100 : null,
+      salesCount: sales._count.id,
+    });
+  }
   res.json({
     expenses,
     needsReviewExpenses: needsReviewExpenses.map((expense) => ({ ...expense, canCorrect: !req.user.staffId || req.user.role === "ADMIN" })),
     recurringExpenses,
     period: window.period,
-    summary: {
-      total,
-      count: Number(summary.count || 0),
-      totalSales,
-      grossProfit,
-      netProfit: grossProfit - total,
-      expensePercentOfSales: totalSales > 0 ? (total / totalSales) * 100 : null,
-      previousTotal: previousWhere ? previousTotal : null,
-      changeAmount: previousWhere ? total - previousTotal : null,
-      changePercent: previousWhere && previousTotal > 0 ? ((total - previousTotal) / previousTotal) * 100 : null,
-      salesCount: sales._count.id,
-      topCategories: categoryBreakdown.map((item) => ({ category: item.category, total: Number(item.total || 0) })),
-    },
+    canViewFinancialInsights: mayViewFinancialInsights,
+    summary,
   });
 });
 
