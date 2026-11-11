@@ -1,8 +1,17 @@
+const crypto = require("node:crypto");
+const { performance } = require("node:perf_hooks");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { startOfTanzaniaDay, endOfTanzaniaDay } = require("../lib/businessTime");
 const { occurredExpenseDateSql } = require("../lib/expenseReporting");
 const { cashSessionActorId, findOpenCashSession } = require("../lib/cashSession");
+const { recordRequestPhase } = require("../middleware/requestDiagnostics");
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function recordElapsedPhase(req, name, startedAt) {
+  recordRequestPhase(req, name, performance.now() - startedAt);
+}
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -18,6 +27,14 @@ function canOpenOwnSession(req) {
 
 function paginationValue(value, fallback, maximum) {
   return Math.min(Math.max(Number(value) || fallback, 1), maximum);
+}
+
+function publicCashSession(session) {
+  if (!session) return session;
+  const safeSession = { ...session };
+  delete safeSession.openRequestId;
+  delete safeSession.openRequestHash;
+  return safeSession;
 }
 
 function expenseDateRangeForSession(session, now = new Date()) {
@@ -93,12 +110,12 @@ function cashSaleWhere(cashSessionId) {
   };
 }
 
-async function actorName(user) {
+async function actorName(tx, user) {
   if (user.staffId) {
-    const staff = await prisma.staffMember.findFirst({ where: { id: user.staffId, isActive: true }, select: { name: true } });
+    const staff = await tx.staffMember.findFirst({ where: { id: user.staffId, isActive: true }, select: { name: true } });
     return staff?.name || "Staff";
   }
-  const owner = await prisma.user.findUnique({ where: { id: user.userId }, select: { name: true } });
+  const owner = await tx.user.findUnique({ where: { id: user.userId }, select: { name: true } });
   return owner?.name || "Owner";
 }
 
@@ -301,8 +318,8 @@ const current = asyncHandler(async (req, res) => {
   const sessions = await prisma.cashSession.findMany({ where, orderBy: { openedAt: "desc" }, take: 30 });
   const decoratedSessions = await decorateSessions(prisma, sessions);
   res.json({
-    session: session ? decoratedSessions.find((item) => item.id === session.id) || { ...session, summary: await summarizeSession(prisma, session) } : null,
-    sessions: decoratedSessions,
+    session: session ? publicCashSession(decoratedSessions.find((item) => item.id === session.id) || { ...session, summary: await summarizeSession(prisma, session) }) : null,
+    sessions: decoratedSessions.map(publicCashSession),
     canManageAllSessions: canManageAllSessions(req),
     canOpenOwnSession: canOpenOwnSession(req),
   });
@@ -332,7 +349,7 @@ const history = asyncHandler(async (req, res) => {
     prisma.cashSession.count({ where }),
   ]);
   res.json({
-    sessions: await decorateSessions(prisma, sessions),
+    sessions: (await decorateSessions(prisma, sessions)).map(publicCashSession),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     canManageAllSessions: canManageAllSessions(req),
   });
@@ -344,24 +361,82 @@ const get = asyncHandler(async (req, res) => {
   if (!canManageAllSessions(req)) where.openedById = cashSessionActorId(req.user);
   const session = await prisma.cashSession.findFirst({ where });
   if (!session) return res.status(404).json({ error: "Cash session not found" });
-  res.json({ session: (await decorateSessions(prisma, [session]))[0] });
+  res.json({ session: publicCashSession((await decorateSessions(prisma, [session]))[0]) });
 });
 
 const open = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
+  const openRequestId = req.body.clientRequestId;
   const openingCash = Number(req.body.openingCash || 0);
   const note = String(req.body.note || "").trim() || null;
   if (!Number.isInteger(openingCash) || openingCash < 0) {
     return res.status(400).json({ error: "Opening cash must be a whole TZS amount of 0 or more" });
   }
-  const existing = await findOpenCashSession(prisma, shopId, req.user);
-  if (existing) return res.status(409).json({ error: "You already have an open cash session. Close it before opening another." });
+  if (openRequestId !== undefined && (typeof openRequestId !== "string" || !UUID_PATTERN.test(openRequestId))) {
+    return res.status(400).json({ error: "Invalid cash-session retry key" });
+  }
 
-  const session = await prisma.cashSession.create({
-    data: { shopId, openingCash, note, openedById: cashSessionActorId(req.user), openedByName: await actorName(req.user) },
-  });
-  req.audit = { action: "cash_session.open", resourceType: "cash_session", resourceId: session.id, metadata: { openingCash } };
-  res.status(201).json({ session: { ...session, summary: await summarizeSession(prisma, session) } });
+  const openedById = cashSessionActorId(req.user);
+  const openRequestHash = openRequestId
+    ? crypto.createHash("sha256").update(JSON.stringify({ openingCash, note })).digest("hex")
+    : null;
+  const transactionStartedAt = performance.now();
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      let phaseStartedAt = performance.now();
+      await tx.$queryRawUnsafe('SELECT "id" FROM "shops" WHERE "id" = $1 FOR UPDATE', shopId);
+      recordElapsedPhase(req, "shop_lock", phaseStartedAt);
+
+      if (openRequestId) {
+        phaseStartedAt = performance.now();
+        const replay = await tx.cashSession.findFirst({ where: { shopId, openedById, openRequestId } });
+        recordElapsedPhase(req, "idempotency_lookup", phaseStartedAt);
+        if (replay) {
+          if (replay.openRequestHash !== openRequestHash) {
+            throw Object.assign(new Error("This retry key was already used with different shift details."), { status: 409 });
+          }
+          if (replay.status !== "OPEN") {
+            throw Object.assign(new Error("This shift request was already completed. Refresh the page before opening another shift."), { status: 409 });
+          }
+          return { session: replay, replayed: true };
+        }
+      }
+
+      phaseStartedAt = performance.now();
+      const existing = await findOpenCashSession(tx, shopId, req.user);
+      recordElapsedPhase(req, "open_session_lookup", phaseStartedAt);
+      if (existing) throw Object.assign(new Error("You already have an open cash session. Close it before opening another."), { status: 409 });
+
+      phaseStartedAt = performance.now();
+      const name = await actorName(tx, req.user);
+      recordElapsedPhase(req, "actor_lookup", phaseStartedAt);
+
+      phaseStartedAt = performance.now();
+      const session = await tx.cashSession.create({
+        data: {
+          shopId,
+          openingCash,
+          note,
+          openedById,
+          openedByName: name,
+          ...(openRequestId ? { openRequestId, openRequestHash } : {}),
+        },
+      });
+      recordElapsedPhase(req, "session_create", phaseStartedAt);
+      return { session, replayed: false };
+    });
+  } finally {
+    recordElapsedPhase(req, "transaction", transactionStartedAt);
+  }
+
+  if (!result.replayed) {
+    req.audit = { action: "cash_session.open", resourceType: "cash_session", resourceId: result.session.id, metadata: { openingCash } };
+  }
+  const summaryStartedAt = performance.now();
+  const summary = await summarizeSession(prisma, result.session);
+  recordElapsedPhase(req, "summary", summaryStartedAt);
+  res.status(result.replayed ? 200 : 201).json({ session: publicCashSession({ ...result.session, summary }) });
 });
 
 const close = asyncHandler(async (req, res) => {
@@ -389,7 +464,7 @@ const close = asyncHandler(async (req, res) => {
     return { updated, summary };
   });
   req.audit = { action: "cash_session.close", resourceType: "cash_session", resourceId: updated.id, metadata: { expectedCash: summary.expectedCash, countedCash, variance: updated.variance } };
-  res.json({ session: { ...updated, summary } });
+  res.json({ session: publicCashSession({ ...updated, summary }) });
 });
 
 module.exports = { current, history, get, open, close, summarizeSession, cashSaleWhere };

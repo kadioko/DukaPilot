@@ -103,3 +103,91 @@ test("a lost close response is verified against the saved shift", async ({ page 
   await expect(page.getByRole("heading", { name: "Open your shift for today" })).toBeVisible();
   await expect(page.getByText("CLOSED").first()).toBeVisible();
 });
+
+test("a lost shift-open response retries with the same key and creates one shift", async ({ page }) => {
+  const attempts: Array<{ clientRequestId: string; openingCash: number; note?: string }> = [];
+  const createdSessions: Array<Record<string, unknown>> = [];
+  const summary = { cashSales: 0, debtCollections: 0, quotationCash: 0, cashRefunds: 0, cashRefundCount: 0, cashExpenses: 0, inventoryCashOut: 0, cookingCashOut: 0, farmCashOut: 0, saleCount: 0, debtPaymentCount: 0, quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0, cookingCostCount: 0, farmProductionCostCount: 0, expectedCash: 5000 };
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("auth/me")) return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" }, features: { staff: true } } } });
+    if (url.includes("cash-sessions/open") && route.request().method() === "POST") {
+      attempts.push(route.request().postDataJSON());
+      if (!createdSessions.length) {
+        createdSessions.push({ id: "opened-once", status: "OPEN", openingCash: 5000, note: "Morning", openedByName: "Owner", openedAt: "2026-11-11T06:00:00.000Z", summary });
+        return route.fulfill({ status: 504, json: { error: "Upstream timeout" } });
+      }
+      return route.fulfill({ status: 200, json: { session: createdSessions[0] } });
+    }
+    if (url.includes("cash-sessions/current")) return route.fulfill({ json: {
+      session: createdSessions[0] || null,
+      sessions: createdSessions,
+      canManageAllSessions: true,
+      canOpenOwnSession: true,
+    } });
+    if (url.includes("cash-sessions/history")) return route.fulfill({ json: { sessions: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } } });
+    if (url.includes("subscription/status")) return route.fulfill({ json: { plan: "PRO", status: "active", isActive: true, daysLeft: 30 } });
+    if (url.includes("notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/daily-close");
+  await page.getByLabel("Opening cash (TZS)").fill("5000");
+  await page.getByLabel("Note (optional)").fill("Morning");
+  await page.getByRole("button", { name: "Open shift" }).click();
+
+  await expect(page.getByRole("heading", { name: "Your shift is in progress" })).toBeVisible();
+  await expect.poll(() => attempts.length).toBe(2);
+  expect(attempts[0].clientRequestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  expect(attempts[1]).toEqual(attempts[0]);
+  expect(createdSessions).toHaveLength(1);
+  expect(createdSessions[0].id).toBe("opened-once");
+});
+
+test("a transient non-JSON 200 response is retried for a safe Daily Close read", async ({ page }) => {
+  let currentAttempts = 0;
+  const currentRequestTimes: number[] = [];
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("auth/me")) return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" }, features: { staff: true } } } });
+    if (url.includes("cash-sessions/current")) {
+      currentAttempts += 1;
+      currentRequestTimes.push(Date.now());
+      if (currentAttempts === 1) return route.fulfill({ status: 200, contentType: "text/html", body: "<html>temporary proxy response</html>" });
+      return route.fulfill({ json: { session: null, sessions: [], canManageAllSessions: true, canOpenOwnSession: true } });
+    }
+    if (url.includes("cash-sessions/history")) return route.fulfill({ json: { sessions: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } } });
+    if (url.includes("subscription/status")) return route.fulfill({ json: { plan: "PRO", status: "active", isActive: true, daysLeft: 30 } });
+    if (url.includes("notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/daily-close");
+  await expect(page.getByRole("heading", { name: "Open your shift for today" })).toBeVisible();
+  await expect.poll(() => currentRequestTimes.some((time) => time - currentRequestTimes[0] >= 300)).toBe(true);
+  expect(currentAttempts).toBeGreaterThanOrEqual(2);
+});
+
+test("a transient Vercel external-target error is retried for a safe Daily Close read", async ({ page }) => {
+  let currentAttempts = 0;
+  const currentRequestTimes: number[] = [];
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("auth/me")) return route.fulfill({ json: { user: { name: "Owner", role: "MERCHANT", language: "en", shop: { name: "Test Shop" }, features: { staff: true } } } });
+    if (url.includes("cash-sessions/current")) {
+      currentAttempts += 1;
+      currentRequestTimes.push(Date.now());
+      if (currentAttempts === 1) return route.fulfill({ status: 500, json: { error: "ROUTER_EXTERNAL_TARGET_ERROR" } });
+      return route.fulfill({ json: { session: null, sessions: [], canManageAllSessions: true, canOpenOwnSession: true } });
+    }
+    if (url.includes("cash-sessions/history")) return route.fulfill({ json: { sessions: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } } });
+    if (url.includes("subscription/status")) return route.fulfill({ json: { plan: "PRO", status: "active", isActive: true, daysLeft: 30 } });
+    if (url.includes("notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/daily-close");
+  await expect(page.getByRole("heading", { name: "Open your shift for today" })).toBeVisible();
+  await expect.poll(() => currentRequestTimes.some((time) => time - currentRequestTimes[0] >= 300)).toBe(true);
+  expect(currentAttempts).toBeGreaterThanOrEqual(2);
+});

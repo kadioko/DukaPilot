@@ -58,10 +58,13 @@ Each API diagnostic includes only:
 - Request method and endpoint path without its query string.
 - The browser-facing API hostname, expected upstream hostname when using the `/_api` proxy, HTTP status when available, transport type, timeout flag, and failure category.
 - Browser connectivity state, browser language, and application environment.
+- When an HTTP response exists, its content type and Vercel edge request ID for correlation of proxy-generated or malformed responses.
 
 It must never include request or response bodies, authorization headers, cookies, customer details, sales data, payment references, or secrets. For an API incident, compare the Sentry event timestamp with Railway HTTP logs and Vercel deployment logs before treating it as a backend outage.
 
-For slow or failed requests to `GET /api/products`, `GET /api/products/summary`, `GET /api/expenses`, and `PATCH /api/settings/profile`, the backend logs a timing record only when the request is slow (at least 1.5 seconds), returns a `5xx`, or the client disconnects. Records include the request ID, method, path without query parameters, status, duration, outcome, and safe server-side phase timings. Use the Sentry event's `requestId` to search Railway logs. A matching backend record means the request reached Railway; no matching record suggests it failed earlier in the browser/Vercel/proxy path, but verify the relevant platform logs before concluding.
+For slow or failed requests to `GET /api/products`, `GET /api/products/summary`, `GET /api/expenses`, `POST /api/cash-sessions/open`, and `PATCH /api/settings/profile`, the backend logs a timing record only when the request is slow (at least 1.5 seconds), returns a `5xx`, or the client disconnects. Records include the request ID, method, path without query parameters, status, duration, outcome, and safe server-side phase timings. Use the Sentry event's `requestId` to search Railway logs. A matching backend record means the request reached Railway; no matching record suggests it failed earlier in the browser/Vercel/proxy path, but verify the relevant platform logs before concluding.
+
+Cash-session opening is transactionally serialized per shop and idempotent for the browser's persisted request key. This prevents duplicate drawers when a successful open loses its response. It does not eliminate a network or proxy outage; use the request ID and edge ID, when present, to locate the failing layer.
 
 The inventory page treats missing summary data as unavailable rather than zero and provides an explicit retry. Expense and inventory list failures also provide an in-page retry. Product creation uses a persisted idempotency key and an uncertain-save recovery state; do not ask a merchant to start a second product until the original attempt is confirmed or retried with that same key. Profile-name PATCH retries once with the identical value because setting a name is idempotent.
 

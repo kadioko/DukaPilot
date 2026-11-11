@@ -73,6 +73,7 @@ test("request diagnostics omit bodies, IDs, queries, and unrelated routes", () =
   assert.equal(diagnosticRoute({ method: "GET", path: "/api/products/summary", originalUrl: "/api/products/summary" }), "/api/products/summary");
   assert.equal(diagnosticRoute({ method: "GET", path: "/api/expenses", originalUrl: "/api/expenses?period=week" }), "/api/expenses");
   assert.equal(diagnosticRoute({ method: "PATCH", path: "/api/settings/profile", originalUrl: "/api/settings/profile" }), "/api/settings/profile");
+  assert.equal(diagnosticRoute({ method: "POST", path: "/api/cash-sessions/open", originalUrl: "/api/cash-sessions/open" }), "/api/cash-sessions/open");
   assert.equal(diagnosticRoute({ method: "POST", path: "/api/products/abc", originalUrl: "/api/products/abc" }), null);
 });
 

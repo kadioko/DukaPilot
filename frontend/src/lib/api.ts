@@ -1,6 +1,7 @@
 import { t, type Lang } from "@/lib/i18n";
 import { clearActiveOfflineSalesScope, hasPendingOfflineSales } from "@/lib/offlineSalesStorage";
 import { clearActiveOfflineCropScope, hasPendingOfflineCropOperations } from "@/lib/offlineCropStorage";
+import { clearPendingCashSessionOpen } from "@/lib/cashSessionOpenStorage";
 import * as Sentry from "@sentry/nextjs";
 import { diagnosticEndpoint } from "@/lib/apiDiagnostics";
 
@@ -14,6 +15,7 @@ export function selectedBranchId() { return typeof window === "undefined" ? "" :
 export function switchBranch(id: string) {
   if (hasPendingOfflineSales()) throw new Error("Sync or resolve pending offline sales before switching branches.");
   if (hasPendingOfflineCropOperations()) throw new Error("Sync or resolve pending crop records before switching branches.");
+  clearPendingCashSessionOpen();
   sessionStorage.setItem(BRANCH_KEY, id);
   invalidateCurrentSession();
   window.location.assign("/dashboard");
@@ -26,7 +28,7 @@ export interface ApiErrorDetail {
 }
 
 export type ApiFailureType = "NETWORK" | "TIMEOUT" | "HTTP" | "INVALID_RESPONSE";
-type ApiFailureReporting = "default" | "background" | "deferred";
+type ApiFailureReporting = "default" | "background" | "deferred" | "deferred-retry";
 
 export interface ApiRequestContext {
   requestId: string;
@@ -36,6 +38,8 @@ export interface ApiRequestContext {
   upstreamHostname?: string;
   transport: "same-origin-proxy" | "direct-api";
   gatewayError?: "ROUTER_EXTERNAL_TARGET_ERROR";
+  edgeRequestId?: string;
+  responseContentType?: string;
 }
 
 export class ApiError extends Error {
@@ -94,7 +98,7 @@ function getBaseUrl(): string {
   return normalizeBaseUrl();
 }
 
-function createApiRequestId(): string {
+export function createApiRequestId(): string {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   const bytes = new Uint8Array(16);
   globalThis.crypto.getRandomValues(bytes);
@@ -136,6 +140,8 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting
     upstreamHostname: context.upstreamHostname,
     transport: context.transport,
     gatewayError: context.gatewayError,
+    edgeRequestId: context.edgeRequestId,
+    responseContentType: context.responseContentType,
     status,
     networkErrorType: failureType === "NETWORK" ? "fetch-rejected" : undefined,
     timedOut: failureType === "TIMEOUT",
@@ -144,12 +150,13 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting
   // Keep expected authorization/validation outcomes out of the error stream,
   // but leave a safe breadcrumb for any later error on the same session.
   Sentry.addBreadcrumb({ category: "api", level: status && status < 500 ? "info" : "error", message: `API ${context.method} ${context.endpoint} failed`, data });
+  if (reporting === "deferred-retry" && (failureType === "INVALID_RESPONSE" || [502, 503, 504].includes(status || 0) || context.gatewayError === "ROUTER_EXTERNAL_TARGET_ERROR")) return;
   if (failureType === "HTTP" && status && status < 500) return;
 
   // Header counts and similar shell refreshes must never turn a short-lived
   // connection interruption into a product error. Keep the breadcrumb so a
   // later, relevant issue still has the network context.
-  if ((reporting === "background" || reporting === "deferred") && (failureType === "NETWORK" || failureType === "TIMEOUT")) return;
+  if (["background", "deferred", "deferred-retry"].includes(reporting) && (failureType === "NETWORK" || failureType === "TIMEOUT")) return;
 
   const key = `${failureType}:${status || "none"}:${context.method}:${context.endpoint}:${context.apiHostname}`;
   const now = Date.now();
@@ -245,6 +252,7 @@ function handleAuthenticationFailure() {
     authFailureHandled = true;
     const hadActiveSession = window.localStorage.getItem(SESSION_HINT_KEY) === "1";
     window.localStorage.removeItem(SESSION_HINT_KEY);
+    clearPendingCashSessionOpen();
     if (window.location.pathname !== "/") {
       window.location.href = hadActiveSession ? "/?notice=session-expired" : "/?notice=login-required";
     }
@@ -286,6 +294,7 @@ async function request<T>(
   const context = requestContext(baseUrl, path, options.method || "GET", requestId);
   if (["/auth/login", "/auth/logout", "/auth/register"].includes(path) && typeof window !== "undefined") {
     sessionStorage.removeItem(BRANCH_KEY);
+    clearPendingCashSessionOpen();
     if (path === "/auth/login" || path === "/auth/register") {
       clearActiveOfflineSalesScope();
       clearActiveOfflineCropScope();
@@ -328,6 +337,10 @@ async function request<T>(
   if (responseRequestId && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(responseRequestId)) {
     context.requestId = responseRequestId;
   }
+  const edgeRequestId = res.headers.get("x-vercel-id");
+  if (edgeRequestId && edgeRequestId.length <= 200 && !/[\r\n]/.test(edgeRequestId)) context.edgeRequestId = edgeRequestId;
+  const contentType = res.headers.get("content-type") || "";
+  context.responseContentType = contentType.slice(0, 120);
 
   // On 401, attempt token refresh once then retry
   // A failed sign-in is not an expired session. Read its response normally so
@@ -353,7 +366,6 @@ async function request<T>(
 
   if (res.status === 204) return undefined as T;
 
-  const contentType = res.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
   let payload: string | { error?: string; code?: string; details?: ApiErrorDetail[] } | null;
   try {
@@ -400,8 +412,13 @@ async function retryNetworkRequest<T>(
   retryGatewayErrors = false,
 ): Promise<T> {
   try {
-    return await request<T>(path, options, lang, false, firstAttemptReporting);
+    return await request<T>(path, options, lang, false, retryGatewayErrors ? "deferred-retry" : firstAttemptReporting);
   } catch (error) {
+    if (error instanceof ApiError && retryGatewayErrors && (error.failureType === "INVALID_RESPONSE" || error.request?.gatewayError === "ROUTER_EXTERNAL_TARGET_ERROR")) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
+      return request<T>(path, options, lang, false, retryReporting);
+    }
     if (!(error instanceof ApiError) || !(["NETWORK", "TIMEOUT"].includes(error.failureType || "") || (retryGatewayErrors && [502, 503, 504].includes(error.status || 0)))) throw error;
     await new Promise((resolve) => setTimeout(resolve, 350));
     if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
@@ -443,6 +460,16 @@ export const api = {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.createRequestId)
     ) {
       // Product creation is server-idempotent; retry a lost response with the same key.
+      return retryNetworkRequest<T>(path, options, lang, "deferred", "default", true);
+    }
+    if (
+      path === "/cash-sessions/open" &&
+      typeof body === "object" && body !== null &&
+      "clientRequestId" in body &&
+      typeof body.clientRequestId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientRequestId)
+    ) {
+      // The server persists this key with the opened session, making uncertain retries safe.
       return retryNetworkRequest<T>(path, options, lang, "deferred", "default", true);
     }
     if (path === "/auth/login") return retryNetworkRequest<T>(path, options, lang, "deferred", "default");

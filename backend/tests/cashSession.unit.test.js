@@ -17,6 +17,38 @@ function loadController(prismaMock) {
   return require(controllerPath);
 }
 
+function openSessionMock() {
+  const sessions = [];
+  const lockQueries = [];
+  const tx = {
+    $queryRawUnsafe: async (query) => { lockQueries.push(query); return []; },
+    user: { findUnique: async () => ({ name: "Owner" }) },
+    staffMember: { findFirst: async () => ({ name: "Cashier" }) },
+    cashSession: {
+      findFirst: async ({ where }) => where.openRequestId
+        ? sessions.find((session) => session.openRequestId === where.openRequestId && session.openedById === where.openedById) || null
+        : sessions.find((session) => session.shopId === where.shopId && session.status === "OPEN" && session.openedById === where.openedById) || null,
+      create: async ({ data }) => {
+        const session = { id: `session-${sessions.length + 1}`, status: "OPEN", openingCash: data.openingCash, note: data.note, openedById: data.openedById, openedByName: data.openedByName, shopId: data.shopId, openRequestId: data.openRequestId, openRequestHash: data.openRequestHash };
+        sessions.push(session);
+        return session;
+      },
+    },
+  };
+  const prismaMock = {
+    $transaction: async (work) => work(tx),
+    $queryRawUnsafe: async () => [{ amount: 0, count: 0 }],
+    user: tx.user,
+    staffMember: tx.staffMember,
+    cashSession: tx.cashSession,
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    expense: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+  };
+  return { prismaMock, sessions, lockQueries };
+}
+
 test("daily-close history is paginated, filters closed sessions, and decorates only the current page", async () => {
   let findManyArgs;
   let countArgs;
@@ -263,4 +295,39 @@ test("daily close excludes a legacy converted quotation sale when its cash payme
     paymentMethod: "CASH",
     debtPaymentId: null,
   });
+});
+
+test("opening a shift replays the same keyed request without creating a second session", async () => {
+  const { prismaMock, sessions, lockQueries } = openSessionMock();
+  const controller = loadController(prismaMock);
+  const req = { user: { userId: "owner-1", role: "MERCHANT" }, body: { openingCash: 5000, note: "Morning", clientRequestId: "6a96c140-3837-4c4d-9e92-22858be82789" }, requestPhaseTimings: {} };
+  const first = response();
+  await controller.open(req, first, (error) => { throw error; });
+  const replay = response();
+  await controller.open({ ...req, audit: undefined }, replay, (error) => { throw error; });
+
+  assert.equal(first.statusCode, 201);
+  assert.equal(replay.statusCode, 200);
+  assert.equal(first.payload.session.id, replay.payload.session.id);
+  assert.equal("openRequestId" in first.payload.session, false);
+  assert.equal("openRequestHash" in first.payload.session, false);
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].openRequestHash.length, 64);
+  assert.equal(lockQueries.filter((query) => query.includes('FROM "shops"')).length, 2);
+  assert.ok(req.requestPhaseTimings.shop_lock >= 0);
+  assert.ok(req.requestPhaseTimings.idempotency_lookup >= 0);
+  assert.ok(req.requestPhaseTimings.transaction >= 0);
+  assert.ok(req.requestPhaseTimings.summary >= 0);
+  assert.equal(replay.audit, undefined);
+});
+
+test("a cash-session retry key cannot be reused with different shift details", async () => {
+  const { prismaMock } = openSessionMock();
+  const controller = loadController(prismaMock);
+  const base = { user: { userId: "owner-1", role: "MERCHANT" }, body: { openingCash: 5000, note: "Morning", clientRequestId: "6a96c140-3837-4c4d-9e92-22858be82789" }, requestPhaseTimings: {} };
+  await controller.open(base, response(), (error) => { throw error; });
+  let caught;
+  await controller.open({ ...base, body: { ...base.body, openingCash: 7000 } }, response(), (error) => { caught = error; });
+  assert.equal(caught.status, 409);
+  assert.match(caught.message, /different shift details/i);
 });

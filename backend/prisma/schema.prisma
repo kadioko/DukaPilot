@@ -1609,6 +1609,8 @@ model Order {
 
 model CashSession {
   id                             String                          @id @default(cuid())
+  openRequestId                  String?
+  openRequestHash                String?
   status                         CashSessionStatus               @default(OPEN)
   openingCash                    Int                             @default(0)
   expectedCash                   Int?

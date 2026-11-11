@@ -8,6 +8,7 @@ function diagnosticRoute(req) {
   if (req.method === "GET" && path === "/api/auth/me") return path;
   if (req.method === "GET" && (path === "/api/dashboard" || path.startsWith("/api/dashboard/"))) return path;
   if (req.method === "POST" && path === "/api/products") return path;
+  if (req.method === "POST" && path === "/api/cash-sessions/open") return path;
   if (req.method === "GET" && ["/api/products", "/api/products/summary", "/api/expenses"].includes(path)) return path;
   if (req.method === "PATCH" && path === "/api/settings/profile") return path;
   return null;
@@ -17,6 +18,7 @@ const SLOW_DIAGNOSTIC_ROUTES = new Set([
   "GET /api/products",
   "GET /api/products/summary",
   "GET /api/expenses",
+  "POST /api/cash-sessions/open",
   "PATCH /api/settings/profile",
 ]);
 

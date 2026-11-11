@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, LockKeyhole, RefreshCw, Search, WalletCards } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
-import { api, ApiError, formatTZS } from "@/lib/api";
+import { api, ApiError, createApiRequestId, formatTZS, selectedBranchId } from "@/lib/api";
+import { clearPendingCashSessionOpen, readPendingCashSessionOpen, savePendingCashSessionOpen, type PendingCashSessionOpen } from "@/lib/cashSessionOpenStorage";
 import { useLang } from "@/lib/i18n";
 import { useToast } from "@/components/ui/Toast";
 
@@ -89,6 +90,7 @@ export default function DailyClosePage() {
   const [countedCash, setCountedCash] = useState("");
   const [closeNote, setCloseNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState<PendingCashSessionOpen | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyFilters, setHistoryFilters] = useState({ status: "CLOSED", from: "", to: "", search: "" });
   const [managedSessionId, setManagedSessionId] = useState<string | null>(null);
@@ -96,9 +98,16 @@ export default function DailyClosePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await api.get<SessionResponse>("/cash-sessions/current", lang));
+      const next = await api.get<SessionResponse>("/cash-sessions/current", lang);
+      setData(next);
+      if (next.session) {
+        clearPendingCashSessionOpen();
+        setPendingOpen(null);
+      }
+      return next;
     } catch (error: unknown) {
       toast(error instanceof Error ? error.message : (lang === "sw" ? "Imeshindikana kupakia shift." : "Could not load the cash session."), "error");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -121,6 +130,13 @@ export default function DailyClosePage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    const saved = readPendingCashSessionOpen(selectedBranchId());
+    if (!saved) return;
+    setPendingOpen(saved);
+    setOpeningCash(String(saved.openingCash));
+    setOpenNote(saved.note || "");
+  }, []);
 
   function updateHistoryFilter(field: keyof typeof historyFilters, value: string) {
     setHistoryFilters((current) => ({ ...current, [field]: value }));
@@ -133,15 +149,39 @@ export default function DailyClosePage() {
       toast(lang === "sw" ? "Weka pesa ya kuanzia kwa namba kamili." : "Enter opening cash as a whole amount.", "error");
       return;
     }
+    const normalizedNote = openNote.trim() || null;
+    const reusable = pendingOpen && pendingOpen.openingCash === value && pendingOpen.note === normalizedNote && pendingOpen.branchId === selectedBranchId();
+    const pending: PendingCashSessionOpen = reusable ? pendingOpen : {
+      clientRequestId: createApiRequestId(),
+      openingCash: value,
+      note: normalizedNote,
+      branchId: selectedBranchId(),
+      savedAt: Date.now(),
+    };
+    savePendingCashSessionOpen(pending);
+    setPendingOpen(pending);
     setSaving(true);
     try {
-      await api.post("/cash-sessions/open", { openingCash: value, note: openNote.trim() || undefined }, lang);
+      await api.post("/cash-sessions/open", { openingCash: value, note: normalizedNote || undefined, clientRequestId: pending.clientRequestId }, lang);
+      clearPendingCashSessionOpen();
+      setPendingOpen(null);
       setOpeningCash("0");
       setOpenNote("");
       toast(lang === "sw" ? "Shift imefunguliwa." : "Cash session opened.", "success");
       await Promise.all([load(), loadHistory()]);
     } catch (error: unknown) {
-      toast(error instanceof Error ? error.message : "Could not open session", "error");
+      const uncertain = error instanceof ApiError && ((error.failureType === "NETWORK" || error.failureType === "TIMEOUT") || (error.status || 0) >= 500);
+      if (uncertain) {
+        toast(lang === "sw"
+          ? "Hatuwezi kuthibitisha kama shift imefunguliwa. Jaribu tena kwa maelezo yaleyale; mfumo utazuia shift kujirudia."
+          : "We couldn't confirm whether the shift opened. Retry with the same details; DukaPilot will prevent a duplicate shift.", "error");
+        await Promise.all([load(), loadHistory()]);
+      } else {
+        clearPendingCashSessionOpen();
+        setPendingOpen(null);
+        toast(error instanceof Error ? error.message : "Could not open session", "error");
+        if (error instanceof ApiError && error.status === 409) await Promise.all([load(), loadHistory()]);
+      }
     } finally {
       setSaving(false);
     }
@@ -213,7 +253,10 @@ export default function DailyClosePage() {
           <button type="button" onClick={() => { load(); loadHistory(); }} className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-600" title={lang === "sw" ? "Sasisha" : "Refresh"} aria-label={lang === "sw" ? "Sasisha" : "Refresh"}><RefreshCw className="h-4 w-4" /></button>
         </header>
 
-        {!closeTarget ? (data?.canOpenOwnSession === false ? <ShiftSupervisorCard lang={lang} teamOpenCount={openTeamSessions.length} /> : <OpenShiftCard lang={lang} saving={saving} openingCash={openingCash} openNote={openNote} teamOpenCount={openTeamSessions.length} onOpeningCash={setOpeningCash} onOpenNote={setOpenNote} onOpen={openSession} />) : <CloseShiftCard lang={lang} saving={saving} session={closeTarget} managedSession={Boolean(managedSession)} countedCash={countedCash} closeNote={closeNote} onCountedCash={setCountedCash} onCloseNote={setCloseNote} onClose={() => closeSession(closeTarget)} onReturnToOwn={managedSession && current ? () => { setManagedSessionId(null); setCountedCash(""); setCloseNote(""); } : undefined} />}
+        {!closeTarget ? (data?.canOpenOwnSession === false ? <ShiftSupervisorCard lang={lang} teamOpenCount={openTeamSessions.length} /> : <>
+          {pendingOpen && <div role="status" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-950">{lang === "sw" ? "Ombi la awali la kufungua shift halikupata uthibitisho. Jaribu tena kwa kiasi na maelezo yale yale; hakuna shift itakayofunguliwa mara mbili." : "A previous shift-open request is unconfirmed. Retry with the same amount and note; the request key prevents opening a duplicate shift."}</div>}
+          <OpenShiftCard lang={lang} saving={saving} openingCash={openingCash} openNote={openNote} teamOpenCount={openTeamSessions.length} onOpeningCash={setOpeningCash} onOpenNote={setOpenNote} onOpen={openSession} />
+        </>) : <CloseShiftCard lang={lang} saving={saving} session={closeTarget} managedSession={Boolean(managedSession)} countedCash={countedCash} closeNote={closeNote} onCountedCash={setCountedCash} onCloseNote={setCloseNote} onClose={() => closeSession(closeTarget)} onReturnToOwn={managedSession && current ? () => { setManagedSessionId(null); setCountedCash(""); setCloseNote(""); } : undefined} />}
 
         {data?.canManageAllSessions && openTeamSessions.length > 0 && <section className="border border-blue-200 bg-blue-50 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold text-gray-950">{lang === "sw" ? `Shift ${openTeamSessions.length} za timu ziko wazi` : `${openTeamSessions.length} team shift${openTeamSessions.length === 1 ? "" : "s"} open`}</h2><p className="mt-1 max-w-2xl text-sm leading-5 text-gray-600">{lang === "sw" ? "Kila shift ni ya mtu aliyefungua. Mauzo ya staff hayachanganywi na shift yako; kagua au funga shift ya staff tu baada ya kuhesabu droo yake." : "Each shift belongs to the person who opened it. Staff sales stay in their own shift; review or close a staff shift only after counting that drawer."}</p></div><span className="rounded-md bg-white px-2.5 py-1 text-xs font-bold text-blue-800">{lang === "sw" ? "USIMAMIZI" : "TEAM VIEW"}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{openTeamSessions.map((session) => <article key={session.id} className="border border-blue-100 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-gray-950">{session.openedByName}</p><p className="mt-1 text-xs text-gray-500">{lang === "sw" ? "Ilifunguliwa" : "Opened"} {localTime(session.openedAt, lang)}</p></div><span className="rounded-md bg-green-50 px-2 py-1 text-xs font-bold text-green-700">{lang === "sw" ? "WAZI" : "OPEN"}</span></div><div className="mt-3 flex items-end justify-between gap-3"><div><p className="text-xs text-gray-500">{lang === "sw" ? "Pesa inayotarajiwa" : "Expected cash"}</p><p className="text-sm font-bold text-gray-950">{formatTZS(session.summary.expectedCash)}</p></div><button type="button" onClick={() => { setManagedSessionId(session.id); setCountedCash(""); setCloseNote(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="min-h-10 border border-blue-300 px-3 text-xs font-semibold text-blue-900 hover:bg-blue-50">{lang === "sw" ? "Kagua / funga" : "Review / close"}</button></div></article>)}</div></section>}
 
