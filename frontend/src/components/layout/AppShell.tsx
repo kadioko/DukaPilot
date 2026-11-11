@@ -57,6 +57,7 @@ interface User {
       canManageStaff: boolean;
       canViewReports: boolean;
       canRecordExpenses: boolean;
+      canManageExpenseSchedules: boolean;
       canManageCashSessions: boolean;
       canUseAssistant: boolean;
       canViewQuotations: boolean;
@@ -74,7 +75,7 @@ interface NavItem {
   labelKey?: string;
   label?: string;
   icon: typeof LayoutDashboard;
-  permission?: "canSell" | "canManageStock" | "canViewStock" | "canViewSalePrices" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations";
+  permission?: "canSell" | "canManageStock" | "canViewStock" | "canViewSalePrices" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageExpenseSchedules" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations";
   anyPermissions?: Array<NonNullable<NavItem["permission"]>>;
   allPermissions?: Array<NonNullable<NavItem["permission"]>>;
   feature?: "staff" | "assistant" | "exports";

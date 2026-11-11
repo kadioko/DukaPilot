@@ -216,6 +216,7 @@ test("expense list applies search, vendor, category, and date range filters", as
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.canViewFinancialInsights, true);
+  assert.equal(res.payload.canManageExpenseSchedules, true);
   const expenseQuery = sqlCalls.find(({ query }) => query.includes("SELECT e.* FROM expenses e WHERE") && query.includes('e."spentAt" >= $'));
   assert.ok(expenseQuery);
   assert.match(expenseQuery.query, /e\.category = \$2/);
@@ -250,6 +251,7 @@ test("expense overview excludes legacy stock entries and reports sales-based met
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.canViewFinancialInsights, true);
+  assert.equal(res.payload.canManageExpenseSchedules, true);
   assert.equal(expenseQueries.every(({ query }) => query.includes("e.category <> 'STOCK'") && query.includes("Africa/Dar_es_Salaam")), true);
   assert.deepEqual(salesWhere, { shopId: "shop-1", status: "COMPLETED", createdAt: { lt: endOfTanzaniaDay() } });
   assert.equal(res.payload.summary.expensePercentOfSales, 15);
@@ -262,6 +264,7 @@ test("expense-only staff receive expense figures but no sales or profit analytic
   const sqlQueries = [];
   let salesQueried = false;
   let returnsQueried = false;
+  let schedulesQueried = false;
   const controller = loadController({
     $queryRawUnsafe: async (query) => {
       sqlQueries.push(query);
@@ -270,7 +273,7 @@ test("expense-only staff receive expense figures but no sales or profit analytic
       return [];
     },
     $queryRaw: async () => { returnsQueried = true; throw new Error("return analytics must not be queried for expense-only staff"); },
-    recurringExpense: { findMany: async () => [] },
+    recurringExpense: { findMany: async () => { schedulesQueried = true; return [{ id: "private-schedule" }]; } },
     sale: { aggregate: async () => { salesQueried = true; throw new Error("sales analytics must not be queried for expense-only staff"); } },
   });
   const res = response();
@@ -282,6 +285,8 @@ test("expense-only staff receive expense figures but no sales or profit analytic
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.canViewFinancialInsights, false);
+  assert.equal(res.payload.canManageExpenseSchedules, false);
+  assert.deepEqual(res.payload.recurringExpenses, []);
   assert.equal(res.payload.summary.total, 64000);
   assert.equal(res.payload.summary.count, 3);
   assert.equal(res.payload.summary.topCategories[0].total, 60000);
@@ -290,7 +295,42 @@ test("expense-only staff receive expense figures but no sales or profit analytic
   }
   assert.equal(salesQueried, false);
   assert.equal(returnsQueried, false);
+  assert.equal(schedulesQueried, false);
   assert.equal(sqlQueries.some((query) => query.includes("return_events")), false);
+});
+
+test("staff with schedule permission can see schedules without Reports permission", async () => {
+  const schedules = [{ id: "schedule-1", title: "Wifi", amount: 49000 }];
+  const controller = loadController({
+    $queryRawUnsafe: async (query) => query.includes("COUNT(*)::int AS count") ? [{ total: 0n, count: 0 }] : [],
+    recurringExpense: { findMany: async () => schedules },
+    sale: { aggregate: async () => { throw new Error("Reports-only sales data must not be queried"); } },
+    $queryRaw: async () => { throw new Error("Reports-only return data must not be queried"); },
+  });
+  const res = response();
+
+  await controller.list({
+    user: { userId: "owner-1", shopId: "shop-1", staffId: "staff-1", role: "MERCHANT", permissions: { canRecordExpenses: true, canManageExpenseSchedules: true, canViewReports: false } },
+    query: { period: "today" },
+  }, res);
+
+  assert.equal(res.payload.canManageExpenseSchedules, true);
+  assert.deepEqual(res.payload.recurringExpenses, schedules);
+  assert.equal(res.payload.canViewFinancialInsights, false);
+  assert.equal(Object.hasOwn(res.payload.summary, "netProfit"), false);
+});
+
+test("staff cannot create a recurring schedule without schedule permission", async () => {
+  const controller = loadController({});
+  const res = response();
+
+  await controller.create({
+    user: { userId: "owner-1", shopId: "shop-1", staffId: "staff-1", role: "MERCHANT", permissions: { canRecordExpenses: true, canManageExpenseSchedules: false } },
+    body: { title: "Wifi", amount: 49000, category: "UTILITIES", spentAt: "2026-11-30", recurringMonthly: true },
+  }, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.match(res.payload.error, /expense schedules/i);
 });
 
 test("staff with Reports permission retain financial insights on the expense screen", async () => {

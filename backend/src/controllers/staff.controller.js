@@ -25,6 +25,7 @@ const SAFE_STAFF_SELECT = {
   canManageStaff: true,
   canViewReports: true,
   canRecordExpenses: true,
+  canManageExpenseSchedules: true,
   canManageCashSessions: true,
   canUseAssistant: true,
   canViewQuotations: true,
@@ -138,6 +139,7 @@ const create = asyncHandler(async (req, res) => {
       canManageStaff: boolValue(req.body.canManageStaff, defaults.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, defaults.canViewReports),
       canRecordExpenses: boolValue(req.body.canRecordExpenses, defaults.canRecordExpenses),
+      canManageExpenseSchedules: boolValue(req.body.canManageExpenseSchedules, false) && boolValue(req.body.canRecordExpenses, defaults.canRecordExpenses),
       canManageCashSessions: boolValue(req.body.canManageCashSessions, defaults.canManageCashSessions),
       canUseAssistant: boolValue(req.body.canUseAssistant, false),
       canViewQuotations: boolValue(req.body.canViewQuotations, defaults.canViewQuotations),
@@ -177,6 +179,7 @@ const update = asyncHandler(async (req, res) => {
     return res.status(409).json({ error: "This phone number already belongs to another DukaPilot login" });
   }
   const nextIsActive = boolValue(req.body.isActive, existing.isActive);
+  const nextCanRecordExpenses = boolValue(req.body.canRecordExpenses, existing.canRecordExpenses);
   if (nextIsActive && !existing.isActive && await basicStaffLimitReached(billingShopId, existing.id)) {
     return basicStaffLimitError(res);
   }
@@ -200,7 +203,8 @@ const update = asyncHandler(async (req, res) => {
       canManageFarm: boolValue(req.body.canManageFarm, existing.canManageFarm),
       canManageStaff: boolValue(req.body.canManageStaff, existing.canManageStaff),
       canViewReports: boolValue(req.body.canViewReports, existing.canViewReports),
-      canRecordExpenses: boolValue(req.body.canRecordExpenses, existing.canRecordExpenses),
+      canRecordExpenses: nextCanRecordExpenses,
+      canManageExpenseSchedules: nextCanRecordExpenses && boolValue(req.body.canManageExpenseSchedules, existing.canManageExpenseSchedules),
       canManageCashSessions: boolValue(req.body.canManageCashSessions, existing.canManageCashSessions),
       canUseAssistant: boolValue(req.body.canUseAssistant, existing.canUseAssistant),
       canViewQuotations: boolValue(req.body.canViewQuotations, existing.canViewQuotations),

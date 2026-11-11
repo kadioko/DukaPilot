@@ -31,7 +31,33 @@ test("new staff with a phone receive the default 1234 PIN and canonical Tanzania
   assert.equal(created.canSell, true);
   assert.equal(created.canManageStock, false);
   assert.equal(created.canRecordExpenses, true);
+  assert.equal(created.canManageExpenseSchedules, false);
   assert.equal(created.canManageCashSessions, false);
+});
+
+test("scheduled expense access is opt-in and is revoked when expense recording is removed", async () => {
+  let updated;
+  const existing = {
+    id: "staff-1", shopId: "shop-1", name: "Asha", phone: "+255743910580", role: "CASHIER", isActive: true,
+    canRecordExpenses: true, canManageExpenseSchedules: true,
+  };
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {
+    shop: { findUnique: async () => ({ id: "shop-1" }) },
+    staffMember: {
+      findFirst: async () => existing,
+      update: async ({ data }) => { updated = data; return { ...existing, ...data }; },
+    },
+  } };
+  delete require.cache[shopAccessPath];
+  delete require.cache[controllerPath];
+  const controller = require(controllerPath);
+  const res = response();
+
+  await controller.update({ user: { userId: "owner-1" }, params: { id: "staff-1" }, body: { canRecordExpenses: false } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(updated.canRecordExpenses, false);
+  assert.equal(updated.canManageExpenseSchedules, false);
 });
 
 test("new managers can review team cash sessions by default", async () => {

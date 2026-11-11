@@ -10,9 +10,9 @@ router.use(requireActiveSubscription);
 
 router.get("/", list);
 router.post("/", create);
-router.post("/recurring/:id/record", recordRecurring);
-router.patch("/recurring/:id", updateRecurring);
-router.delete("/recurring/:id", removeRecurring);
+router.post("/recurring/:id/record", requirePermission("canManageExpenseSchedules"), recordRecurring);
+router.patch("/recurring/:id", requirePermission("canManageExpenseSchedules"), updateRecurring);
+router.delete("/recurring/:id", requirePermission("canManageExpenseSchedules"), removeRecurring);
 router.patch("/:id", update);
 router.delete("/:id", remove);
 

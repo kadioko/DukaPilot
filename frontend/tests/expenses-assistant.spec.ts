@@ -85,7 +85,7 @@ test("expense form schedules a future monthly payment without posting a ledger e
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ expenses: [], recurringExpenses: schedule ? [schedule] : [], summary: { total: 0, count: 0 } }),
+      body: JSON.stringify({ expenses: [], recurringExpenses: schedule ? [schedule] : [], canManageExpenseSchedules: true, summary: { total: 0, count: 0 } }),
     });
   });
 
@@ -113,6 +113,26 @@ test("expense form schedules a future monthly payment without posting a ledger e
   expect(submitted.requestKey).toMatch(/^[0-9a-f-]{36}$/i);
   await expect(page.getByText("Wifi").first()).toBeVisible();
   await expect(page.getByText(/Ratiba imewekwa kwa/)).toBeVisible();
+});
+
+test("staff without scheduled-expense access do not receive or see schedule details", async ({ page }) => {
+  await mockMerchantShell(page);
+  await page.route(/\/(?:_api|api)\/expenses(?:\?.*)?$/, async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      expenses: [],
+      recurringExpenses: [{ id: "hidden-schedule", title: "Private rent reminder", amount: 900000, nextDueAt: "2026-11-30T12:00:00.000Z" }],
+      canManageExpenseSchedules: false,
+      summary: { total: 0, count: 0 },
+    }),
+  }));
+
+  await page.goto("/expenses");
+  await expect(page.getByText("Rekodi matumizi yako ya kwanza")).toBeVisible();
+  await expect(page.getByText("Private rent reminder")).toHaveCount(0);
+  await page.getByRole("button", { name: "Ongeza matumizi" }).click();
+  await expect(page.getByRole("button", { name: "Schedule monthly" })).toHaveCount(0);
 });
 
 test("expenses explain an unavailable report and recover through an explicit retry", async ({ page }) => {

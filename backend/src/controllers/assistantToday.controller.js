@@ -78,6 +78,7 @@ function permissionsFor(user) {
     farm: !isStaff(user) || Boolean(permissions.canManageFarm),
     debts: !isStaff(user) || Boolean(permissions.canSell),
     expenses: !isStaff(user) || Boolean(permissions.canRecordExpenses),
+    expenseSchedules: !isStaff(user) || Boolean(permissions.canRecordExpenses && permissions.canManageExpenseSchedules),
     cashSession: !isStaff(user) || Boolean(permissions.canSell || permissions.canManageCashSessions),
     quotations: !isStaff(user) || Boolean(permissions.canViewReports || permissions.canViewQuotationCosts),
   };
@@ -931,7 +932,8 @@ async function answerOperationalQuestion(req, intent, window, lang) {
   const permissions = permissionsFor(req.user);
   const allowed = intent === "cashSession" ? permissions.cashSession
     : ["expiry", "expiredStock"].includes(intent) ? permissions.stock
-    : ["scheduledExpenses", "expenseCategories"].includes(intent) ? permissions.reports && permissions.expenses
+    : intent === "scheduledExpenses" ? permissions.expenseSchedules
+      : intent === "expenseCategories" ? permissions.reports && permissions.expenses
       : intent === "quotations" ? permissions.quotations
       : ["purchases", "topPurchaseSupplier"].includes(intent) ? permissions.reports && permissions.stock
           : permissions.reports;

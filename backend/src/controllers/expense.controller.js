@@ -180,9 +180,22 @@ function canViewFinancialInsights(user) {
   return user.role === "ADMIN" || !user.staffId || Boolean(user.permissions?.canViewReports);
 }
 
+function canManageExpenseSchedules(user) {
+  if (!user.staffId) return true;
+  return Boolean(user.permissions?.canRecordExpenses && user.permissions?.canManageExpenseSchedules);
+}
+
+function denyScheduleAccess(req, res) {
+  return res.status(403).json({
+    error: getRequestLanguage(req) === "sw" ? "Huna ruhusa ya kuona au kusimamia ratiba za matumizi." : "You do not have permission to view or manage expense schedules.",
+    code: "EXPENSE_SCHEDULE_PERMISSION_REQUIRED",
+  });
+}
+
 const list = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const mayViewFinancialInsights = canViewFinancialInsights(req.user);
+  const mayManageSchedules = canManageExpenseSchedules(req.user);
   const window = periodWindow(req.query.period);
   if (!window) return validationError(req, res, "Period must be today, week, month, or all", "Kipindi kiwe Leo, Wiki, Mwezi, au Muda wote", "INVALID_EXPENSE_PERIOD");
   const category = String(req.query.category || "").toUpperCase();
@@ -236,7 +249,9 @@ const list = asyncHandler(async (req, res) => {
   const [expenses, summaryRows, recurringExpenses, sales, previousRows, categoryBreakdown, returnRows, needsReviewExpenses] = await Promise.all([
     prisma.$queryRawUnsafe(`SELECT e.* FROM expenses e WHERE ${selectedWhere.where} ORDER BY e."spentAt" DESC LIMIT 100`, ...selectedWhere.params),
     prisma.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0)::bigint AS total, COUNT(*)::int AS count FROM expenses e WHERE ${selectedWhere.where}`, ...selectedWhere.params),
-    prisma.recurringExpense.findMany({ where: { shopId, isActive: true, category: { not: LEGACY_STOCK_CATEGORY } }, orderBy: { nextDueAt: "asc" }, take: 20 }),
+    mayManageSchedules
+      ? prisma.recurringExpense.findMany({ where: { shopId, isActive: true, category: { not: LEGACY_STOCK_CATEGORY } }, orderBy: { nextDueAt: "asc" }, take: 20 })
+      : Promise.resolve([]),
     mayViewFinancialInsights
       ? prisma.sale.aggregate({ where: salesWhere, _sum: { totalAmount: true, profit: true }, _count: { id: true } })
       : Promise.resolve(null),
@@ -292,6 +307,7 @@ const list = asyncHandler(async (req, res) => {
     expenses,
     needsReviewExpenses: needsReviewExpenses.map((expense) => ({ ...expense, canCorrect: !req.user.staffId || req.user.role === "ADMIN" })),
     recurringExpenses,
+    canManageExpenseSchedules: mayManageSchedules,
     period: window.period,
     canViewFinancialInsights: mayViewFinancialInsights,
     summary,
@@ -302,6 +318,7 @@ const create = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const data = expenseDataFromRequest(req);
   const recurringMonthly = req.body.recurringMonthly === true;
+  if (recurringMonthly && !canManageExpenseSchedules(req.user)) return denyScheduleAccess(req, res);
   if (!validateExpenseData(req, res, data, { allowFuture: recurringMonthly })) return;
   const bodyRequestKeyProvided = req.body.requestKey !== undefined;
   const legacyRequestId = req.get?.("x-request-id") || req.headers?.["x-request-id"] || req.headers?.["X-Request-ID"];
@@ -424,6 +441,7 @@ const update = asyncHandler(async (req, res) => {
 });
 
 const recordRecurring = asyncHandler(async (req, res) => {
+  if (!canManageExpenseSchedules(req.user)) return denyScheduleAccess(req, res);
   const shopId = await getShopIdForUser(req.user);
   const requestKey = idempotencyKey(req.body.requestKey);
   if (!requestKey) return validationError(req, res, "A valid retry key is required", "Namba sahihi ya retry inahitajika", "EXPENSE_RETRY_KEY_REQUIRED");
@@ -504,6 +522,7 @@ const recordRecurring = asyncHandler(async (req, res) => {
 });
 
 const updateRecurring = asyncHandler(async (req, res) => {
+  if (!canManageExpenseSchedules(req.user)) return denyScheduleAccess(req, res);
   const shopId = await getShopIdForUser(req.user);
   const nextDueAt = parseSpentAt(req.body.nextDueAt, null);
   if (!nextDueAt) return validationError(req, res, "Enter a valid next due date", "Weka tarehe sahihi ya malipo yanayofuata", "INVALID_RECURRING_EXPENSE_DATE");
@@ -532,6 +551,7 @@ const updateRecurring = asyncHandler(async (req, res) => {
 });
 
 const removeRecurring = asyncHandler(async (req, res) => {
+  if (!canManageExpenseSchedules(req.user)) return denyScheduleAccess(req, res);
   const shopId = await getShopIdForUser(req.user);
   const updated = await prisma.recurringExpense.updateMany({ where: { id: req.params.id, shopId, isActive: true }, data: { isActive: false } });
   if (updated.count !== 1) return res.status(404).json({ error: "Recurring expense not found" });

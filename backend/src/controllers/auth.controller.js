@@ -139,6 +139,7 @@ function staffPermissions(staff) {
     canManageStaff: Boolean(staff.canManageStaff),
     canViewReports: Boolean(staff.canViewReports),
     canRecordExpenses: Boolean(staff.canRecordExpenses),
+    canManageExpenseSchedules: Boolean(staff.canManageExpenseSchedules),
     canManageCashSessions: Boolean(staff.canManageCashSessions),
     canUseAssistant: Boolean(staff.canUseAssistant),
     canViewQuotations: Boolean(staff.canViewQuotations),

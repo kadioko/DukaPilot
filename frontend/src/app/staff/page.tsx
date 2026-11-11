@@ -19,6 +19,7 @@ interface StaffMember {
   canManageStaff: boolean;
   canViewReports: boolean;
   canRecordExpenses: boolean;
+  canManageExpenseSchedules: boolean;
   canManageCashSessions: boolean;
   canUseAssistant: boolean;
   canViewQuotations: boolean;
@@ -53,7 +54,7 @@ export default function StaffPage() {
   const lang = useLang();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
+  const [form, setForm] = useState({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageExpenseSchedules: false, canManageFarm: false, canUseAssistant: false });
   const [accessPreset, setAccessPreset] = useState<"role" | "stock" | "prices">("role");
   const [actionError, setActionError] = useState("");
   const [savingStaffAction, setSavingStaffAction] = useState(false);
@@ -77,19 +78,19 @@ export default function StaffPage() {
     if (basicLimitReached) return;
     const viewOnly = accessPreset === "role" ? {} : {
       canSell: false, canManageStock: false, canCorrectStock: false, canManageFarm: false,
-      canManageStaff: false, canViewReports: false, canRecordExpenses: false, canManageCashSessions: false, canUseAssistant: false,
+      canManageStaff: false, canViewReports: false, canRecordExpenses: false, canManageExpenseSchedules: false, canManageCashSessions: false, canUseAssistant: false,
       canViewQuotations: false, canCreateQuotations: false, canEditSentQuotations: false, canViewQuotationCosts: false,
       canApproveQuotationDiscounts: false, canSendQuotations: false, canAcceptQuotations: false,
       canConvertQuotations: false, canRecordQuotationPayments: false, canArchiveQuotations: false, canDeleteQuotationDrafts: false,
       canViewStock: accessPreset === "stock", canViewSalePrices: accessPreset === "prices",
     };
     await api.post("/staff", { ...form, ...viewOnly, ...(accessPreset === "role" ? {} : { role: "CASHIER" }) }, lang);
-    setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageFarm: false, canUseAssistant: false });
+    setForm({ name: "", phone: "", role: "CASHIER", pin: "", canRecordExpenses: false, canManageExpenseSchedules: false, canManageFarm: false, canUseAssistant: false });
     setAccessPreset("role");
     await load();
   }
 
-  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canViewStock" | "canViewSalePrices" | "canCorrectStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
+  async function togglePermission(member: StaffMember, field: keyof Pick<StaffMember, "canSell" | "canManageStock" | "canViewStock" | "canViewSalePrices" | "canCorrectStock" | "canManageFarm" | "canManageStaff" | "canViewReports" | "canRecordExpenses" | "canManageExpenseSchedules" | "canManageCashSessions" | "canUseAssistant" | "canViewQuotations" | "canCreateQuotations" | "canEditSentQuotations" | "canViewQuotationCosts" | "canApproveQuotationDiscounts" | "canSendQuotations" | "canAcceptQuotations" | "canConvertQuotations" | "canRecordQuotationPayments" | "canArchiveQuotations" | "canDeleteQuotationDrafts" | "isActive">) {
     if (staffActionLock.current) return;
     staffActionLock.current = true;
     setSavingStaffAction(true);
@@ -142,6 +143,7 @@ export default function StaffPage() {
     canManageStaff: lang === "sw" ? "Wafanyakazi" : "Staff",
     canViewReports: lang === "sw" ? "Ripoti" : "Reports",
     canRecordExpenses: lang === "sw" ? "Kurekodi matumizi" : "Record expenses",
+    canManageExpenseSchedules: lang === "sw" ? "Kusimamia ratiba za matumizi" : "Manage scheduled expenses",
     canManageCashSessions: lang === "sw" ? "Kusimamia shift za timu" : "Manage team shifts",
     canUseAssistant: lang === "sw" ? "Kutumia Msaidizi wa AI" : "Use AI Assistant",
     canViewQuotations: lang === "sw" ? "Kuona nukuu" : "View quotations",
@@ -190,11 +192,13 @@ export default function StaffPage() {
           <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Jukumu" : "Role"}</span><select disabled={accessPreset !== "role"} className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roles.map((role) => <option key={role} value={role}>{role.replace("_", " ")}</option>)}
           </select></label>
-          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Ruhusa za mwanzo" : "Initial access"}</span><select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={accessPreset} onChange={(e) => { const next = e.target.value as typeof accessPreset; setAccessPreset(next); if (next !== "role") setForm((current) => ({ ...current, role: "CASHIER" })); }}><option value="role">{lang === "sw" ? "Kulingana na jukumu" : "Role defaults"}</option><option value="stock">{lang === "sw" ? "Kuona stock tu" : "Stock view only"}</option><option value="prices">{lang === "sw" ? "Kuona bei tu" : "Price view only"}</option></select></label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600"><span>{lang === "sw" ? "Ruhusa za mwanzo" : "Initial access"}</span><select className="rounded-lg border border-gray-300 px-3 py-2 text-sm" value={accessPreset} onChange={(e) => { const next = e.target.value as typeof accessPreset; setAccessPreset(next); if (next !== "role") setForm((current) => ({ ...current, role: "CASHIER", canRecordExpenses: false, canManageExpenseSchedules: false })); }}><option value="role">{lang === "sw" ? "Kulingana na jukumu" : "Role defaults"}</option><option value="stock">{lang === "sw" ? "Kuona stock tu" : "Stock view only"}</option><option value="prices">{lang === "sw" ? "Kuona bei tu" : "Price view only"}</option></select></label>
           {accessPreset === "role" && <>
-          <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canRecordExpenses} onChange={(e) => setForm({ ...form, canRecordExpenses: e.target.checked })} />{lang === "sw" ? "Anaweza kurekodi matumizi" : "Can record expenses"}</label>
+          <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canRecordExpenses} onChange={(e) => setForm({ ...form, canRecordExpenses: e.target.checked, canManageExpenseSchedules: e.target.checked && form.canManageExpenseSchedules })} />{lang === "sw" ? "Anaweza kurekodi matumizi" : "Can record expenses"}</label>
+          <label title={lang === "sw" ? "Inahitaji ruhusa ya Kurekodi matumizi. Haiwapi ruhusa ya Ripoti." : "Requires Record expenses. Does not grant Reports."} className={`flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-medium ${form.canRecordExpenses ? "border-blue-200 bg-blue-50 text-blue-950" : "border-gray-200 bg-gray-100 text-gray-500"}`}><input type="checkbox" checked={form.canManageExpenseSchedules} disabled={!form.canRecordExpenses} onChange={(e) => setForm({ ...form, canManageExpenseSchedules: e.target.checked })} />{lang === "sw" ? "Anaweza kuona na kusimamia ratiba" : "Can manage expense schedules"}</label>
           <label className="flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-medium text-gray-700"><input type="checkbox" checked={form.canManageFarm} onChange={(e) => setForm({ ...form, canManageFarm: e.target.checked })} />{lang === "sw" ? "Anaweza kusimamia shamba" : "Can manage farm"}</label>
           {proAssistantAvailable && <label className="flex min-h-10 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-950"><input type="checkbox" checked={form.canUseAssistant} onChange={(e) => setForm({ ...form, canUseAssistant: e.target.checked })} />{lang === "sw" ? "Anaweza kutumia AI" : "Can use AI"}</label>}
+          <p className="text-xs leading-5 text-gray-500 md:col-span-6">{lang === "sw" ? "Ratiba zinahitaji ruhusa ya Kurekodi matumizi pamoja na ruhusa tofauti ya Kusimamia ratiba. Hii haimpi staff ruhusa ya Ripoti au kuona faida." : "Schedules require both Record expenses and this separate permission. It does not grant Reports or profit access."}</p>
           </>}
           <button disabled={basicLimitReached} title={basicLimitReached ? (lang === "sw" ? "Basic ina staff 1 active" : "Basic includes 1 active staff member") : undefined} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-400">
             {lang === "sw" ? "Ongeza" : "Add"}
@@ -223,8 +227,8 @@ export default function StaffPage() {
               </div>
               {member.isActive || member.phone ? <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
                 {(Object.keys(permissionLabels) as Array<keyof typeof permissionLabels>).filter((field) => field !== "canUseAssistant" || proAssistantAvailable).map((field) => (
-                  <label key={field} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
-                    <input type="checkbox" checked={member[field]} disabled={savingStaffAction} onChange={() => togglePermission(member, field)} />
+                  <label key={field} title={field === "canManageExpenseSchedules" ? (lang === "sw" ? "Inahitaji Kurekodi matumizi; haiwapi Ripoti." : "Requires Record expenses; does not grant Reports.") : undefined} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${field === "canManageExpenseSchedules" && !member.canRecordExpenses ? "bg-gray-100 text-gray-500" : "bg-gray-50"}`}>
+                    <input type="checkbox" checked={member[field]} disabled={savingStaffAction || (field === "canManageExpenseSchedules" && !member.canRecordExpenses)} onChange={() => togglePermission(member, field)} />
                     {permissionLabels[field]}
                   </label>
                 ))}

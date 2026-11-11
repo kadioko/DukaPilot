@@ -156,6 +156,7 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [needsReviewExpenses, setNeedsReviewExpenses] = useState<Expense[]>([]);
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [canManageExpenseSchedules, setCanManageExpenseSchedules] = useState(false);
   const [summary, setSummary] = useState<ExpenseSummary>(EMPTY_SUMMARY);
   const [canViewFinancialInsights, setCanViewFinancialInsights] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
@@ -197,16 +198,29 @@ export default function ExpensesPage() {
   async function load(nextFilters = appliedFilters, nextPeriod = period) {
     setLoadError("");
     setCanViewFinancialInsights(false);
+    setCanManageExpenseSchedules(false);
+    setRecurringExpenses([]);
     try {
-      const data = await api.get<{ expenses: Expense[]; needsReviewExpenses?: Expense[]; recurringExpenses: RecurringExpense[]; summary: ExpenseSummary; canViewFinancialInsights?: boolean }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
+      const data = await api.get<{ expenses: Expense[]; needsReviewExpenses?: Expense[]; recurringExpenses?: RecurringExpense[]; summary: ExpenseSummary; canViewFinancialInsights?: boolean; canManageExpenseSchedules?: boolean }>(`/expenses${queryFromFilters(nextFilters, nextPeriod)}`, lang);
       setExpenses(data.expenses);
       setNeedsReviewExpenses(data.needsReviewExpenses || []);
-      setRecurringExpenses(data.recurringExpenses || []);
+      setCanManageExpenseSchedules(data.canManageExpenseSchedules === true);
+      setRecurringExpenses(data.canManageExpenseSchedules === true ? (data.recurringExpenses || []) : []);
+      if (data.canManageExpenseSchedules !== true) {
+        setForm((current) => ({ ...current, recurringMonthly: false }));
+        setEditingSchedule(null);
+        setRecordingSchedule(null);
+      }
       setSummary({ ...EMPTY_SUMMARY, ...data.summary, topCategories: data.summary.topCategories || [] });
       setCanViewFinancialInsights(data.canViewFinancialInsights === true);
     } catch (error) {
       setSummary(EMPTY_SUMMARY);
       setCanViewFinancialInsights(false);
+      setCanManageExpenseSchedules(false);
+      setRecurringExpenses([]);
+      setForm((current) => ({ ...current, recurringMonthly: false }));
+      setEditingSchedule(null);
+      setRecordingSchedule(null);
       setLoadError(error instanceof Error ? error.message : (lang === "sw" ? "Matumizi hayakuweza kupakiwa." : "Expenses could not be loaded."));
       throw error;
     }
@@ -268,6 +282,10 @@ export default function ExpensesPage() {
   async function saveExpense(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
+    if (!editingExpense && form.recurringMonthly && !canManageExpenseSchedules) {
+      setFormError(lang === "sw" ? "Huna ruhusa ya kusimamia ratiba za matumizi." : "You do not have permission to manage expense schedules.");
+      return;
+    }
     const isReviewingDate = Boolean(editingExpense && needsReviewExpenses.some((expense) => expense.id === editingExpense.id));
     if (isReviewingDate && !confirmActualPayment) {
       setFormError(lang === "sw" ? "Thibitisha kuwa malipo yalifanyika kweli kabla ya kuhifadhi." : "Confirm this payment really happened before saving.");
@@ -499,7 +517,7 @@ export default function ExpensesPage() {
           </section>
         )}
 
-        {recurringExpenses.length > 0 && (
+        {canManageExpenseSchedules && recurringExpenses.length > 0 && (
           <section className="overflow-hidden rounded-lg border border-blue-200 bg-blue-50" aria-labelledby="recurring-expenses-heading">
             <div className="flex items-center justify-between gap-3 border-b border-blue-100 px-4 py-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -569,9 +587,9 @@ export default function ExpensesPage() {
         <ExpenseModal title={editingExpense ? (lang === "sw" ? "Badilisha matumizi" : "Edit expense") : form.recurringMonthly ? (lang === "sw" ? "Panga matumizi ya kurudia" : "Schedule recurring expense") : (lang === "sw" ? "Rekodi matumizi halisi" : "Record an actual expense")} onClose={closeForm}>
           <form onSubmit={saveExpense} className="space-y-4">
             {editingExpense && needsReviewExpenses.some((expense) => expense.id === editingExpense.id) && <label className="flex items-start gap-2 border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><input type="checkbox" checked={confirmActualPayment} onChange={(event) => { setConfirmActualPayment(event.target.checked); setFormError(null); }} className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700" /><span>{lang === "sw" ? "Nathibitisha kuwa malipo haya yalifanyika kweli. Tarehe hapa chini ni tarehe halisi ya malipo; kurekodi huku kutayaingiza kwenye ripoti." : "I confirm this payment really happened. The date below is the actual payment date; verifying it will include it in financial reports."}</span></label>}
-            {!editingExpense && <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1" role="group" aria-label={lang === "sw" ? "Aina ya matumizi" : "Expense action"}>
+            {!editingExpense && <div className={`grid ${canManageExpenseSchedules ? "grid-cols-2" : "grid-cols-1"} gap-1 rounded-lg bg-gray-100 p-1`} role="group" aria-label={lang === "sw" ? "Aina ya matumizi" : "Expense action"}>
               <button type="button" aria-pressed={!form.recurringMonthly} onClick={() => updateForm("recurringMonthly", false)} className={`min-h-10 rounded-md px-2 text-xs font-semibold ${!form.recurringMonthly ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{lang === "sw" ? "Rekodi matumizi" : "Record expense"}</button>
-              <button type="button" aria-pressed={form.recurringMonthly} onClick={() => updateForm("recurringMonthly", true)} className={`min-h-10 rounded-md px-2 text-xs font-semibold ${form.recurringMonthly ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{lang === "sw" ? "Panga ya kila mwezi" : "Schedule monthly"}</button>
+              {canManageExpenseSchedules && <button type="button" aria-pressed={form.recurringMonthly} onClick={() => updateForm("recurringMonthly", true)} className={`min-h-10 rounded-md px-2 text-xs font-semibold ${form.recurringMonthly ? "bg-white text-brand-800 shadow-sm" : "text-gray-600"}`}>{lang === "sw" ? "Panga ya kila mwezi" : "Schedule monthly"}</button>}
             </div>}
             <label className="grid gap-1 text-sm font-medium text-gray-700"><span>{lang === "sw" ? "Jina la matumizi" : "Expense name"}</span><input autoFocus required value={form.title} onChange={(event) => updateForm("title", event.target.value)} className={INPUT} placeholder={lang === "sw" ? "Mfano: Kodi ya mwezi" : "Example: Monthly rent"} /></label>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -591,7 +609,7 @@ export default function ExpensesPage() {
         </ExpenseModal>
       )}
 
-      {editingSchedule && (
+      {canManageExpenseSchedules && editingSchedule && (
         <ExpenseModal title={lang === "sw" ? "Badilisha tarehe ya ratiba" : "Edit scheduled due date"} onClose={() => setEditingSchedule(null)}>
           <form onSubmit={saveScheduleDate} className="space-y-4">
             <p className="text-sm text-gray-600">{lang === "sw" ? `${editingSchedule.title} · ${formatTZS(editingSchedule.amount)}. Hii hubadilisha tarehe inayotarajiwa tu; haitarekodi malipo.` : `${editingSchedule.title} · ${formatTZS(editingSchedule.amount)}. This changes only the expected due date; it does not record a payment.`}</p>
@@ -601,7 +619,7 @@ export default function ExpensesPage() {
         </ExpenseModal>
       )}
 
-      {recordingSchedule && (
+      {canManageExpenseSchedules && recordingSchedule && (
         <ExpenseModal title={lang === "sw" ? "Thibitisha malipo" : "Confirm payment"} onClose={() => setRecordingSchedule(null)}>
           <form onSubmit={recordRecurring} className="space-y-4">
             <p className="text-sm text-gray-700">{lang === "sw" ? `Rekodi ${recordingSchedule.title} (${formatTZS(recordingSchedule.amount)}) kama matumizi halisi tu ikiwa imelipwa. Tarehe ya ratiba ni ${toDateLabel(recordingSchedule.nextDueAt, lang)}; malipo hayarekodiwi yenyewe.` : `Record ${recordingSchedule.title} (${formatTZS(recordingSchedule.amount)}) as an actual expense only if it has been paid. Scheduled due date: ${toDateLabel(recordingSchedule.nextDueAt, lang)}. Nothing is posted automatically.`}</p>

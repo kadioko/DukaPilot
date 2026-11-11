@@ -84,6 +84,8 @@ Still outside deterministic Ask: supplier-return delivery tracking or pending-re
 - **Farm:** recommendations reflect logged operations, tasks, inputs, losses, harvests, and recorded warnings. They are not diagnosis, veterinary treatment, pesticide instructions, or agronomic advice.
 - **Quotations:** server-generated follow-up actions remain quotations until the business explicitly converts one to a sale. Quotation value is not reported as revenue.
 
+Upcoming expense schedule answers require a separate **Manage scheduled expenses** permission in addition to **Record expenses** for staff. The owner always has access. This permission is independent of Reports and does not reveal sales or profit figures.
+
 The assistant does not yet provide recommendations for supplier payable aging, lot-level expiry, unresolved customer returns, cash-close discrepancies, or configurable farm reminder thresholds. Branch comparison answers are available to owners, but are summaries rather than a full branch operations dashboard. Those recommendations should be added only with tenant-scoped, permission-checked source data and clear definitions. Product expiry is currently not necessarily lot-specific, and supplier lead times/stockout intervals are not reliable enough to imply precise forecasts.
 
 ## Recommendation Lifecycle And Measurement

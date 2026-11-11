@@ -254,10 +254,11 @@ test("Ask reports received-stock landed cost, not an expense or payment, and enf
 
 test("Ask scopes expiry and scheduled expense queries to the current shop without treating reminders as payments", async () => {
   const scopes = [];
+  let scheduleQueries = 0;
   const loader = loadWithMocks({ prisma: {
     $queryRawUnsafe: async (_query, shopId) => { scopes.push(shopId); return [{ matchingCount: 1, expiryTracked: 3, missingDates: 2, neverExpiresCount: 1, updatedAt: new Date() }]; },
     product: { findMany: async (query) => { scopes.push(query.where.shopId); return [{ name: "Milk", expiryDate: new Date("2026-11-10T12:00:00Z") }]; } },
-    recurringExpense: { findMany: async (query) => { scopes.push(query.where.shopId); return [{ title: "Wifi", amount: 49000, nextDueAt: new Date("2026-11-10T12:00:00Z") }]; } },
+    recurringExpense: { findMany: async (query) => { scheduleQueries += 1; scopes.push(query.where.shopId); return [{ title: "Wifi", amount: 49000, nextDueAt: new Date("2026-11-10T12:00:00Z") }]; } },
   } });
   try {
     const expiry = response();
@@ -267,7 +268,15 @@ test("Ask scopes expiry and scheduled expense queries to the current shop withou
     await loader.controller.ask({ ...request({ userId: "owner" }), body: { question: "What recurring expenses are due?" } }, schedule, (error) => { throw error; });
     assert.match(schedule.payload.answer.message, /49,000/);
     assert.match(schedule.payload.answer.message, /not confirmed payments/);
-    assert.deepEqual(scopes, ["shop-1", "shop-1", "shop-1"]);
+    const staffWithoutPermission = response();
+    await loader.controller.ask({ ...request({ userId: "owner", staffId: "staff-1", permissions: { canRecordExpenses: true } }), body: { question: "What recurring expenses are due?" } }, staffWithoutPermission, (error) => { throw error; });
+    assert.match(staffWithoutPermission.payload.answer.message, /permission/i);
+    assert.equal(scheduleQueries, 1);
+    const staffWithPermission = response();
+    await loader.controller.ask({ ...request({ userId: "owner", staffId: "staff-1", permissions: { canRecordExpenses: true, canManageExpenseSchedules: true, canUseAssistant: true } }), body: { question: "What recurring expenses are due?" } }, staffWithPermission, (error) => { throw error; });
+    assert.match(staffWithPermission.payload.answer.message, /49,000/);
+    assert.equal(scheduleQueries, 2);
+    assert.deepEqual(scopes, ["shop-1", "shop-1", "shop-1", "shop-1"]);
   } finally { loader.restore(); }
 });
 

@@ -21,6 +21,8 @@ The owner can fine-tune permissions per individual after creating them. Deactiva
 
 **Record expenses** is separate from **Reports**. Staff with only Record expenses can view and enter expense records, expense totals, period comparisons, and spending categories. They do not receive sales totals, sales-to-expense ratios, gross or net profit, or other report analytics. The API omits those fields and skips the sales/profit queries unless the user is the owner or has Reports. Grant Reports only when the staff member should see business-wide financial performance.
 
+**Manage scheduled expenses** is a separate, opt-in permission for staff who also have **Record expenses**. It allows them to view, schedule, confirm as paid, edit, and stop recurring expense reminders. Without it, the Expenses page does not return or show schedule details, and schedule actions are blocked by the API. Turning off Record expenses also turns off schedule access. Schedules are reminders, not paid transactions; staff with this permission still do not receive Reports-only sales or profit figures. The business owner always retains access to all schedules.
+
 ## Read-Only Access
 
 When creating a staff login, choose **Initial access > Stock view only** for someone who should search inventory and filter low stock, out-of-stock, and expiring products without changing stock or seeing prices. Choose **Price view only** for a searchable **Sale prices** list showing retail and wholesale prices without checkout, buying costs, or stock quantities. These presets select the cashier role and explicitly disable other operational and financial permissions. To configure an existing staff member, enable **View stock only** or **View sale prices** and turn off any other permissions they should not retain. Permissions combine: granting **Sell**, **Stock**, or **Reports** separately adds their normal capabilities. The read-only permissions are off for existing staff until the owner grants them.
@@ -64,6 +66,7 @@ balances. Neither action deletes its original record. See
 On an active **Pro** plan, the owner can tick **Use AI Assistant** for each individual staff member. It is off by default and does not grant any other permission.
 
 - Owners and staff with **Reports** can receive the full business AI view.
+- A staff member can ask about upcoming expense schedules only when both **Record expenses** and **Manage scheduled expenses** are enabled; schedule access alone does not grant profit or sales analytics.
 - A Stock Clerk with AI can receive stock-only prompts, without sales, buying prices, profit, debts, or expense data.
 - A Cashier with AI receives only safe POS guidance. They cannot see sales amounts, profit, debts, expenses, or business performance unless the owner separately grants **Reports**.
 

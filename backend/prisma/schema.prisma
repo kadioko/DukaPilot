@@ -1442,6 +1442,7 @@ model StaffMember {
   canManageStaff               Boolean   @default(false)
   canViewReports               Boolean   @default(false)
   canRecordExpenses            Boolean   @default(false)
+  canManageExpenseSchedules    Boolean   @default(false)
   canManageCashSessions        Boolean   @default(false)
   canUseAssistant              Boolean   @default(false)
   canViewQuotations            Boolean   @default(false)
