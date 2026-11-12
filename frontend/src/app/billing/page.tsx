@@ -225,9 +225,9 @@ export default function BillingPage() {
         <fieldset className="border-y border-gray-200 py-4">
           <legend className="text-sm font-semibold">{lang === "sw" ? "Chagua njia ya malipo" : "Choose payment method"}</legend>
           <div className="flex flex-wrap gap-5">
-            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "manual"} onChange={() => setPaymentPath("manual")} />{lang === "sw" ? "1. Lipa namba / Tuma pesa" : "1. Lipa number / Send money"}</label>
-            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "ntzs"} onChange={() => setPaymentPath("ntzs")} />2. nTZS online</label>
-            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "balance"} onChange={() => setPaymentPath("balance")} />{lang === "sw" ? "3. Salio la Duka" : "3. Merchant Balance"}</label>
+            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "ntzs"} onChange={() => setPaymentPath("ntzs")} />1. nTZS online</label>
+            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "balance"} onChange={() => setPaymentPath("balance")} />{lang === "sw" ? "2. Salio la Duka" : "2. Merchant Balance"}</label>
+            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="paymentPath" checked={paymentPath === "manual"} onChange={() => setPaymentPath("manual")} />{lang === "sw" ? "3. Lipa namba / Tuma pesa" : "3. Lipa number / Send money"}</label>
           </div>
         </fieldset>
 

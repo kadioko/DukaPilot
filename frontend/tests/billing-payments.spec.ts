@@ -15,6 +15,10 @@ test("billing offers AzamPesa, preserves failed reference and separates online p
     await route.fulfill({ json: data });
   });
   await page.goto("/billing");
+  await expect(page.locator('input[name="paymentPath"]').locator("..")).toHaveText([
+    "1. nTZS online", "2. Salio la Duka", "3. Lipa namba / Tuma pesa",
+  ]);
+  await expect(page.getByLabel("3. Lipa namba / Tuma pesa", { exact: true })).toBeChecked();
   await expect(page.getByText("AzamPesa Lipa Number", { exact: true })).toBeVisible();
   await expect(page.getByText("Selcom Lipa Number", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Nakili 293726045" })).toBeVisible();
@@ -24,7 +28,7 @@ test("billing offers AzamPesa, preserves failed reference and separates online p
   await expect(page.getByText("Seva ina tatizo la muda. Tafadhali jaribu tena baada ya muda mfupi.", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "test-results/billing-mobile.png", fullPage: true });
-  await page.getByLabel("2. nTZS online", { exact: true }).check();
+  await page.getByLabel("1. nTZS online", { exact: true }).check();
   await expect(page.getByText("Malipo ya nTZS hayapatikani", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Reference ya malipo", { exact: true })).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -53,7 +57,7 @@ test("online payment waits for server confirmation before refreshing subscriptio
     await route.fulfill({ json: data });
   });
   await page.goto("/billing");
-  await page.getByLabel("2. nTZS online", { exact: true }).check();
+  await page.getByLabel("1. nTZS online", { exact: true }).check();
   await page.getByLabel("Namba ya simu ya kulipia", { exact: true }).fill("0712345678");
   await expect(page.getByText("M-Pesa, Airtel Money, Mix by Yas", { exact: false })).toBeVisible();
   await expect(page.getByText("mpango uwashwe baada ya nTZS", { exact: false })).toBeVisible();
@@ -84,7 +88,7 @@ test("a payment in review uses the idempotent recovery route", async ({ page }) 
   });
 
   await page.goto("/billing");
-  await page.getByLabel("2. nTZS online", { exact: true }).check();
+  await page.getByLabel("1. nTZS online", { exact: true }).check();
   await expect(page.getByText("Malipo yanahitaji uhakiki", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Angalia malipo", exact: true }).click();
   await expect(page.getByText("Ombi limetumwa. Thibitisha kwenye simu", { exact: false })).toBeVisible();
@@ -115,7 +119,7 @@ test("merchant balance payment shows the remaining balance and activates exactly
   });
 
   await page.goto("/billing");
-  await page.getByLabel("3. Salio la Duka", { exact: true }).check();
+  await page.getByLabel("2. Salio la Duka", { exact: true }).check();
   await expect(page.getByText("TZS 20,000", { exact: true })).toBeVisible();
   await expect(page.getByText("TZS 5,000", { exact: true })).toBeVisible();
   await page.getByLabel(/Nathibitisha kukata TZS 15,000/).check();
@@ -139,7 +143,7 @@ test("merchant balance payment is disabled when the available balance is short",
   });
 
   await page.goto("/billing");
-  await page.getByLabel("3. Salio la Duka", { exact: true }).check();
+  await page.getByLabel("2. Salio la Duka", { exact: true }).check();
   await expect(page.getByText("Salio halitoshi. Ongeza TZS 13,500.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Lipa TZS 15,000 kutoka salio", exact: true })).toBeDisabled();
   await expect(page.getByRole("link", { name: "Ongeza salio", exact: true })).toHaveAttribute("href", "/wallet");
@@ -158,7 +162,7 @@ test("merchant balance subscription payment pauses when treasury settlement is n
   });
 
   await page.goto("/billing");
-  await page.getByLabel("3. Merchant Balance", { exact: true }).check();
+  await page.getByLabel("2. Merchant Balance", { exact: true }).check();
   await expect(page.getByText(/temporarily paused until treasury settlement is configured/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Pay TZS 15,000 from balance", exact: true })).toBeDisabled();
 });

@@ -438,6 +438,12 @@ export default function InventoryPage() {
   async function handleSave() {
     if (mutationInFlight.current) return;
     setError("");
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setError(createPendingUncertain.current
+        ? (lang === "sw" ? "Hakuna intaneti. Hatuwezi kuthibitisha uhifadhi uliopita bado; ungana na intaneti kisha ujaribu tena." : "You are offline. We cannot confirm the previous save yet; reconnect and try again.")
+        : (lang === "sw" ? "Hakuna intaneti. Bidhaa haijahifadhiwa; ungana na intaneti kisha ujaribu tena. Acha ukurasa huu wazi ili usipoteze maelezo." : "You are offline. The product was not saved; reconnect and try again. Keep this page open to retain the details."));
+      return;
+    }
     if (!form.name.trim() || (canViewFinancials && form.buyingPrice === "") || (!form.isInternalUse && form.sellingPrice === "")) {
       setError(t("inventory.fieldRequired", lang));
       return;

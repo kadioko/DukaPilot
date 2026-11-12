@@ -160,6 +160,10 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
     }
     const lostResponses = body.name === "Sukari White" ? 1 : body.name === "Maharage" ? 3 : 0;
     if (attempts <= lostResponses) {
+      if (body.name === "Sukari White") {
+        await route.fulfill({ status: 502, contentType: "text/plain", body: "ROUTER_EXTERNAL_TARGET_ERROR\n" });
+        return;
+      }
       if (body.name === "Maharage" && attempts === 1) {
         await route.fulfill({ status: 502, contentType: "text/plain", body: "An error occurred with this application. ROUTER_EXTERNAL_TARGET_ERROR\n" });
         return;
@@ -300,6 +304,12 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByLabel(/minimum stock|kiwango cha chini/i).fill("2");
   await page.getByLabel(/^supplier$|^msambazaji$/i).selectOption("sup-1");
   await page.getByLabel(/does not expire|haiishi muda/i).check();
+  await page.context().setOffline(true);
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText(/you are offline\. the product was not saved/i)).toBeVisible();
+  await expect(page.getByLabel(/product name|jina la bidhaa/i)).toBeEnabled();
+  expect(productCreateRequestKeys).toHaveLength(0);
+  await page.context().setOffline(false);
   await page.getByLabel(/^save$|^hifadhi$/i).click();
 
   await expect(page.getByText("Sukari White")).toBeVisible();
@@ -320,6 +330,11 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await expect(page.getByRole("heading", { name: /inventory/i })).toBeVisible();
   await expect(page.getByLabel(/product name|jina la bidhaa/i)).toHaveValue("Maharage");
   await expect(page.getByLabel(/product name|jina la bidhaa/i)).toBeDisabled();
+  await page.context().setOffline(true);
+  await page.getByLabel(/^save$|^hifadhi$/i).click();
+  await expect(page.getByText(/cannot confirm the previous save yet/i)).toBeVisible();
+  expect(productCreateRequestKeys).toHaveLength(4);
+  await page.context().setOffline(false);
   await page.getByLabel(/^save$|^hifadhi$/i).click();
   await expect(page.getByText(/couldn't confirm whether the product was saved/i)).toBeVisible();
   await page.getByLabel(/^save$|^hifadhi$/i).click();
