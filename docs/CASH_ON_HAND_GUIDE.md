@@ -1,9 +1,10 @@
 # Cash On Hand: Owner Guide
 
-**Availability:** Cash on Hand is owner-only and feature-gated. It may not yet
-appear in a business menu. Do not enable it for merchants until the migrations
-and release checks in [`CASH_ON_HAND_DESIGN.md`](CASH_ON_HAND_DESIGN.md) are
-complete.
+**Availability:** Cash on Hand is enabled for production businesses and is
+owner-only. Each owner must choose a tracking mode and make a fresh physical
+count before relying on a balance. Automatic cash events start only after an
+Automatic tracking period has been opened; earlier transactions are not replayed
+into that count.
 
 ## What It Tracks
 

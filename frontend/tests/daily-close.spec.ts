@@ -191,3 +191,52 @@ test("a transient Vercel external-target error is retried for a safe Daily Close
   await expect.poll(() => currentRequestTimes.some((time) => time - currentRequestTimes[0] >= 300)).toBe(true);
   expect(currentAttempts).toBeGreaterThanOrEqual(2);
 });
+
+test("owner records a bank transfer before counting the drawer in Daily Close", async ({ page }) => {
+  const summary = {
+    cashSales: 5000, debtCollections: 0, quotationCash: 0, cashRefunds: 0, cashRefundCount: 0,
+    cashRefundRecoveries: 0, cashRefundRecoveryCount: 0, cashExpenses: 0, inventoryCashOut: 0,
+    receiptPaymentCorrectionCashOut: 0, supplierCashOut: 0, supplierRefundsReceived: 0,
+    cookingCashOut: 0, farmCashOut: 0, saleCount: 1, debtPaymentCount: 0,
+    quotationPaymentCount: 0, expenseCount: 0, stockReceiptCount: 0,
+    receiptPaymentCorrectionCount: 0, supplierPaymentCount: 0, supplierRefundCount: 0,
+    cookingCostCount: 0, farmProductionCostCount: 0, expectedCash: 5000,
+  };
+  let closed = false;
+  let closeBody: Record<string, unknown> | null = null;
+  const session = () => ({
+    id: "transfer-shift", status: closed ? "CLOSED" : "OPEN", openingCash: 0,
+    expectedCash: closed ? 4000 : null, countedCash: closed ? 4000 : null,
+    variance: closed ? 0 : null, cashTransferredOut: closed ? 1000 : 0,
+    cashTransferDestination: closed ? "BANK" : null, openedByName: "Owner",
+    openedAt: "2026-11-14T06:00:00.000Z", closedAt: closed ? "2026-11-14T12:00:00.000Z" : null,
+    summary: { ...summary, expectedCash: closed ? 4000 : 5000, cashTransferredOut: closed ? 1000 : 0, cashTransferDestination: closed ? "BANK" : null },
+  });
+
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("auth/me")) return route.fulfill({ json: { user: { id: "owner-1", name: "Owner", role: "MERCHANT", language: "en", shop: { id: "shop-1", name: "Test Shop" }, features: { staff: true } } } });
+    if (url.includes("cash-sessions/transfer-shift/close") && route.request().method() === "POST") {
+      closeBody = route.request().postDataJSON();
+      closed = true;
+      return route.fulfill({ json: { session: session() } });
+    }
+    if (url.includes("cash-sessions/current")) return route.fulfill({ json: { session: closed ? null : session(), sessions: closed ? [] : [session()], canManageAllSessions: true, canOpenOwnSession: true } });
+    if (url.includes("cash-sessions/history")) return route.fulfill({ json: { sessions: closed ? [session()] : [], pagination: { page: 1, limit: 10, total: closed ? 1 : 0, totalPages: closed ? 1 : 0 } } });
+    if (url.includes("subscription/status")) return route.fulfill({ json: { plan: "PRO", status: "active", isActive: true, daysLeft: 30 } });
+    if (url.includes("notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.goto("/daily-close");
+  await expect(page.getByRole("heading", { name: "Your shift is in progress" })).toBeVisible();
+  await page.getByLabel("Cash removed from this drawer before counting (TZS)").fill("1000");
+  await page.getByLabel("Where did the cash go?").selectOption("BANK");
+  await page.getByLabel("Cash counted (TZS)").fill("4000");
+  await page.getByRole("button", { name: "Close day" }).click();
+
+  await expect(page.getByText("Day closed. Cash balances.")).toBeVisible();
+  expect(closeBody).toMatchObject({ countedCash: 4000, cashTransferredOut: 1000, cashTransferDestination: "BANK" });
+  await page.locator("details").filter({ hasText: /Cash moved before count/ }).locator("summary").click();
+  await expect(page.getByText(/Cash moved before count/).first()).toBeVisible();
+});

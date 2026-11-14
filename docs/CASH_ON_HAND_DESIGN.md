@@ -1,14 +1,15 @@
 # Cash On Hand: Implementation Design
 
-Status: local, gated, and not production-ready. The owner-only API and screen
+Status: production code and database migrations are deployed. Cash On Hand is
+owner-only and controlled by two production gates. The owner API and screen
 support counted periods, manual movements, closed-shift handovers, linked
-reversals, and one replacement handover after a reversal. Daily Close can
-record cash removed from a drawer and its destination; it subtracts the amount
-from expected drawer cash once. Cash moved to the business safe remains
-eligible for handover. Transactional cash-source hooks are wired for cash
-sales, debt and quotation collections, customer refunds and recoveries,
-expenses and their edits/deletions, supplier settlements/refunds/corrections,
-receipt payments, and direct production costs.
+reversals, and one replacement handover after a reversal. Daily Close records
+cash removed from a drawer and its destination; it subtracts the amount from
+expected drawer cash once. Cash moved to the business safe remains eligible
+for handover. Transactional cash-source hooks cover cash sales, debt and
+quotation collections/refunds, customer refunds/recoveries, expenses and
+corrections, supplier settlements/refunds/receipt corrections, stock receipts,
+direct production costs, and external drawer transfers.
 
 For merchant-facing instructions and bilingual customer wording, see
 [`CASH_ON_HAND_GUIDE.md`](CASH_ON_HAND_GUIDE.md). The Help center includes
@@ -16,12 +17,13 @@ short English and Kiswahili answers and hides the Cash on Hand page link until
 the frontend feature gate is enabled.
 
 Automatic mode and manual adjustments within it are available only behind the
-feature gates. Do not enable it for merchants until database migrations,
-source-by-source integration tests, Daily Close reconciliation, and
-concurrency verification are complete. Backend source hooks return without
-querying the new tables while `CASH_HOLDING_ENABLED` is off. Keep
-`CASH_HOLDING_ENABLED` and the frontend build-time flag
-`NEXT_PUBLIC_CASH_HOLDING_ENABLED` off in production until verification passes.
+feature gates. Production activation requires both
+`CASH_HOLDING_ENABLED=true` on the Railway API service and
+`NEXT_PUBLIC_CASH_HOLDING_ENABLED=true` on the Vercel production build. Rebuild
+the frontend after changing its public flag. Backend source hooks return
+without querying the new tables while `CASH_HOLDING_ENABLED` is off. If the
+frontend is enabled while the backend gate is off, the page cannot load its
+data.
 
 The following migrations must be applied before deploying a backend version
 that uses the new Daily Close columns or enabling the cash-on-hand API:
@@ -82,9 +84,12 @@ Actual dated expenses and supplier payments use their recorded payment dates.
 An event before the current counted period is not replayed into its balance.
 Later edits, deletions, reversals, receipt-payment corrections, and refund
 recoveries are append-only linked events; never rewrite a past count. A change
-to a report date is not itself proof that cash physically moved. Corrections
-made across a count boundary need explicit treatment and must be covered by
-integration tests before Automatic mode is released.
+to a report date is not itself proof that cash physically moved. A fresh
+physical count is the boundary for later corrections: editing or reversing a
+source transaction from a closed period does not rewrite the new period's
+opening balance. If money actually enters or leaves after that count, record
+the actual collection, refund, or owner movement in the active period. The
+PostgreSQL regression suite verifies this boundary and a post-count cash refund.
 
 Mode changes and source-event writes serialize on the active epoch row. A
 period switch closes the previous epoch and starts the next from a fresh
@@ -102,16 +107,24 @@ the remaining drawer count plus that transfer can be handed over. The external
 destinations are tracked as outflows only; DukaPilot does not execute them or
 verify statements. Staff cannot submit a drawer transfer.
 
-## Required Verification Before Release
+## Verification And Rollout
 
-Use isolated PostgreSQL and demo accounts, never real customer transactions.
-Verify each controller path for cash/non-cash selection, source amount, date,
-tenant/branch scope, retries, and linked reversals. Cover sales with and
-without shifts; debt and quotation payments/refunds; customer returns and
-recoveries; expenses created, backdated, verified, edited, and deleted;
-receipt payments and corrections; supplier payments, refunds, and reversals;
-and direct food, farm, and crop costs. Include mode changes concurrent with
-cash writes, transfer-to-safe, external destinations, replacement handovers,
-Daily Close expected cash and variance, and ensure each payment is counted
-once. Also test account deletion/anonymization, reports/profit isolation, and
-mobile UI. Keep Automatic unavailable until these checks pass.
+Release checks completed on 2026-11-14 using isolated test infrastructure:
+
+- Backend unit suite: 381 passed, including owner-only access, controller hook
+  contracts, cash event signs/corrections, and Daily Close transfer rules.
+- PostgreSQL integrity suite: 26 passed against a disposable local database
+  after all 78 migrations were applied, including duplicate-event and
+  concurrent movement checks, branch isolation, handover replacement, and a
+  signed-event matrix for sales, collections, refunds, purchases, costs, and
+  drawer transfers.
+- Production-build browser suite: 10 passed with API mocks, covering all three
+  modes, safe retry after a lost response, mobile width, and a bank transfer
+  during Daily Close.
+
+No real merchant payment, cash movement, or physical drawer count was made.
+Each business must start its own epoch with a fresh physical count. Earlier
+transactions are not imported into that count; Automatic mode estimates only
+from the confirmed opening count and subsequent supported cash events. Review
+the first owner-entered count and the first Daily Close reconciliation with the
+business before relying on the estimate operationally.

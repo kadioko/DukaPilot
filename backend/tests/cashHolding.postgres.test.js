@@ -58,6 +58,96 @@ test("simultaneous cash movements serialize and keyed retries do not duplicate",
   await assert.rejects(() => recordMovement(prisma, { ...identity, requestKey: randomUUID(), kind: "OTHER_IN", amount: 1 }), { status: 409 });
 });
 
+test("automatic ledger records sales, collections, refunds, costs, supplier cash, and drawer transfers with correct signs", { timeout: 20000 }, async (t) => {
+  const id = randomUUID();
+  const user = await prisma.user.create({ data: { phone: `cash-source-${id}`, pin: "test-only", name: "Test owner" } });
+  const shop = await prisma.shop.create({ data: { userId: user.id, name: "Cash source shop", location: "Test", referralCode: id } });
+  t.after(async () => {
+    await prisma.cashHoldingMovement.deleteMany({ where: { shopId: shop.id } });
+    await prisma.cashHoldingEpoch.deleteMany({ where: { shopId: shop.id } });
+    await prisma.shop.deleteMany({ where: { id: shop.id } });
+    await prisma.user.deleteMany({ where: { id: user.id } });
+  });
+  const epoch = (await startEpoch(prisma, { shopId: shop.id, actorId: user.id, requestKey: randomUUID(), mode: "AUTO", countedCash: 5000 })).epoch;
+  const sources = [
+    ["SALE", "sale", 20000],
+    ["DEBT_PAYMENT", "debt-payment", 1500],
+    ["QUOTATION_PAYMENT", "quotation-payment", 500],
+    ["QUOTATION_REFUND", "quotation-refund", -500],
+    ["SALE_RETURN", "sale-return", -2000],
+    ["SALE_RETURN_REVERSAL", "sale-return-reversal", 500],
+    ["STOCK_RECEIPT", "stock-receipt", -3000],
+    ["STOCK_RECEIPT_PAYMENT_CORRECTION", "receipt-correction", 1000],
+    ["SUPPLIER_PAYMENT", "supplier-payment", -2500],
+    ["SUPPLIER_PAYMENT", "supplier-refund", 700],
+    ["SUPPLIER_PAYMENT", "supplier-payment-reversal", 2500],
+    ["SUPPLIER_PAYMENT", "supplier-refund-reversal", -700],
+    ["EXPENSE", "expense", -1200],
+    ["FARM_PRODUCTION_COST", "farm-cost", -400],
+    ["FOOD_PREPARATION_COST", "food-cost", -600],
+    ["CROP_DIRECT_COST", "crop-cost", -300],
+    ["SHIFT_CASH_TRANSFER", "drawer-transfer", -1000],
+  ];
+  await prisma.$transaction(async (tx) => {
+    for (const [sourceType, sourceId, amount] of sources) {
+      const result = await recordAutomaticCashEvent(tx, { shopId: shop.id, sourceType, sourceId: `${sourceId}-${id}`, amount });
+      assert.equal(result.replayed, false);
+      assert.equal(result.movement.amount, amount);
+    }
+  });
+
+  const rows = await prisma.cashHoldingMovement.findMany({ where: { shopId: shop.id, epochId: epoch.id } });
+  assert.equal(rows.length, sources.length);
+  assert.equal(await getBalance(prisma, epoch), 19500);
+  for (const [sourceType, sourceId, amount] of sources) {
+    assert.ok(rows.some((row) => row.sourceType === sourceType && row.sourceId === `${sourceId}-${id}` && row.amount === amount));
+  }
+
+  const saleCorrection = await prisma.$transaction((tx) => adjustAutomaticCashSource(tx, {
+    shopId: shop.id,
+    sourceType: "SALE",
+    sourceId: `sale-${id}`,
+    correctionId: `void-sale-${id}`,
+    newAmount: 0,
+  }));
+  assert.equal(saleCorrection.movement.amount, -20000);
+  assert.equal(saleCorrection.movement.relatedSourceType, "SALE");
+  assert.equal(saleCorrection.movement.relatedSourceId, `sale-${id}`);
+  assert.equal(await getBalance(prisma, epoch), -500);
+});
+
+test("a fresh physical count isolates later corrections from prior periods", { timeout: 20000 }, async (t) => {
+  const id = randomUUID();
+  const user = await prisma.user.create({ data: { phone: `cash-boundary-${id}`, pin: "test-only", name: "Test owner" } });
+  const shop = await prisma.shop.create({ data: { userId: user.id, name: "Cash boundary shop", location: "Test", referralCode: id } });
+  t.after(async () => {
+    await prisma.cashHoldingMovement.deleteMany({ where: { shopId: shop.id } });
+    await prisma.cashHoldingEpoch.deleteMany({ where: { shopId: shop.id } });
+    await prisma.shop.deleteMany({ where: { id: shop.id } });
+    await prisma.user.deleteMany({ where: { id: user.id } });
+  });
+
+  const first = (await startEpoch(prisma, { shopId: shop.id, actorId: user.id, requestKey: randomUUID(), mode: "AUTO", countedCash: 5000 })).epoch;
+  await prisma.$transaction((tx) => recordAutomaticCashEvent(tx, {
+    shopId: shop.id, sourceType: "SALE", sourceId: `prior-sale-${id}`, amount: 2000,
+  }));
+  assert.equal(await getBalance(prisma, first), 7000);
+
+  const next = (await startEpoch(prisma, {
+    shopId: shop.id, actorId: user.id, requestKey: randomUUID(), expectedEpochId: first.id, mode: "AUTO", countedCash: 7000,
+  })).epoch;
+  const historicalEdit = await prisma.$transaction((tx) => adjustAutomaticCashSource(tx, {
+    shopId: shop.id, sourceType: "SALE", sourceId: `prior-sale-${id}`, correctionId: `prior-sale-edit-${id}`, newAmount: 0,
+  }));
+  assert.deepEqual(historicalEdit, { movement: null, replayed: false });
+  assert.equal(await getBalance(prisma, next), 7000);
+
+  await prisma.$transaction((tx) => recordAutomaticCashEvent(tx, {
+    shopId: shop.id, sourceType: "SALE_RETURN", sourceId: `post-count-refund-${id}`, amount: -1000,
+  }));
+  assert.equal(await getBalance(prisma, next), 6000);
+});
+
 test("handover and owner reads remain scoped to the active branch", { timeout: 20000 }, async (t) => {
   const id = randomUUID();
   const user = await prisma.user.create({ data: { phone: `cash-branch-${id}`, pin: "test-only", name: "Test owner" } });

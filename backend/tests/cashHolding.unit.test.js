@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 process.env.CASH_HOLDING_ENABLED = "true";
 const { startEpoch, recordMovement, getBalance } = require("../src/services/cashHolding.service");
 
@@ -176,5 +178,33 @@ test("cash transaction hooks do not query the new tables while the feature is di
   } finally {
     if (previous === undefined) delete process.env.CASH_HOLDING_ENABLED;
     else process.env.CASH_HOLDING_ENABLED = previous;
+  }
+});
+
+test("cash event sources remain connected to their transactional controller paths", () => {
+  const hooks = [
+    ["sale.controller.js", 'recordAutomaticCashEvent(tx, { shopId, sourceType: "SALE", sourceId: newSale.id, amount: newSale.totalAmount, occurredAt: newSale.createdAt })'],
+    ["sale.controller.js", 'adjustAutomaticCashSource(tx, { shopId, sourceType: "SALE", sourceId: existing.id'],
+    ["customerOrder.controller.js", 'recordAutomaticCashEvent(tx, { shopId: shop.id, sourceType: "SALE", sourceId: sale.id'],
+    ["debt.controller.js", 'recordAutomaticCashEvent(tx, { shopId, sourceType: "DEBT_PAYMENT", sourceId: payment.id'],
+    ["quotation.controller.js", 'sourceType: "QUOTATION_PAYMENT"'],
+    ["quotation.controller.js", 'sourceType: "QUOTATION_REFUND"'],
+    ["saleReturn.controller.js", 'sourceType: "SALE_RETURN"'],
+    ["saleReturn.controller.js", 'sourceType: "SALE_RETURN_REVERSAL"'],
+    ["stockReceipt.controller.js", 'sourceType: "STOCK_RECEIPT"'],
+    ["supplierPayable.controller.js", 'sourceType: "STOCK_RECEIPT_PAYMENT_CORRECTION"'],
+    ["supplierPayable.controller.js", 'sourceType: "SUPPLIER_PAYMENT", sourceId: created.id, amount: -created.amount'],
+    ["supplierPayable.controller.js", 'sourceType: "SUPPLIER_PAYMENT", sourceId: saved.id, amount: -saved.amount'],
+    ["expense.controller.js", 'sourceType: "EXPENSE", sourceId: expense.id, amount: -expense.amount'],
+    ["expense.controller.js", 'adjustAutomaticCashSource(tx, { shopId, sourceType: "EXPENSE", sourceId: current.id'],
+    ["farm.controller.js", 'sourceType: "FARM_PRODUCTION_COST"'],
+    ["crop.controller.js", 'sourceType: "CROP_DIRECT_COST"'],
+    ["foodPreparation.controller.js", 'sourceType: "FOOD_PREPARATION_COST"'],
+    ["cashSession.controller.js", 'sourceType: "SHIFT_CASH_TRANSFER"'],
+  ];
+
+  for (const [file, source] of hooks) {
+    const controller = fs.readFileSync(path.resolve(__dirname, "../src/controllers", file), "utf8");
+    assert.ok(controller.includes(source), `${file} is missing its cash event hook: ${source}`);
   }
 });
