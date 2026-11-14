@@ -4,6 +4,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { findVisibleSupplier } = require("../lib/supplierAccess");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -261,6 +262,7 @@ const receive = asyncHandler(async (req, res) => {
         cashSessionId: cashSession?.id || null,
       },
     });
+    if (created.paymentMethod === "CASH" && created.paidAtReceipt > 0) await recordAutomaticCashEvent(tx, { shopId, sourceType: "STOCK_RECEIPT", sourceId: created.id, amount: -created.paidAtReceipt, occurredAt: created.createdAt });
 
     for (const item of allocatedItems) {
       await tx.stockReceiptItem.create({

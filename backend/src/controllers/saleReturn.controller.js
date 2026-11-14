@@ -4,6 +4,7 @@ const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 const { applyCropHarvestReturn, reverseCropHarvestReturn } = require("../lib/cropHarvestSales");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 const REFUND_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
 
@@ -162,6 +163,7 @@ const create = asyncHandler(async (req, res) => {
       },
       include: { items: true },
     });
+    if (saleReturn.refundMethod === "CASH" && saleReturn.refundAmount > 0) await recordAutomaticCashEvent(tx, { shopId, sourceType: "SALE_RETURN", sourceId: saleReturn.id, amount: -saleReturn.refundAmount, occurredAt: saleReturn.createdAt });
     const returnItemBySaleItem = new Map(saleReturn.items.map((item) => [item.saleItemId, item]));
 
     for (const line of returnLines) {
@@ -308,6 +310,7 @@ const reverse = asyncHandler(async (req, res) => {
         },
         include: { items: true },
       });
+      if (reversal.recoveryMethod === "CASH" && reversal.refundRecoveredAmount > 0) await recordAutomaticCashEvent(tx, { shopId, sourceType: "SALE_RETURN_REVERSAL", sourceId: reversal.id, amount: reversal.refundRecoveredAmount, occurredAt: reversal.createdAt });
       const reversalItemByReturnItem = new Map(reversal.items.map((item) => [item.saleReturnItemId, item]));
 
       for (const item of original.items) {

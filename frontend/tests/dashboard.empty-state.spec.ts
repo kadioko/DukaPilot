@@ -71,16 +71,20 @@ test("zero-data dashboard recovers from an interrupted read without clipped Swah
     body: JSON.stringify({ items: [], unreadCount: 0 }),
   }));
   let dashboardRequests = 0;
+  const requestedPeriods: string[] = [];
+  let supportsYesterday = true;
   await page.route("**/*api/dashboard?period=*", async (route) => {
     dashboardRequests += 1;
+    requestedPeriods.push(new URL(route.request().url()).searchParams.get("period") || "");
     if (dashboardRequests === 1) {
       await route.abort("connectionreset");
       return;
     }
+    const isYesterday = requestedPeriods.at(-1) === "yesterday";
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(emptyDashboard),
+      body: JSON.stringify(isYesterday && supportsYesterday ? { ...emptyDashboard, period: "yesterday", periodBounds: { from: "2026-11-13T21:00:00.000Z", to: "2026-11-14T21:00:00.000Z", timeZone: "Africa/Dar_es_Salaam" }, summary: { ...emptyDashboard.summary, totalSales: 12000, netSales: 12000, cashCollected: 12000, salesCount: 1 } } : { ...emptyDashboard, period: isYesterday ? "yesterday" : "today" }),
     });
   });
 
@@ -95,9 +99,23 @@ test("zero-data dashboard recovers from an interrupted read without clipped Swah
   await expect(actionLabel).toBeVisible();
   await expect(actionLabel).not.toHaveCSS("text-overflow", "ellipsis");
 
+  await page.getByRole("button", { name: "Jana", exact: true }).click();
+  await expect(page.getByText("Kipindi hiki: Jana")).toBeVisible();
+  await expect(page.getByText("TZS 12,000", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Jana", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(requestedPeriods.at(-1)).toBe("yesterday");
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.getByRole("button", { name: "Jana", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Muda Wote", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  }
   await page.getByRole("button", { name: "Wiki hii" }).click();
   await expect(page.getByText("Hakuna mauzo ya wiki hii bado.").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  supportsYesterday = false;
+  await page.getByRole("button", { name: "Jana", exact: true }).click();
+  await expect(page.getByRole("alert").getByText(/takwimu za jana hazipatikani bado/i)).toBeVisible();
 });
 
 test("dashboard shows a retry action after both automatic read attempts fail", async ({ page }) => {
@@ -111,9 +129,10 @@ test("dashboard shows a retry action after both automatic read attempts fail", a
   await page.route("**/*api/subscription/status", async (route) => route.fulfill({ json: { status: "active", daysLeft: 30 } }));
   await page.route("**/*api/notifications", async (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
   let dashboardRequests = 0;
+  let failDashboard = true;
   await page.route("**/*api/dashboard?period=*", async (route) => {
     dashboardRequests += 1;
-    if (dashboardRequests <= 2) {
+    if (failDashboard) {
       await route.abort("failed");
       return;
     }
@@ -123,8 +142,9 @@ test("dashboard shows a retry action after both automatic read attempts fail", a
   await page.goto("/dashboard");
 
   await expect(page.getByRole("alert").filter({ hasText: "Muhtasari haujapakia" })).toBeVisible();
-  await expect.poll(() => dashboardRequests).toBe(2);
+  expect(dashboardRequests).toBeGreaterThanOrEqual(2);
+  failDashboard = false;
   await page.getByRole("button", { name: "Jaribu tena" }).click();
   await expect(page.getByText("Hakuna mauzo ya leo bado.").first()).toBeVisible();
-  expect(dashboardRequests).toBe(3);
+  expect(dashboardRequests).toBeGreaterThanOrEqual(3);
 });

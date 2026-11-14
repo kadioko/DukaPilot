@@ -7,6 +7,7 @@ const { startOfTanzaniaDay, endOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzan
 const { occurredExpenseDateSql, needsExpenseDateReviewSql } = require("../lib/expenseReporting");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
+const { recordAutomaticCashEvent, adjustAutomaticCashSource } = require("../services/cashHolding.service");
 const { recordRequestPhase } = require("../middleware/requestDiagnostics");
 
 function asyncHandler(fn) {
@@ -174,6 +175,13 @@ function capOccurredRange(range, now = new Date()) {
 
 function needsOwnerDateReview(expense) {
   return !expense.dateReviewedAt && (expense.requiresDateReview || tanzaniaDateKey(expense.spentAt) > tanzaniaDateKey(expense.createdAt));
+}
+
+function cashEventDate(expense, now = new Date()) {
+  // Date-only expense inputs are normalized to midday UTC; when that synthetic
+  // timestamp is later today, use the actual save time for physical cash flow.
+  if (expense.spentAt > now && tanzaniaDateKey(expense.spentAt) === tanzaniaDateKey(now)) return now;
+  return expense.spentAt;
 }
 
 function canViewFinancialInsights(user) {
@@ -361,6 +369,7 @@ const create = asyncHandler(async (req, res) => {
       const expense = await tx.expense.create({
         data: { ...data, shopId, requestKey, requestHash, cashSessionId: cashSession?.id || null },
       });
+      if (expense.paymentMethod === "CASH" && !expense.requiresDateReview) await recordAutomaticCashEvent(tx, { shopId, sourceType: "EXPENSE", sourceId: expense.id, amount: -expense.amount, occurredAt: cashEventDate(expense) });
       return { expense, recurringExpense: null, reused: false };
     });
   } catch (error) {
@@ -405,6 +414,7 @@ const update = asyncHandler(async (req, res) => {
   if (!validateExpenseData(req, res, data)) return;
 
   const expense = await prisma.$transaction(async (tx) => {
+    if (typeof tx.$queryRawUnsafe === "function") await tx.$queryRawUnsafe('SELECT "id" FROM "expenses" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', existing.id, shopId);
     const current = await tx.expense.findFirst({ where: { id: existing.id, shopId } });
     if (!current) throw Object.assign(new Error("Expense not found"), { status: 404 });
     if (current.cashSessionId) {
@@ -427,7 +437,9 @@ const update = asyncHandler(async (req, res) => {
       const cashSession = await findOpenCashSession(tx, shopId, req.user);
       updateData.cashSessionId = cashSession?.id || null;
     }
-    return tx.expense.update({ where: { id: current.id }, data: updateData });
+    const saved = await tx.expense.update({ where: { id: current.id }, data: updateData });
+    await adjustAutomaticCashSource(tx, { shopId, sourceType: "EXPENSE", sourceId: current.id, correctionId: crypto.randomUUID(), newAmount: saved.paymentMethod === "CASH" && !saved.requiresDateReview ? -saved.amount : 0, occurredAt: cashEventDate(saved) });
+    return saved;
   });
 
   await invalidateDashboardHistory(shopId);
@@ -502,6 +514,7 @@ const recordRecurring = asyncHandler(async (req, res) => {
           cashSessionId: cashSession?.id || null,
         },
       });
+      if (expense.paymentMethod === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "EXPENSE", sourceId: expense.id, amount: -expense.amount, occurredAt: cashEventDate(expense) });
       await tx.recurringExpense.update({ where: { id: recurringExpense.id }, data: { nextDueAt, dayOfMonth: anchorDay } });
       return { expense, nextDueAt, reused: false };
     });
@@ -567,6 +580,7 @@ const remove = asyncHandler(async (req, res) => {
     return res.status(403).json({ error: "An owner or platform administrator must verify and remove this future-dated expense." });
   }
   await prisma.$transaction(async (tx) => {
+    if (typeof tx.$queryRawUnsafe === "function") await tx.$queryRawUnsafe('SELECT "id" FROM "expenses" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', existing.id, shopId);
     const current = await tx.expense.findFirst({ where: { id: existing.id, shopId } });
     if (!current) throw Object.assign(new Error("Expense not found"), { status: 404 });
     if (current.cashSessionId) {
@@ -576,6 +590,7 @@ const remove = asyncHandler(async (req, res) => {
       const session = await tx.cashSession.findFirst({ where: { id: current.cashSessionId, shopId }, select: { status: true } });
       if (session?.status === "CLOSED") throw Object.assign(new Error("This cash expense belongs to a closed shift and cannot be deleted. Keep the closed Z-report unchanged and record a separate correction with the owner."), { status: 409 });
     }
+    await adjustAutomaticCashSource(tx, { shopId, sourceType: "EXPENSE", sourceId: current.id, correctionId: crypto.randomUUID(), newAmount: 0 });
     await tx.expense.delete({ where: { id: current.id } });
   });
   await invalidateDashboardHistory(shopId);
@@ -588,4 +603,4 @@ const remove = asyncHandler(async (req, res) => {
   res.json({ message: "Expense deleted" });
 });
 
-module.exports = { list, create, update, remove, recordRecurring, updateRecurring, removeRecurring, advanceOneMonth, periodWindow, capOccurredRange };
+module.exports = { list, create, update, remove, recordRecurring, updateRecurring, removeRecurring, advanceOneMonth, periodWindow, capOccurredRange, cashEventDate };

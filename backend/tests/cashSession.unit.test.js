@@ -56,7 +56,7 @@ test("daily-close history is paginated, filters closed sessions, and decorates o
     cashSession: {
       findMany: async (args) => {
         findManyArgs = args;
-        return [{ id: "session-11", shopId: "shop-1", status: "CLOSED", openingCash: 10000, openedByName: "Asha", openedAt: new Date("2026-08-11T06:00:00Z"), closedAt: new Date("2026-08-11T15:00:00Z"), countedCash: 60000, variance: 0 }];
+        return [{ id: "session-11", shopId: "shop-1", status: "CLOSED", openingCash: 10000, openedByName: "Asha", openedAt: new Date("2026-08-11T06:00:00Z"), closedAt: new Date("2026-08-11T15:00:00Z"), countedCash: 60000, variance: 0, cashTransferredOut: 500, cashTransferDestination: "SAFE" }];
       },
       count: async (args) => { countArgs = args; return 23; },
     },
@@ -80,9 +80,74 @@ test("daily-close history is paginated, filters closed sessions, and decorates o
   assert.equal(findManyArgs.where.closedAt.lt.toISOString(), "2026-09-01T00:00:00.000Z");
   assert.deepEqual(countArgs.where, findManyArgs.where);
   assert.equal(res.payload.pagination.totalPages, 3);
-  assert.equal(res.payload.sessions[0].summary.expectedCash, 59500);
+  assert.equal(res.payload.sessions[0].summary.expectedCash, 59000);
+  assert.equal(res.payload.sessions[0].summary.cashTransferredOut, 500);
   assert.equal(res.payload.sessions[0].summary.supplierCashOut, 1000);
   assert.equal(res.payload.sessions[0].summary.supplierRefundsReceived, 500);
+});
+
+test("owner drawer transfer is removed before Daily Close variance and staff cannot enter it", async () => {
+  let updatedData;
+  let transactionCount = 0;
+  const session = { id: "session-transfer", shopId: "shop-1", status: "OPEN", openingCash: 5000, openedById: "user:owner-1", openedByName: "Owner", openedAt: new Date(), cashTransferredOut: 0 };
+  const tx = {
+    $queryRawUnsafe: async (query) => query.includes("cash_sessions") ? [] : [{ amount: 0, count: 0 }],
+    cashSession: {
+      findFirst: async () => session,
+      update: async ({ data }) => { updatedData = data; return { ...session, ...data }; },
+    },
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+    quotationPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+  };
+  const prismaMock = { $transaction: async (fn) => { transactionCount += 1; return fn(tx); } };
+  const controller = loadController(prismaMock);
+  const denied = response();
+  await controller.close({ user: { userId: "staff-1", staffId: "staff-1", role: "MERCHANT" }, params: { id: session.id }, body: { countedCash: 2800, cashTransferredOut: 2000, cashTransferDestination: "SAFE" } }, denied);
+  assert.equal(denied.statusCode, 403);
+  assert.equal(transactionCount, 0);
+
+  const allowed = response();
+  await controller.close({ user: { userId: "owner-1", role: "MERCHANT" }, params: { id: session.id }, body: { countedCash: 2800, cashTransferredOut: 2000, cashTransferDestination: "SAFE" } }, allowed);
+  assert.equal(updatedData.expectedCash, 3000);
+  assert.equal(updatedData.variance, -200);
+  assert.equal(updatedData.cashTransferredOut, 2000);
+  assert.equal(updatedData.cashTransferDestination, "SAFE");
+});
+
+test("Daily Close records an external drawer transfer in automatic cash mode in the same transaction", async () => {
+  const previousFlag = process.env.CASH_HOLDING_ENABLED;
+  process.env.CASH_HOLDING_ENABLED = "true";
+  const epoch = { id: "epoch-auto", shopId: "shop-1", mode: "AUTO", openedAt: new Date(Date.now() - 60_000), closedAt: null };
+  const movements = [];
+  const session = { id: "session-auto-transfer", shopId: "shop-1", status: "OPEN", openingCash: 5000, openedById: "user:owner-1", openedByName: "Owner", openedAt: new Date(Date.now() - 30_000), cashTransferredOut: 0 };
+  const tx = {
+    $queryRawUnsafe: async (query) => query.includes("cash_holding_epochs") ? [epoch] : query.includes("SELECT COALESCE(SUM(e.amount)") ? [{ amount: 0, count: 0 }] : [],
+    cashSession: { findFirst: async () => session, update: async ({ data }) => Object.assign(session, data) },
+    cashHoldingEpoch: {},
+    cashHoldingMovement: {
+      findFirst: async ({ where }) => movements.find((movement) => Object.entries(where).every(([key, value]) => movement[key] === value)) || null,
+      create: async ({ data }) => { const movement = { id: `movement-${movements.length + 1}`, ...data }; movements.push(movement); return movement; },
+    },
+    sale: { aggregate: async () => ({ _sum: { totalAmount: 0 }, _count: { id: 0 } }) },
+    debtPayment: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
+  };
+  const prismaMock = { $transaction: async (work) => work(tx) };
+  const controller = loadController(prismaMock);
+  try {
+    const res = response();
+    await controller.close({ user: { userId: "owner-1", role: "MERCHANT" }, params: { id: session.id }, body: { countedCash: 2800, cashTransferredOut: 2000, cashTransferDestination: "BANK" } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(session.expectedCash, 3000);
+    assert.equal(movements.length, 1);
+    assert.equal(movements[0].kind, "SOURCE_EVENT");
+    assert.equal(movements[0].sourceType, "SHIFT_CASH_TRANSFER");
+    assert.equal(movements[0].sourceId, session.id);
+    assert.equal(movements[0].amount, -2000);
+  } finally {
+    if (previousFlag === undefined) delete process.env.CASH_HOLDING_ENABLED;
+    else process.env.CASH_HOLDING_ENABLED = previousFlag;
+  }
 });
 
 test("Daily Close excludes legacy future-dated expense rows even if their due date has arrived", async () => {

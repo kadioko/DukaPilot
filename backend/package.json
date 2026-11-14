@@ -5,7 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "postinstall": "prisma generate",
-    "pretest": "npm run test:supplier-payables && npm run test:stock-receipt && npm run test:assistant",
+    "pretest": "npm run test:supplier-payables && npm run test:stock-receipt && npm run test:assistant && node --test tests/supplierOrdering.unit.test.js tests/cashHolding.unit.test.js tests/cashHoldingAccess.unit.test.js",
     "start": "node src/app.js",
     "start:prod": "npx prisma migrate deploy && node src/app.js",
     "dev": "node --watch src/app.js",
@@ -26,7 +26,7 @@
     "assistant:prune-history": "node scripts/prune-assistant-history.js",
     "test:supplier-payables": "node --test tests/supplierPayable.unit.test.js tests/cashSession.unit.test.js tests/order.unit.test.js",
     "test:stock-receipt": "node --test tests/stockReceipt.unit.test.js tests/stockCorrection.unit.test.js",
-    "test:postgres-integrity": "node --test tests/postgresIntegrity.test.js tests/debtCustomer.postgres.test.js tests/supplierPayables.postgres.test.js tests/salesIntegrity.postgres.test.js tests/expenseTimezone.postgres.test.js tests/productCreation.postgres.test.js tests/cashSessionOpen.postgres.test.js",
+    "test:postgres-integrity": "node --test tests/postgresIntegrity.test.js tests/debtCustomer.postgres.test.js tests/supplierPayables.postgres.test.js tests/salesIntegrity.postgres.test.js tests/expenseTimezone.postgres.test.js tests/productCreation.postgres.test.js tests/cashSessionOpen.postgres.test.js tests/cashHolding.postgres.test.js",
     "test:prod-api": "node --test tests/api.test.js",
     "db:backup": "node scripts/backup.js",
     "db:backup:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-local-backup.ps1",

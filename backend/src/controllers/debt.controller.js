@@ -3,6 +3,7 @@ const { Prisma } = require("@prisma/client");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { normalizePhone, isValidPhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -279,9 +280,10 @@ const recordPayment = asyncHandler(async (req, res) => {
     }
 
     const cashSession = paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
-    await tx.debtPayment.create({
+    const payment = await tx.debtPayment.create({
       data: { debtId: debt.id, amount, paymentMethod, paymentRef, note, requestKey, recordedBy: req.user.staffId || req.user.userId, cashSessionId: cashSession?.id || null },
     });
+    if (paymentMethod === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "DEBT_PAYMENT", sourceId: payment.id, amount: payment.amount, occurredAt: payment.createdAt });
     const current = await tx.debt.findUnique({
       where: { id: debt.id },
       include: { payments: { orderBy: { createdAt: "desc" }, take: 10 } },

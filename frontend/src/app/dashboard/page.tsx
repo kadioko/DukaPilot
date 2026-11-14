@@ -26,6 +26,7 @@ import {
 
 interface DashboardData {
   period: string;
+  periodBounds?: { from: string; to: string; timeZone: string } | null;
   features?: { staff: boolean; assistant: boolean; exports: boolean };
   summary: {
     totalSales: number;
@@ -68,6 +69,7 @@ interface DashboardData {
 
 const PERIODS = [
   { key: "today", labelKey: "common.today" },
+  { key: "yesterday", labelKey: "common.yesterday" },
   { key: "week", labelKey: "common.week" },
   { key: "month", labelKey: "common.month" },
   { key: "all", labelKey: "common.all" },
@@ -86,7 +88,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 export default function DashboardPage() {
   const lang = useLang();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [period, setPeriod] = useState<"today" | "week" | "month" | "all">("today");
+  const [period, setPeriod] = useState<"today" | "yesterday" | "week" | "month" | "all">("today");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryAttempt, setRetryAttempt] = useState(0);
@@ -97,7 +99,14 @@ export default function DashboardPage() {
     setData(null);
     setLoadError(null);
     api.get<DashboardData>(`/dashboard?period=${period}`, lang)
-      .then((result) => { if (active) setData(result); })
+      .then((result) => {
+        if (!active) return;
+        if (period === "yesterday" && (result.period !== "yesterday" || !result.periodBounds || result.periodBounds.timeZone !== "Africa/Dar_es_Salaam")) {
+          setLoadError(lang === "sw" ? "Takwimu za jana hazipatikani bado. Tafadhali jaribu tena baadaye." : "Yesterday's figures are not available yet. Please try again later.");
+          return;
+        }
+        setData(result);
+      })
       .catch((error: unknown) => {
         if (!active) return;
         setLoadError(error instanceof ApiError ? error.message : t("api.error.unavailable", lang));
@@ -163,7 +172,7 @@ export default function DashboardPage() {
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
                     {lang === "sw"
                       ? `Muhtasari wa ${currentPeriodLabel.toLowerCase()} na hatua muhimu za duka lako.`
-                      : `${period === "today" ? "Today's" : currentPeriodLabel} performance and the next actions your shop needs.`}
+                      : `${period === "today" ? "Today's" : period === "yesterday" ? "Yesterday's" : currentPeriodLabel} performance and the next actions your shop needs.`}
                   </p>
                 </div>
                 <Link
@@ -182,12 +191,13 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
-              <div className="mt-6 flex max-w-full gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1">
+              <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 sm:grid-cols-5">
                 {PERIODS.map((p) => (
                   <button
                     key={p.key}
                     onClick={() => setPeriod(p.key)}
-                    className={`min-h-0 flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                    aria-pressed={period === p.key}
+                    className={`min-h-10 rounded-lg px-1 py-2 text-sm font-semibold transition-colors ${
                       period === p.key
                         ? "bg-white text-brand-800 shadow-sm"
                         : "text-gray-500 hover:text-gray-800"

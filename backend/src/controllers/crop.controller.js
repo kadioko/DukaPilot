@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 const { allocateInputCostsToHarvest, reconcileCropCycleCosts } = require("../services/cropCosting.service");
 const { findCropOperationReceipt, recordCropOperationReceipt } = require("../services/cropOfflineReceipt.service");
 const { weightedAverageCost } = require("../lib/weightedAverageCost");
@@ -327,7 +328,9 @@ const recordInput = asyncHandler(async (req, res) => {
     const totalCost = optionalPositiveInteger(req.body.totalCost);
     if (!title || !totalCost) throw Object.assign(new Error("Enter a direct input title and whole cost"), { status: 400 });
     const cashSession = paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
-    return tx.cropInputUsage.create({ data: { shopId, cropCycleId, category, title, totalCost, paymentMethod, cashSessionId: cashSession?.id || null, note, usedAt, recordedBy: req.user.staffId || req.user.userId, clientRequestId: requestId } });
+    const created = await tx.cropInputUsage.create({ data: { shopId, cropCycleId, category, title, totalCost, paymentMethod, cashSessionId: cashSession?.id || null, note, usedAt, recordedBy: req.user.staffId || req.user.userId, clientRequestId: requestId } });
+    if (paymentMethod === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "CROP_DIRECT_COST", sourceId: created.id, amount: -created.totalCost, occurredAt: created.createdAt });
+    return created;
     });
   } catch (error) {
     if (requestId && error?.code === "P2002") {

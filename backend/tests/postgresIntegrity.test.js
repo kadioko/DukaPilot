@@ -167,6 +167,8 @@ test("merchant deletion anonymizes a business with branches and retained financi
   const root = await prisma.shop.create({ data: { name: "Synthetic root", location: "Test", userId: user.id, referralCode: `root-${suffix}` } });
   const supportNote = await prisma.shopSupportNote.create({ data: { shopId: root.id, body: "Private owner phone and support history" } });
   const branch = await prisma.shop.create({ data: { name: "Synthetic branch", location: "Test", parentShopId: root.id, referralCode: `branch-${suffix}` } });
+  const cashEpoch = await prisma.cashHoldingEpoch.create({ data: { shopId: branch.id, mode: "MANUAL", openingAmount: 5000, openedBy: "private-owner", requestKey: crypto.randomUUID(), requestHash: "synthetic" } });
+  const cashMovement = await prisma.cashHoldingMovement.create({ data: { shopId: branch.id, epochId: cashEpoch.id, kind: "OTHER_IN", amount: 1000, note: "Private cash source", recordedBy: "private-owner", requestKey: crypto.randomUUID(), requestHash: "synthetic" } });
   const customer = await prisma.customer.create({ data: { shopId: branch.id, name: "Synthetic customer", phone: "+255700000001", email: `customer-${suffix}@example.test` } });
   const staff = await prisma.staffMember.create({ data: { shopId: branch.id, name: "Synthetic private staff", phone: `+255${suffix.replace(/\D/g, "").slice(0, 9).padEnd(9, "1")}`, pin: "not-a-real-pin", role: "CASHIER" } });
   const product = await prisma.product.create({ data: { shopId: branch.id, name: "Owner surname product", buyingPrice: 1000, sellingPrice: 1500 } });
@@ -224,12 +226,19 @@ test("merchant deletion anonymizes a business with branches and retained financi
     await prisma.stockMovement.deleteMany({ where: { id: stockMovement.id } });
     await prisma.subscriptionCheckout.deleteMany({ where: { id: checkout.id } });
     await prisma.subscriptionPayment.deleteMany({ where: { id: payment.id } });
+    await prisma.cashHoldingMovement.deleteMany({ where: { id: cashMovement.id } });
+    await prisma.cashHoldingEpoch.deleteMany({ where: { id: cashEpoch.id } });
     await prisma.shop.deleteMany({ where: { id: branch.id } });
     await prisma.shop.deleteMany({ where: { id: root.id } });
     await prisma.user.deleteMany({ where: { id: user.id } });
   });
 
   await anonymizeMerchantAccount(user.id);
+  const cashAfter = await prisma.cashHoldingMovement.findUnique({ where: { id: cashMovement.id } });
+  const epochAfter = await prisma.cashHoldingEpoch.findUnique({ where: { id: cashEpoch.id } });
+  assert.equal(cashAfter.note, null);
+  assert.equal(cashAfter.recordedBy, "deleted");
+  assert.equal(epochAfter.openedBy, "deleted");
   const [accountAfter, rootAfter, branchAfter, customerAfter, staffAfter, debtAfter, productAfter, expenseAfter, reportAfter, paymentAfter, checkoutAfter, quotationSettingsAfter, quotationSectionAfter, quotationItemAfter, stockMovementAfter, recipeAfter, foodBatchAfter, farmGroupAfter, farmEventAfter, farmBatchAfter, farmPackAfter, cropPlotAfter, cropCycleAfter, cropInputAfter, cropHarvestAfter, cropBudgetAfter, irrigationAfter, fieldTaskAfter, buyerContractAfter, harvestGradeAfter, weatherAlertAfter] = await Promise.all([
     prisma.user.findUnique({ where: { id: user.id } }),
     prisma.shop.findUnique({ where: { id: root.id } }),

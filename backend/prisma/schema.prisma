@@ -288,6 +288,8 @@ model Shop {
   barcodeScans                   BarcodeScan[]
   stockCounts                    StockCount[]
   cashSessions                   CashSession[]
+  cashHoldingEpochs              CashHoldingEpoch[]
+  cashHoldingMovements           CashHoldingMovement[]
   stockReceipts                  StockReceipt[]
   stockReceiptPaymentCorrections StockReceiptPaymentCorrection[]
   stockReceiptCorrections        StockReceiptCorrection[]
@@ -1617,6 +1619,8 @@ model CashSession {
   expectedCash                   Int?
   countedCash                    Int?
   variance                       Int?
+  cashTransferredOut              Int                             @default(0)
+  cashTransferDestination         String?
   note                           String?
   openedById                     String
   openedByName                   String
@@ -1636,10 +1640,64 @@ model CashSession {
   cropInputUsages                CropInputUsage[]
   saleReturns                    SaleReturn[]
   saleReturnReversals            SaleReturnReversal[]
+  cashHoldingHandovers           CashHoldingMovement[]
 
   @@index([shopId, status, openedAt])
   @@index([shopId, openedById, status])
   @@map("cash_sessions")
+}
+
+// Cash held by the business is separate from the managed Merchant Wallet.
+model CashHoldingEpoch {
+  id                String                @id @default(cuid())
+  shopId            String
+  shop              Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  mode              String
+  openingAmount     Int
+  openedAt          DateTime              @default(now())
+  closedAt          DateTime?
+  openedBy          String
+  requestKey        String
+  requestHash       String
+  movements         CashHoldingMovement[]
+
+  @@unique([shopId, requestKey])
+  @@index([shopId, openedAt])
+  @@map("cash_holding_epochs")
+}
+
+model CashHoldingMovement {
+  id                  String               @id @default(cuid())
+  shopId              String
+  shop                Shop                 @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  epochId             String
+  epoch               CashHoldingEpoch     @relation(fields: [epochId], references: [id], onDelete: Restrict)
+  kind                String
+  amount              Int
+  note                String?
+  recordedBy          String
+  requestKey          String
+  requestHash         String
+  sourceType          String?
+  sourceId            String?
+  relatedSourceType   String?
+  relatedSourceId     String?
+  cashSessionId       String?
+  cashSession         CashSession?         @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+  replacesMovementId  String?              @unique
+  replacesMovement    CashHoldingMovement? @relation("CashHoldingHandoverReplacement", fields: [replacesMovementId], references: [id], onDelete: Restrict)
+  replacementMovement CashHoldingMovement? @relation("CashHoldingHandoverReplacement")
+  reversesMovementId  String?              @unique
+  reversesMovement    CashHoldingMovement? @relation("CashHoldingReversal", fields: [reversesMovementId], references: [id], onDelete: Restrict)
+  reversal            CashHoldingMovement? @relation("CashHoldingReversal")
+  createdAt           DateTime             @default(now())
+
+  @@unique([shopId, requestKey])
+  @@unique([shopId, sourceType, sourceId])
+  @@index([shopId, epochId, relatedSourceType, relatedSourceId])
+  @@index([shopId, cashSessionId, createdAt])
+  @@index([shopId, epochId, createdAt])
+  @@map("cash_holding_movements")
 }
 
 model StockReceipt {

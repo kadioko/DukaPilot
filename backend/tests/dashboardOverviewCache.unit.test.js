@@ -18,11 +18,14 @@ function response() {
   };
 }
 
-test("dashboard caches historical cost quality per shop while recalculating live ranges", async () => {
+test("dashboard caches historical cost quality and bounds yesterday to the Tanzania business day", async (t) => {
   const modulePaths = [prismaPath, shopAccessPath, entitlementsPath, dashboardCachePath, controllerPath];
   const originalModules = new Map(modulePaths.map((modulePath) => [modulePath, require.cache[modulePath]]));
   let allTimeCostReads = 0;
   const expenseReads = [];
+  const salesReads = [];
+  const topProductReads = [];
+  const financialReads = [];
   const history = new Map();
 
   require.cache[prismaPath] = {
@@ -32,16 +35,17 @@ test("dashboard caches historical cost quality per shop while recalculating live
     exports: {
       shop: { findUnique: async () => ({ id: "shop-cache-test", plan: "PRO" }) },
       sale: {
-        aggregate: async () => ({ _sum: { totalAmount: 0, profit: 0 }, _count: { id: 0 } }),
+        aggregate: async (args) => { salesReads.push(args); return { _sum: { totalAmount: 0, profit: 0 }, _count: { id: 0 } }; },
         count: async () => 0,
         findMany: async () => [],
         groupBy: async () => [],
       },
-      saleItem: { groupBy: async () => [] },
+      saleItem: { groupBy: async (args) => { topProductReads.push(args); return []; } },
       expense: { aggregate: async () => ({ _sum: { amount: 0 }, _count: { id: 0 } }) },
       product: { count: async () => 0, findMany: async () => [] },
       order: { count: async () => 0 },
       $queryRawUnsafe: async (query, ...params) => {
+        if (query.includes('AS "knownCostGrossProfit"') || query.includes('FROM quotation_payments qp') || query.includes('AS "grossAmount"')) financialReads.push({ query, params });
         if (query.includes("FROM expenses e")) {
           expenseReads.push({ query, params });
           return [{ amount: 0n, count: 0 }];
@@ -96,6 +100,32 @@ test("dashboard caches historical cost quality per shop while recalculating live
     assert.equal(expenseReads[0].query.includes('e."spentAt" >= $2'), true);
     assert.equal(expenseReads[0].query.includes('e."spentAt" < $3'), true);
     assert.equal(expenseReads[0].params[2].toISOString(), endOfTanzaniaDay().toISOString());
+
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-14T21:30:00Z") });
+    salesReads.length = 0;
+    topProductReads.length = 0;
+    financialReads.length = 0;
+    expenseReads.length = 0;
+    const res = response();
+    await controller.overview({ user: { userId: "owner-1" }, query: { period: "yesterday" } }, res);
+    assert.equal(res.payload.period, "yesterday");
+    const from = "2026-11-13T21:00:00.000Z";
+    const to = "2026-11-14T21:00:00.000Z";
+    assert.equal(res.payload.periodBounds.from.toISOString(), from);
+    assert.equal(res.payload.periodBounds.to.toISOString(), to);
+    assert.equal(res.payload.periodBounds.timeZone, "Africa/Dar_es_Salaam");
+    assert.equal(salesReads[0].where.createdAt.gte.toISOString(), from);
+    assert.equal(salesReads[0].where.createdAt.lt.toISOString(), to);
+    assert.equal(salesReads[1].where.createdAt.gte.toISOString(), "2026-11-12T21:00:00.000Z");
+    assert.equal(salesReads[1].where.createdAt.lt.toISOString(), from);
+    assert.deepEqual(topProductReads[0].where.sale.createdAt, salesReads[0].where.createdAt);
+    assert.equal(expenseReads[0].params[1].toISOString(), from);
+    assert.equal(expenseReads[0].params[2].toISOString(), to);
+    const currentFinancialReads = financialReads.filter(({ params }) => params[1]?.toISOString() === from);
+    assert.equal(currentFinancialReads.length, 3);
+    for (const { params } of currentFinancialReads) {
+      assert.equal(params[2].toISOString(), to);
+    }
   } finally {
     for (const modulePath of modulePaths) {
       const original = originalModules.get(modulePath);

@@ -32,6 +32,7 @@ function costQualityQuery(shopId, from, to) {
 
 function startOf(period, now = new Date()) {
   if (period === "today") return startOfTanzaniaDay(now);
+  if (period === "yesterday") return shiftTanzaniaCalendar(startOfTanzaniaDay(now), { days: -1 });
   if (period === "week") return startOfTanzaniaWeek(now);
   if (period === "month") return startOfTanzaniaMonth(now);
   if (period === "all") return null;
@@ -72,7 +73,7 @@ function shiftTanzaniaCalendar(value, { days = 0, months = 0 }) {
 }
 
 function previousComparableRange(period, range) {
-  const shift = period === "today" ? { days: -1 }
+  const shift = period === "today" || period === "yesterday" ? { days: -1 }
     : period === "week" ? { days: -7 }
       : period === "month" ? { months: -1 }
         : period === "quarter" ? { months: -3 }
@@ -139,9 +140,10 @@ const overview = asyncHandler(async (req, res) => {
   const now = new Date();
   const { period = "today" } = req.query;
   const from = startOf(period, now);
+  const periodEnd = period === "yesterday" ? startOfTanzaniaDay(now) : new Date(now.getTime() + 1);
   const occurredThrough = endOfTanzaniaDay(now);
-  const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from } } : { shopId, status: "COMPLETED" };
-  const expenseRange = { from: from || null, to: occurredThrough };
+  const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from, ...(period === "yesterday" ? { lt: periodEnd } : {}) } } : { shopId, status: "COMPLETED" };
+  const expenseRange = { from: from || null, to: period === "yesterday" ? periodEnd : occurredThrough };
   const activeProductsWhere = { shopId, isActive: true };
 
   const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCountRows, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
@@ -234,7 +236,7 @@ const overview = asyncHandler(async (req, res) => {
 
   const topProducts = await prisma.saleItem.groupBy({
     by: ["productId"],
-    where: from ? { sale: { shopId, status: "COMPLETED", createdAt: { gte: from } } } : { sale: { shopId, status: "COMPLETED" } },
+    where: { sale: salesWhere },
     _sum: { quantity: true, totalPrice: true },
     orderBy: { _sum: { totalPrice: "desc" } },
     take: 5,
@@ -291,7 +293,7 @@ const overview = asyncHandler(async (req, res) => {
   const allTimeSales = Number(allTime.totalSales || 0);
   const allTimeSalesCount = Number(allTime.salesCount || 0);
   const allTimeExpenses = allExpenseAgg._sum.amount || 0;
-  const currentRange = from ? { from, to: new Date(now.getTime() + 1) } : null;
+  const currentRange = from ? { from, to: periodEnd } : null;
   const previousRange = currentRange && period !== "all" ? previousComparableRange(period, currentRange) : null;
   const [previousSales, previousExpenses, cashCollections, returnSummaryRows, previousReturnSummaryRows, currentCostRows, previousCostRows] = await Promise.all([
     previousRange ? prisma.sale.aggregate({
@@ -307,21 +309,21 @@ const overview = asyncHandler(async (req, res) => {
          + COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp JOIN debts d ON d.id = dp."debtId" WHERE d."shopId" = $1 AND ($2::timestamptz IS NULL OR dp."createdAt" >= $2) AND dp."createdAt" < $3 AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.id = d."saleId" AND s."quotationId" IS NOT NULL)), 0)
          - COALESCE((SELECT SUM(sr."refundAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)
          + COALESCE((SELECT SUM(srr."refundRecoveredAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND ($2::timestamptz IS NULL OR srr."createdAt" >= $2) AND srr."createdAt" < $3), 0)::bigint AS amount`,
-      shopId, from, new Date(now.getTime() + 1),
+      shopId, from, periodEnd,
     ),
     prisma.$queryRawUnsafe(
       `SELECT COALESCE((SELECT SUM(sr."totalAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)::bigint AS "grossAmount",
               COALESCE((SELECT SUM(srr."totalAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND ($2::timestamptz IS NULL OR srr."createdAt" >= $2) AND srr."createdAt" < $3), 0)::bigint AS "reversedAmount",
               (COALESCE((SELECT SUM(sr."totalAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND ($2::timestamptz IS NULL OR sr."createdAt" >= $2) AND sr."createdAt" < $3), 0)
                - COALESCE((SELECT SUM(srr."totalAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND ($2::timestamptz IS NULL OR srr."createdAt" >= $2) AND srr."createdAt" < $3), 0))::bigint AS amount`,
-      shopId, from, new Date(now.getTime() + 1),
+      shopId, from, periodEnd,
     ),
     previousRange ? prisma.$queryRawUnsafe(
       `SELECT (COALESCE((SELECT SUM(sr."totalAmount") FROM sale_returns sr WHERE sr."shopId" = $1 AND sr."createdAt" >= $2 AND sr."createdAt" < $3), 0)
                - COALESCE((SELECT SUM(srr."totalAmount") FROM sale_return_reversals srr WHERE srr."shopId" = $1 AND srr."createdAt" >= $2 AND srr."createdAt" < $3), 0))::bigint AS amount`,
       shopId, previousRange.from, previousRange.to,
     ) : Promise.resolve(null),
-    costQualityQuery(shopId, from, new Date(now.getTime() + 1)),
+    costQualityQuery(shopId, from, periodEnd),
     previousRange ? costQualityQuery(shopId, previousRange.from, previousRange.to) : Promise.resolve([]),
   ]);
   markQueryTiming("financialAggregates");
@@ -350,13 +352,14 @@ const overview = asyncHandler(async (req, res) => {
       event: "dashboard_overview_slow",
       requestId: req.requestId,
       durationMs,
-      period: ["today", "week", "month", "all"].includes(period) ? period : "other",
+      period: ["today", "yesterday", "week", "month", "all"].includes(period) ? period : "other",
       phases: queryTimings,
     }));
   }
 
   res.json({
     period,
+    periodBounds: period === "yesterday" ? { from, to: periodEnd, timeZone: "Africa/Dar_es_Salaam" } : null,
     features: featureSnapshot(shopPlan),
     summary: {
       totalSales: salesAgg._sum.totalAmount || 0,

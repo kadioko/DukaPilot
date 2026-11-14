@@ -75,6 +75,10 @@ async function anonymizeMerchantAccount(userId) {
     await tx.stockMovement.updateMany({ where: { product: { shopId: { in: shopIds } } }, data: { note: null } });
     await tx.sale.updateMany({ where: { shopId: { in: shopIds } }, data: { createdByStaffId: null } });
     await tx.cashSession.updateMany({ where: { shopId: { in: shopIds } }, data: { openedByName: "Deleted staff", note: null } });
+    if (tx.cashHoldingMovement) {
+      await tx.cashHoldingMovement.updateMany({ where: { shopId: { in: shopIds } }, data: { note: null, recordedBy: "deleted" } });
+      await tx.cashHoldingEpoch.updateMany({ where: { shopId: { in: shopIds } }, data: { openedBy: "deleted" } });
+    }
     await tx.quotationSettings.updateMany({
       where: { shopId: { in: shopIds } },
       data: { defaultPaymentTerms: null, defaultTerms: null, defaultCustomerNote: null, signatureName: null, signatureUrl: null },

@@ -6,6 +6,15 @@ const { endOfTanzaniaDay, startOfTanzaniaDay, startOfTanzaniaWeek, startOfTanzan
 const prismaPath = path.resolve(__dirname, "../src/lib/prisma.js");
 const controllerPath = path.resolve(__dirname, "../src/controllers/expense.controller.js");
 
+test("cash expense dates use the save time when the date-only timestamp is later today", () => {
+  const controller = loadController({});
+  const now = new Date("2026-11-14T06:00:00.000Z");
+  const dateOnlyNormalized = new Date("2026-11-14T12:00:00.000Z");
+  assert.equal(controller.cashEventDate({ spentAt: dateOnlyNormalized }, now).toISOString(), now.toISOString());
+  const historical = new Date("2026-11-13T12:00:00.000Z");
+  assert.equal(controller.cashEventDate({ spentAt: historical }, now).toISOString(), historical.toISOString());
+});
+
 function response() {
   return {
     statusCode: 200,

@@ -1,6 +1,11 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { supplierVisibilityWhere, findVisibleSupplier } = require("../lib/supplierAccess");
+const DEMO_SUPPLIER_PHONES = new Set(["255700000001", "255700000006", "255700000007"]);
+
+function isSharedDemoSupplier(supplier) {
+  return supplier.createdByShopId === null && DEMO_SUPPLIER_PHONES.has(String(supplier.phone || "").replace(/\D/g, ""));
+}
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -64,8 +69,14 @@ const list = asyncHandler(async (req, res) => {
     orderBy: { name: "asc" },
     ...(adminPaging ? { skip: (page - 1) * limit, take: limit } : {}),
   });
+  // Merchant results are unpaginated and already ordered by name within each group.
+  const orderedSuppliers = shopId ? [
+    ...suppliers.filter((supplier) => supplier.createdByShopId === shopId),
+    ...suppliers.filter((supplier) => supplier.createdByShopId !== shopId && !isSharedDemoSupplier(supplier)),
+    ...suppliers.filter((supplier) => supplier.createdByShopId !== shopId && isSharedDemoSupplier(supplier)),
+  ] : suppliers;
   const response = {
-    suppliers: suppliers.map((supplier) => ({
+    suppliers: orderedSuppliers.map((supplier) => ({
       ...supplier,
       // Shared suppliers can be browsed by every merchant, but only an admin
       // or the shop that created a private entry can change its details.

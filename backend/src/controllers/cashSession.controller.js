@@ -6,6 +6,7 @@ const { startOfTanzaniaDay, endOfTanzaniaDay } = require("../lib/businessTime");
 const { occurredExpenseDateSql } = require("../lib/expenseReporting");
 const { cashSessionActorId, findOpenCashSession } = require("../lib/cashSession");
 const { recordRequestPhase } = require("../middleware/requestDiagnostics");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -198,7 +199,9 @@ async function summarizeSession(tx, session) {
     cookingCostCount: foodPreparation._count.id,
     farmProductionCostCount: farmProduction._count.id,
     cropInputCostCount: cropInputs._count.id,
-    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash + cashRefundRecoveries - cashRefunds - cashExpenses - inventoryCashOut - receiptPaymentCorrectionCashOut - supplierCashOut + supplierRefundsReceived - cookingCashOut - farmCashOut - cropCashOut,
+    expectedCash: session.openingCash + cashSales + debtCollections + quotationCash + cashRefundRecoveries - cashRefunds - cashExpenses - inventoryCashOut - receiptPaymentCorrectionCashOut - supplierCashOut + supplierRefundsReceived - cookingCashOut - farmCashOut - cropCashOut - (session.cashTransferredOut || 0),
+    cashTransferredOut: session.cashTransferredOut || 0,
+    cashTransferDestination: session.cashTransferDestination || null,
   };
 }
 
@@ -302,7 +305,7 @@ async function decorateSessions(tx, sessions) {
   }
   return sessions.map((session) => {
     const summary = bySession.get(session.id);
-    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash + summary.cashRefundRecoveries - summary.cashRefunds - summary.cashExpenses - summary.inventoryCashOut - summary.receiptPaymentCorrectionCashOut - summary.supplierCashOut + summary.supplierRefundsReceived - summary.cookingCashOut - summary.farmCashOut - summary.cropCashOut } };
+    return { ...session, summary: { ...summary, expectedCash: session.openingCash + summary.cashSales + summary.debtCollections + summary.quotationCash + summary.cashRefundRecoveries - summary.cashRefunds - summary.cashExpenses - summary.inventoryCashOut - summary.receiptPaymentCorrectionCashOut - summary.supplierCashOut + summary.supplierRefundsReceived - summary.cookingCashOut - summary.farmCashOut - summary.cropCashOut - (session.cashTransferredOut || 0), cashTransferredOut: session.cashTransferredOut || 0, cashTransferDestination: session.cashTransferDestination || null } };
   });
 }
 
@@ -442,10 +445,16 @@ const open = asyncHandler(async (req, res) => {
 const close = asyncHandler(async (req, res) => {
   const shopId = await getShopIdForUser(req.user);
   const countedCash = Number(req.body.countedCash);
+  const cashTransferredOut = Number(req.body.cashTransferredOut || 0);
+  const cashTransferDestination = String(req.body.cashTransferDestination || "").toUpperCase() || null;
   const note = String(req.body.note || "").trim() || null;
   if (!Number.isInteger(countedCash) || countedCash < 0) {
     return res.status(400).json({ error: "Cash counted must be a whole TZS amount of 0 or more" });
   }
+  if (!Number.isInteger(cashTransferredOut) || cashTransferredOut < 0 || cashTransferredOut > 2_147_483_647) return res.status(400).json({ error: "Cash transferred must be a valid whole TZS amount" });
+  const destinations = new Set(["SAFE", "BANK", "MOBILE_MONEY", "OWNER_WITHDRAWAL"]);
+  if ((cashTransferredOut > 0 && !destinations.has(cashTransferDestination)) || (cashTransferredOut === 0 && cashTransferDestination)) return res.status(400).json({ error: "Choose where the cash was moved, or leave the transfer amount at 0" });
+  if (cashTransferredOut > 0 && req.user.staffId) return res.status(403).json({ error: "Only the business owner can record a drawer cash transfer" });
 
   const { updated, summary } = await prisma.$transaction(async (tx) => {
     await tx.$queryRawUnsafe('SELECT "id" FROM "cash_sessions" WHERE "id" = $1 AND "shopId" = $2 FOR UPDATE', req.params.id, shopId);
@@ -457,13 +466,19 @@ const close = asyncHandler(async (req, res) => {
     }
 
     const summary = await summarizeSession(tx, session);
+    if (cashTransferredOut > 0 && cashTransferredOut > summary.expectedCash) throw Object.assign(new Error("Cash transferred cannot exceed the drawer's expected cash"), { status: 409 });
+    summary.expectedCash -= cashTransferredOut;
+    summary.cashTransferredOut = cashTransferredOut;
+    summary.cashTransferDestination = cashTransferDestination;
+    const closedAt = new Date();
     const updated = await tx.cashSession.update({
       where: { id: session.id },
-      data: { status: "CLOSED", expectedCash: summary.expectedCash, countedCash, variance: countedCash - summary.expectedCash, note: note || session.note, closedAt: new Date() },
+      data: { status: "CLOSED", expectedCash: summary.expectedCash, countedCash, variance: countedCash - summary.expectedCash, cashTransferredOut, cashTransferDestination, note: note || session.note, closedAt },
     });
+    if (cashTransferredOut > 0 && cashTransferDestination !== "SAFE") await recordAutomaticCashEvent(tx, { shopId, sourceType: "SHIFT_CASH_TRANSFER", sourceId: session.id, amount: -cashTransferredOut, occurredAt: closedAt });
     return { updated, summary };
   });
-  req.audit = { action: "cash_session.close", resourceType: "cash_session", resourceId: updated.id, metadata: { expectedCash: summary.expectedCash, countedCash, variance: updated.variance } };
+  req.audit = { action: "cash_session.close", resourceType: "cash_session", resourceId: updated.id, metadata: { expectedCash: summary.expectedCash, countedCash, variance: updated.variance, cashTransferredOut, cashTransferDestination } };
   res.json({ session: publicCashSession({ ...updated, summary }) });
 });
 

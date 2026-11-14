@@ -4,6 +4,7 @@ const { normalizePhone } = require("../lib/phone");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 const { recordLiveAnimalSale } = require("../lib/farmLivestockSales");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK", "CREDIT"]);
 
@@ -231,6 +232,7 @@ const convertToSale = asyncHandler(async (req, res) => {
         },
         include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } } },
       });
+      if (paymentMethod === "CASH" && sale.totalAmount > 0) await recordAutomaticCashEvent(tx, { shopId: shop.id, sourceType: "SALE", sourceId: sale.id, amount: sale.totalAmount, occurredAt: sale.createdAt });
       await recordLiveAnimalSale(tx, {
         shopId: shop.id,
         saleItems: sale.items,

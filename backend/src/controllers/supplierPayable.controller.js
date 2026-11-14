@@ -3,6 +3,7 @@ const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 const METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
 
@@ -197,7 +198,7 @@ const correctReceiptPayment = asyncHandler(async (req, res) => {
       const cashOutAdjustment = (correctedMethod === "CASH" ? correctedAmount : 0) - (previousMethod === "CASH" ? previousAmount : 0);
       const cashSession = cashOutAdjustment !== 0 ? await findOpenCashSession(tx, shopId, req.user) : null;
       if (cashOutAdjustment !== 0 && !cashSession) throw error("Open a cash shift to record the cash effect of this correction in Daily Close", 409);
-      return tx.stockReceiptPaymentCorrection.create({
+      const saved = await tx.stockReceiptPaymentCorrection.create({
         data: {
           shopId,
           stockReceiptId: receipt.id,
@@ -214,6 +215,8 @@ const correctReceiptPayment = asyncHandler(async (req, res) => {
           recordedBy: req.user.staffId || req.user.userId,
         },
       });
+      if (cashOutAdjustment !== 0) await recordAutomaticCashEvent(tx, { shopId, sourceType: "STOCK_RECEIPT_PAYMENT_CORRECTION", sourceId: saved.id, amount: -cashOutAdjustment, occurredAt: saved.createdAt });
+      return saved;
     }, { isolationLevel: "Serializable" });
   } catch (err) {
     if (err.code === "P2002") {
@@ -282,6 +285,7 @@ const recordPayment = asyncHandler(async (req, res) => {
         data: { shopId, supplierId, amount, paymentMethod: method, paymentReference, note, requestKey: key, requestHash, paidAt, recordedBy: req.user.staffId || req.user.userId, cashSessionId: cashSession?.id || null, allocations: { create: normalizedAllocations } },
         include: { allocations: true },
       });
+      if (method === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "SUPPLIER_PAYMENT", sourceId: created.id, amount: -created.amount, occurredAt: created.paidAt });
       return created;
     }, { isolationLevel: "Serializable" });
   } catch (err) {
@@ -336,7 +340,7 @@ const recordRefund = asyncHandler(async (req, res) => {
       if (amount > Math.abs(row.balance)) throw error("Refund exceeds the supplier credit available on this receipt", 409);
       const cashSession = method === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
       if (method === "CASH" && !cashSession) throw error("Open your cash shift before recording a cash supplier refund", 409);
-      return tx.supplierPayment.create({
+      const saved = await tx.supplierPayment.create({
         data: {
           shopId,
           supplierId: row.receipt.supplierId,
@@ -354,6 +358,8 @@ const recordRefund = asyncHandler(async (req, res) => {
         },
         include: { allocations: true },
       });
+      if (method === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "SUPPLIER_PAYMENT", sourceId: saved.id, amount: -saved.amount, occurredAt: saved.paidAt });
+      return saved;
     }, { isolationLevel: "Serializable" });
   } catch (err) {
     if (err.code === "P2002") {
@@ -503,7 +509,9 @@ const reversePayment = asyncHandler(async (req, res) => {
       await tx.$queryRawUnsafe('SELECT "id" FROM "supplier_payments" WHERE "id" = $1 FOR UPDATE', original.id);
       const cashSession = original.paymentMethod === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
       if (original.paymentMethod === "CASH" && !cashSession) throw error("Open your cash shift before recording a cash payment reversal", 409);
-      return tx.supplierPayment.create({ data: { shopId, supplierId: original.supplierId, kind: original.kind, amount: -original.amount, paymentMethod: original.paymentMethod, paymentReference: original.paymentReference, note: `Reversal of supplier payment ${original.id}`, requestKey: key, requestHash, recordedBy: req.user.staffId || req.user.userId, cashSessionId: cashSession?.id || null, reversalOfId: original.id, allocations: { create: original.allocations.map((item) => ({ stockReceiptId: item.stockReceiptId, amount: -item.amount })) } }, include: { allocations: true } });
+      const saved = await tx.supplierPayment.create({ data: { shopId, supplierId: original.supplierId, kind: original.kind, amount: -original.amount, paymentMethod: original.paymentMethod, paymentReference: original.paymentReference, note: `Reversal of supplier payment ${original.id}`, requestKey: key, requestHash, recordedBy: req.user.staffId || req.user.userId, cashSessionId: cashSession?.id || null, reversalOfId: original.id, allocations: { create: original.allocations.map((item) => ({ stockReceiptId: item.stockReceiptId, amount: -item.amount })) } }, include: { allocations: true } });
+      if (saved.paymentMethod === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "SUPPLIER_PAYMENT", sourceId: saved.id, amount: -saved.amount, occurredAt: saved.paidAt });
+      return saved;
     }, { isolationLevel: "Serializable" });
   } catch (err) {
     if (err.code === "P2002") {

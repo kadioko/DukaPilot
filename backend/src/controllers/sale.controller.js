@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const prisma = require("../lib/prisma");
 const { getShopIdForUser, getBillingShopIdForUser } = require("../lib/shopAccess");
 const { activeRetailPrice } = require("../lib/productPricing");
@@ -7,6 +8,7 @@ const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 const { allocateCropHarvestForSale, reverseCropHarvestSaleAllocations } = require("../lib/cropHarvestSales");
 const { recordLiveAnimalSale, reverseLiveAnimalSales } = require("../lib/farmLivestockSales");
+const { recordAutomaticCashEvent, adjustAutomaticCashSource } = require("../services/cashHolding.service");
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -235,6 +237,7 @@ const create = asyncHandler(async (req, res) => {
         },
       },
     });
+    if (normalizedPaymentMethod === "CASH" && newSale.totalAmount > 0) await recordAutomaticCashEvent(tx, { shopId, sourceType: "SALE", sourceId: newSale.id, amount: newSale.totalAmount, occurredAt: newSale.createdAt });
 
     // Deduct stock with an in-transaction guard so concurrent sales cannot push stock negative.
     for (const item of items) {
@@ -372,6 +375,8 @@ const voidSale = asyncHandler(async (req, res) => {
       });
       if (cancelled.count !== 1) throw Object.assign(new Error("This debt received a payment while the sale was being voided. Refresh and use the return/refund flow."), { status: 409 });
     }
+
+    if (existing.paymentMethod === "CASH") await adjustAutomaticCashSource(tx, { shopId, sourceType: "SALE", sourceId: existing.id, correctionId: crypto.randomUUID(), newAmount: 0 });
 
     return tx.sale.findUnique({
       where: { id: existing.id },

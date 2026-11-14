@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 const PAYMENT_METHODS = new Set(["CASH", "MPESA", "TIGOPESA", "AIRTEL_MONEY", "HALOPESA", "BANK"]);
 
@@ -178,6 +179,7 @@ const prepare = asyncHandler(async (req, res) => {
         items: { create: costItems.map((item) => ({ productId: item.productId, quantity: item.quantity, unitCost: item.unitCost, totalCost: item.quantity * item.unitCost })) },
       },
     });
+    if (created.paymentMethod === "CASH" && created.additionalCost > 0) await recordAutomaticCashEvent(tx, { shopId, sourceType: "FOOD_PREPARATION_COST", sourceId: created.id, amount: -created.additionalCost, occurredAt: created.createdAt });
 
     for (const item of ingredients) {
       const product = productMap.get(item.productId);

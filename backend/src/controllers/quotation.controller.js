@@ -6,6 +6,7 @@ const { resolveShopContactPhone } = require("../lib/shopContact");
 const { findOpenCashSession } = require("../lib/cashSession");
 const { invalidateDashboardHistory } = require("../services/dashboard-cache.service");
 const { recordLiveAnimalSale } = require("../lib/farmLivestockSales");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 
 const STATUSES = new Set(["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CONVERTED", "ARCHIVED", "CANCELLED"]);
 const CATEGORIES = new Set(["MATERIAL", "LABOUR", "TRANSPORT", "DESIGN", "INSTALLATION", "SUBCONTRACTOR", "SERVICE", "OTHER"]);
@@ -776,6 +777,7 @@ const recordPayment = asyncHandler(async (req, res) => {
     if (amount > outstanding) throw Object.assign(new Error(`Payment exceeds the outstanding balance of ${outstanding} TZS`), { status: 400 });
     const cashSession = method === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
     const payment = await tx.quotationPayment.create({ data: { quotationId: quotation.id, amount, kind: "PAYMENT", stage, paymentMethod: method, paymentRef, idempotencyKey: requestKey, note, recordedById: actorId(req), cashSessionId: cashSession?.id || null } });
+    if (method === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "QUOTATION_PAYMENT", sourceId: payment.id, amount: payment.amount, occurredAt: payment.createdAt });
     if (quotation.convertedSale) {
       const debt = await tx.debt.findFirst({ where: { saleId: quotation.convertedSale.id, shopId } });
       if (debt) {
@@ -815,7 +817,8 @@ const refundPayment = asyncHandler(async (req, res) => {
     if (quotation.status === "CONVERTED") throw Object.assign(new Error("This quotation is already a sale. Use the sale void/refund process so revenue, stock, and receivables stay correct."), { status: 409 });
     if (amount > quotation.amountPaid) throw Object.assign(new Error(`Refund exceeds the ${quotation.amountPaid} TZS currently collected on this quotation`), { status: 400 });
     const cashSession = method === "CASH" ? await findOpenCashSession(tx, shopId, req.user) : null;
-    await tx.quotationPayment.create({ data: { quotationId: quotation.id, amount, kind: "REFUND", stage, paymentMethod: method, paymentRef, idempotencyKey: requestKey, note, recordedById: actorId(req), cashSessionId: cashSession?.id || null } });
+    const payment = await tx.quotationPayment.create({ data: { quotationId: quotation.id, amount, kind: "REFUND", stage, paymentMethod: method, paymentRef, idempotencyKey: requestKey, note, recordedById: actorId(req), cashSessionId: cashSession?.id || null } });
+    if (method === "CASH") await recordAutomaticCashEvent(tx, { shopId, sourceType: "QUOTATION_REFUND", sourceId: payment.id, amount: -payment.amount, occurredAt: payment.createdAt });
     const guarded = await tx.quotation.updateMany({ where: { id: quotation.id, amountPaid: { gte: amount } }, data: { amountPaid: { decrement: amount }, lastEditedById: actorId(req) } });
     if (guarded.count !== 1) throw Object.assign(new Error("Payment changed before the refund could be saved. Refresh and try again."), { status: 409 });
     return { quote: await fetchQuotation(tx, quotation.id, shopId), reused: false };

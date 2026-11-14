@@ -1,6 +1,7 @@
 const prisma = require("../lib/prisma");
 const { getShopIdForUser } = require("../lib/shopAccess");
 const { findOpenCashSession } = require("../lib/cashSession");
+const { recordAutomaticCashEvent } = require("../services/cashHolding.service");
 const { getFarmConfiguration } = require("../lib/farmAccess");
 const { weightedAverageCost } = require("../lib/weightedAverageCost");
 const { startOfTanzaniaDay } = require("../lib/businessTime");
@@ -376,6 +377,7 @@ const createProduction = asyncHandler(async (req, res) => {
         clientRequestId: requestId,
       },
     });
+    if (created.paymentMethod === "CASH" && created.additionalCost > 0) await recordAutomaticCashEvent(tx, { shopId, sourceType: "FARM_PRODUCTION_COST", sourceId: created.id, amount: -created.additionalCost, occurredAt: created.createdAt });
     for (const item of requestedItems) {
       const product = productMap.get(item.productId);
       const updated = await tx.product.updateMany({ where: { id: item.productId, shopId, AND: [{ currentStock: product.currentStock }, { currentStock: { gte: item.quantity } }] }, data: { currentStock: roundQuantity(product.currentStock - item.quantity) } });

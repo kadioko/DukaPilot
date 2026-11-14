@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { QRCodeCanvas } from "qrcode.react";
 import AppShell from "@/components/layout/AppShell";
 import { api } from "@/lib/api";
@@ -519,6 +520,12 @@ export default function SettingsPage() {
             {pricingSaving && <p role="status" className="text-xs text-gray-600">{lang === "sw" ? "Inahifadhi..." : "Saving..."}</p>}
             {pricingMsg && <SuccessBanner msg={pricingMsg} />}
             {pricingError && <p role="alert" className="text-sm text-red-700">{pricingError}</p>}
+          </SectionCard>
+        )}
+
+        {process.env.NEXT_PUBLIC_CASH_HOLDING_ENABLED === "true" && settings?.role === "MERCHANT" && !settings.isStaff && settings.shop && (
+          <SectionCard title={lang === "sw" ? "Fedha zilizopo" : "Cash on hand"} icon={<Store className="h-4 w-4" />}>
+            <Link href="/cash-on-hand#tracking-settings" className="text-sm font-semibold text-brand-700 underline">{lang === "sw" ? "Chagua njia ya kufuatilia na hesabu fedha" : "Choose a tracking mode and count cash"}</Link>
           </SectionCard>
         )}
 
