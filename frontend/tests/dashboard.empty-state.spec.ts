@@ -81,10 +81,11 @@ test("zero-data dashboard recovers from an interrupted read without clipped Swah
       return;
     }
     const isYesterday = requestedPeriods.at(-1) === "yesterday";
+    const isLastMonth = requestedPeriods.at(-1) === "lastMonth";
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(isYesterday && supportsYesterday ? { ...emptyDashboard, period: "yesterday", periodBounds: { from: "2026-11-13T21:00:00.000Z", to: "2026-11-14T21:00:00.000Z", timeZone: "Africa/Dar_es_Salaam" }, summary: { ...emptyDashboard.summary, totalSales: 12000, netSales: 12000, cashCollected: 12000, salesCount: 1 } } : { ...emptyDashboard, period: isYesterday ? "yesterday" : "today" }),
+      body: JSON.stringify((isYesterday && supportsYesterday) || isLastMonth ? { ...emptyDashboard, period: isLastMonth ? "lastMonth" : "yesterday", periodBounds: { from: "2026-11-13T21:00:00.000Z", to: "2026-11-14T21:00:00.000Z", timeZone: "Africa/Dar_es_Salaam" }, summary: { ...emptyDashboard.summary, totalSales: 12000, netSales: 12000, cashCollected: 12000, salesCount: 1 } } : { ...emptyDashboard, period: isYesterday ? "yesterday" : "today" }),
     });
   });
 
@@ -103,19 +104,24 @@ test("zero-data dashboard recovers from an interrupted read without clipped Swah
   await expect(page.getByText("Kipindi hiki: Jana")).toBeVisible();
   await expect(page.getByText("TZS 12,000", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Jana", exact: true })).toHaveAttribute("aria-pressed", "true");
-  expect(requestedPeriods.at(-1)).toBe("yesterday");
+  expect(requestedPeriods).toContain("yesterday");
   for (const width of [320, 1440]) {
     await page.setViewportSize({ width, height: 844 });
     await expect(page.getByRole("button", { name: "Jana", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mwezi uliopita", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Muda Wote", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   }
+  await page.getByRole("button", { name: "Mwezi uliopita", exact: true }).click();
+  await expect(page.getByText("Kipindi hiki: Mwezi uliopita")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mwezi uliopita", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(requestedPeriods).toContain("lastMonth");
   await page.getByRole("button", { name: "Wiki hii" }).click();
   await expect(page.getByText("Hakuna mauzo ya wiki hii bado.").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   supportsYesterday = false;
   await page.getByRole("button", { name: "Jana", exact: true }).click();
-  await expect(page.getByRole("alert").getByText(/takwimu za jana hazipatikani bado/i)).toBeVisible();
+  await expect(page.getByRole("alert").getByText(/takwimu za kipindi hiki hazipatikani bado/i)).toBeVisible();
 });
 
 test("dashboard shows a retry action after both automatic read attempts fail", async ({ page }) => {

@@ -72,6 +72,7 @@ const PERIODS = [
   { key: "yesterday", labelKey: "common.yesterday" },
   { key: "week", labelKey: "common.week" },
   { key: "month", labelKey: "common.month" },
+  { key: "lastMonth", labelKey: "common.lastMonth" },
   { key: "all", labelKey: "common.all" },
 ] as const;
 
@@ -88,7 +89,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 export default function DashboardPage() {
   const lang = useLang();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [period, setPeriod] = useState<"today" | "yesterday" | "week" | "month" | "all">("today");
+  const [period, setPeriod] = useState<(typeof PERIODS)[number]["key"]>("today");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryAttempt, setRetryAttempt] = useState(0);
@@ -101,8 +102,8 @@ export default function DashboardPage() {
     api.get<DashboardData>(`/dashboard?period=${period}`, lang)
       .then((result) => {
         if (!active) return;
-        if (period === "yesterday" && (result.period !== "yesterday" || !result.periodBounds || result.periodBounds.timeZone !== "Africa/Dar_es_Salaam")) {
-          setLoadError(lang === "sw" ? "Takwimu za jana hazipatikani bado. Tafadhali jaribu tena baadaye." : "Yesterday's figures are not available yet. Please try again later.");
+        if ((period === "yesterday" || period === "lastMonth") && (result.period !== period || !result.periodBounds || result.periodBounds.timeZone !== "Africa/Dar_es_Salaam")) {
+          setLoadError(lang === "sw" ? "Takwimu za kipindi hiki hazipatikani bado. Tafadhali jaribu tena baadaye." : "Figures for this period are not available yet. Please try again later.");
           return;
         }
         setData(result);
@@ -191,7 +192,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
-              <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 sm:grid-cols-5">
+              <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 sm:grid-cols-6">
                 {PERIODS.map((p) => (
                   <button
                     key={p.key}

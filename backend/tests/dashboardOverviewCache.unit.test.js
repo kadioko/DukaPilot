@@ -126,6 +126,28 @@ test("dashboard caches historical cost quality and bounds yesterday to the Tanza
     for (const { params } of currentFinancialReads) {
       assert.equal(params[2].toISOString(), to);
     }
+    for (const [now, expectedFrom, expectedTo, previousFrom] of [
+      ["2026-11-14T21:30:00Z", "2026-09-30T21:00:00.000Z", "2026-10-31T21:00:00.000Z", "2026-08-31T21:00:00.000Z"],
+      ["2027-01-15T12:00:00Z", "2026-11-30T21:00:00.000Z", "2026-12-31T21:00:00.000Z", "2026-10-31T21:00:00.000Z"],
+      ["2024-03-15T12:00:00Z", "2024-01-31T21:00:00.000Z", "2024-02-29T21:00:00.000Z", "2023-12-31T21:00:00.000Z"],
+    ]) {
+      t.mock.timers.setTime(new Date(now).getTime());
+      salesReads.length = 0; topProductReads.length = 0; financialReads.length = 0; expenseReads.length = 0;
+      const lastMonth = response();
+      await controller.overview({ user: { userId: "owner-1" }, query: { period: "lastMonth" } }, lastMonth);
+      assert.equal(lastMonth.payload.periodBounds.from.toISOString(), expectedFrom);
+      assert.equal(lastMonth.payload.periodBounds.to.toISOString(), expectedTo);
+      assert.equal(salesReads[0].where.createdAt.gte.toISOString(), expectedFrom);
+      assert.equal(salesReads[0].where.createdAt.lt.toISOString(), expectedTo);
+      assert.equal(salesReads[1].where.createdAt.gte.toISOString(), previousFrom);
+      assert.equal(salesReads[1].where.createdAt.lt.toISOString(), expectedFrom);
+      assert.deepEqual(topProductReads[0].where.sale.createdAt, salesReads[0].where.createdAt);
+      assert.equal(expenseReads[0].params[1].toISOString(), expectedFrom);
+      assert.equal(expenseReads[0].params[2].toISOString(), expectedTo);
+      const currentReads = financialReads.filter(({ params }) => params[1]?.toISOString() === expectedFrom);
+      assert.equal(currentReads.length, 3);
+      for (const { params } of currentReads) assert.equal(params[2].toISOString(), expectedTo);
+    }
   } finally {
     for (const modulePath of modulePaths) {
       const original = originalModules.get(modulePath);

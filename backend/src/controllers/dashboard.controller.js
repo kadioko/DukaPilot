@@ -35,6 +35,7 @@ function startOf(period, now = new Date()) {
   if (period === "yesterday") return shiftTanzaniaCalendar(startOfTanzaniaDay(now), { days: -1 });
   if (period === "week") return startOfTanzaniaWeek(now);
   if (period === "month") return startOfTanzaniaMonth(now);
+  if (period === "lastMonth") return shiftTanzaniaCalendar(startOfTanzaniaMonth(now), { months: -1 });
   if (period === "all") return null;
   return startOfTanzaniaDay(now);
 }
@@ -75,7 +76,7 @@ function shiftTanzaniaCalendar(value, { days = 0, months = 0 }) {
 function previousComparableRange(period, range) {
   const shift = period === "today" || period === "yesterday" ? { days: -1 }
     : period === "week" ? { days: -7 }
-      : period === "month" ? { months: -1 }
+      : period === "month" || period === "lastMonth" ? { months: -1 }
         : period === "quarter" ? { months: -3 }
           : period === "year" ? { months: -12 }
             : null;
@@ -140,10 +141,11 @@ const overview = asyncHandler(async (req, res) => {
   const now = new Date();
   const { period = "today" } = req.query;
   const from = startOf(period, now);
-  const periodEnd = period === "yesterday" ? startOfTanzaniaDay(now) : new Date(now.getTime() + 1);
+  const isCompletedPeriod = period === "yesterday" || period === "lastMonth";
+  const periodEnd = period === "yesterday" ? startOfTanzaniaDay(now) : period === "lastMonth" ? startOfTanzaniaMonth(now) : new Date(now.getTime() + 1);
   const occurredThrough = endOfTanzaniaDay(now);
-  const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from, ...(period === "yesterday" ? { lt: periodEnd } : {}) } } : { shopId, status: "COMPLETED" };
-  const expenseRange = { from: from || null, to: period === "yesterday" ? periodEnd : occurredThrough };
+  const salesWhere = from ? { shopId, status: "COMPLETED", createdAt: { gte: from, ...(isCompletedPeriod ? { lt: periodEnd } : {}) } } : { shopId, status: "COMPLETED" };
+  const expenseRange = { from: from || null, to: isCompletedPeriod ? periodEnd : occurredThrough };
   const activeProductsWhere = { shopId, isActive: true };
 
   const [shopPlan, salesAgg, expenseAgg, salesCount, totalProducts, lowStockCandidates, lowStockCountRows, outOfStockCount, pendingOrders, recentSales] = await Promise.all([
@@ -352,14 +354,14 @@ const overview = asyncHandler(async (req, res) => {
       event: "dashboard_overview_slow",
       requestId: req.requestId,
       durationMs,
-      period: ["today", "yesterday", "week", "month", "all"].includes(period) ? period : "other",
+      period: ["today", "yesterday", "week", "month", "lastMonth", "all"].includes(period) ? period : "other",
       phases: queryTimings,
     }));
   }
 
   res.json({
     period,
-    periodBounds: period === "yesterday" ? { from, to: periodEnd, timeZone: "Africa/Dar_es_Salaam" } : null,
+    periodBounds: isCompletedPeriod ? { from, to: periodEnd, timeZone: "Africa/Dar_es_Salaam" } : null,
     features: featureSnapshot(shopPlan),
     summary: {
       totalSales: salesAgg._sum.totalAmount || 0,

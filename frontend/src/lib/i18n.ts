@@ -263,6 +263,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "common.yesterday": { sw: "Jana", en: "Yesterday" },
   "common.week": { sw: "Wiki hii", en: "This week" },
   "common.month": { sw: "Mwezi", en: "Month" },
+  "common.lastMonth": { sw: "Mwezi uliopita", en: "Last month" },
   "common.all": { sw: "Muda Wote", en: "All Time" },
 
   "catalog.viewShop": { sw: "Tazama Duka ->", en: "View Shop ->" },
