@@ -405,7 +405,7 @@ test("inventory supports add, edit, and stock adjustment flows", async ({ page }
   await page.getByRole("button", { name: /^edit$|^hariri$/i }).click();
   await page.getByLabel(/product name|jina la bidhaa/i).fill("Failure Product");
   await page.getByLabel(/^save$|^hifadhi$/i).click();
-  await expect(page.getByText("DukaPilot has a temporary server problem. Please try again shortly.", { exact: true })).toBeVisible();
+  await expect(page.getByText(/could not confirm whether the edit was saved/i)).toBeVisible();
   await expect(page.getByText(/edit product|hariri bidhaa/i)).toBeVisible();
   await page.getByRole("button", { name: /^cancel$|^ghairi$/i }).click();
   await page.getByLabel(/actions for sukari brown|vitendo vya sukari brown/i).click();
@@ -509,6 +509,52 @@ test("inventory cancels a superseded search and retries a temporary gateway fail
     releaseOldSearch?.();
   }
 });
+
+for (const committed of [true, false]) {
+  test(`uncertain product edit checks server before retry (server committed: ${committed})`, async ({ page }) => {
+    await page.setViewportSize({ width: committed ? 320 : 1440, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("dukapilot_language", "en"));
+    const product = { id: "p1", name: "Rice", unit: "kg", buyingPrice: 1000, sellingPrice: 1500, currentStock: 4, minimumStock: 1, isActive: true, doesNotExpire: true, isCatalogVisible: true, supplier: null };
+    let edits = 0;
+    await page.route("**/*api/**", async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.pathname.replace(/^\/_?api/, "");
+      if (path === "/auth/me") return route.fulfill({ json: { user: { id: "owner", role: "MERCHANT", shop: { id: "shop", name: "Shop" } } } });
+      if (path === "/products/summary") return route.fulfill({ json: { summary: { total: 1 } } });
+      if (path === "/products/p1" && route.request().method() === "PATCH") {
+        edits++;
+        if (committed) product.name = "Rice New";
+        return route.abort("failed");
+      }
+      if (path === "/products/p1") return route.fulfill({ json: { product } });
+      if (path === "/products") return route.fulfill({ json: { products: [product] } });
+      if (path === "/suppliers") return route.fulfill({ json: { suppliers: [] } });
+      if (path === "/notifications") return route.fulfill({ json: { items: [], unreadCount: 0 } });
+      if (path === "/subscription/status") return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+      return route.fulfill({ json: {} });
+    });
+    await page.goto("/inventory");
+    await page.getByLabel(/actions for rice/i).click();
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByLabel(/product name/i).fill("Rice New");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByText(/could not confirm whether the edit was saved/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Check current server version" }).click();
+    await expect(page.locator("p").filter({ hasText: "Current server version:" })).toContainText(committed ? "Rice New" : "Rice");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(edits).toBe(1);
+    if (committed) {
+      await page.getByRole("button", { name: "Discard draft and load server version" }).click();
+      await expect(page.getByLabel(/product name/i)).toHaveValue("Rice New");
+    } else {
+      await page.getByRole("button", { name: "Continue with my draft" }).click();
+      await expect(page.getByLabel(/product name/i)).toHaveValue("Rice New");
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+    }
+    expect(edits).toBe(1);
+  });
+}
 
 test("inventory shows the real total and lets merchants reach later product pages", async ({ page }) => {
   const products = Array.from({ length: 101 }, (_, index) => ({

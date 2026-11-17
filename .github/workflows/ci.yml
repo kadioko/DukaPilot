@@ -114,6 +114,8 @@ jobs:
 
   playwright-mocked:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_CASH_HOLDING_ENABLED: "true"
     defaults:
       run:
         working-directory: frontend

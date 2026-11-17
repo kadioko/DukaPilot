@@ -114,3 +114,26 @@ test("product search recovers from a network outage with its explicit retry acti
   await expect(page.getByRole("button", { name: /Search recovery item/i })).toBeVisible();
   expect(searchAttempts).toBe(3);
 });
+
+test("sales product search retries a malformed successful response", async ({ page }) => {
+  let attempts = 0;
+  await page.addInitScript(() => localStorage.setItem("dukapilot_session_active", "1"));
+  await page.route("**/*api/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/auth/me")) return route.fulfill({ json: { user: { id: "owner-1", name: "Amina", role: "MERCHANT", shop: { id: "shop-1", name: "Shop" } } } });
+    if (url.includes("/products/low-stock")) return route.fulfill({ json: { products: [] } });
+    if (url.includes("/products?")) {
+      attempts++;
+      if (attempts === 1) return route.fulfill({ status: 200, contentType: "application/json", body: '{"products":' });
+      return route.fulfill({ json: { products: [{ id: "p1", name: "Rice", unit: "pcs", sellingPrice: 1000, currentStock: 5, doesNotExpire: true }], pagination: { page: 1, limit: 100, total: 1 } } });
+    }
+    if (url.includes("/subscription/status")) return route.fulfill({ json: { status: "active", daysLeft: 30 } });
+    if (url.includes("/notifications")) return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    if (url.includes("/debts/customers")) return route.fulfill({ json: { customers: [] } });
+    if (url.includes("/settings")) return route.fulfill({ json: { settings: {} } });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/sales");
+  await expect(page.getByRole("button", { name: /Rice/ })).toBeVisible();
+  expect(attempts).toBe(2);
+});

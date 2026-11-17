@@ -368,15 +368,22 @@ async function request<T>(
 
   const isJson = contentType.includes("application/json");
   let payload: string | { error?: string; code?: string; details?: ApiErrorDetail[] } | null;
+  if (externalSignal?.aborted) cancelRequest();
+  else externalSignal?.addEventListener("abort", cancelRequest, { once: true });
+  let bodyTimedOut = false;
+  const bodyTimeoutId = setTimeout(() => { bodyTimedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
   try {
     payload = isJson ? await res.json() : await res.text();
-  } catch {
+  } catch (cause) {
     if (externalSignal?.aborted) throw new DOMException("Request cancelled", "AbortError");
-    const failureType = res.ok ? "INVALID_RESPONSE" : "HTTP";
-    const message = res.ok ? t("auth.error.unexpectedResponse", lang) : getHttpErrorMessage(res.status, "", lang);
+    const failureType = !res.ok ? "HTTP" : bodyTimedOut ? "TIMEOUT" : cause instanceof SyntaxError ? "INVALID_RESPONSE" : "NETWORK";
+    const message = !res.ok ? getHttpErrorMessage(res.status, "", lang) : failureType === "TIMEOUT" ? t("api.error.timeout", lang) : failureType === "NETWORK" ? t("api.error.unavailable", lang) : t("auth.error.unexpectedResponse", lang);
     const error = new ApiError(message, undefined, res.status, context, failureType);
     reportApiFailure(error, context, reporting);
     throw error;
+  } finally {
+    clearTimeout(bodyTimeoutId);
+    externalSignal?.removeEventListener("abort", cancelRequest);
   }
 
   if (!res.ok) {
@@ -439,7 +446,7 @@ async function readRequest<T>(path: string, lang?: Lang, signal?: AbortSignal): 
 
 export const api = {
   get: <T>(path: string, lang?: Lang, signal?: AbortSignal) => readRequest<T>(path, lang, signal),
-  getRecoverable: <T>(path: string, lang?: Lang) => retryNetworkRequest<T>(path, {}, lang, "deferred", "deferred"),
+  getRecoverable: <T>(path: string, lang?: Lang) => retryNetworkRequest<T>(path, {}, lang, "deferred", "deferred", true),
   getBackground: <T>(path: string, lang?: Lang) => backgroundRequest<T>(path, {}, lang),
   postBackground: <T>(path: string, body: unknown, lang?: Lang) =>
     backgroundRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, lang),

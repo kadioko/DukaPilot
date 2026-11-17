@@ -1,5 +1,44 @@
 import { expect, test } from "@playwright/test";
 
+test("cash reversal works without browser prompts and safely retries a lost response", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  const epoch = { id: "epoch-1", mode: "MANUAL", openingAmount: 10000, openedAt: "2026-11-14T09:00:00.000Z" };
+  let reversed = false;
+  let reversalKey = "";
+  let attempts = 0;
+  await page.addInitScript(() => { localStorage.setItem("dukapilot_language", "en"); window.prompt = () => { throw new Error("prompt() is not supported."); }; });
+  await page.route("**/*api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^\/_?api/, "");
+    if (path === "/auth/me") return route.fulfill({ json: { user: { id: "owner-1", role: "MERCHANT", shop: { id: "shop-1" } } } });
+    if (path === "/cash-holding") return route.fulfill({ json: { epoch, balance: reversed ? 10000 : 7000, movements: [{ id: "movement-1", epochId: epoch.id, kind: "BANK_DEPOSIT", amount: -3000, note: "Bank", createdAt: epoch.openedAt, reversal: reversed ? { id: "rev-1" } : null, epoch }], pagination: { page: 1, totalPages: 1 } } });
+    if (path === "/cash-holding/handovers") return route.fulfill({ json: { sessions: [], pagination: { page: 1, totalPages: 0 } } });
+    if (path === "/cash-holding/movements" && route.request().method() === "POST") {
+      const body = route.request().postDataJSON();
+      expect(body.kind).toBe("REVERSAL");
+      expect(body.reversesMovementId).toBe("movement-1");
+      expect(body.note).toBe("Entered by mistake");
+      expect(body.expectedEpochId).toBe("epoch-1");
+      attempts++;
+      if (!reversalKey) { reversalKey = body.requestKey; reversed = true; return route.abort("failed"); }
+      expect(body.requestKey).toBe(reversalKey);
+      return route.fulfill({ json: { replayed: true } });
+    }
+    if (path === "/subscription/status") return route.fulfill({ json: { status: "active", isActive: true, daysLeft: 30 } });
+    if (path === "/notifications") return route.fulfill({ json: { items: [], unreadCount: 0 } });
+    return route.fulfill({ json: { products: [] } });
+  });
+  await page.goto("/cash-on-hand");
+  await page.getByRole("button", { name: "Reverse", exact: true }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByLabel("Reason for reversal").fill("Entered by mistake");
+  await page.getByRole("button", { name: "Confirm reversal" }).click();
+  await expect(page.getByText(/request is unconfirmed/i)).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Retry request" }).click();
+  await expect(page.getByText("TZS 10,000", { exact: true })).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
 test("owner cash screen keeps an uncertain movement retry-safe across reload", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
   let epoch: { id: string; mode: string; openingAmount: number; openedAt: string } | null = null;

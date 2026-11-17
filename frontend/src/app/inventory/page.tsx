@@ -237,6 +237,8 @@ export default function InventoryPage() {
   const [adjustForm, setAdjustForm] = useState({ type: "IN", quantity: "", note: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [uncertainEdit, setUncertainEdit] = useState<{ latest: Product | null } | null>(null);
+  const [checkingEdit, setCheckingEdit] = useState(false);
   const [listError, setListError] = useState("");
   const latestLoad = useRef(0);
   const productLoadController = useRef<AbortController | null>(null);
@@ -391,6 +393,7 @@ export default function InventoryPage() {
   }, [toast, lang]);
 
   function openAdd() {
+    setUncertainEdit(null);
     setEditProduct(null);
     if (!createPendingUncertain.current) {
       createRequestId.current = null;
@@ -415,6 +418,7 @@ export default function InventoryPage() {
       return;
     }
     setEditProduct(p);
+    setUncertainEdit(null);
     setForm({
       name: p.name, labelName: p.labelName || "", sku: p.sku || "", generateSku: false, unit: p.unit,
       buyingPrice: p.buyingPrice == null ? "" : String(p.buyingPrice), sellingPrice: String(p.sellingPrice),
@@ -437,6 +441,7 @@ export default function InventoryPage() {
 
   async function handleSave() {
     if (mutationInFlight.current) return;
+    if (uncertainEdit) return;
     setError("");
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setError(createPendingUncertain.current
@@ -540,8 +545,9 @@ export default function InventoryPage() {
       toast(editProduct ? (lang === "sw" ? "Bidhaa imebadilishwa." : "Product updated.") : (lang === "sw" ? "Bidhaa imeongezwa." : "Product added."), "success");
       await fetchProducts(true);
     } catch (e: unknown) {
+      const uncertain = e instanceof ApiError && (["TIMEOUT", "NETWORK", "INVALID_RESPONSE"].includes(e.failureType || "") || (e.status || 0) >= 500);
+      if (editProduct && uncertain) setUncertainEdit({ latest: null });
       if (!editProduct) {
-        const uncertain = e instanceof ApiError && (["TIMEOUT", "NETWORK", "INVALID_RESPONSE"].includes(e.failureType || "") || (e.status || 0) >= 500);
         createPendingUncertain.current = uncertain;
         if (uncertain) {
           if (pendingCreateForm.current) setForm(pendingCreateForm.current);
@@ -562,13 +568,28 @@ export default function InventoryPage() {
         }
       }
       const uncertainCreate = !editProduct && e instanceof ApiError && (["TIMEOUT", "NETWORK", "INVALID_RESPONSE"].includes(e.failureType || "") || (e.status || 0) >= 500);
-      setError(uncertainCreate
+      setError(editProduct && uncertain
+        ? (lang === "sw" ? "Hatujathibitisha kama mabadiliko yamehifadhiwa. Angalia toleo la sasa kabla ya kutuma tena." : "We could not confirm whether the edit was saved. Check the current server version before saving again.")
+        : uncertainCreate
         ? uncertainProductSaveMessage(lang, pendingSavePersisted)
         : e instanceof Error ? e.message : t("common.error", lang));
     } finally {
       setSaving(false);
       mutationInFlight.current = false;
     }
+  }
+
+  async function checkUncertainEdit() {
+    if (!editProduct || checkingEdit) return;
+    setCheckingEdit(true);
+    try {
+      const result = await api.get<{ product: Product }>(`/products/${encodeURIComponent(editProduct.id)}`, lang);
+      if (!result.product?.id || result.product.id !== editProduct.id) throw new Error(t("auth.error.unexpectedResponse", lang));
+      setUncertainEdit({ latest: result.product });
+      setError("");
+    } catch {
+      setError(lang === "sw" ? "Imeshindikana kuangalia toleo la sasa. Unganisha intaneti kisha ujaribu tena." : "Could not check the current server version. Reconnect and try again.");
+    } finally { setCheckingEdit(false); }
   }
 
   async function handleAdjust() {
@@ -1140,7 +1161,12 @@ export default function InventoryPage() {
         <Modal title={editProduct ? t("inventory.editTitle", lang) : t("inventory.addTitle", lang)} onClose={() => setShowForm(false)}>
           <div className="space-y-3">
             {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg p-2">{error}</p>}
-            <fieldset disabled={createPendingUncertain.current} className="m-0 min-w-0 space-y-3 border-0 p-0">
+            {uncertainEdit && <section role="status" className="space-y-2 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <p>{lang === "sw" ? "Rasimu yako bado ipo. Angalia toleo la seva; tofauti zinaweza kuwa zimetokana na mabadiliko mengine." : "Your draft is still here. Check the server version; another user may also have changed it."}</p>
+              <button type="button" disabled={checkingEdit} onClick={() => void checkUncertainEdit()} className="font-semibold underline disabled:opacity-50">{checkingEdit ? (lang === "sw" ? "Inaangalia..." : "Checking...") : (lang === "sw" ? "Angalia toleo la sasa" : "Check current server version")}</button>
+              {uncertainEdit.latest && <div className="space-y-2"><p>{lang === "sw" ? "Toleo la sasa" : "Current server version"}: <strong>{uncertainEdit.latest.name}</strong> · {lang === "sw" ? "Bei ya kuuza" : "Selling price"}: {formatTZS(uncertainEdit.latest.sellingPrice)}{canViewFinancials && uncertainEdit.latest.buyingPrice != null ? ` · ${lang === "sw" ? "Bei ya kununua" : "Buying price"}: ${formatTZS(uncertainEdit.latest.buyingPrice)}` : ""}</p><p>{lang === "sw" ? "Kuendelea na rasimu kunaweza kufunika mabadiliko ya mtu mwingine. Pitia maelezo yote kabla ya kuhifadhi." : "Continuing with your draft can overwrite another user's changes. Review all fields before saving."}</p><div className="flex flex-wrap gap-3"><button type="button" onClick={() => openEdit(uncertainEdit.latest!)} className="font-semibold underline">{lang === "sw" ? "Tupa rasimu na pakia toleo la sasa" : "Discard draft and load server version"}</button><button type="button" onClick={() => setUncertainEdit(null)} className="font-semibold underline">{lang === "sw" ? "Endelea na rasimu yangu" : "Continue with my draft"}</button></div></div>}
+            </section>}
+            <fieldset disabled={createPendingUncertain.current || Boolean(uncertainEdit)} className="m-0 min-w-0 space-y-3 border-0 p-0">
             <Field label={t("inventory.nameLabel", lang)}>
               <input aria-label={t("inventory.nameLabel", lang)} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={INPUT} placeholder={t("inventory.namePlaceholder", lang)} />
@@ -1275,7 +1301,7 @@ export default function InventoryPage() {
               <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-lg text-sm font-medium">
                 {t("common.cancel", lang)}
               </button>
-              <button aria-label={t("common.save", lang)} onClick={handleSave} disabled={saving} className="flex-1 bg-brand-600 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
+              <button aria-label={t("common.save", lang)} onClick={handleSave} disabled={saving || Boolean(uncertainEdit)} className="flex-1 bg-brand-600 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
                 {saving ? t("inventory.saving", lang) : createPendingUncertain.current ? (lang === "sw" ? "Thibitisha uhifadhi" : "Confirm save") : t("common.save", lang)}
               </button>
             </div>
