@@ -2,7 +2,9 @@
 
 ## Scheduled Monitor
 
-The `Production Monitor` GitHub workflow runs at 17 and 47 minutes past each hour. It checks Railway health, the Vercel frontend, catalog proxy, CORS, login, an authenticated dashboard request, and an invalid-token response.
+The `Production Monitor` GitHub workflow runs at 17 and 47 minutes past each hour. It checks Railway health, the Vercel frontend, catalog proxy, CORS, direct Railway login, the same-origin Vercel login proxy and authenticated session, an authenticated dashboard request, and an invalid-token response. The proxy login also verifies that the request correlation ID reaches the response.
+
+These synthetic checks run from GitHub's environment. A successful check does not rule out intermittent network, browser, or mobile-carrier failures experienced by merchants. Compare Sentry event timestamps and request IDs with available Vercel and Railway logs before resolving recurring transport issues; do not infer a 502 from a browser fetch rejection alone.
 
 Before relying on it, add these repository secrets in GitHub Actions:
 

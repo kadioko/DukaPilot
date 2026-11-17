@@ -5,7 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "postinstall": "prisma generate",
-    "pretest": "npm run test:supplier-payables && npm run test:stock-receipt && npm run test:assistant && node --test tests/supplierOrdering.unit.test.js tests/cashHolding.unit.test.js tests/cashHoldingAccess.unit.test.js",
+    "pretest": "npm run test:supplier-payables && npm run test:stock-receipt && npm run test:assistant && node --test tests/supplierOrdering.unit.test.js tests/cashHolding.unit.test.js tests/cashHoldingAccess.unit.test.js tests/productionMonitor.unit.test.js",
     "start": "node src/app.js",
     "start:prod": "npx prisma migrate deploy && node src/app.js",
     "dev": "node --watch src/app.js",

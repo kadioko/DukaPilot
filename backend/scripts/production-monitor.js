@@ -90,6 +90,29 @@ async function run() {
     assert(sessionCookie.includes("dukapilot_token="), "login response missing secure access cookie");
   });
 
+  let proxySessionCookie = "";
+  await check("same-origin proxy login", async () => {
+    const requestId = crypto.randomUUID();
+    const { response } = await request(`${FRONTEND_URL}/_api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: FRONTEND_URL, "X-Request-ID": requestId },
+      body: JSON.stringify({ phone: LOGIN_PHONE, pin: LOGIN_PIN }),
+    });
+    assert(response.ok, `proxy login expected 2xx, got ${response.status}`);
+    proxySessionCookie = cookieHeaderFrom(response);
+    assert(proxySessionCookie.includes("dukapilot_token="), "proxy login response missing secure access cookie");
+    assert(response.headers.get("x-request-id") === requestId, "proxy login did not echo the request correlation ID");
+  });
+
+  await check("same-origin proxy authenticated session", async () => {
+    assert(proxySessionCookie, "proxy login did not provide a session cookie");
+    const { response, payload } = await request(`${FRONTEND_URL}/_api/auth/me`, {
+      headers: { Cookie: proxySessionCookie, Origin: FRONTEND_URL },
+    });
+    assert(response.ok, `proxy session expected 2xx, got ${response.status}`);
+    assert(payload.user?.role, "proxy session payload missing user role");
+  });
+
   await check("authenticated dashboard", async () => {
     const { response, payload } = await request(`${API_URL}/api/dashboard?period=today`, {
       headers: { Cookie: sessionCookie, Origin: FRONTEND_URL },
