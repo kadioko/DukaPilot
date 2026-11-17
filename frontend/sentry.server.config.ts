@@ -13,7 +13,17 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV || "development",
-    sendDefaultPii: false,
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: { request: false, response: false },
+      httpBodies: [],
+      urlQueryParams: false,
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      graphQL: { document: false, variables: false },
+    },
     tracesSampleRate: 0.1,
   });
 }
