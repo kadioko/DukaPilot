@@ -1038,7 +1038,7 @@ export default function InventoryPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-gray-900 text-sm">{p.name}</p>
+                        <p className="product-name font-semibold text-gray-900 text-sm">{p.name}</p>
                         {isOut && (
                           <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
                             {t("inventory.outOfStockBadge", lang)}

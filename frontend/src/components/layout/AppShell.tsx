@@ -44,7 +44,7 @@ interface User {
   name: string;
   role: string;
   language?: Lang;
-  shop?: { name: string; category?: string; hiddenMenuItems?: string[] };
+  shop?: { name: string; category?: string; hiddenMenuItems?: string[]; productNameCase?: "ORIGINAL" | "UPPERCASE" | "LOWERCASE" };
   supplier?: { name: string };
   staff?: {
     role: string;
@@ -203,6 +203,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
     };
     window.addEventListener("dukapilot:menu-preferences", syncMenuPreferences);
     return () => window.removeEventListener("dukapilot:menu-preferences", syncMenuPreferences);
+  }, []);
+
+  useEffect(() => {
+    const syncProductNameCase = (event: Event) => {
+      const value = (event as CustomEvent<string>).detail;
+      if (value !== "ORIGINAL" && value !== "UPPERCASE" && value !== "LOWERCASE") return;
+      setUser((current) => current?.shop ? { ...current, shop: { ...current.shop, productNameCase: value } } : current);
+    };
+    window.addEventListener("dukapilot:product-name-case", syncProductNameCase);
+    return () => window.removeEventListener("dukapilot:product-name-case", syncProductNameCase);
   }, []);
 
   useEffect(() => {
@@ -425,7 +435,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="min-w-0 flex-1 p-4 lg:p-8 overflow-y-auto">
+        <main data-product-name-case={user?.shop?.productNameCase || "ORIGINAL"} className="min-w-0 flex-1 p-4 lg:p-8 overflow-y-auto">
           {user && <ShortcutUsageTracker merchant={user.role === "MERCHANT"} />}
           {authLoading ? (
             <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-label="Loading account">

@@ -377,7 +377,7 @@ const me = asyncHandler(async (req, res) => {
   if (!req.user.staffId && profile.shop && req.user.resolvedShopId && req.user.resolvedShopId !== profile.shop.id) {
     profile.businessShopId = profile.shop.id;
     const branchProfileStartedAt = performance.now();
-    profile.shop = await prisma.shop.findUnique({ where: { id: req.user.resolvedShopId }, select: { id: true, name: true, location: true, district: true, category: true, parentShopId: true, isActive: true, isCatalogPublished: true } });
+    profile.shop = await prisma.shop.findUnique({ where: { id: req.user.resolvedShopId }, select: { id: true, name: true, location: true, district: true, category: true, parentShopId: true, isActive: true, isCatalogPublished: true, productNameCase: true } });
     recordRequestPhase(req, "auth.branchProfileLookup", performance.now() - branchProfileStartedAt);
   }
   res.json({ user: profile });
@@ -533,7 +533,7 @@ async function getProfile(userId) {
       name: true,
       role: true,
       language: true,
-      shop: { select: { id: true, name: true, location: true, district: true, category: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true, isCatalogPublished: true, hiddenMenuItems: true, referralCode: true } },
+      shop: { select: { id: true, name: true, location: true, district: true, category: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, isActive: true, isCatalogPublished: true, hiddenMenuItems: true, referralCode: true, productNameCase: true } },
       supplier: { select: { id: true, name: true, phone: true, address: true } },
       createdAt: true,
     },
@@ -572,6 +572,7 @@ async function getStaffProfile(staffId) {
           isActive: true,
           isCatalogPublished: true,
           hiddenMenuItems: true,
+          productNameCase: true,
           user: { select: { id: true, phone: true, name: true, role: true, language: true, createdAt: true } },
           parentShop: {
             select: {
@@ -603,6 +604,7 @@ async function getStaffProfile(staffId) {
       district: staff.shop.district,
       category: staff.shop.category,
       hiddenMenuItems: staff.shop.hiddenMenuItems,
+      productNameCase: staff.shop.productNameCase,
     },
     staff: {
       id: staff.id,

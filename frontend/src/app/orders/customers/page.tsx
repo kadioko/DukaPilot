@@ -207,7 +207,7 @@ export default function CustomerOrdersPage() {
                       <div className="space-y-1.5 mb-3">
                         {order.items.map((item, i) => (
                           <div key={i} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-600">{item.product.name}</span>
+                            <span className="product-name text-gray-600">{item.product.name}</span>
                             <span className="font-medium text-gray-800">
                               {item.quantity} {item.product.unit} — {formatTZS(item.unitPrice * item.quantity)}
                               {item.pricingTier === "WHOLESALE" && (

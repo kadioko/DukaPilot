@@ -325,7 +325,7 @@ export default function DashboardPage() {
             <div className="space-y-2">
               {data.lowStockAlerts.slice(0, 5).map((p) => (
                 <div key={p.id} className="flex items-center justify-between">
-                  <span className="text-sm text-amber-900 font-medium">{p.name}</span>
+                  <span className="product-name text-sm text-amber-900 font-medium">{p.name}</span>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-bold ${p.currentStock === 0 ? "text-red-600" : "text-amber-700"}`}>
                       {p.currentStock === 0 ? t("inventory.outOfStockBadge", lang).toUpperCase() : `${p.currentStock} ${p.unit} ${t("dashboard.remaining", lang)}`}
@@ -379,7 +379,7 @@ export default function DashboardPage() {
                       {i + 1}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{tp.product?.name}</p>
+                      <p className="product-name text-sm font-medium text-gray-800 truncate">{tp.product?.name}</p>
                       <p className="text-xs text-gray-500">
                         {tp.totalQuantity} {tp.product?.unit} {t("dashboard.transactions", lang)}
                       </p>

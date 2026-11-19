@@ -418,7 +418,7 @@ export default function OrdersPage() {
                     <div className="space-y-1 mb-3">
                       {order.items.map((item) => (
                         <div key={item.productId} className="flex justify-between text-sm">
-                          <span className="text-gray-600">{item.product.name}</span>
+                          <span className="product-name text-gray-600">{item.product.name}</span>
                           <span className="font-medium">{item.receivedQuantity || 0} / {item.quantity} {item.product.unit}</span>
                         </div>
                       ))}
@@ -532,7 +532,7 @@ export default function OrdersPage() {
                     return (
                       <button key={p.id} onClick={() => addItem(p.id)}
                         className={`text-left p-2 rounded-lg border text-xs transition-all ${inOrder ? "border-brand-400 bg-brand-50" : "border-gray-200 hover:border-brand-300"}`}>
-                        <p className="font-medium text-gray-800">{p.name}</p>
+                        <p className="product-name font-medium text-gray-800">{p.name}</p>
                         <p className="text-gray-400">{p.currentStock} {t("orders.remaining", lang)}</p>
                       </button>
                     );
@@ -544,7 +544,7 @@ export default function OrdersPage() {
                       const p = products.find((pr) => pr.id === item.productId);
                       return (
                         <div key={item.productId} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                          <span className="flex-1 text-xs font-medium text-gray-700">{p?.name}</span>
+                          <span className="product-name flex-1 text-xs font-medium text-gray-700">{p?.name}</span>
                           <input aria-label={`${p?.name || "Product"} ${lang === "sw" ? "idadi" : "quantity"}`} type="number" value={item.quantity} min={1}
                             onChange={(e) => updateItemQty(item.productId, Number(e.target.value))}
                             className="w-16 border border-gray-300 rounded px-2 py-1 text-xs text-center focus:outline-none" />
@@ -568,7 +568,7 @@ export default function OrdersPage() {
                   <div className="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
                     {supplierCatalog.map((product) => (
                       <button key={product.id} type="button" onClick={() => openCatalogImport(product)} className="rounded-lg border border-brand-100 bg-white p-2 text-left hover:border-brand-400">
-                        <p className="text-xs font-semibold text-gray-900">{product.name}</p>
+                        <p className="product-name text-xs font-semibold text-gray-900">{product.name}</p>
                         <p className="mt-0.5 text-xs text-gray-500">{formatTZS(product.price)} / {product.unit} - {product.minOrderQty}+ {lang === "sw" ? "kwa order" : "per order"}</p>
                       </button>
                     ))}

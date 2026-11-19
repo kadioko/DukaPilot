@@ -1144,7 +1144,7 @@ export default function SalesPage() {
                   return (
                     <div key={p.id} className={`flex min-h-32 flex-col rounded-xl border p-3 transition-all ${unavailable ? "border-gray-200 bg-gray-100" : inCart ? "border-brand-400 bg-brand-50" : "border-gray-200 bg-white hover:border-brand-300"}`}>
                       <button disabled={unavailable} onClick={() => addToCart(p)} className="min-h-0 flex-1 text-left disabled:cursor-not-allowed">
-                        <p className={`break-words text-sm font-medium leading-tight ${unavailable ? "text-gray-500" : "text-gray-800"}`}>{p.name}</p>
+                        <p className={`product-name break-words text-sm font-medium leading-tight ${unavailable ? "text-gray-500" : "text-gray-800"}`}>{p.name}</p>
                         <p className={`mt-1 text-xs font-semibold ${outOfStock || expired ? "text-red-600" : "text-gray-500"}`}>
                           {expired ? (lang === "sw" ? "Muda umeisha" : "Expired") : outOfStock ? (lang === "sw" ? "Stock imeisha" : "Out of stock") : `${p.currentStock} ${p.unit} ${t("dashboard.remaining", lang)}`}
                         </p>
@@ -1192,7 +1192,7 @@ export default function SalesPage() {
                       {cart.map((item) => (
                         <div key={item.product.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-gray-100 p-2 sm:flex sm:border-0 sm:p-0">
                           <div className="min-w-0 sm:flex-1">
-                            <p className="text-xs font-medium text-gray-800 truncate">{item.product.name}</p>
+                            <p className="product-name text-xs font-medium text-gray-800 truncate">{item.product.name}</p>
                             {variablePricesEnabled ? (
                               <div className="flex items-center gap-1">
                                 <CurrencyInput

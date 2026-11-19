@@ -68,3 +68,6 @@ a,
 html {
   scroll-behavior: smooth;
 }
+/* Product case is visual only; form values and stored names remain unchanged. */
+[data-product-name-case="UPPERCASE"] .product-name { text-transform: uppercase; }
+[data-product-name-case="LOWERCASE"] .product-name { text-transform: lowercase; }

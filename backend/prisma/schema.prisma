@@ -328,6 +328,7 @@ model Shop {
   isActive                       Boolean                         @default(true)
   isCatalogPublished             Boolean                         @default(true)
   allowVariableSalePrices        Boolean                         @default(false)
+  productNameCase                String                          @default("ORIGINAL")
   externalAiEnabled              Boolean                         @default(false)
   externalAiConsentAt            DateTime?
   externalAiConsentVersion        String?

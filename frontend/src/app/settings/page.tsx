@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { QRCodeCanvas } from "qrcode.react";
 import AppShell from "@/components/layout/AppShell";
-import { api } from "@/lib/api";
+import { api, invalidateCurrentSession } from "@/lib/api";
 import { t, useLang, setLanguage as setAppLanguage } from "@/lib/i18n";
 import { Store, User, Lock, Globe, Check, ChevronDown, Bell, ScanLine, Copy, Download, ExternalLink, QrCode, Share2, Tags, Sparkles } from "lucide-react";
 import NotificationSettings from "@/components/notifications/NotificationSettings";
@@ -24,6 +24,7 @@ interface UserSettings {
     category: string;
     isCatalogPublished: boolean;
     allowVariableSalePrices?: boolean;
+    productNameCase?: "ORIGINAL" | "UPPERCASE" | "LOWERCASE";
     hiddenMenuItems?: string[];
   };
 }
@@ -114,6 +115,9 @@ export default function SettingsPage() {
   const [pricingSaving, setPricingSaving] = useState(false);
   const [pricingError, setPricingError] = useState("");
   const [pricingMsg, setPricingMsg] = useState("");
+  const [nameCaseSaving, setNameCaseSaving] = useState(false);
+  const [nameCaseError, setNameCaseError] = useState("");
+  const [nameCaseMessage, setNameCaseMessage] = useState("");
   const [externalAiSaving, setExternalAiSaving] = useState(false);
   const [externalAiError, setExternalAiError] = useState("");
   const [externalAiMsg, setExternalAiMsg] = useState("");
@@ -185,6 +189,23 @@ export default function SettingsPage() {
       setPricingError(error instanceof Error ? error.message : (lang === "sw" ? "Bei haikuhifadhiwa." : "Could not save sale pricing."));
     } finally {
       setPricingSaving(false);
+    }
+  }
+
+  async function updateProductNameCase(value: "ORIGINAL" | "UPPERCASE" | "LOWERCASE") {
+    setNameCaseSaving(true);
+    setNameCaseError("");
+    setNameCaseMessage("");
+    try {
+      const result = await api.patch<{ productNameCase: "ORIGINAL" | "UPPERCASE" | "LOWERCASE" }>("/settings/product-name-case", { productNameCase: value }, lang);
+      setSettings((current) => current?.shop ? { ...current, shop: { ...current.shop, productNameCase: result.productNameCase } } : current);
+      invalidateCurrentSession();
+      window.dispatchEvent(new CustomEvent("dukapilot:product-name-case", { detail: result.productNameCase }));
+      setNameCaseMessage(lang === "sw" ? "Mpangilio umehifadhiwa." : "Setting saved.");
+    } catch (error) {
+      setNameCaseError(error instanceof Error ? error.message : t("common.error", lang));
+    } finally {
+      setNameCaseSaving(false);
     }
   }
 
@@ -374,6 +395,23 @@ export default function SettingsPage() {
         </SectionCard>
 
         {/* Shop Details — merchant only */}
+        {settings?.role === "MERCHANT" && !settings.isStaff && settings.shop && (
+          <SectionCard title={lang === "sw" ? "Muonekano wa majina ya bidhaa" : "Product name display"} icon={<Tags className="h-4 w-4" />}>
+            <label className="grid gap-2 text-sm font-semibold text-gray-800">
+              {lang === "sw" ? "Herufi za majina" : "Letter case"}
+              <select aria-label={lang === "sw" ? "Herufi za majina ya bidhaa" : "Product name letter case"} value={settings.shop.productNameCase || "ORIGINAL"} disabled={nameCaseSaving} onChange={(event) => updateProductNameCase(event.target.value as "ORIGINAL" | "UPPERCASE" | "LOWERCASE")} className="min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm">
+                <option value="ORIGINAL">{lang === "sw" ? "Kama ilivyoandikwa" : "As entered (custom)"}</option>
+                <option value="UPPERCASE">{lang === "sw" ? "HERUFI KUBWA" : "UPPERCASE"}</option>
+                <option value="LOWERCASE">{lang === "sw" ? "herufi ndogo" : "lowercase"}</option>
+              </select>
+            </label>
+            <p className="text-xs leading-5 text-gray-600">{lang === "sw" ? "Hubadilisha muonekano katika orodha kuu za bidhaa. Baadhi ya sehemu, katalogi, lebo na risiti bado hutumia jina lililohifadhiwa. Majina hayabadilishwi kwenye kumbukumbu." : "Changes the display in the main product lists. Some views, the public catalog, labels and receipts still use the saved name. Stored names are never changed."}</p>
+            {nameCaseSaving && <p role="status" className="text-xs">{lang === "sw" ? "Inahifadhi..." : "Saving..."}</p>}
+            {nameCaseMessage && <SuccessBanner msg={nameCaseMessage} />}
+            {nameCaseError && <p role="alert" className="text-sm text-red-700">{nameCaseError}</p>}
+          </SectionCard>
+        )}
+
         {settings?.role === "MERCHANT" && !settings.isStaff && settings.shop && (
           <SectionCard title={t("settings.shopSection", lang)} icon={<Store className="w-4 h-4" />}>
             <form onSubmit={saveShop} className="space-y-3">
