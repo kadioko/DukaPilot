@@ -454,7 +454,11 @@ async function retryNetworkRequest<T>(
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
 
-      if (!shouldRetryApiFailure(error, attempt, retryGatewayErrors)) {
+      if (!shouldRetryApiFailure({
+        failureType: error.failureType,
+        status: error.status,
+        gatewayError: error.request?.gatewayError,
+      }, attempt, retryGatewayErrors)) {
         if (error.request) reportApiFailure(error, error.request, attempt === 1 ? firstAttemptReporting : retryReporting);
         throw error;
       }

@@ -71,7 +71,7 @@ test("keeps a merchant on the current page and offers retry when session lookup 
   });
   await page.route("**/*api/auth/me", async (route) => {
     sessionAttempts += 1;
-    if (sessionAttempts <= 2) {
+    if (sessionAttempts <= 3) {
       await route.abort("failed");
       return;
     }
@@ -90,7 +90,7 @@ test("keeps a merchant on the current page and offers retry when session lookup 
   await expect(page.getByRole("alert").filter({ hasText: "Your sign-in is still saved" })).toBeVisible();
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByRole("heading", { name: /inventory/i })).toBeVisible();
-  expect(sessionAttempts).toBe(3);
+  expect(sessionAttempts).toBe(4);
 });
 
 test("home page lets a returning merchant retry session detection after a network interruption", async ({ page }) => {
@@ -103,7 +103,7 @@ test("home page lets a returning merchant retry session detection after a networ
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/auth/me")) {
       sessionAttempts += 1;
-      if (sessionAttempts <= 2) {
+      if (sessionAttempts <= 3) {
         await route.abort("failed");
         return;
       }
@@ -123,7 +123,7 @@ test("home page lets a returning merchant retry session detection after a networ
   await expect(page).toHaveURL(/\/$/);
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  expect(sessionAttempts).toBe(3);
+  expect(sessionAttempts).toBe(4);
 });
 
 test("explains when a phone number has no account and offers registration", async ({ page }) => {

@@ -18,6 +18,8 @@ test("API retries are bounded and give fast network failures one extra recovery 
   assert.equal(shouldRetryApiFailure({ failureType: "TIMEOUT" }, 2, true), false);
   assert.equal(shouldRetryApiFailure({ failureType: "HTTP", status: 503 }, 1, false), false);
   assert.equal(shouldRetryApiFailure({ failureType: "HTTP", status: 503 }, 1, true), true);
+  assert.equal(shouldRetryApiFailure({ failureType: "HTTP", status: 500, gatewayError: "ROUTER_EXTERNAL_TARGET_ERROR" }, 1, true), true);
+  assert.equal(shouldRetryApiFailure({ failureType: "HTTP", status: 500 }, 1, true), false);
   assert.equal(shouldRetryApiFailure({ failureType: "INVALID_RESPONSE" }, 1, true), true);
   assert.equal(shouldRetryApiFailure({ failureType: "INVALID_RESPONSE" }, 1, false), false);
   assert.equal(apiRetryDelayMs(1, "NETWORK"), 350);
