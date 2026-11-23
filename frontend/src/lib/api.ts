@@ -4,6 +4,7 @@ import { clearActiveOfflineCropScope, hasPendingOfflineCropOperations } from "@/
 import { clearPendingCashSessionOpen } from "@/lib/cashSessionOpenStorage";
 import * as Sentry from "@sentry/nextjs";
 import { diagnosticEndpoint } from "@/lib/apiDiagnostics";
+import { apiRetryDelayMs, shouldRetryApiFailure } from "@/lib/apiRetry";
 
 const PROD_API_URL = "https://dukapilotproduction.up.railway.app/api";
 const LOCAL_API_URL = "http://localhost:4000/api";
@@ -34,6 +35,8 @@ export interface ApiRequestContext {
   requestId: string;
   endpoint: string;
   method: string;
+  attempt: number;
+  durationMs?: number;
   apiHostname: string;
   upstreamHostname?: string;
   transport: "same-origin-proxy" | "direct-api";
@@ -108,7 +111,7 @@ export function createApiRequestId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function requestContext(baseUrl: string, path: string, method: string, requestId: string): ApiRequestContext {
+function requestContext(baseUrl: string, path: string, method: string, requestId: string, attempt = 1): ApiRequestContext {
   const endpoint = diagnosticEndpoint(path);
   const browserOrigin = typeof window !== "undefined" ? window.location.origin : PROD_API_URL;
   try {
@@ -118,12 +121,13 @@ function requestContext(baseUrl: string, path: string, method: string, requestId
       requestId,
       endpoint,
       method,
+      attempt,
       apiHostname: target.hostname || "same-origin",
       ...(proxy ? { upstreamHostname: new URL(PROD_API_URL).hostname } : {}),
       transport: proxy ? "same-origin-proxy" : "direct-api",
     };
   } catch {
-    return { requestId, endpoint, method, apiHostname: "invalid-url", transport: "direct-api" };
+    return { requestId, endpoint, method, attempt, apiHostname: "invalid-url", transport: "direct-api" };
   }
 }
 
@@ -136,6 +140,8 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting
     requestId: context.requestId,
     endpoint: context.endpoint,
     method: context.method,
+    attempt: context.attempt,
+    durationMs: context.durationMs,
     apiHostname: context.apiHostname,
     upstreamHostname: context.upstreamHostname,
     transport: context.transport,
@@ -169,10 +175,19 @@ function reportApiFailure(error: ApiError, context: ApiRequestContext, reporting
     scope.setTag("api.hostname", context.apiHostname);
     scope.setTag("api.transport", context.transport);
     scope.setTag("api.failure_type", failureType);
+    scope.setTag("api.attempt", String(context.attempt));
     if (status) scope.setTag("api.status", String(status));
     scope.setContext("api_request", data);
+    const network = typeof navigator === "undefined"
+      ? undefined
+      : (navigator as Navigator & { connection?: { type?: string; effectiveType?: string; rtt?: number; downlink?: number } }).connection;
     scope.setContext("client_connectivity", {
       online: typeof navigator === "undefined" ? undefined : navigator.onLine,
+      visibilityState: typeof document === "undefined" ? undefined : document.visibilityState,
+      connectionType: network?.type,
+      effectiveType: network?.effectiveType,
+      rttMs: Number.isFinite(network?.rtt) ? network?.rtt : undefined,
+      downlinkMbps: Number.isFinite(network?.downlink) ? network?.downlink : undefined,
       language: typeof navigator === "undefined" ? undefined : navigator.language,
       environment: process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV || "unknown",
     });
@@ -187,6 +202,10 @@ export function isNetworkError(error: unknown): error is ApiError {
 
 function isAbortError(cause: unknown) {
   return typeof cause === "object" && cause !== null && "name" in cause && cause.name === "AbortError";
+}
+
+function nowMs() {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
 export function getFriendlyErrorMessage(message: string, lang: Lang): string {
@@ -288,10 +307,16 @@ async function request<T>(
   lang: Lang = "en",
   _isRetry = false,
   reporting: ApiFailureReporting = "default",
+  attempt = 1,
+  deferFailureReporting = false,
 ): Promise<T> {
   const baseUrl = getBaseUrl();
   const requestId = createApiRequestId();
-  const context = requestContext(baseUrl, path, options.method || "GET", requestId);
+  const startedAt = nowMs();
+  const context = requestContext(baseUrl, path, options.method || "GET", requestId, attempt);
+  const reportFailure = (error: ApiError) => {
+    if (!deferFailureReporting) reportApiFailure(error, context, reporting);
+  };
   if (["/auth/login", "/auth/logout", "/auth/register"].includes(path) && typeof window !== "undefined") {
     sessionStorage.removeItem(BRANCH_KEY);
     clearPendingCashSessionOpen();
@@ -327,12 +352,14 @@ async function request<T>(
       context,
       timedOut ? "TIMEOUT" : "NETWORK",
     );
-    reportApiFailure(error, context, reporting);
+    context.durationMs = Math.max(0, Math.round(nowMs() - startedAt));
+    reportFailure(error);
     throw error;
   } finally {
     clearTimeout(timeoutId);
     externalSignal?.removeEventListener("abort", cancelRequest);
   }
+  context.durationMs = Math.max(0, Math.round(nowMs() - startedAt));
   const responseRequestId = res.headers.get("x-request-id");
   if (responseRequestId && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(responseRequestId)) {
     context.requestId = responseRequestId;
@@ -349,18 +376,18 @@ async function request<T>(
   if (res.status === 401 && canRefreshSession && !_isRetry) {
     const refreshed = await tryRefreshToken();
     if (refreshed) {
-      return request<T>(path, options, lang, true, reporting);
+      return request<T>(path, options, lang, true, reporting, attempt, deferFailureReporting);
     }
     handleAuthenticationFailure();
     const error = new ApiError(t("auth.error.sessionExpired", lang), undefined, 401, context, "HTTP");
-    reportApiFailure(error, context, reporting);
+    reportFailure(error);
     throw error;
   }
 
   if (res.status === 401 && canRefreshSession) {
     handleAuthenticationFailure();
     const error = new ApiError(t("auth.error.sessionExpired", lang), undefined, 401, context, "HTTP");
-    reportApiFailure(error, context, reporting);
+    reportFailure(error);
     throw error;
   }
 
@@ -378,13 +405,15 @@ async function request<T>(
     if (externalSignal?.aborted) throw new DOMException("Request cancelled", "AbortError");
     const failureType = !res.ok ? "HTTP" : bodyTimedOut ? "TIMEOUT" : cause instanceof SyntaxError ? "INVALID_RESPONSE" : "NETWORK";
     const message = !res.ok ? getHttpErrorMessage(res.status, "", lang) : failureType === "TIMEOUT" ? t("api.error.timeout", lang) : failureType === "NETWORK" ? t("api.error.unavailable", lang) : t("auth.error.unexpectedResponse", lang);
+    context.durationMs = Math.max(0, Math.round(nowMs() - startedAt));
     const error = new ApiError(message, undefined, res.status, context, failureType);
-    reportApiFailure(error, context, reporting);
+    reportFailure(error);
     throw error;
   } finally {
     clearTimeout(bodyTimeoutId);
     externalSignal?.removeEventListener("abort", cancelRequest);
   }
+  context.durationMs = Math.max(0, Math.round(nowMs() - startedAt));
 
   if (!res.ok) {
     const rawMessage =
@@ -397,13 +426,13 @@ async function request<T>(
     }
 
     const error = new ApiError(getHttpErrorMessage(res.status, rawMessage, lang), typeof payload === "string" ? undefined : payload || undefined, res.status, context, "HTTP");
-    reportApiFailure(error, context, reporting);
+    reportFailure(error);
     throw error;
   }
 
   if (!isJson) {
     const error = new ApiError(t("auth.error.unexpectedResponse", lang), undefined, res.status, context, "INVALID_RESPONSE");
-    reportApiFailure(error, context, reporting);
+    reportFailure(error);
     throw error;
   }
 
@@ -418,18 +447,22 @@ async function retryNetworkRequest<T>(
   retryReporting: ApiFailureReporting,
   retryGatewayErrors = false,
 ): Promise<T> {
-  try {
-    return await request<T>(path, options, lang, false, retryGatewayErrors ? "deferred-retry" : firstAttemptReporting);
-  } catch (error) {
-    if (error instanceof ApiError && retryGatewayErrors && (error.failureType === "INVALID_RESPONSE" || error.request?.gatewayError === "ROUTER_EXTERNAL_TARGET_ERROR")) {
-      await new Promise((resolve) => setTimeout(resolve, 350));
+  let attempt = 1;
+  while (true) {
+    try {
+      return await request<T>(path, options, lang, false, retryGatewayErrors ? "deferred-retry" : firstAttemptReporting, attempt, true);
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error;
+
+      if (!shouldRetryApiFailure(error, attempt, retryGatewayErrors)) {
+        if (error.request) reportApiFailure(error, error.request, attempt === 1 ? firstAttemptReporting : retryReporting);
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, apiRetryDelayMs(attempt, error.failureType)));
       if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
-      return request<T>(path, options, lang, false, retryReporting);
+      attempt += 1;
     }
-    if (!(error instanceof ApiError) || !(["NETWORK", "TIMEOUT"].includes(error.failureType || "") || (retryGatewayErrors && [502, 503, 504].includes(error.status || 0)))) throw error;
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
-    return request<T>(path, options, lang, false, retryReporting);
   }
 }
 
