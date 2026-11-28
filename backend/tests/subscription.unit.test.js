@@ -97,3 +97,37 @@ test("admin subscription list searches in the database and returns a bounded pag
   assert.match(JSON.stringify(findManyArgs.where), /salum/);
   assert.match(JSON.stringify(findManyArgs.where), /subscriptionEndsAt/);
 });
+
+test("subscription filters match displayed statuses including null dates and overlapping trial and paid dates", () => {
+  const { subscriptionSnapshot, subscriptionStatusWhere } = require(controllerPath);
+  const now = new Date("2026-11-26T12:00:00.000Z");
+  const past = new Date("2026-11-25T12:00:00.000Z");
+  const future = new Date("2026-11-27T12:00:00.000Z");
+  function matches(shop, where) {
+    return Object.entries(where).every(([key, value]) => {
+      if (key === "AND") return value.every((part) => matches(shop, part));
+      if (key === "OR") return value.some((part) => matches(shop, part));
+      if (value && typeof value === "object" && !(value instanceof Date)) {
+        return Object.entries(value).every(([op, operand]) => {
+          if (op === "not") return shop[key] !== operand;
+          if (op === "gt") return shop[key] != null && shop[key] > operand;
+          if (op === "lte") return shop[key] != null && shop[key] <= operand;
+          throw new Error(`Unexpected operator ${op}`);
+        });
+      }
+      return shop[key] === value;
+    });
+  }
+  for (const plan of ["FREE_TRIAL", "BASIC", "PRO"]) {
+    for (const isActive of [true, false]) {
+      for (const trialEndsAt of [null, past, now, future]) {
+        for (const subscriptionEndsAt of [null, past, now, future]) {
+          const shop = { plan, isActive, trialEndsAt, subscriptionEndsAt };
+          const expected = subscriptionSnapshot(shop, now).status;
+          const found = ["trial", "active", "expired", "suspended"].filter((status) => matches(shop, subscriptionStatusWhere(status, now)));
+          assert.deepEqual(found, [expected], JSON.stringify(shop));
+        }
+      }
+    }
+  }
+});

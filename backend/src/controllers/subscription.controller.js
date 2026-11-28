@@ -61,17 +61,13 @@ function subscriptionSnapshot(shop, now = new Date()) {
 
 function subscriptionStatusWhere(status, now) {
   if (status === "trial") return { isActive: true, plan: "FREE_TRIAL", trialEndsAt: { gt: now } };
-  if (status === "active") return { isActive: true, subscriptionEndsAt: { gt: now } };
+  const notActiveTrial = { OR: [{ plan: { not: "FREE_TRIAL" } }, { trialEndsAt: null }, { trialEndsAt: { lte: now } }] };
+  if (status === "active") return { isActive: true, subscriptionEndsAt: { gt: now }, AND: [notActiveTrial] };
   if (status === "suspended") return { isActive: false };
   if (status === "expired") {
     return {
       isActive: true,
-      NOT: {
-        OR: [
-          { plan: "FREE_TRIAL", trialEndsAt: { gt: now } },
-          { subscriptionEndsAt: { gt: now } },
-        ],
-      },
+      AND: [notActiveTrial, { OR: [{ subscriptionEndsAt: null }, { subscriptionEndsAt: { lte: now } }] }],
     };
   }
   return null;

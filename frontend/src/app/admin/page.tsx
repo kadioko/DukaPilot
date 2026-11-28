@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import WhatsAppCoexistencePanel from "@/components/admin/WhatsAppCoexistencePanel";
@@ -519,6 +519,8 @@ export default function AdminPage() {
   const [subscriptionPageSize, setSubscriptionPageSize] = useState(24);
   const [subscriptionTotalPages, setSubscriptionTotalPages] = useState(1);
   const [subscriptionStatusCounts, setSubscriptionStatusCounts] = useState<SubscriptionListResponse["statusCounts"]>({ trial: 0, active: 0, expired: 0, suspended: 0 });
+  const subscriptionRequest = useRef(0);
+  const [subscriptionRefreshing, setSubscriptionRefreshing] = useState(false);
   const [referrals, setReferrals] = useState<AdminReferral[]>([]);
   const [referralPage, setReferralPage] = useState(1);
   const [referralTotal, setReferralTotal] = useState(0);
@@ -825,7 +827,20 @@ export default function AdminPage() {
     const params = new URLSearchParams({ page: String(page), limit: String(subscriptionPageSize) });
     if (status !== "ALL") params.set("status", status);
     if (search.trim()) params.set("search", search.trim());
-    const data = await api.get<SubscriptionListResponse>(`/subscription/admin?${params.toString()}`);
+    const requestId = ++subscriptionRequest.current;
+    setSubscriptionRefreshing(true);
+    let data: SubscriptionListResponse;
+    try {
+      data = await api.get<SubscriptionListResponse>(`/subscription/admin?${params.toString()}`);
+    } catch (error) {
+      if (requestId !== subscriptionRequest.current) return;
+      setSectionErrors((previous) => ({ ...previous, subscriptions: error instanceof Error ? error.message : "Could not load subscriptions" }));
+      throw error;
+    } finally {
+      if (requestId === subscriptionRequest.current) setSubscriptionRefreshing(false);
+    }
+    if (requestId !== subscriptionRequest.current) return;
+    setSectionErrors((previous) => { const next = { ...previous }; delete next.subscriptions; return next; });
     setSubscriptions(data.shops);
     setSubscriptionSupportQueue(data.supportQueue || []);
     setSubscriptionOperationalCounts(data.operationalCounts || { expiringTrials: 0, stalledTrials: 0, activatedTrials: 0 });
@@ -1304,7 +1319,7 @@ export default function AdminPage() {
     if (!shop.activation?.activated) return "Needs activation help";
     return "Follow up";
   }
-  const filteredSubscriptions = subscriptions;
+  const filteredSubscriptions = subscriptionRefreshing || sectionErrors.subscriptions ? [] : subscriptions;
   const subscriptionFrom = subscriptionTotal ? ((subscriptionPage - 1) * subscriptionPageSize) + 1 : 0;
   const subscriptionTo = Math.min(subscriptionPage * subscriptionPageSize, subscriptionTotal);
 
@@ -2267,7 +2282,7 @@ export default function AdminPage() {
                     subFilter === s ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                   }`}
                 >
-                  {s.toUpperCase()} ({s === "ALL" ? subscriptionTotal : subscriptionStatusCounts[s as keyof typeof subscriptionStatusCounts]})
+                  {s.toUpperCase()} ({s === "ALL" ? Object.values(subscriptionStatusCounts).reduce((sum, count) => sum + count, 0) : subscriptionStatusCounts[s as keyof typeof subscriptionStatusCounts]})
                 </button>
               ))}
             </div>
@@ -2280,7 +2295,11 @@ export default function AdminPage() {
                 <span className="text-xs font-semibold text-brand-700">{subscriptionFrom}-{subscriptionTo} of {subscriptionTotal} shops</span>
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
-                {filteredSubscriptions.length === 0 ? (
+                {subscriptionRefreshing ? (
+                  <div role="status" className="rounded-lg bg-white p-4 text-sm text-gray-500">{sw ? "Inapakia..." : "Loading..."}</div>
+                ) : sectionErrors.subscriptions ? (
+                  <div className="rounded-lg bg-white p-4 text-sm text-gray-500">{sw ? "Orodha haijapakiwa." : "The list could not be loaded."}</div>
+                ) : filteredSubscriptions.length === 0 ? (
                   <div className="rounded-lg bg-white p-4 text-sm text-gray-500">No shops match this filter.</div>
                 ) : filteredSubscriptions.map((shop) => {
                   const draft = billingDraftFor(shop);
