@@ -16,6 +16,7 @@ import { activePromotionPrice } from "@/lib/productPricing";
 
 interface Product {
   id: string;
+  serviceId?: string;
   name: string;
   unit: string;
   sellingPrice: number;
@@ -69,7 +70,7 @@ interface PendingSale {
   attempts?: number;
   lastError?: string;
   payload?: {
-    items?: Array<{ productId: string; quantity: number; unitPrice: number }>;
+    items?: Array<{ productId?: string; serviceId?: string; quantity: number; unitPrice: number }>;
     saleMode: "RETAIL" | "WHOLESALE";
     paymentMethod: string;
     paymentRef?: string;
@@ -209,6 +210,10 @@ export default function SalesPage() {
   const cartPanelRef = useRef<HTMLDivElement>(null);
   const historyRequestRef = useRef(0);
   const [products, setProducts] = useState<Product[]>([]);
+  const [services, setServices] = useState<Product[]>([]);
+  const [servicePage, setServicePage] = useState(1);
+  const [serviceTotal, setServiceTotal] = useState(0);
+  const [serviceError, setServiceError] = useState("");
   const [productPage, setProductPage] = useState(1);
   const [productTotal, setProductTotal] = useState(0);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -331,8 +336,27 @@ export default function SalesPage() {
     };
   }, [lang, productPage, productRevision, search]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const query = new URLSearchParams({ page: String(servicePage), limit: "100", search: search.trim() });
+        const data = await api.get<{ services: Array<{ id: string; name: string; unit: string; defaultSellingPrice: number }>; total: number }>(`/services?${query}`);
+        if (cancelled) return;
+        const mapped: Product[] = data.services.map((service) => ({ id: `service:${service.id}`, serviceId: service.id, name: service.name, unit: service.unit, sellingPrice: service.defaultSellingPrice, buyingPrice: null, currentStock: 0, doesNotExpire: true }));
+        setServices((current) => servicePage === 1 ? mapped : [...current, ...mapped.filter((item) => !current.some((old) => old.id === item.id))]);
+        setServiceTotal(data.total);
+        setServiceError("");
+      } catch {
+        if (!cancelled) { setServices([]); setServiceTotal(0); setServiceError(lang === "sw" ? "Huduma hazikupatikana. Jaribu tena." : "Services could not be loaded. Try again."); }
+      }
+    }, search.trim() ? 250 : 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [lang, search, servicePage, productRevision]);
+
   const refreshProducts = useCallback(() => {
     setProductPage(1);
+    setServicePage(1);
     setProductRevision((current) => current + 1);
   }, []);
 
@@ -525,7 +549,7 @@ export default function SalesPage() {
 
   const hiddenOutOfStock = products.filter((p) => p.currentStock <= 0).length;
   const hiddenExpired = products.filter((p) => p.currentStock > 0 && isExpired(p)).length;
-  const filtered = products;
+  const filtered = [...services, ...products];
 
   function defaultPriceFor(product: Product): number {
     if (saleMode === "WHOLESALE" && product.wholesalePrice != null) {
@@ -535,7 +559,7 @@ export default function SalesPage() {
   }
 
   function addToCart(product: Product) {
-    if (product.currentStock <= 0) {
+    if (!product.serviceId && product.currentStock <= 0) {
       toast(lang === "sw" ? `Stock ya ${product.name} imeisha.` : `${product.name} is out of stock.`, "error");
       return;
     }
@@ -548,7 +572,7 @@ export default function SalesPage() {
       if (existing) {
         return prev.map((i) =>
           i.product.id === product.id
-            ? { ...i, quantity: Math.min(i.quantity + 1, product.currentStock) }
+            ? { ...i, quantity: Math.min(i.quantity + 1, product.serviceId ? 2147483647 : product.currentStock) }
             : i
         );
       }
@@ -600,7 +624,7 @@ export default function SalesPage() {
       prev
         .map((i) =>
           i.product.id === productId
-            ? { ...i, quantity: Math.max(0, Math.min(i.quantity + delta, i.product.currentStock)) }
+            ? { ...i, quantity: Math.max(0, Math.min(i.quantity + delta, i.product.serviceId ? 2147483647 : i.product.currentStock)) }
             : i
         )
         .filter((i) => i.quantity > 0)
@@ -615,7 +639,7 @@ export default function SalesPage() {
   function setCartQuantity(productId: string, value: number) {
     const cartItem = cart.find((item) => item.product.id === productId);
     if (cartItem) {
-      const stock = Math.max(0, Math.floor(cartItem.product.currentStock));
+      const stock = cartItem.product.serviceId ? 2147483647 : Math.max(0, Math.floor(cartItem.product.currentStock));
       if (stock === 0) {
         removeFromCart(productId);
         toast(lang === "sw" ? `${cartItem.product.name} haina stock tena.` : `${cartItem.product.name} is no longer in stock.`, "error");
@@ -819,7 +843,7 @@ export default function SalesPage() {
     const clientReference = newLocalId();
     const payload = {
       items: cart.map((i) => ({
-        productId: i.product.id,
+        ...(i.product.serviceId ? { serviceId: i.product.serviceId } : { productId: i.product.id }),
         quantity: i.quantity,
         unitPrice: i.unitPrice,
       })),
@@ -1123,7 +1147,7 @@ export default function SalesPage() {
               <div className="mb-3 flex gap-2">
                 <div className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input value={search} onChange={(e) => { setSearch(e.target.value); setProductPage(1); }}
+                <input value={search} onChange={(e) => { setSearch(e.target.value); setProductPage(1); setServicePage(1); }}
                   placeholder={t("inventory.search", lang)}
                   className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-3 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
                 </div>
@@ -1135,22 +1159,23 @@ export default function SalesPage() {
                   <button onClick={refreshProducts} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">{lang === "sw" ? "Jaribu tena" : "Try again"}</button>
                 </div>
               )}
+              {serviceError && <div role="alert" className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><span>{serviceError}</span><button onClick={refreshProducts} className="font-semibold underline">{lang === "sw" ? "Jaribu tena" : "Retry"}</button></div>}
               <div className="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pb-2 sm:grid-cols-3 lg:max-h-[60vh] lg:grid-cols-2">
                 {filtered.map((p) => {
                   const inCart = cart.find((i) => i.product.id === p.id);
                   const expired = isExpired(p);
-                  const outOfStock = p.currentStock <= 0;
+                  const outOfStock = !p.serviceId && p.currentStock <= 0;
                   const unavailable = expired || outOfStock;
                   return (
                     <div key={p.id} className={`flex min-h-32 flex-col rounded-xl border p-3 transition-all ${unavailable ? "border-gray-200 bg-gray-100" : inCart ? "border-brand-400 bg-brand-50" : "border-gray-200 bg-white hover:border-brand-300"}`}>
                       <button disabled={unavailable} onClick={() => addToCart(p)} className="min-h-0 flex-1 text-left disabled:cursor-not-allowed">
                         <p className={`product-name break-words text-sm font-medium leading-tight ${unavailable ? "text-gray-500" : "text-gray-800"}`}>{p.name}</p>
                         <p className={`mt-1 text-xs font-semibold ${outOfStock || expired ? "text-red-600" : "text-gray-500"}`}>
-                          {expired ? (lang === "sw" ? "Muda umeisha" : "Expired") : outOfStock ? (lang === "sw" ? "Stock imeisha" : "Out of stock") : `${p.currentStock} ${p.unit} ${t("dashboard.remaining", lang)}`}
+                          {p.serviceId ? (lang === "sw" ? "Huduma - haihitaji stock" : "Service - no stock needed") : expired ? (lang === "sw" ? "Muda umeisha" : "Expired") : outOfStock ? (lang === "sw" ? "Stock imeisha" : "Out of stock") : `${p.currentStock} ${p.unit} ${t("dashboard.remaining", lang)}`}
                         </p>
                       <p className={`mt-1 text-sm font-bold ${unavailable ? "text-gray-500" : "text-brand-700"}`}>{formatTZS(defaultPriceFor(p))}</p>
                       {!unavailable && saleMode !== "WHOLESALE" && defaultPriceFor(p) !== p.sellingPrice && <p className="text-xs text-gray-500"><span className="line-through">{formatTZS(p.sellingPrice)}</span> <span className="font-semibold text-emerald-700">{lang === "sw" ? "OFA" : "SALE"}</span></p>}
-                        {!unavailable && saleMode === "WHOLESALE" && p.wholesalePrice == null && <p className="mt-0.5 text-[10px] text-amber-600">{t("sales.noWholesalePrice", lang)}</p>}
+                        {!unavailable && !p.serviceId && saleMode === "WHOLESALE" && p.wholesalePrice == null && <p className="mt-0.5 text-[10px] text-amber-600">{t("sales.noWholesalePrice", lang)}</p>}
                         {!unavailable && p.wholesalePrice != null && p.wholesaleMinQty != null && <p className="mt-0.5 text-[10px] text-gray-400">{t("sales.wholesaleMinHint", lang).replace("{n}", String(p.wholesaleMinQty))}</p>}
                         {inCart && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-xs text-white">x{inCart.quantity}</span>}
                       </button>
@@ -1171,6 +1196,7 @@ export default function SalesPage() {
                   </button>
                 )}
               </div>
+              {services.length < serviceTotal && <button onClick={() => setServicePage((current) => current + 1)} className="mt-2 text-xs font-semibold text-brand-700">{lang === "sw" ? "Onyesha huduma zaidi" : "Load more services"}</button>}
             </div>
 
             {/* Cart */}
@@ -1219,7 +1245,7 @@ export default function SalesPage() {
                               type="number"
                               inputMode="numeric"
                               min={1}
-                              max={item.product.currentStock}
+                              max={item.product.serviceId ? 2147483647 : item.product.currentStock}
                               step={1}
                               value={quantityDrafts[item.product.id] ?? item.quantity}
                               onChange={(event) => setQuantityDrafts((current) => ({ ...current, [item.product.id]: event.target.value }))}
@@ -1230,7 +1256,7 @@ export default function SalesPage() {
                               onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
                               className="h-11 w-16 rounded-lg border border-gray-300 bg-white px-1 text-center text-base font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500 sm:h-9 sm:text-sm"
                             />
-                            <button aria-label={`${lang === "sw" ? "Ongeza idadi ya" : "Increase quantity of"} ${item.product.name}`} disabled={item.quantity >= item.product.currentStock} onClick={() => updateQty(item.product.id, 1)} className="w-11 h-11 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0 disabled:opacity-40 sm:h-9 sm:w-9">
+                            <button aria-label={`${lang === "sw" ? "Ongeza idadi ya" : "Increase quantity of"} ${item.product.name}`} disabled={item.quantity >= (item.product.serviceId ? 2147483647 : item.product.currentStock)} onClick={() => updateQty(item.product.id, 1)} className="w-11 h-11 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center min-h-0 disabled:opacity-40 sm:h-9 sm:w-9">
                               <Plus className="w-3 h-3" />
                             </button>
                           </div>
@@ -1474,7 +1500,7 @@ export default function SalesPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4">
           <section role="dialog" aria-modal="true" aria-labelledby="sale-return-title" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-4 shadow-2xl sm:p-6">
             <header className="flex items-start justify-between gap-3 border-b border-gray-200 pb-3">
-              <div><h2 id="sale-return-title" className="text-lg font-bold text-gray-950">{lang === "sw" ? "Rejesha bidhaa" : "Record a product return"}</h2><p className="mt-1 text-sm text-gray-600">{receiptLabel(returnTarget)} · {lang === "sw" ? "Rejesho linahifadhiwa kama tukio tofauti." : "The return is recorded as a separate dated event."}</p></div>
+              <div><h2 id="sale-return-title" className="text-lg font-bold text-gray-950">{lang === "sw" ? "Rejesha bidhaa au huduma" : "Return a product or service"}</h2><p className="mt-1 text-sm text-gray-600">{receiptLabel(returnTarget)} · {lang === "sw" ? "Rejesho linahifadhiwa kama tukio tofauti." : "The return is recorded as a separate dated event."}</p></div>
               <button type="button" aria-label={lang === "sw" ? "Funga" : "Close"} onClick={() => { setReturnTarget(null); setReturnRequestKey(""); }} disabled={savingReturn} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
             </header>
             <div className="mt-4 space-y-3">
