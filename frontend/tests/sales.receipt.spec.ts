@@ -40,6 +40,7 @@ test("cash receipt prompts for a missing phone and builds a normalized WhatsApp 
   await page.route("**/*api/debts/customers", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ customers: [] }) }));
   await page.route("**/*api/settings", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { shop: { name: "Duka la Jaribio" } } }) }));
   await page.route("**/*api/barcodes/settings", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { barcodeScanningEnabled: false } }) }));
+  await page.route("**/*api/services?*", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ services: [], total: 0 }) }));
   await page.route("**/*api/sync/events", async (route) => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ event: { id: "sync-event-1" } }) }));
   await page.route("**/*api/products?*", async (route) => route.fulfill({
     status: 200,

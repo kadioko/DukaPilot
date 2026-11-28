@@ -15,6 +15,7 @@ test("sales history searches, filters, paginates, and fits a phone viewport", as
   await page.route("**/*api/debts/customers", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ customers: [] }) }));
   await page.route("**/*api/settings", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { shop: { name: "Test Shop" } } }) }));
   await page.route("**/*api/barcodes/settings", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ settings: { barcodeScanningEnabled: false } }) }));
+  await page.route("**/*api/services?*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ services: [], total: 0 }) }));
   await page.route("**/*api/products?*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ products: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 1 } }) }));
 
   const historyRequests: URL[] = [];
