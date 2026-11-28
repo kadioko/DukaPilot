@@ -84,6 +84,24 @@ test("partial cash return restores sellable stock once and reuses an identical r
   assert.equal(movements, 1);
 });
 
+test("a service refund creates no physical stock movements", async () => {
+  const sale = completedCashSale();
+  sale.items[0] = { ...sale.items[0], productId: null, product: null, name: "Car wash" };
+  let movements = 0;
+  const tx = {
+    saleReturn: { findFirst: async () => null, create: async ({ data }) => ({ id: "return-service", ...data, items: data.items.create }) },
+    sale: { findFirst: async () => sale },
+    saleItem: { updateMany: async () => ({ count: 1 }) },
+    stockMovement: { create: async () => { movements += 1; } },
+  };
+  const controller = loadController({ $transaction: async (fn) => fn(tx) });
+  const res = response();
+  await controller.create(returnRequest({ items: [{ saleItemId: "sale-item-1", quantity: 1, restockQuantity: 0, damagedQuantity: 0 }] }), res);
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.payload.saleReturn.refundAmount, 1000);
+  assert.equal(movements, 0);
+});
+
 test("returning a credit sale reduces unpaid debt before refunding collected money", async () => {
   const sale = completedCashSale(3);
   sale.paymentMethod = "CREDIT";

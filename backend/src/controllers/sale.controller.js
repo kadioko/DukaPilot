@@ -137,9 +137,10 @@ const create = asyncHandler(async (req, res) => {
   if (!pricingShop) return res.status(404).json({ error: "Business not found" });
 
   // Validate products belong to this shop and have sufficient stock
-  const productIds = items.map((i) => i.productId);
-  if (new Set(productIds).size !== productIds.length) {
-    return res.status(400).json({ error: "Each product can appear only once in a sale" });
+  const productIds = items.filter((i) => i.productId).map((i) => i.productId);
+  const serviceIds = items.filter((i) => i.serviceId).map((i) => i.serviceId);
+  if (new Set(productIds).size !== productIds.length || new Set(serviceIds).size !== serviceIds.length) {
+    return res.status(400).json({ error: "Each product or service can appear only once in a sale" });
   }
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, shopId, isActive: true },
@@ -148,10 +149,14 @@ const create = asyncHandler(async (req, res) => {
   if (products.length !== productIds.length) {
     return res.status(400).json({ error: "One or more products not found in this shop" });
   }
+  const services = serviceIds.length ? await prisma.service.findMany({ where: { id: { in: serviceIds }, shopId, isActive: true } }) : [];
+  if (services.length !== serviceIds.length) return res.status(400).json({ error: "One or more services not found in this shop" });
 
   const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+  const serviceMap = Object.fromEntries(services.map((service) => [service.id, service]));
 
   for (const item of items) {
+    if (item.serviceId) continue;
     const product = productMap[item.productId];
     if (product.isInternalUse) {
       return res.status(400).json({ error: `${product.name} is for internal use and cannot be sold` });
@@ -171,6 +176,21 @@ const create = asyncHandler(async (req, res) => {
   let priceAdjustedItemsCount = 0;
   const saleItemsData = [];
   for (const item of items) {
+    if (item.serviceId) {
+      const service = serviceMap[item.serviceId];
+      const defaultPrice = service.defaultSellingPrice;
+      const unitPrice = item.unitPrice != null && item.unitPrice !== "" ? Number(item.unitPrice) : defaultPrice;
+      if (!Number.isSafeInteger(unitPrice) || unitPrice < 0) return res.status(400).json({ error: "Sale price must be a whole TZS amount" });
+      if (unitPrice !== defaultPrice) {
+        if (!pricingShop.allowVariableSalePrices) return res.status(403).json({ error: "Sale price changes are off for this business. Ask the owner to enable them in Settings, or refresh the listed price." });
+        priceAdjustedItemsCount += 1;
+      }
+      const totalPrice = unitPrice * item.quantity;
+      totalAmount += totalPrice;
+      totalProfit += (unitPrice - service.defaultEstimatedUnitCost) * item.quantity;
+      saleItemsData.push({ quantity: item.quantity, unitPrice, listedUnitPrice: defaultPrice, buyingPrice: service.defaultEstimatedUnitCost, totalPrice, name: service.name, unit: service.unit });
+      continue;
+    }
     const product = productMap[item.productId];
     const defaultPrice = pricingTier === "WHOLESALE" && product.wholesalePrice != null
       ? product.wholesalePrice
@@ -241,6 +261,7 @@ const create = asyncHandler(async (req, res) => {
 
     // Deduct stock with an in-transaction guard so concurrent sales cannot push stock negative.
     for (const item of items) {
+      if (item.serviceId) continue;
       const product = productMap[item.productId];
       const updated = await tx.product.updateMany({
         where: { id: item.productId, shopId, isActive: true, isInternalUse: false, currentStock: { gte: item.quantity } },

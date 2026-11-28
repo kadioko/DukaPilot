@@ -79,6 +79,29 @@ async function fixture(t, paymentMethod = "CASH", totalAmount = 2000) {
   return { user: actor, shop, product, session, sale, debt };
 }
 
+test("POS service sales and refunds do not change stock and retain an unknown-cost snapshot", { timeout: 15000 }, async (t) => {
+  const f = await fixture(t, "MPESA");
+  const service = await prisma.service.create({ data: { shopId: f.shop.id, name: "Synthetic car wash", defaultSellingPrice: 10000, defaultEstimatedUnitCost: 0 } });
+  const before = await prisma.stockMovement.count({ where: { productId: f.product.id } });
+  const result = await invoke(sales.create, { user: f.user, body: { paymentMethod: "MPESA", clientReference: crypto.randomUUID(), items: [{ serviceId: service.id, quantity: 2 }, { productId: f.product.id, quantity: 1 }] } });
+  assert.equal(result.statusCode, 201, JSON.stringify(result.payload));
+  const serviceItem = result.payload.sale.items.find((item) => item.name === service.name);
+  assert.equal(serviceItem.productId, null);
+  assert.equal(serviceItem.buyingPrice, 0);
+  assert.equal(result.payload.sale.totalAmount, 21000);
+  assert.equal((await prisma.product.findUnique({ where: { id: f.product.id } })).currentStock, 7);
+  assert.equal(await prisma.stockMovement.count({ where: { productId: f.product.id } }), before + 1);
+  const refund = await invoke(returns.create, { user: f.user, params: { id: result.payload.sale.id }, body: { reason: "Synthetic service refund", requestKey: crypto.randomUUID(), refundMethod: "MPESA", items: [{ saleItemId: serviceItem.id, quantity: 1, restockQuantity: 0, damagedQuantity: 0 }] } });
+  assert.equal(refund.statusCode, 201, JSON.stringify(refund.payload));
+  assert.equal(refund.payload.saleReturn.refundAmount, 10000);
+  assert.equal((await prisma.product.findUnique({ where: { id: f.product.id } })).currentStock, 7);
+  assert.equal(await prisma.stockMovement.count({ where: { productId: f.product.id } }), before + 1);
+  const analytics = await invoke(dashboard.profitAnalytics, { user: f.user, query: { period: "month" } });
+  assert.equal(analytics.statusCode, 200, JSON.stringify(analytics.payload));
+  assert.equal(analytics.payload.summary.missingCostSalesRevenue, 10000);
+  assert.equal(analytics.payload.summary.costComplete, false);
+});
+
 test("a sale cannot be voided using a cash-shift snapshot read before that shift closes", { timeout: 15000 }, async (t) => {
   const f = await fixture(t);
   const reachedCashLock = deferred();

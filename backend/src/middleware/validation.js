@@ -98,8 +98,13 @@ const saleSummaryValidation = [
 
 const saleCreateValidation = [
   body("items").isArray({ min: 1 }).withMessage("Sale must have at least one item"),
-  body("items.*.productId").isString().notEmpty().withMessage("Each sale item must include a productId"),
-  body("items.*.quantity").isInt({ min: 1 }).withMessage("Each sale item quantity must be a whole number greater than 0"),
+  body("items.*").custom((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const validId = (id) => id == null || (typeof id === "string" && id.length > 0 && id.length <= 100 && id.trim() === id);
+    if (!validId(item.productId) || !validId(item.serviceId)) return false;
+    return Boolean(item.productId) !== Boolean(item.serviceId);
+  }).withMessage("Each sale item must identify one product or service"),
+  body("items.*.quantity").isInt({ min: 1, max: 2147483647 }).withMessage("Each sale item quantity must be a supported whole number greater than 0").toInt(),
   body("items.*.unitPrice").optional({ values: "falsy" }).isInt({ min: 0 }).withMessage("Each sale item unitPrice must be a whole TZS amount"),
   body("clientReference").optional({ values: "falsy" }).trim().isLength({ max: 100 }).withMessage("Sale reference must be 100 characters or less"),
   body("saleMode").optional({ values: "falsy" }).custom((v) => ["RETAIL", "WHOLESALE"].includes(String(v).toUpperCase())).withMessage("saleMode must be RETAIL or WHOLESALE"),

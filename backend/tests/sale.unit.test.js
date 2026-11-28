@@ -177,6 +177,103 @@ test("sale create rejects an internal-use feed even when stock is available", as
   assert.equal(transactionStarted, false);
 });
 
+test("a mixed service and product sale only changes physical stock", async () => {
+  let created;
+  const movements = [];
+  const updates = [];
+  const tx = {
+    shop: { update: async () => ({ nextSaleNumber: 9 }) },
+    sale: { create: async ({ data }) => { created = data; return { id: "sale-1", ...data, items: data.items.create }; } },
+    product: { updateMany: async (args) => { updates.push(args); return { count: 1 }; } },
+    stockMovement: { create: async (args) => movements.push(args) },
+    farmGroup: { findFirst: async () => null },
+  };
+  let serviceWhere;
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ allowVariableSalePrices: false }) },
+    product: { findMany: async () => [{ id: "soap", name: "Soap", unit: "pcs", currentStock: 4, sellingPrice: 2000, buyingPrice: 1000 }] },
+    service: { findMany: async ({ where }) => { serviceWhere = where; return [{ id: "wash", name: "Car wash", unit: "service", defaultSellingPrice: 10000, defaultEstimatedUnitCost: 0 }]; } },
+    $transaction: async (fn) => fn(tx),
+  });
+  const res = createRes();
+  await ctrl.create({ user: { userId: "owner-1", role: "MERCHANT" }, body: { paymentMethod: "MPESA", items: [{ serviceId: "wash", quantity: 2 }, { productId: "soap", quantity: 1 }] } }, res);
+  assert.equal(res.statusCode, 201);
+  assert.equal(serviceWhere.shopId, "shop-1");
+  assert.equal(created.totalAmount, 22000);
+  assert.equal(created.items.create[0].name, "Car wash");
+  assert.equal(created.items.create[0].buyingPrice, 0);
+  assert.equal(created.items.create[0].productId, undefined);
+  assert.equal(updates.length, 1);
+  assert.equal(movements.length, 1);
+  assert.equal(movements[0].data.productId, "soap");
+});
+
+test("a service from another business cannot be sold", async () => {
+  const ctrl = loadController({
+    shop: { findUnique: async () => ({ allowVariableSalePrices: false }) },
+    product: { findMany: async () => [] },
+    service: { findMany: async () => [] },
+  });
+  const res = createRes();
+  await ctrl.create({ user: { userId: "owner-1" }, body: { items: [{ serviceId: "other-shop", quantity: 1 }] } }, res);
+  assert.equal(res.statusCode, 400);
+});
+
+test("sale validation rejects ambiguous or malformed service lines", async () => {
+  const { saleCreateValidation } = require("../src/middleware/validation");
+  const { validationResult } = require("express-validator");
+  for (const item of [
+    { productId: "p", serviceId: "s", quantity: 1 },
+    { productId: "p", serviceId: { id: "s" }, quantity: 1 },
+    { serviceId: "s", quantity: 2147483648 },
+    { quantity: 1 },
+  ]) {
+    const req = { body: { items: [item] } };
+    for (const validator of saleCreateValidation) if (validator.run) await validator.run(req);
+    assert.equal(validationResult(req).isEmpty(), false, JSON.stringify(item));
+  }
+});
+
+test("service listing hides costs from cashiers and prices from stock-only staff", async () => {
+  const serviceControllerPath = path.resolve(__dirname, "../src/controllers/posService.controller.js");
+  loadController({ service: {
+    findMany: async () => [{ id: "wash", name: "Car wash", defaultSellingPrice: 10000, defaultEstimatedUnitCost: 3000 }],
+    count: async () => 1,
+  } });
+  delete require.cache[serviceControllerPath];
+  const ctrl = require(serviceControllerPath);
+  const cashier = createRes();
+  await ctrl.list({ user: { staffId: "staff-1", role: "MERCHANT", permissions: { canSell: true } }, query: {} }, cashier);
+  assert.equal(cashier.payload.services[0].defaultSellingPrice, 10000);
+  assert.equal(cashier.payload.services[0].defaultEstimatedUnitCost, undefined);
+  const stockOnly = createRes();
+  await ctrl.list({ user: { staffId: "staff-2", role: "MERCHANT", permissions: { canViewStock: true } }, query: {} }, stockOnly);
+  assert.equal(stockOnly.payload.services[0].defaultSellingPrice, null);
+  assert.equal(stockOnly.payload.services[0].defaultEstimatedUnitCost, undefined);
+});
+
+test("service creation retries reuse the original request without duplicating", async () => {
+  const serviceControllerPath = path.resolve(__dirname, "../src/controllers/posService.controller.js");
+  let saved;
+  loadController({ service: {
+    create: async ({ data }) => { if (saved) throw Object.assign(new Error("duplicate"), { code: "P2002" }); saved = data; return saved; },
+    findUnique: async () => saved,
+  } });
+  delete require.cache[serviceControllerPath];
+  const ctrl = require(serviceControllerPath);
+  const req = { user: { role: "MERCHANT", userId: "owner-1" }, body: { requestId: "12345678-1234-4234-8234-123456789abc", name: "Wash", defaultSellingPrice: 10000 } };
+  const first = createRes();
+  await ctrl.create(req, first);
+  assert.equal(first.statusCode, 201);
+  const retry = createRes();
+  await ctrl.create(req, retry);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.reused, true);
+  const conflict = createRes();
+  await ctrl.create({ ...req, body: { ...req.body, defaultSellingPrice: 20000 } }, conflict);
+  assert.equal(conflict.statusCode, 409);
+});
+
 test("sale create calculates total and profit before persisting transaction", async () => {
   let capturedSaleCreate;
   let stockUpdates = 0;
